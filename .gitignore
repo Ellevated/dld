@@ -1,0 +1,23 @@
+# Внутренняя кухня разработки
+ai/
+
+# Локальные настройки Claude Code
+.claude/
+
+# Системные файлы macOS
+.DS_Store
+**/.DS_Store
+
+# Временные файлы
+*.tmp
+*.swp
+*~
+.*.swp
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Логи
+*.log
