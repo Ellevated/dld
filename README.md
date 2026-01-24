@@ -130,7 +130,7 @@ Hotfix:      <5 LOC → fix directly
 | 13 | [13-migration.md](docs/13-migration.md) | Migration from Existing |
 | 14 | [14-suggested-domains.md](docs/14-suggested-domains.md) | Suggested Domains B2B SaaS |
 
-### LLM Workflows (15-19)
+### LLM Workflows (15-20)
 | # | Документ | Описание |
 |---|----------|----------|
 | 15 | [15-skills-setup.md](docs/15-skills-setup.md) | Skills System Setup |
@@ -138,6 +138,7 @@ Hotfix:      <5 LOC → fix directly
 | 17 | [17-backlog-management.md](docs/17-backlog-management.md) | Backlog & ID Protocol |
 | 18 | [18-spec-template.md](docs/18-spec-template.md) | Feature Spec Template |
 | 19 | [19-living-architecture.md](docs/19-living-architecture.md) | Living Architecture Docs |
+| 20 | [20-mcp-setup.md](docs/20-mcp-setup.md) | MCP Servers Setup (Context7, Exa) |
 
 ---
 
