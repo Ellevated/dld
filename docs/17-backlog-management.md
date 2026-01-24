@@ -24,25 +24,25 @@ ai/
 ```markdown
 # Backlog
 
-## Очередь
+## Queue
 
-| ID | Задача | Status | Priority | Feature.md |
-|----|--------|--------|----------|------------|
+| ID | Task | Status | Priority | Feature.md |
+|----|------|--------|----------|------------|
 | FTR-001 | Add user auth | done | P1 | [FTR-001](features/FTR-001-*.md) |
 | BUG-002 | Fix login crash | queued | P0 | [BUG-002](features/BUG-002-*.md) |
 
 ---
 
-## Статусы
-- draft — спека пишется
-- queued — готова к выполнению
-- in_progress — в работе
-- blocked — нужен человек
-- done — завершено
+## Statuses
+- draft — spec is being written
+- queued — ready for execution
+- in_progress — in work
+- blocked — needs human
+- done — completed
 
 ---
 
-## Архив
+## Archive
 Completed tasks moved to `ai/archive/`
 
 ---

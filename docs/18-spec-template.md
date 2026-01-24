@@ -24,13 +24,13 @@ Examples:
 
 **Status:** draft | **Priority:** P0/P1/P2/P3 | **Date:** YYYY-MM-DD
 
-## Зачем (RU)
+## Why
 
-{1-2 предложения: зачем это нужно пользователю/бизнесу}
+{1-2 sentences: why is this needed for user/business}
 
-## Контекст (RU)
+## Context
 
-{Текущее состояние, что не работает или чего не хватает}
+{Current state, what doesn't work or what's missing}
 
 ---
 

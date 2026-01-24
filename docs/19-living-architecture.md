@@ -1,63 +1,63 @@
 # Living Architecture Documentation
 
-**Проблема:** Проект растёт, спецификации архивируются, знания испаряются. Через 3 месяца никто не помнит почему billing отделён от campaigns.
+**Problem:** Project grows, specs get archived, knowledge evaporates. After 3 months no one remembers why billing was separated from campaigns.
 
-**Решение:** Три уровня живой документации.
+**Solution:** Three levels of living documentation.
 
 ---
 
-## Три уровня
+## Three Levels
 
 ```
 ai/
-├── ARCHITECTURE.md          # 1. Текущее состояние (живая карта)
-├── decisions/               # 2. Почему так (ADR)
+├── ARCHITECTURE.md          # 1. Current state (living map)
+├── decisions/               # 2. Why so (ADR)
 │   ├── 001-supabase.md
 │   └── 002-billing-domain.md
-└── changelog/               # 3. Как эволюционировало
+└── changelog/               # 3. How it evolved
     └── ARCHITECTURE-CHANGELOG.md
 ```
 
-| Уровень | Вопрос | Обновляется |
-|---------|--------|-------------|
-| ARCHITECTURE.md | "Что сейчас есть?" | После каждой фичи |
-| decisions/ | "Почему так решили?" | При важных решениях |
-| changelog/ | "Как менялось?" | После каждой фичи |
+| Level | Question | Updated |
+|-------|----------|---------|
+| ARCHITECTURE.md | "What exists now?" | After each feature |
+| decisions/ | "Why did we decide this?" | On important decisions |
+| changelog/ | "How did it change?" | After each feature |
 
 ---
 
-## 1. ARCHITECTURE.md — Живая карта
+## 1. ARCHITECTURE.md — Living Map
 
-### Когда обновлять
-- После реализации каждой фичи (documenter agent)
-- При добавлении нового домена
-- При изменении зависимостей между доменами
-- При добавлении нового entry point
+### When to Update
+- After implementing each feature (documenter agent)
+- When adding new domain
+- When changing dependencies between domains
+- When adding new entry point
 
-### Кто обновляет
-- **Documenter agent** — автоматически после autopilot
-- **Вручную** — если autopilot не использовался
+### Who Updates
+- **Documenter agent** — automatically after autopilot
+- **Manually** — if autopilot wasn't used
 
-### Структура
+### Structure
 
 ```markdown
 # Architecture: {Project Name}
 
 **Last updated:** {date}
-**Version:** {semver или просто номер}
+**Version:** {semver or just number}
 
 ---
 
-## Overview (для человека)
+## Overview (for humans)
 
-{2-3 абзаца простым языком: что это за система,
-кто пользователи, какую проблему решает}
+{2-3 paragraphs in plain language: what is this system,
+who are the users, what problem does it solve}
 
 ---
 
 ## System Diagram
 
-{ASCII-диаграмма или ссылка на Mermaid}
+{ASCII diagram or link to Mermaid}
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -87,55 +87,55 @@ ai/
 
 ## Domains
 
-### `seller` — Продавцы
-**Ответственность:** LLM-агент для продавцов, управление кампаниями через чат
+### `seller` — Sellers
+**Responsibility:** LLM agent for sellers, campaign management via chat
 
-**Ключевые компоненты:**
-- `agent.py` — основной LLM агент
-- `tools/` — инструменты агента (create_campaign, check_balance, etc.)
-- `prompts/` — версионированные промпты
+**Key components:**
+- `agent.py` — main LLM agent
+- `tools/` — agent tools (create_campaign, check_balance, etc.)
+- `prompts/` — versioned prompts
 
-**Зависит от:** campaigns, billing
-**Используется:** seller_bot (Telegram)
+**Depends on:** campaigns, billing
+**Used by:** seller_bot (Telegram)
 
-**Статус:** Production
-**Последние изменения:** FTR-213 (autonomous error handling)
+**Status:** Production
+**Last changes:** FTR-213 (autonomous error handling)
 
 ---
 
-### `buyer` — Покупатели
-**Ответственность:** FSM-бот для покупателей, участие в кампаниях
+### `buyer` — Buyers
+**Responsibility:** FSM bot for buyers, campaign participation
 
-**Ключевые компоненты:**
+**Key components:**
 - `handlers/` — FSM handlers
 - `keyboards/` — inline keyboards
 - `locales/` — i18n
 
-**Зависит от:** campaigns, billing
-**Используется:** buyer_bot (Telegram)
+**Depends on:** campaigns, billing
+**Used by:** buyer_bot (Telegram)
 
-**Статус:** Production
-**Последние изменения:** FTR-220 (new onboarding flow)
+**Status:** Production
+**Last changes:** FTR-220 (new onboarding flow)
 
 ---
 
-### `campaigns` — Кампании
+### `campaigns` — Campaigns
 ...
 
 ---
 
-### `billing` — Биллинг
+### `billing` — Billing
 ...
 
 ---
 
 ## Entry Points
 
-| Entry Point | Технология | Домены | Аудитория |
-|-------------|------------|--------|-----------|
-| seller_bot | aiogram 3.x | seller | Продавцы WB/Ozon |
-| buyer_bot | aiogram 3.x | buyer | Покупатели |
-| HTTP API | FastAPI | billing, campaigns | Webhooks, интеграции |
+| Entry Point | Technology | Domains | Audience |
+|-------------|------------|---------|----------|
+| seller_bot | aiogram 3.x | seller | WB/Ozon sellers |
+| buyer_bot | aiogram 3.x | buyer | Buyers |
+| HTTP API | FastAPI | billing, campaigns | Webhooks, integrations |
 
 ---
 
@@ -143,50 +143,50 @@ ai/
 
 ### Database
 **Supabase (PostgreSQL)**
-- Почему: managed, row-level security, realtime
+- Why: managed, row-level security, realtime
 - ADR: [001-supabase](./decisions/001-supabase.md)
 
 ### LLM
 **OpenAI GPT-4**
-- Используется: seller agent
-- Почему: best reasoning for agent tasks
+- Used by: seller agent
+- Why: best reasoning for agent tasks
 - ADR: [003-openai-for-agent](./decisions/003-openai-for-agent.md)
 
 ### External APIs
-| API | Зачем | Домен |
-|-----|-------|-------|
-| DaData | Валидация банковских реквизитов | billing |
-| WB API | Проверка товаров | campaigns |
+| API | Purpose | Domain |
+|-----|---------|--------|
+| DaData | Bank details validation | billing |
+| WB API | Product verification | campaigns |
 
 ---
 
 ## Key Decisions
 
-| # | Решение | Дата | ADR |
-|---|---------|------|-----|
-| 001 | Supabase вместо raw Postgres | 2025-11-15 | [→](./decisions/001-supabase.md) |
-| 002 | Отдельный billing домен | 2025-11-20 | [→](./decisions/002-billing-domain.md) |
-| 003 | LLM agent для seller (не FSM) | 2025-12-01 | [→](./decisions/003-llm-agent.md) |
+| # | Decision | Date | ADR |
+|---|----------|------|-----|
+| 001 | Supabase instead of raw Postgres | 2025-11-15 | [→](./decisions/001-supabase.md) |
+| 002 | Separate billing domain | 2025-11-20 | [→](./decisions/002-billing-domain.md) |
+| 003 | LLM agent for seller (not FSM) | 2025-12-01 | [→](./decisions/003-llm-agent.md) |
 
 ---
 
 ## Evolution Timeline
 
-| Дата | Что изменилось | Фича/Причина |
-|------|----------------|--------------|
+| Date | What changed | Feature/Reason |
+|------|--------------|----------------|
 | 2025-11-15 | Initial architecture | — |
-| 2025-12-01 | Добавлен seller agent | FTR-100 |
-| 2025-12-15 | Разделение billing | FTR-150 |
+| 2025-12-01 | Added seller agent | FTR-100 |
+| 2025-12-15 | Separated billing | FTR-150 |
 | 2026-01-05 | Autonomous error handling | FTR-213 |
 
-[Полный changelog →](./changelog/ARCHITECTURE-CHANGELOG.md)
+[Full changelog →](./changelog/ARCHITECTURE-CHANGELOG.md)
 
 ---
 
 ## Current Metrics
 
-| Метрика | Значение | Порог |
-|---------|----------|-------|
+| Metric | Value | Threshold |
+|--------|-------|-----------|
 | Domains | 4 | — |
 | Max LOC in file | 380 | 400 |
 | Test coverage | 41% | 40% |
@@ -197,13 +197,13 @@ ai/
 
 ## 2. ADR (Architecture Decision Records)
 
-### Когда создавать
-- Выбор технологии (БД, фреймворк, API)
-- Структурное решение (новый домен, разделение существующего)
-- Отказ от чего-то (почему НЕ выбрали X)
-- Trade-off решения
+### When to Create
+- Technology choice (DB, framework, API)
+- Structural decision (new domain, splitting existing)
+- Rejection of something (why we did NOT choose X)
+- Trade-off decisions
 
-### Шаблон ADR
+### ADR Template
 
 ```markdown
 # ADR-{NNN}: {Title}
@@ -216,258 +216,258 @@ ai/
 
 ## Context
 
-{Какая была ситуация? Какую проблему решали?}
+{What was the situation? What problem were we solving?}
 
 ## Decision
 
-{Что решили? Одно предложение.}
+{What did we decide? One sentence.}
 
 ## Rationale
 
-{Почему именно так?}
+{Why exactly this way?}
 
 ### Alternatives Considered
 
-| Вариант | Плюсы | Минусы | Почему отклонили |
-|---------|-------|--------|------------------|
+| Option | Pros | Cons | Why rejected |
+|--------|------|------|--------------|
 | {alt1} | ... | ... | ... |
 | {alt2} | ... | ... | ... |
 
 ## Consequences
 
 ### Positive
-- {что стало лучше}
+- {what became better}
 
 ### Negative
-- {какие trade-offs приняли}
+- {what trade-offs we accepted}
 
 ### Risks
-- {что может пойти не так}
+- {what could go wrong}
 
 ---
 
 ## Related
-- Фича: {FTR-XXX}
-- Другие ADR: {links}
+- Feature: {FTR-XXX}
+- Other ADRs: {links}
 ```
 
 ---
 
 ## 3. Architecture Changelog
 
-### Формат
+### Format
 
 ```markdown
 # Architecture Changelog
 
-Все значимые изменения в архитектуре проекта.
+All significant changes to project architecture.
 
 ---
 
 ## [2026-01-06]
 
 ### Added
-- Домен `outreach` для lead generation (FTR-225)
+- Domain `outreach` for lead generation (FTR-225)
 
 ### Changed
-- `campaigns` теперь зависит от `outreach` (была независимой)
+- `campaigns` now depends on `outreach` (was independent)
 
 ### Decisions
-- ADR-015: Отдельный домен для outreach vs расширение campaigns
+- ADR-015: Separate domain for outreach vs extending campaigns
 
 ---
 
 ## [2026-01-03]
 
 ### Changed
-- `seller` agent: autonomous error handling без auto-escalation (FTR-213)
+- `seller` agent: autonomous error handling without auto-escalation (FTR-213)
 
 ### Architecture Impact
-- Новый паттерн: agent сам решает когда эскалировать
+- New pattern: agent decides when to escalate
 
 ---
 
 ## [2025-12-15]
 
 ### Added
-- Домен `billing` выделен из `campaigns` (FTR-150)
+- Domain `billing` extracted from `campaigns` (FTR-150)
 
 ### Decisions
-- ADR-002: Почему отдельный billing
+- ADR-002: Why separate billing
 
 ### Migration
-- transactions таблица перенесена
-- Старые импорты deprecated
+- transactions table moved
+- Old imports deprecated
 ```
 
 ---
 
-## Процесс обновления
+## Update Process
 
-### После каждой фичи (Documenter agent)
+### After Each Feature (Documenter Agent)
 
 ```
-1. Фича реализована
-2. Documenter проверяет:
-   - Изменились ли домены?
-   - Новые зависимости?
-   - Новые entry points?
-   - Было ли архитектурное решение?
-3. Если да → обновляет:
-   - ARCHITECTURE.md (соответствующие секции)
+1. Feature implemented
+2. Documenter checks:
+   - Did domains change?
+   - New dependencies?
+   - New entry points?
+   - Was there an architectural decision?
+3. If yes → updates:
+   - ARCHITECTURE.md (corresponding sections)
    - changelog/ARCHITECTURE-CHANGELOG.md
-   - Создаёт ADR если нужно
+   - Creates ADR if needed
 ```
 
-### При архивировании спецификации
+### When Archiving Spec
 
 ```
-1. Спецификация идёт в archive/
-2. Documenter извлекает:
-   - Архитектурные изменения → ARCHITECTURE.md
-   - Решения → ADR (если были)
+1. Spec goes to archive/
+2. Documenter extracts:
+   - Architectural changes → ARCHITECTURE.md
+   - Decisions → ADR (if any)
    - Timeline entry → changelog
-3. Знания "оседают" в живой документации
+3. Knowledge "settles" in living documentation
 ```
 
 ---
 
-## Интеграция с Documenter
+## Integration with Documenter
 
-Добавить в промпт documenter агента:
+Add to documenter agent prompt:
 
 ```
-После обновления обычной документации, проверь:
+After updating regular documentation, check:
 
 1. ARCHITECTURE.md
-   - Актуальны ли домены?
-   - Актуальны ли зависимости?
-   - Добавить в Evolution Timeline?
+   - Are domains up to date?
+   - Are dependencies up to date?
+   - Add to Evolution Timeline?
 
-2. ADR нужен?
-   - Было ли важное архитектурное решение?
-   - Был ли выбор между альтернативами?
+2. ADR needed?
+   - Was there an important architectural decision?
+   - Was there a choice between alternatives?
 
 3. Changelog
-   - Добавить запись о том, что изменилось
+   - Add entry about what changed
 ```
 
 ---
 
-## Checklist для ревью
+## Review Checklist
 
-При code review проверять:
+During code review verify:
 
-- [ ] Если новый домен → добавлен в ARCHITECTURE.md
-- [ ] Если новая зависимость → обновлена диаграмма
-- [ ] Если архитектурное решение → есть ADR
-- [ ] Changelog обновлён
+- [ ] If new domain → added to ARCHITECTURE.md
+- [ ] If new dependency → diagram updated
+- [ ] If architectural decision → ADR exists
+- [ ] Changelog updated
 
 ---
 
 ## 4. Project Context System (ARCH-001)
 
-**Проблема:** LLM-агент начинает рефакторинг, находит несколько файлов через grep, правит их — но забывает про зависимые компоненты. Результат: сломанный код в других частях системы.
+**Problem:** LLM agent starts refactoring, finds some files via grep, edits them — but forgets about dependent components. Result: broken code in other parts of the system.
 
-**Решение:** Трёхуровневая система знаний о проекте.
+**Solution:** Three-level project knowledge system.
 
-### Структура
+### Structure
 
 ```
-.claude/rules/                          # ЗНАНИЯ (что знаем о проекте)
-├── dependencies.md                     # Граф зависимостей между компонентами
-├── architecture.md                     # Паттерны, ADR, анти-паттерны
+.claude/rules/                          # KNOWLEDGE (what we know about project)
+├── dependencies.md                     # Dependency graph between components
+├── architecture.md                     # Patterns, ADR, anti-patterns
 └── domains/
-    └── {domain}.md                     # Контекст конкретного домена
+    └── {domain}.md                     # Context for specific domain
 
-.claude/agents/_shared/                 # ПРОТОКОЛЫ (как работать)
-├── context-loader.md                   # Загрузка контекста ПЕРЕД работой
-└── context-updater.md                  # Обновление контекста ПОСЛЕ работы
+.claude/agents/_shared/                 # PROTOCOLS (how to work)
+├── context-loader.md                   # Load context BEFORE work
+└── context-updater.md                  # Update context AFTER work
 
-ai/glossary/                            # ТЕРМИНЫ (self-contained per domain)
-├── billing.md                          # Термины и правила billing
+ai/glossary/                            # TERMS (self-contained per domain)
+├── billing.md                          # Billing terms and rules
 ├── campaigns.md
 └── ...
 ```
 
-### Уровни знаний
+### Knowledge Levels
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ Layer 1: dependencies.md + architecture.md                    │
-│ Граф связей + паттерны. Загружается ВСЕМИ агентами           │
+│ Connection graph + patterns. Loaded by ALL agents            │
 └────────────────────────┬─────────────────────────────────────┘
                          ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ Layer 2: domains/{name}.md + glossary/{domain}.md            │
-│ Контекст домена. Загружается ЕСЛИ работаем с доменом         │
+│ Domain context. Loaded IF working with domain                │
 └────────────────────────┬─────────────────────────────────────┘
                          ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ Layer 3: Feature spec (ai/features/XXX.md)                   │
-│ Контекст задачи. Загружается исполнителем                    │
+│ Task context. Loaded by executor                             │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### Impact Tree Algorithm (5 шагов)
+### Impact Tree Algorithm (5 Steps)
 
-При любом изменении кода выполнить:
+For any code change execute:
 
-#### Step 1: ВВЕРХ — кто использует?
+#### Step 1: UP — who uses?
 
 ```bash
-# Найти всех импортеров модуля
+# Find all module importers
 grep -r "from.*{module}" . --include="*.py" --include="*.ts" --include="*.sql"
 ```
 
-**КРИТИЧЕСКИ ВАЖНО:** Точка `.` — весь проект, НЕ конкретная папка!
+**CRITICALLY IMPORTANT:** Dot `.` — entire project, NOT specific folder!
 
-#### Step 2: ВНИЗ — от чего зависит?
+#### Step 2: DOWN — what depends on?
 
 ```bash
-# В файле который меняем — какие импорты?
+# In file being changed — what imports?
 grep "^from\|^import" {file}
 ```
 
-#### Step 3: ПО ТЕРМИНУ — grep по всему проекту
+#### Step 3: BY TERM — grep entire project
 
 ```bash
-# КРИТИЧЕСКИ ВАЖНО: grep по ВСЕМУ проекту
+# CRITICALLY IMPORTANT: grep entire project
 grep -rn "{old_term}" . --include="*.py" --include="*.ts" --include="*.sql" --include="*.md"
 ```
 
-**ПРАВИЛО:** После всех изменений `grep "{old_term}" .` = 0 результатов!
+**RULE:** After all changes `grep "{old_term}" .` = 0 results!
 
-#### Step 4: CHECKLIST — обязательные папки
+#### Step 4: CHECKLIST — mandatory folders
 
-| Тип изменения | ОБЯЗАТЕЛЬНО проверить |
-|---------------|----------------------|
+| Change type | MUST check |
+|-------------|------------|
 | DB schema / columns | `tests/**`, `supabase/migrations/**`, `supabase/functions/**` |
 | Money/amounts | `tests/**`, `*.sql`, `ai/glossary/**` |
-| API signature | `tests/**`, все вызывающие модули |
-| Naming convention | **ВСЁ** — grep по всему проекту |
+| API signature | `tests/**`, all calling modules |
+| Naming convention | **EVERYTHING** — grep entire project |
 
 #### Step 5: Dual System Check
 
-Если меняем источник данных:
-1. Кто ЧИТАЕТ из старого источника?
-2. Кто ЧИТАЕТ из нового источника?
-3. Есть ли переходный период?
+If changing data source:
+1. Who READS from old source?
+2. Who READS from new source?
+3. Is there a transition period?
 
-### Интеграция с агентами
+### Integration with Agents
 
-| Агент | Когда загружать | Когда обновлять |
-|-------|-----------------|-----------------|
-| spark | Phase 0 (перед Impact Tree) | Phase 7.5 (после спеки) |
-| planner | Phase 0 (перед планом) | — |
-| coder | Step 0 (перед кодом) | Step 7 (после кода) |
-| review | Check 0 (проверить обновление) | — |
-| debugger | Step 1.5 (проверить зависимости) | — |
-| council | Phase 0 (перед экспертами) | — |
+| Agent | When to load | When to update |
+|-------|--------------|----------------|
+| spark | Phase 0 (before Impact Tree) | Phase 7.5 (after spec) |
+| planner | Phase 0 (before plan) | — |
+| coder | Step 0 (before code) | Step 7 (after code) |
+| review | Check 0 (verify update) | — |
+| debugger | Step 1.5 (check dependencies) | — |
+| council | Phase 0 (before experts) | — |
 
 ### Module Headers
 
-В начале значимых файлов добавлять:
+At the beginning of significant files add:
 
 ```python
 """
@@ -489,7 +489,7 @@ Glossary: ai/glossary/billing.md (money rules)
 
 ### Per-Domain Glossary (Self-Contained)
 
-Каждый файл glossary содержит ВСЁ что нужно для работы с доменом:
+Each glossary file contains EVERYTHING needed for working with domain:
 
 ```markdown
 # Billing Glossary
@@ -500,22 +500,22 @@ Naming: `amount_kopecks`, never bare `amount`.
 Why: Integer arithmetic prevents floating-point errors.
 
 ## term_name
-**What:** Определение
-**Why:** История, причина
-**Naming:** Код-конвенция
-**Related:** Связанные термины
+**What:** Definition
+**Why:** History, reason
+**Naming:** Code convention
+**Related:** Related terms
 ```
 
-**Дублирование Money Rules в каждом domain файле — ок.** LLM читает один файл и имеет весь контекст.
+**Duplicating Money Rules in each domain file — ok.** LLM reads one file and has all context.
 
 ### Enforcement Mechanisms
 
-| Механизм | Что делает |
-|----------|------------|
-| `validate-spec-complete.sh` | Блокирует коммит если Impact Tree checkboxes пустые |
-| Spark Phase 0 | Обязательная загрузка context перед спекой |
-| Coder Step 0 / Step 7 | Загрузка + обновление context |
-| Review Check 0 | Проверка что context обновлён |
+| Mechanism | What it does |
+|-----------|--------------|
+| `validate-spec-complete.sh` | Blocks commit if Impact Tree checkboxes empty |
+| Spark Phase 0 | Mandatory context load before spec |
+| Coder Step 0 / Step 7 | Load + update context |
+| Review Check 0 | Verify context was updated |
 
 ### Success Metrics (from ARCH-392 awardybot)
 
