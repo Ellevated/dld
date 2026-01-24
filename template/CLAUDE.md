@@ -1,6 +1,6 @@
 # {Project Name}
 
-{One-line description — заполнить после /bootstrap}
+{One-line description — fill after /bootstrap}
 
 **Stack:** {Your stack here — e.g., Python 3.12 + FastAPI + PostgreSQL}
 **Not using:** {Optional: list frameworks you're avoiding}
@@ -48,52 +48,52 @@ See `ai/ARCHITECTURE.md` after bootstrap.
 
 ## Project Context System (v3.4)
 
-Трёхуровневая система знаний о проекте для предотвращения поломок при рефакторинге.
+Three-tier knowledge system for preventing breakage during refactoring.
 
-### Структура
+### Structure
 
 ```
 .claude/rules/
-├── dependencies.md     # Граф зависимостей между компонентами
-├── architecture.md     # Паттерны, ADR, анти-паттерны
-└── domains/            # Контекст конкретных доменов
+├── dependencies.md     # Dependency graph between components
+├── architecture.md     # Patterns, ADR, anti-patterns
+└── domains/            # Per-domain context
     └── {domain}.md
 
 ai/glossary/
-├── billing.md          # Термины и правила домена
-├── campaigns.md
+├── {domain1}.md        # Domain terms and rules
+├── {domain2}.md
 └── ...
 ```
 
-### Протоколы (агенты используют автоматически)
+### Protocols (agents use automatically)
 
-| Протокол | Когда | Кто |
-|----------|-------|-----|
-| `context-loader.md` | ПЕРЕД работой | spark, planner, coder, review, debugger, council |
-| `context-updater.md` | ПОСЛЕ работы | spark, coder |
+| Protocol | When | Who |
+|----------|------|-----|
+| `context-loader.md` | BEFORE work | spark, planner, coder, review, debugger, council |
+| `context-updater.md` | AFTER work | spark, coder |
 
-### Impact Tree Algorithm (5 шагов)
+### Impact Tree Algorithm (5 steps)
 
-При любом изменении:
+On any change:
 
-1. **ВВЕРХ** — кто использует изменяемый код? (`grep -r "from.*{module}" .`)
-2. **ВНИЗ** — от чего зависит? (импорты в файле)
-3. **ПО ТЕРМИНУ** — grep старого имени по всему проекту
-4. **CHECKLIST** — обязательные папки (tests/, migrations/, edge functions/)
-5. **DUAL SYSTEM** — если меняем источник данных, кто читает из старого/нового?
+1. **UP** — who uses the changed code? (`grep -r "from.*{module}" .`)
+2. **DOWN** — what does it depend on? (imports in file)
+3. **BY TERM** — grep old name across entire project
+4. **CHECKLIST** — mandatory folders (tests/, migrations/, edge functions/)
+5. **DUAL SYSTEM** — if changing data source, who reads from old/new?
 
-**Правило:** После изменений `grep "{old_term}" .` = 0 результатов!
+**Rule:** After changes `grep "{old_term}" .` = 0 results!
 
 ### Module Headers
 
-В начале значимых файлов:
+At the start of significant files:
 ```python
 """
-Module: pricing_service
-Role: Calculate campaign costs
-Uses: campaigns/models, shared/types
-Used by: seller/tools, campaigns/activation
-Glossary: ai/glossary/billing.md
+Module: {module_name}
+Role: {brief description}
+Uses: {dependencies}
+Used by: {dependents}
+Glossary: ai/glossary/{domain}.md
 """
 ```
 
@@ -158,7 +158,7 @@ When user says "commit/push" — execute without asking:
 **Autopilot:** auto-push to `develop` allowed. Never push to `main`.
 
 ### Migrations — Git-First ONLY
-**НИКОГДА не применяй миграции напрямую! CI — единственный источник apply.**
+**NEVER apply migrations directly! CI is the only source of apply.**
 
 ---
 
