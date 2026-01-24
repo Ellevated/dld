@@ -1,144 +1,164 @@
-# LLM-Friendly Architecture Principles
+# DLD: LLM-First Architecture
 
-**Version:** 3.3 | **Date:** 2026-01-22
+> Transform AI coding chaos into deterministic development
 
-Руководство по созданию проектов, понятных для LLM-агентов.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-blue.svg)](https://claude.ai/code)
+[![Version](https://img.shields.io/badge/version-3.3-green.svg)](CHANGELOG.md)
 
 ---
 
-## Quick Start
+## The Problem
+
+**90% debugging, 6% features** — the hidden cost of AI coding.
+
+You've experienced it: Claude writes 200 lines, breaks 3 existing features, forgets context from last session, and you spend hours fixing what should have taken minutes.
+
+DLD (Double-Loop Development) is a methodology that turns unpredictable AI sessions into systematic, reproducible development.
+
+---
+
+## Try Before You Dive
+
+Ask any LLM to evaluate this approach:
+
+```
+Analyze the DLD methodology from github.com/[your-repo]/dld
+Compare with how you currently handle multi-file changes
+What problems does this solve?
+```
+
+---
+
+## Quick Start (3 Steps)
 
 ```bash
-# 1. Клонируй/скопируй этот репо
-git clone github.com/you/principles
-
-# 2. Скопируй template в новый проект
+# 1. Clone and copy template
+git clone https://github.com/[your-repo]/dld
 mkdir my-project && cd my-project
-cp -r /path/to/principles/template/* .
-cp -r /path/to/principles/template/.claude .
+cp -r ../dld/template/* .
+cp -r ../dld/template/.claude .
 
-# 3. Запусти Claude Code
+# 2. Start Claude Code
 claude
 
-# 4. Распакуй идею
+# 3. Unpack your idea
 > /bootstrap
 ```
 
----
-
-## Структура
-
-```
-principles/
-├── README.md           # ← Ты здесь
-├── docs/               # Документация для чтения
-│   ├── 00-bootstrap.md
-│   ├── 01-principles.md
-│   └── ...
-└── template/           # Готовый проект для копирования
-    ├── .claude/
-    │   ├── skills/     # 7 готовых skills
-    │   └── agents/     # 8 agent prompts (flat structure)
-    ├── ai/
-    │   ├── backlog.md
-    │   ├── diary/
-    │   └── features/
-    ├── CLAUDE.md
-    └── README.md
-```
+That's it. Bootstrap will guide you through extracting your idea into structured specs.
 
 ---
 
-## Workflow v3.1
+## How It Works
 
 ```
-New project: /bootstrap → Day 1 → /spark first feature
-Feature:     /spark → /autopilot (auto-handoff)
-Bug:         diagnose (5 Whys) → /spark → /autopilot
-Complex:     /spark → /council → /autopilot
-Hotfix:      <5 LOC → fix directly
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   /spark    │ ──▶ │  /autopilot │ ──▶ │    Done     │
+│  (ideation) │     │ (execution) │     │  (commit)   │
+└─────────────┘     └─────────────┘     └─────────────┘
+       │                   │
+       ▼                   ▼
+   Feature Spec      Plan + Code + Test + Review
+   + Research        (isolated worktree)
 ```
 
-**v3.1 Key changes:**
-- Agent/Skill separation (agents/*.md = prompts, skills/*.md = UX)
-- Flat agents directory (no nested folders)
-- Diary captures learnings → reflect synthesizes rules
+**Key insight:** Separate *thinking* from *doing*. Spark researches and writes specs. Autopilot executes mechanically.
 
 ---
 
-## Skills (в template/.claude/skills/)
+## Key Concepts
 
-| Skill | Когда использовать |
-|-------|-------------------|
-| **bootstrap** | Day 0 — распаковка идеи из головы |
-| **spark** | Новая фича, баг, архитектурное решение |
-| **autopilot** | Автономное выполнение (worktree + fresh subagents) |
-| **council** | Сложные/спорные решения (5 экспертов) |
-| **review** | Architecture watchdog |
-| **reflect** | Синтез дневника в правила CLAUDE.md |
-| **audit** | READ-ONLY анализ кода |
-| **scout** | Изолированный research (Exa + Context7) |
+### Skills vs Agents
 
-## Agents (в template/.claude/agents/)
+| Skills | Agents |
+|--------|--------|
+| User-facing commands (`/spark`, `/autopilot`) | Internal prompts (planner, coder, tester) |
+| Orchestration logic | Single-task execution |
+| In `skills/*.md` | In `agents/*.md` |
 
-| Agent | Model | Роль |
-|-------|-------|------|
-| planner | opus | Детальный план имплементации |
-| coder | sonnet | Написание кода |
-| tester | sonnet | Smart Testing + Scope Protection |
-| debugger | opus | Root cause analysis |
-| spec-reviewer | sonnet | Соответствие спеке |
-| review | opus | Качество кода, архитектура |
-| scout | sonnet | Внешний research |
-| documenter | sonnet | Обновление документации |
+### Worktree Isolation
+
+Every Autopilot task runs in a fresh git worktree. If something breaks — `git worktree remove` and start clean. No more "let me fix the fix for the fix."
+
+### Spec-First Development
+
+Before any code is written:
+1. Research via Exa + Context7
+2. Write detailed spec with allowed files
+3. Break into atomic tasks
+4. Execute mechanically
 
 ---
 
-## Документация (в docs/)
+## Project Structure
 
-### Foundation (философия)
-| # | Документ | Описание |
-|---|----------|----------|
-| 0 | [00-why.md](docs/foundation/00-why.md) | Боль предпринимателя, зачем DLD |
-| 1 | [01-double-loop.md](docs/foundation/01-double-loop.md) | Концепция двух петель |
-| 2 | [02-agent-roles.md](docs/foundation/02-agent-roles.md) | Роли агентов (Planner/Developer/Tester/Supervisor) |
+```
+my-project/
+├── .claude/
+│   ├── skills/          # 8 skills (bootstrap, spark, autopilot, ...)
+│   ├── agents/          # 10 agent prompts (planner, coder, ...)
+│   ├── rules/           # Architecture constraints
+│   └── contexts/        # Domain-specific context
+├── ai/
+│   ├── idea/            # From /bootstrap
+│   ├── features/        # Task specs
+│   ├── diary/           # Session learnings
+│   └── backlog.md       # Task queue
+├── src/
+│   ├── shared/          # Common types, Result pattern
+│   ├── infra/           # DB, LLM, external APIs
+│   ├── domains/         # Business logic (DDD)
+│   └── api/             # Entry points
+└── CLAUDE.md            # Main context file
+```
 
-### Начало
-| # | Документ | Описание |
-|---|----------|----------|
-| 0 | [00-bootstrap.md](docs/00-bootstrap.md) | Философия + порядок запуска |
+---
 
-### Архитектура (01-08)
-| # | Документ | Описание |
-|---|----------|----------|
-| 1 | [01-principles.md](docs/01-principles.md) | Ключевые принципы |
-| 2 | [02-naming.md](docs/02-naming.md) | Правила именования |
-| 3 | [03-project-structure.md](docs/03-project-structure.md) | Структура проекта |
-| 4 | [04-claude-md-template.md](docs/04-claude-md-template.md) | Шаблон CLAUDE.md |
-| 5 | [05-domain-template.md](docs/05-domain-template.md) | Шаблон домена |
-| 6 | [06-cross-domain.md](docs/06-cross-domain.md) | Cross-Domain Communication |
-| 7 | [07-antipatterns.md](docs/07-antipatterns.md) | Антипаттерны |
-| 8 | [08-metrics.md](docs/08-metrics.md) | Метрики качества |
+## Skills
 
-### Процессы (09-14)
-| # | Документ | Описание |
-|---|----------|----------|
-| 9 | [09-onboarding.md](docs/09-onboarding.md) | Day-by-Day Onboarding |
-| 10 | [10-testing.md](docs/10-testing.md) | Testing Strategy |
-| 11 | [11-ci-cd.md](docs/11-ci-cd.md) | CI/CD + Import Linter |
-| 12 | [12-docker.md](docs/12-docker.md) | Docker Configuration |
-| 13 | [13-migration.md](docs/13-migration.md) | Migration from Existing |
-| 14 | [14-suggested-domains.md](docs/14-suggested-domains.md) | Suggested Domains B2B SaaS |
+| Skill | When to Use |
+|-------|-------------|
+| `/bootstrap` | Day 0 — extract idea from your head |
+| `/spark` | New feature, bug, architecture decision |
+| `/autopilot` | Autonomous execution with fresh subagents |
+| `/council` | Complex decisions (5 AI experts debate) |
+| `/audit` | READ-ONLY code analysis |
+| `/reflect` | Synthesize diary into CLAUDE.md rules |
+| `/scout` | Isolated research (Exa + Context7) |
 
-### LLM Workflows (15-20)
-| # | Документ | Описание |
-|---|----------|----------|
-| 15 | [15-skills-setup.md](docs/15-skills-setup.md) | Skills System Setup |
-| 16 | [16-forbidden.md](docs/16-forbidden.md) | Forbidden Rules & Guardrails |
-| 17 | [17-backlog-management.md](docs/17-backlog-management.md) | Backlog & ID Protocol |
-| 18 | [18-spec-template.md](docs/18-spec-template.md) | Feature Spec Template |
-| 19 | [19-living-architecture.md](docs/19-living-architecture.md) | Living Architecture Docs |
-| 20 | [20-mcp-setup.md](docs/20-mcp-setup.md) | MCP Servers Setup (Context7, Exa) |
+---
+
+## Documentation
+
+### Foundation
+- [Why DLD?](docs/foundation/00-why.md) — The entrepreneur's pain
+- [Double-Loop Concept](docs/foundation/01-double-loop.md) — Core methodology
+- [Agent Roles](docs/foundation/02-agent-roles.md) — Who does what
+
+### Architecture
+- [Principles](docs/01-principles.md) — Core rules
+- [Project Structure](docs/03-project-structure.md) — How to organize
+- [CLAUDE.md Template](docs/04-claude-md-template.md) — Context file guide
+- [Anti-patterns](docs/07-antipatterns.md) — What to avoid
+
+### Workflows
+- [Skills Setup](docs/15-skills-setup.md) — How to configure skills
+- [Spec Template](docs/18-spec-template.md) — Writing good specs
+- [MCP Setup](docs/20-mcp-setup.md) — Context7 + Exa configuration
+
+---
+
+## Comparison
+
+| Feature | DLD | Plain Claude Code | Cursor |
+|---------|-----|-------------------|--------|
+| Context persistence | Spec files | Session memory | Chat history |
+| Multi-file changes | Atomic worktrees | Same context | Same context |
+| Research before code | Mandatory (Exa) | Optional | Optional |
+| Rollback strategy | `git worktree remove` | Manual revert | Manual revert |
+| Test isolation | Per-task scope | Global | Global |
+| Review process | Spec → Code → Review | Ad-hoc | Ad-hoc |
 
 ---
 
@@ -146,13 +166,24 @@ Hotfix:      <5 LOC → fix directly
 
 ```
 1. Colocation > Separation by type
-2. Один домен = один контекст (~100 строк)
-3. Self-describing names (без аббревиатур)
-4. Dependency graph = DAG (без циклов)
+2. One domain = one context (~100 lines)
+3. Self-describing names (no abbreviations)
+4. Dependency graph = DAG (no cycles)
 5. Max 400 LOC per file (600 for tests)
 6. Max 5 exports in __init__.py
-7. Immutable tests: contracts/ + regression/
-8. Skills workflow: spark → autopilot
+7. Skills workflow: spark → autopilot
 ```
 
-**Метрика успеха:** Если новый разработчик понимает проект за 30 минут — LLM поймёт за 30 секунд.
+**Success metric:** If a new developer understands the project in 30 minutes — LLM understands it in 30 seconds.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+---
+
+## License
+
+MIT — See [LICENSE](LICENSE)
