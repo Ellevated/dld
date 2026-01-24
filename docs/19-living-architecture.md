@@ -362,3 +362,165 @@ ai/
 - [ ] Если новая зависимость → обновлена диаграмма
 - [ ] Если архитектурное решение → есть ADR
 - [ ] Changelog обновлён
+
+---
+
+## 4. Project Context System (ARCH-001)
+
+**Проблема:** LLM-агент начинает рефакторинг, находит несколько файлов через grep, правит их — но забывает про зависимые компоненты. Результат: сломанный код в других частях системы.
+
+**Решение:** Трёхуровневая система знаний о проекте.
+
+### Структура
+
+```
+.claude/rules/                          # ЗНАНИЯ (что знаем о проекте)
+├── dependencies.md                     # Граф зависимостей между компонентами
+├── architecture.md                     # Паттерны, ADR, анти-паттерны
+└── domains/
+    └── {domain}.md                     # Контекст конкретного домена
+
+.claude/agents/_shared/                 # ПРОТОКОЛЫ (как работать)
+├── context-loader.md                   # Загрузка контекста ПЕРЕД работой
+└── context-updater.md                  # Обновление контекста ПОСЛЕ работы
+
+ai/glossary/                            # ТЕРМИНЫ (self-contained per domain)
+├── billing.md                          # Термины и правила billing
+├── campaigns.md
+└── ...
+```
+
+### Уровни знаний
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Layer 1: dependencies.md + architecture.md                    │
+│ Граф связей + паттерны. Загружается ВСЕМИ агентами           │
+└────────────────────────┬─────────────────────────────────────┘
+                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Layer 2: domains/{name}.md + glossary/{domain}.md            │
+│ Контекст домена. Загружается ЕСЛИ работаем с доменом         │
+└────────────────────────┬─────────────────────────────────────┘
+                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Layer 3: Feature spec (ai/features/XXX.md)                   │
+│ Контекст задачи. Загружается исполнителем                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Impact Tree Algorithm (5 шагов)
+
+При любом изменении кода выполнить:
+
+#### Step 1: ВВЕРХ — кто использует?
+
+```bash
+# Найти всех импортеров модуля
+grep -r "from.*{module}" . --include="*.py" --include="*.ts" --include="*.sql"
+```
+
+**КРИТИЧЕСКИ ВАЖНО:** Точка `.` — весь проект, НЕ конкретная папка!
+
+#### Step 2: ВНИЗ — от чего зависит?
+
+```bash
+# В файле который меняем — какие импорты?
+grep "^from\|^import" {file}
+```
+
+#### Step 3: ПО ТЕРМИНУ — grep по всему проекту
+
+```bash
+# КРИТИЧЕСКИ ВАЖНО: grep по ВСЕМУ проекту
+grep -rn "{old_term}" . --include="*.py" --include="*.ts" --include="*.sql" --include="*.md"
+```
+
+**ПРАВИЛО:** После всех изменений `grep "{old_term}" .` = 0 результатов!
+
+#### Step 4: CHECKLIST — обязательные папки
+
+| Тип изменения | ОБЯЗАТЕЛЬНО проверить |
+|---------------|----------------------|
+| DB schema / columns | `tests/**`, `supabase/migrations/**`, `supabase/functions/**` |
+| Money/amounts | `tests/**`, `*.sql`, `ai/glossary/**` |
+| API signature | `tests/**`, все вызывающие модули |
+| Naming convention | **ВСЁ** — grep по всему проекту |
+
+#### Step 5: Dual System Check
+
+Если меняем источник данных:
+1. Кто ЧИТАЕТ из старого источника?
+2. Кто ЧИТАЕТ из нового источника?
+3. Есть ли переходный период?
+
+### Интеграция с агентами
+
+| Агент | Когда загружать | Когда обновлять |
+|-------|-----------------|-----------------|
+| spark | Phase 0 (перед Impact Tree) | Phase 7.5 (после спеки) |
+| planner | Phase 0 (перед планом) | — |
+| coder | Step 0 (перед кодом) | Step 7 (после кода) |
+| review | Check 0 (проверить обновление) | — |
+| debugger | Step 1.5 (проверить зависимости) | — |
+| council | Phase 0 (перед экспертами) | — |
+
+### Module Headers
+
+В начале значимых файлов добавлять:
+
+```python
+"""
+Module: pricing_service
+Role: Calculate campaign costs (preview before creation)
+Source of Truth: SQL RPC calculate_campaign_cost()
+
+Uses:
+  - campaigns/models.py: Campaign, UgcType, SlotStatus
+  - shared/types.py: UUID, Decimal
+
+Used by:
+  - seller/tools/campaigns: cost preview for agent
+  - campaigns/activation: launch validation
+
+Glossary: ai/glossary/billing.md (money rules)
+"""
+```
+
+### Per-Domain Glossary (Self-Contained)
+
+Каждый файл glossary содержит ВСЁ что нужно для работы с доменом:
+
+```markdown
+# Billing Glossary
+
+## Money Rules (CRITICAL)
+All amounts in kopecks. 1 ruble = 100 kopecks.
+Naming: `amount_kopecks`, never bare `amount`.
+Why: Integer arithmetic prevents floating-point errors.
+
+## term_name
+**What:** Определение
+**Why:** История, причина
+**Naming:** Код-конвенция
+**Related:** Связанные термины
+```
+
+**Дублирование Money Rules в каждом domain файле — ок.** LLM читает один файл и имеет весь контекст.
+
+### Enforcement Mechanisms
+
+| Механизм | Что делает |
+|----------|------------|
+| `validate-spec-complete.sh` | Блокирует коммит если Impact Tree checkboxes пустые |
+| Spark Phase 0 | Обязательная загрузка context перед спекой |
+| Coder Step 0 / Step 7 | Загрузка + обновление context |
+| Review Check 0 | Проверка что context обновлён |
+
+### Success Metrics (from ARCH-392 awardybot)
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Tasks for refactoring | 23 | ≤5 |
+| Forgotten files | Multiple | 0 |
+| Production issues from refactor | Yes | No |

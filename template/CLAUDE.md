@@ -2,8 +2,8 @@
 
 {One-line description — заполнить после /bootstrap}
 
-**Stack:** Python 3.12 + FastAPI + Supabase + aiogram 3.x
-**Not using:** SQLAlchemy, Redis, Celery
+**Stack:** {Your stack here — e.g., Python 3.12 + FastAPI + PostgreSQL}
+**Not using:** {Optional: list frameworks you're avoiding}
 
 **Commands:**
 - `./test fast` — lint + unit tests
@@ -23,11 +23,11 @@
 ## Architecture
 
 ```
-Entry Points:  bot (FSM/LLM) | HTTP API
+Entry Points:  {your entry points — e.g., API | CLI | Bot}
                     ↓              ↓
 Domains:       {domain1} | {domain2} | {domain3}
                     ↓              ↓
-Infra:              db (supabase) | llm (openai) | external
+Infra:              db | cache | external APIs
 ```
 
 **Dependencies:** `shared → infra → domains → api`
@@ -41,8 +41,61 @@ See `ai/ARCHITECTURE.md` after bootstrap.
 | Task | Context | Triggers |
 |------|---------|----------|
 | {domain1} | `.claude/contexts/{domain1}.md` | `src/domains/{domain1}/**` |
-| DB, LLM, infra | `.claude/contexts/shared.md` | `src/infra/**`, `supabase/**` |
+| DB, LLM, infra | `.claude/contexts/shared.md` | `src/infra/**`, `db/**` |
 | Testing | `.claude/rules/testing.md` | `tests/**`, `*_test.py` |
+
+---
+
+## Project Context System (v3.4)
+
+Трёхуровневая система знаний о проекте для предотвращения поломок при рефакторинге.
+
+### Структура
+
+```
+.claude/rules/
+├── dependencies.md     # Граф зависимостей между компонентами
+├── architecture.md     # Паттерны, ADR, анти-паттерны
+└── domains/            # Контекст конкретных доменов
+    └── {domain}.md
+
+ai/glossary/
+├── billing.md          # Термины и правила домена
+├── campaigns.md
+└── ...
+```
+
+### Протоколы (агенты используют автоматически)
+
+| Протокол | Когда | Кто |
+|----------|-------|-----|
+| `context-loader.md` | ПЕРЕД работой | spark, planner, coder, review, debugger, council |
+| `context-updater.md` | ПОСЛЕ работы | spark, coder |
+
+### Impact Tree Algorithm (5 шагов)
+
+При любом изменении:
+
+1. **ВВЕРХ** — кто использует изменяемый код? (`grep -r "from.*{module}" .`)
+2. **ВНИЗ** — от чего зависит? (импорты в файле)
+3. **ПО ТЕРМИНУ** — grep старого имени по всему проекту
+4. **CHECKLIST** — обязательные папки (tests/, migrations/, edge functions/)
+5. **DUAL SYSTEM** — если меняем источник данных, кто читает из старого/нового?
+
+**Правило:** После изменений `grep "{old_term}" .` = 0 результатов!
+
+### Module Headers
+
+В начале значимых файлов:
+```python
+"""
+Module: pricing_service
+Role: Calculate campaign costs
+Uses: campaigns/models, shared/types
+Used by: seller/tools, campaigns/activation
+Glossary: ai/glossary/billing.md
+"""
+```
 
 ---
 
