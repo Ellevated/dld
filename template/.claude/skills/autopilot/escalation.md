@@ -1,0 +1,141 @@
+# Escalation & Limits
+
+When to escalate and how to handle failures.
+
+## Limits
+
+| Situation | Limit | After Limit |
+|-----------|-------|-------------|
+| Debug retry (code bug) | 3 | → Spark (BUG spec) |
+| Debug retry (architecture) | 3 | → Council |
+| ./test fast fail | 5 | → STOP (ask human) |
+| ./test llm fail | 2 | → STOP (ask human) |
+| Reviewer refactor | 2 | → Council |
+| Out-of-scope failures | ∞ | skip |
+
+## Decision Tree
+
+After debug/refactor limits exhausted:
+
+```
+After 3 debug attempts:
+├── Is it a CODE BUG in current scope?
+│   └── YES → Spark (create BUG-XXX spec)
+│       └── "Bug requires separate spec."
+│
+├── Is it an ARCHITECTURE question?
+│   └── YES → Council (expert review)
+│       └── "Architecture question."
+│
+├── Is it OUT OF SCOPE?
+│   └── YES → Log + Continue
+│       └── "Out-of-scope. Skipping."
+│
+└── UNCLEAR?
+    └── STOP → Ask Human
+        └── "Cannot determine. Need help."
+```
+
+## Spark Escalation (for bugs)
+
+When code bug can't be fixed after 3 attempts:
+
+```yaml
+Skill tool:
+  skill: "spark"
+  args: |
+    MODE: bug
+    SYMPTOM: "{test failure or error}"
+    ATTEMPTS: [list of what was tried]
+    FILES: [files_changed]
+```
+
+**Spark will:**
+1. Run 5 Whys analysis
+2. Find root cause
+3. Create BUG-XXX spec
+4. Hand off to autopilot (fresh context)
+
+## Council Escalation (for architecture)
+
+When architecture decision needed:
+
+```yaml
+Skill tool:
+  skill: "council"
+  args: |
+    escalation_type: debug_stuck | refactor_stuck
+    feature: "{TASK_ID}"
+    task: "{N}/{M} — {name}"
+    attempts:
+      - attempt: 1
+        action: "what did"
+        result: "what got"
+    current_error: "..."
+    hypotheses_rejected:
+      - hypothesis: "..."
+        reason: "..."
+    question: "Specific question"
+```
+
+**Council returns:**
+- `solution_found` → apply fix, continue
+- `architecture_change` → update plan, restart task
+- `needs_human` → status: blocked
+
+## Debug Loop
+
+```
+TESTER fails:
+├── In-scope? (related to files_changed)
+│   └── YES → DEBUGGER → CODER fix → TESTER
+│   └── NO → Log "out-of-scope" → Skip
+│
+├── retry_count > 1?
+│   └── YES → DIARY RECORDER (test_retry trigger)
+│
+└── retry_count >= 3?
+    └── YES → ESCALATE (see Decision Tree)
+```
+
+## Refactor Loop
+
+```
+CODE QUALITY REVIEWER returns needs_refactor:
+├── refactor_count < 2?
+│   └── YES → CODER fix → TESTER → REVIEWER
+│
+└── refactor_count >= 2?
+    └── → Council escalation
+```
+
+## Diary Recording
+
+**Triggers:**
+- `bash_instead_of_tools` — used bash when tool exists
+- `test_retry > 1` — needed multiple debug attempts
+- `escalation_used` — escalated to Spark/Council
+
+**When:** After DEBUG LOOP (if retry > 1) or after escalation.
+
+```yaml
+Task tool:
+  subagent_type: "diary-recorder"
+  prompt: |
+    task_id: "{TASK_ID}"
+    problem_type: {trigger}
+    error_message: "{error}"
+    files_changed: [...]
+```
+
+## Blocked Status
+
+When to set status=blocked:
+
+- Deploy validation failed
+- Spec Reviewer loop > 2 iterations
+- Unclear requirements
+- Human decision needed
+- Git conflicts
+
+**Always update BOTH spec AND backlog!**

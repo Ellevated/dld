@@ -4,7 +4,7 @@
 
 | ID | Задача | Status | Priority | Feature.md |
 |----|--------|--------|----------|------------|
-| TECH-001 | Split autopilot.md into modules | queued | P1 | [TECH-001](features/TECH-001-split-autopilot.md) |
+| TECH-001 | Split autopilot.md into modules | done | P1 | [TECH-001](features/TECH-001-split-autopilot.md) |
 | TECH-002 | Remove hardcode from template | done | P1 | ai/idea/tasks-breakdown.md |
 | TECH-003 | Clean CLAUDE.md template | queued | P1 | [TECH-003](features/TECH-003-2026-01-24-clean-claude-md-template.md) |
 | TECH-004 | Add MCP setup instructions | queued | P2 | [TECH-004](features/TECH-004-2026-01-24-mcp-setup-instructions.md) |
