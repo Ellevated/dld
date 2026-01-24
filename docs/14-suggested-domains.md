@@ -1,6 +1,6 @@
 # Suggested Domains for B2B SaaS
 
-## Типичные домены
+## Typical Domains
 
 | Domain | Responsibility |
 |--------|---------------|
@@ -45,26 +45,26 @@
 
 ---
 
-## Правила зависимостей
+## Dependency Rules
 
-- **auth** — leaf domain, ни от кого не зависит
-- **billing** — leaf domain, только от infra
-- **workflows** — core domain, зависит от auth + integrations
-- **tasks** — зависит от workflows
-- **notifications** — зависит от workflows + tasks
-- **analytics** — зависит от tasks + notifications
-- **bot** — top-level, зависит от всех
+- **auth** — leaf domain, depends on nothing
+- **billing** — leaf domain, only depends on infra
+- **workflows** — core domain, depends on auth + integrations
+- **tasks** — depends on workflows
+- **notifications** — depends on workflows + tasks
+- **analytics** — depends on tasks + notifications
+- **bot** — top-level, depends on everything
 
 ---
 
-## Заключение
+## Conclusion
 
-LLM-friendly архитектура — это не rocket science. Это:
+LLM-friendly architecture is not rocket science. It's:
 
-1. **Понятная структура** — домены вместо типов
-2. **Компактные контексты** — README в каждом домене (100 строк)
-3. **Явные зависимости** — DAG без циклов
-4. **Консистентность** — единые правила именования
-5. **Enforcement** — import linter + file size gate в CI
+1. **Clear structure** — domains instead of types
+2. **Compact contexts** — README in each domain (100 lines)
+3. **Explicit dependencies** — DAG without cycles
+4. **Consistency** — unified naming rules
+5. **Enforcement** — import linter + file size gate in CI
 
-Следуй этим принципам с первого дня — и LLM будет твоим эффективным напарником.
+Follow these principles from day one — and LLM will be your effective partner.

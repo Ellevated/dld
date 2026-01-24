@@ -1,16 +1,16 @@
 # Migration from Existing Project
 
-Если проект уже существует с плохой структурой:
+If the project already exists with poor structure:
 
 ---
 
-## Шаг 1: Backwards-compatible shims
+## Step 1: Backwards-compatible shims
 
 ```python
 # OLD: src/services/order_service.py
 # NEW: src/domains/orders/service.py
 
-# Shim для совместимости:
+# Shim for compatibility:
 # src/services/order_service.py
 from domains.orders.service import OrderService  # re-export
 __all__ = ["OrderService"]
@@ -18,22 +18,22 @@ __all__ = ["OrderService"]
 
 ---
 
-## Шаг 2: Постепенная миграция
+## Step 2: Gradual migration
 
-1. Создай новую структуру `domains/`
-2. Переноси файлы по одному
-3. Обновляй импорты
-4. Удаляй shims когда все импорты обновлены
+1. Create new `domains/` structure
+2. Move files one by one
+3. Update imports
+4. Remove shims when all imports are updated
 
 ---
 
-## Шаг 3: Import linter с начала
+## Step 3: Import linter from the start
 
-Даже во время миграции — настрой linter чтобы новый код следовал правилам.
+Even during migration — set up linter so new code follows the rules.
 
 ```python
 # scripts/check_domain_imports.py
-# Можно добавить whitelist для legacy файлов:
+# You can add a whitelist for legacy files:
 
 LEGACY_WHITELIST = {
     "src/services/order_service.py",  # TODO: migrate by 2026-02-01
@@ -43,9 +43,9 @@ LEGACY_WHITELIST = {
 
 ---
 
-## Шаг 4: Удаление legacy
+## Step 4: Remove legacy
 
-После полной миграции:
-- Удали все shims
-- Удали legacy папки
-- Удали whitelist из linter
+After full migration:
+- Remove all shims
+- Remove legacy folders
+- Remove whitelist from linter

@@ -1,8 +1,8 @@
 # Day-by-Day Onboarding
 
-## День 1: Структура
+## Day 1: Structure
 
-- [ ] Создать базовую структуру:
+- [ ] Create basic structure:
   ```
   backend/src/
   ├── domains/
@@ -10,19 +10,19 @@
   ├── infra/
   └── api/
   ```
-- [ ] Создать `CLAUDE.md` с описанием проекта (50 строк)
-- [ ] Создать `.claude/contexts/shared.md`
-- [ ] Настроить import linter
-- [ ] Создать `ai/backlog.md`
+- [ ] Create `CLAUDE.md` with project description (50 lines)
+- [ ] Create `.claude/contexts/shared.md`
+- [ ] Set up import linter
+- [ ] Create `ai/backlog.md`
 
 ---
 
-## День 2: Shared Layer
+## Day 2: Shared Layer
 
-- [ ] `shared/types.py` — базовые типы (UUID wrappers, etc.)
-- [ ] `shared/result.py` — Result pattern для ошибок
-- [ ] `shared/exceptions.py` — базовые исключения
-- [ ] `shared/interfaces.py` — Protocol классы для DI
+- [ ] `shared/types.py` — base types (UUID wrappers, etc.)
+- [ ] `shared/result.py` — Result pattern for errors
+- [ ] `shared/exceptions.py` — base exceptions
+- [ ] `shared/interfaces.py` — Protocol classes for DI
 
 ```python
 # shared/result.py
@@ -45,31 +45,31 @@ Result = Ok[T] | Err[E]
 
 ---
 
-## День 3: Infrastructure
+## Day 3: Infrastructure
 
-- [ ] `infra/db/client.py` — подключение к Supabase
-- [ ] `infra/db/base_repository.py` — базовый репозиторий
-- [ ] `infra/llm/client.py` — LLM клиент (если нужен)
-
----
-
-## День 4+: Domains
-
-Для каждого домена:
-- [ ] Создать папку `domains/{name}/`
-- [ ] Создать `README.md` с контекстом
-- [ ] Создать `models.py` — Pydantic модели
-- [ ] Создать `repository.py` — работа с БД
-- [ ] Создать `service.py` — бизнес-логика
-- [ ] Создать `__init__.py` с публичным API (max 5 exports)
-- [ ] Создать `tests/` с unit-тестами
+- [ ] `infra/db/client.py` — Supabase connection
+- [ ] `infra/db/base_repository.py` — base repository
+- [ ] `infra/llm/client.py` — LLM client (if needed)
 
 ---
 
-## Чеклист готовности
+## Day 4+: Domains
 
-- [ ] CLAUDE.md < 100 строк
-- [ ] Import linter проходит
-- [ ] Нет файлов > 400 LOC (600 для тестов)
-- [ ] Каждый домен имеет README.md
-- [ ] Все exports в __init__.py ≤ 5
+For each domain:
+- [ ] Create folder `domains/{name}/`
+- [ ] Create `README.md` with context
+- [ ] Create `models.py` — Pydantic models
+- [ ] Create `repository.py` — DB operations
+- [ ] Create `service.py` — business logic
+- [ ] Create `__init__.py` with public API (max 5 exports)
+- [ ] Create `tests/` with unit tests
+
+---
+
+## Readiness Checklist
+
+- [ ] CLAUDE.md < 100 lines
+- [ ] Import linter passes
+- [ ] No files > 400 LOC (600 for tests)
+- [ ] Each domain has README.md
+- [ ] All exports in __init__.py ≤ 5
