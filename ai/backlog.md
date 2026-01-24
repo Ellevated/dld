@@ -6,11 +6,11 @@
 |----|--------|--------|----------|------------|
 | TECH-001 | Split autopilot.md into modules | done | P1 | [TECH-001](features/TECH-001-split-autopilot.md) |
 | TECH-002 | Remove hardcode from template | done | P1 | ai/idea/tasks-breakdown.md |
-| TECH-003 | Clean CLAUDE.md template | queued | P1 | [TECH-003](features/TECH-003-2026-01-24-clean-claude-md-template.md) |
-| TECH-004 | Add MCP setup instructions | queued | P2 | [TECH-004](features/TECH-004-2026-01-24-mcp-setup-instructions.md) |
-| TECH-005 | Add hooks README | queued | P2 | [TECH-005](features/TECH-005-2026-01-24-hooks-readme.md) |
-| TECH-006 | GitHub community files | queued | P2 | [TECH-006](features/TECH-006-2026-01-24-github-community-files.md) |
-| TECH-007 | Translate foundation docs | queued | P1 | [TECH-007](features/TECH-007-2026-01-24-translate-foundation-docs.md) |
+| TECH-003 | Clean CLAUDE.md template | done | P1 | [TECH-003](features/TECH-003-2026-01-24-clean-claude-md-template.md) |
+| TECH-004 | Add MCP setup instructions | done | P2 | [TECH-004](features/TECH-004-2026-01-24-mcp-setup-instructions.md) |
+| TECH-005 | Add hooks README | done | P2 | [TECH-005](features/TECH-005-2026-01-24-hooks-readme.md) |
+| TECH-006 | GitHub community files | done | P2 | [TECH-006](features/TECH-006-2026-01-24-github-community-files.md) |
+| TECH-007 | Translate foundation docs | done | P1 | [TECH-007](features/TECH-007-2026-01-24-translate-foundation-docs.md) |
 | TECH-008 | Translate architecture docs (01-08) | queued | P1 | [TECH-008](features/TECH-008-2026-01-24-translate-architecture-docs.md) |
 | TECH-009 | Translate process docs (09-14) | queued | P1 | [TECH-009](features/TECH-009-2026-01-24-translate-process-docs.md) |
 | TECH-010 | Translate LLM workflow docs (15-19) | queued | P1 | [TECH-010](features/TECH-010-2026-01-24-translate-llm-workflow-docs.md) |
