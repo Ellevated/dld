@@ -6,7 +6,7 @@ agent: .claude/agents/tester.md
 
 # Tester Skill (Wrapper)
 
-Вызывает tester субагент для запуска тестов с Smart Testing логикой.
+Invokes tester subagent for running tests with Smart Testing logic.
 
 > **Architecture:** This skill is a WRAPPER over `.claude/agents/tester.md`.
 > The agent file is the source of truth for the tester prompt.

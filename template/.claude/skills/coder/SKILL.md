@@ -6,7 +6,7 @@ agent: .claude/agents/coder.md
 
 # Coder Skill (Wrapper)
 
-Вызывает coder субагент для написания/изменения кода в рамках одной задачи.
+Invokes coder subagent for writing/modifying code within a single task.
 
 > **Architecture:** This skill is a WRAPPER over `.claude/agents/coder.md`.
 > The agent file is the source of truth for the coder prompt.
@@ -41,13 +41,13 @@ status: completed | blocked
 
 ## Module Headers Workflow (MANDATORY)
 
-При работе с файлом:
+When working with a file:
 
-1. ОТКРЫЛ → прочитал module header
-2. Header пустой? → создай перед изменениями
-3. ИЗМЕНИЛ код
-4. ПЕРЕЧИТАЛ header → обнови если нужно (Uses, Used by, Role)
-5. СОХРАНИЛ
+1. OPENED → read module header
+2. Header empty? → create before changes
+3. MADE changes
+4. RE-READ header → update if needed (Uses, Used by, Role)
+5. SAVED
 
 ### Module Header Format
 
@@ -71,22 +71,22 @@ Glossary: ai/glossary/{domain}.md
 
 ## Post-Change Verification (MANDATORY)
 
-После изменения файла:
+After modifying a file:
 
-1. Если изменил термин/naming:
+1. If changed term/naming:
    ```bash
    grep -rn "{old_term}" . --include="*.py" --include="*.sql" --include="*.ts"
    ```
-   Результат должен быть 0.
+   Result must be 0.
 
-2. Если изменил API/signature:
+2. If changed API/signature:
    ```bash
    grep -rn "{function_name}" . --include="*.py"
    ```
-   Все вызовы обновлены?
+   All calls updated?
 
-3. Если добавил новый термин:
-   → Добавь в соответствующий ai/glossary/{domain}.md
+3. If added new term:
+   → Add to corresponding ai/glossary/{domain}.md
 
 ## Notes
 

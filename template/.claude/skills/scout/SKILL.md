@@ -6,7 +6,7 @@ agent: .claude/agents/scout.md
 
 # Scout Skill (Wrapper)
 
-Вызывает scout субагент для изолированного research через Exa + Context7.
+Invokes scout subagent for isolated research via Exa + Context7.
 
 > **Architecture:** This skill is a WRAPPER over `.claude/agents/scout.md`.
 > The agent file is the source of truth for the scout prompt.

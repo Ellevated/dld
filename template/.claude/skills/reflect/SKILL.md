@@ -4,47 +4,47 @@ description: Analyze diary entries and create spec with proposed CLAUDE.md impro
 model: opus
 ---
 
-# Reflect — Синтез дневника в правила
+# Reflect — Synthesize Diary into Rules
 
-Анализирует diary entries и создаёт spec с предложениями для CLAUDE.md.
+Analyzes diary entries and creates spec with proposals for CLAUDE.md.
 
-**Активация:** `/reflect`, "рефлексия", "давай разберём дневник"
-
----
-
-## Терминология
-
-| Действие | Триггеры | Что происходит |
-|----------|----------|----------------|
-| **Запись в дневник** | "запиши в дневник", "сохрани в дневник", "запомни для дневника" | Новая строка в index.md + файл |
-| **Синтез (этот скилл)** | "/reflect", "рефлексия", "давай разберём дневник" | Анализ -> spec -> claude-md-writer |
+**Activation:** `/reflect`, "reflection", "let's analyze the diary"
 
 ---
 
-## Когда использовать
+## Terminology
 
-- После 5+ pending entries в дневнике
-- Еженедельное обслуживание
-- После серии похожих багов
-- Перед крупной работой (освежить память)
+| Action | Triggers | What happens |
+|--------|----------|--------------|
+| **Diary entry** | "write to diary", "save to diary", "remember for diary" | New line in index.md + file |
+| **Synthesis (this skill)** | "/reflect", "reflection", "let's analyze the diary" | Analysis -> spec -> claude-md-writer |
+
+---
+
+## When to Use
+
+- After 5+ pending entries in diary
+- Weekly maintenance
+- After a series of similar bugs
+- Before major work (refresh memory)
 
 ---
 
 ## Process
 
-### Step 1: Читай индекс дневника
+### Step 1: Read Diary Index
 
 ```bash
 cat ai/diary/index.md
 ```
 
-Найди все записи со статусом `pending`.
+Find all entries with `pending` status.
 
-### Step 2: Читай pending entries
+### Step 2: Read Pending Entries
 
-Для каждой pending записи — открой файл и проанализируй.
+For each pending entry — open file and analyze.
 
-### Step 3: Анализируй паттерны
+### Step 3: Analyze Patterns
 
 | Pattern Type | Threshold | Action |
 |--------------|-----------|--------|
@@ -54,20 +54,20 @@ cat ai/diary/index.md
 | Design decision | 3+ | Add as guideline |
 | Tool/workflow | 2+ | Consider adding |
 
-### Step 4: Проверь существующие правила
+### Step 4: Check Existing Rules
 
-Сравни entries с CLAUDE.md:
-- Rule violated? -> Усилить формулировку
-- Rule helped? -> Оставить
-- Rule outdated? -> Обновить или убрать
+Compare entries with CLAUDE.md:
+- Rule violated? -> Strengthen wording
+- Rule helped? -> Keep
+- Rule outdated? -> Update or remove
 
-### Step 5: Создай spec (НЕ прямые правки!)
+### Step 5: Create Spec (NOT direct edits!)
 
-**КРИТИЧНО:** Никогда не редактируй CLAUDE.md напрямую! Создай spec.
+**CRITICAL:** Never edit CLAUDE.md directly! Create spec.
 
-**Расположение:** `ai/features/TECH-NNN-YYYY-MM-DD-reflect-synthesis.md`
+**Location:** `ai/features/TECH-NNN-YYYY-MM-DD-reflect-synthesis.md`
 
-**Формат:**
+**Format:**
 
 ```markdown
 # TECH-NNN: Reflect Diary Synthesis — [Month Year]
@@ -118,7 +118,7 @@ Update diary entries status in index.md:
 ```
 ```
 
-### Step 6: Вывод
+### Step 6: Output
 
 ```yaml
 entries_analyzed: N
@@ -131,21 +131,21 @@ next_action: "Run /claude-md-writer to integrate"
 
 ---
 
-## Что НЕ делать
+## What NOT to Do
 
-| Неправильно | Правильно |
-|-------------|-----------|
-| Редактировать CLAUDE.md напрямую | Создать spec -> claude-md-writer |
-| Редактировать .claude/rules напрямую | Создать spec -> claude-md-writer |
-| Помечать entries done до интеграции | Пометить после claude-md-writer |
+| Wrong | Correct |
+|-------|---------|
+| Edit CLAUDE.md directly | Create spec -> claude-md-writer |
+| Edit .claude/rules directly | Create spec -> claude-md-writer |
+| Mark entries done before integration | Mark after claude-md-writer |
 
 ---
 
-## После claude-md-writer
+## After claude-md-writer
 
-1. Открой `ai/diary/index.md`
-2. Для каждой обработанной записи измени status: `pending` -> `done`
-3. Обнови timestamp:
+1. Open `ai/diary/index.md`
+2. For each processed entry change status: `pending` -> `done`
+3. Update timestamp:
 
 ```bash
 date +%s > ai/diary/.last_reflect
@@ -155,10 +155,10 @@ date +%s > ai/diary/.last_reflect
 
 ## Quality Checklist
 
-Перед завершением reflect:
+Before completing reflect:
 
-- [ ] Все pending entries проанализированы
-- [ ] Паттерны посчитаны корректно (frequency threshold)
-- [ ] Spec создан (не прямые правки)
-- [ ] Spec содержит "Proposed Changes" секцию
+- [ ] All pending entries analyzed
+- [ ] Patterns counted correctly (frequency threshold)
+- [ ] Spec created (not direct edits)
+- [ ] Spec contains "Proposed Changes" section
 - [ ] Next action = "run claude-md-writer"

@@ -6,42 +6,42 @@ model: opus
 
 # Council v2.0 — Multi-Agent Review (Karpathy Protocol)
 
-5 экспертов анализируют спеку через 3-phase protocol.
+5 experts analyze spec through 3-phase protocol.
 
 **Activation:** `council`, `/council`
 
 ## When to Use
 
-- Escalation от Autopilot (Spark создал BUG spec, но нужен review)
-- Сложные изменения, затрагивающие архитектуру
-- Human просит review перед реализацией
+- Escalation from Autopilot (Spark created BUG spec, but needs review)
+- Complex changes affecting architecture
+- Human requests review before implementation
 - Controversial decisions (breaking changes, >10 files)
 
-**Don't use:** Hotfixes, простые баги, задачи < 3 файлов
+**Don't use:** Hotfixes, simple bugs, tasks < 3 files
 
 ## Experts (LLM-Native Mindset)
 
 | Role | Name | Focus | Key Question |
 |------|------|-------|--------------|
-| **Architect** | Winston | DRY, SSOT, dependencies, scale | "Где ещё эта логика? Кто owner данных?" |
-| **Security** | Viktor | OWASP, vulnerabilities, attack surface | "Как это можно сломать?" |
-| **Pragmatist** | Amelia | YAGNI, complexity, feasibility | "Можно проще? Нужно ли сейчас?" |
-| **Product** | John | User journey, edge cases, consistency | "Что видит пользователь? Как это влияет на flow?" |
-| **Synthesizer** | Oracle | Chairman — final decision, trade-offs | Синтезирует решение из всех inputs |
+| **Architect** | Winston | DRY, SSOT, dependencies, scale | "Where else is this logic? Who owns the data?" |
+| **Security** | Viktor | OWASP, vulnerabilities, attack surface | "How can this be broken?" |
+| **Pragmatist** | Amelia | YAGNI, complexity, feasibility | "Can it be simpler? Is it needed now?" |
+| **Product** | John | User journey, edge cases, consistency | "What does user see? How does this affect the flow?" |
+| **Synthesizer** | Oracle | Chairman — final decision, trade-offs | Synthesizes decision from all inputs |
 
 ### LLM-Native Mindset (CRITICAL!)
 
-Все эксперты ДОЛЖНЫ мыслить в терминах LLM-разработки:
+All experts MUST think in terms of LLM development:
 
 ```
-❌ "Рефакторинг займёт месяц работы команды"
-✅ "Рефакторинг = 1 час LLM работы, ~$5 compute"
+❌ "Refactoring will take a month of team work"
+✅ "Refactoring = 1 hour LLM work, ~$5 compute"
 
-❌ "Это слишком сложно для реализации"
-✅ "LLM справится, но нужен чёткий план"
+❌ "This is too complex to implement"
+✅ "LLM will handle it, but needs clear plan"
 
-❌ "Нужно много тестов писать"
-✅ "Tester субагент сгенерирует тесты автоматически"
+❌ "Need to write many tests"
+✅ "Tester subagent will generate tests automatically"
 ```
 
 ## Phase 0: Load Context (MANDATORY — NEW)
@@ -74,7 +74,7 @@ context:
 
 ### Phase 1: PARALLEL ANALYSIS (Divergence)
 
-Все 4 эксперта (кроме Synthesizer) запускаются **параллельно** как субагенты:
+All 4 experts (except Synthesizer) run **in parallel** as subagents:
 
 ```
 ┌─────────────┬─────────────┬─────────────┬─────────────┐
@@ -83,61 +83,61 @@ context:
        │             │             │             │
        └─────────────┴──────┬──────┴─────────────┘
                             ▼
-                    Собираем 4 независимых анализа
+                    Collect 4 independent analyses
 ```
 
 **Model:** Defined in each agent's frontmatter (`council-*.md`). SSOT — don't duplicate here.
 
-**Каждый эксперт:**
-1. Получает spec/problem
-2. **ОБЯЗАТЕЛЬНО** ищет в Exa (patterns, risks, examples)
-3. Формирует verdict с reasoning
-4. Возвращает structured output
+**Each expert:**
+1. Receives spec/problem
+2. **MUST** search Exa (patterns, risks, examples)
+3. Forms verdict with reasoning
+4. Returns structured output
 
 ### Phase 2: CROSS-CRITIQUE (Peer Review)
 
-Каждый эксперт видит **анонимизированные** ответы других:
+Each expert sees **anonymized** responses from others:
 
 ```
-Expert A видит:
+Expert A sees:
 - "Analysis 1: [content]"
 - "Analysis 2: [content]"
 - "Analysis 3: [content]"
 
-И отвечает:
-- Согласен/не согласен с каждым
-- Gaps и weak points
+And responds:
+- Agree/disagree with each
+- Gaps and weak points
 - Ranking: best → worst
 ```
 
-**Важно:** Анонимизация предотвращает bias ("Architect сказал, значит правильно")
+**Important:** Anonymization prevents bias ("Architect said it, so it's correct")
 
 ### Phase 3: SYNTHESIS (Chairman)
 
-**Synthesizer (Oracle)** получает:
-- Все 4 первичных анализа
-- Все cross-critiques
-- Rankings от каждого
+**Synthesizer (Oracle)** receives:
+- All 4 primary analyses
+- All cross-critiques
+- Rankings from each
 
-И формирует:
+And forms:
 ```yaml
 decision: approved | needs_changes | rejected | needs_human
-reasoning: "Краткое обоснование"
-changes_required: [...] # если needs_changes
-dissenting_opinions: [...] # кто был против и почему
+reasoning: "Brief justification"
+changes_required: [...] # if needs_changes
+dissenting_opinions: [...] # who disagreed and why
 confidence: high | medium | low
 ```
 
 ## Expert Subagent Format
 
-Каждый эксперт — отдельный субагент с изолированным контекстом.
+Each expert — separate subagent with isolated context.
 
 **Note:** `subagent_type` matches agent's `name` in frontmatter (e.g., `council-architect`), not file path (`council/architect.md`).
 
 ### Phase 1: PARALLEL ANALYSIS
 
 ```yaml
-# Запуск экспертов (параллельно)
+# Launch experts (parallel)
 Task:
   subagent_type: council-architect  # → agents/council/architect.md
   prompt: |
@@ -172,10 +172,10 @@ Store results in variables: `architect_analysis`, `product_analysis`, `pragmatis
 
 ### Phase 2: CROSS-CRITIQUE
 
-После получения 4 анализов — каждый эксперт видит **анонимизированные** ответы других:
+After receiving 4 analyses — each expert sees **anonymized** responses from others:
 
 ```yaml
-# Запуск cross-critique (параллельно)
+# Launch cross-critique (parallel)
 Task:
   subagent_type: council-architect
   prompt: |
@@ -230,7 +230,7 @@ Store results: `architect_cross_critique`, `product_cross_critique`, `pragmatist
 
 ### Phase 3: SYNTHESIS
 
-После cross-critique — Synthesizer получает всё:
+After cross-critique — Synthesizer receives everything:
 
 ```yaml
 Task:
@@ -253,11 +253,11 @@ Task:
     Synthesize final decision.
 ```
 
-**Note:** Каждый агент имеет frontmatter с model=opus и необходимыми tools (Exa, Read, Grep, Glob).
+**Note:** Each agent has frontmatter with model=opus and necessary tools (Exa, Read, Grep, Glob).
 
 ## Exa Research (MANDATORY)
 
-**Каждый эксперт ОБЯЗАН искать:**
+**Each expert MUST search:**
 
 | Expert | Search Focus |
 |--------|--------------|
@@ -266,7 +266,7 @@ Task:
 | Pragmatist | Implementation examples, complexity analysis, YAGNI patterns |
 | Product | UX patterns, user journey examples, edge case handling |
 
-**Формат research в output:**
+**Research format in output:**
 ```markdown
 ### Research
 - Query: "telegram bot rate limiting patterns 2025"
@@ -276,7 +276,7 @@ Task:
 
 ## Voting & Decision
 
-**Простое большинство + Synthesizer:**
+**Simple majority + Synthesizer:**
 
 | Scenario | Decision |
 |----------|----------|
@@ -285,13 +285,13 @@ Task:
 | 3-4 reject | rejected |
 | Any "needs_human" | → Human escalation |
 
-**Synthesizer может override** если видит critical issue, пропущенный другими.
+**Synthesizer can override** if sees critical issue missed by others.
 
 ## Output Format
 
 ```yaml
 status: approved | needs_changes | rejected | needs_human
-decision_summary: "Что решили и почему"
+decision_summary: "What was decided and why"
 
 votes:
   architect: approve
@@ -319,7 +319,7 @@ next_step: autopilot | spark | human
 
 ## Escalation Mode (from Autopilot)
 
-Когда Spark создал BUG spec и нужен review:
+When Spark created BUG spec and needs review:
 
 **Input:**
 ```yaml
@@ -338,9 +338,9 @@ context: "Why Council is needed"
 | Result | Next Step |
 |--------|-----------|
 | approved | → autopilot |
-| needs_changes | Update spec → autopilot (или council повторно) |
-| rejected | → spark с новым подходом |
-| needs_human | ⚠️ Блокер — ждём human input |
+| needs_changes | Update spec → autopilot (or council again) |
+| rejected | → spark with new approach |
+| needs_human | ⚠️ Blocker — wait for human input |
 
 ## Limits
 
@@ -348,4 +348,4 @@ context: "Why Council is needed"
 |-----------|--------|
 | Simple task (<3 files) | Skip council, go autopilot |
 | Urgent hotfix | Skip council, fix directly |
-| Council disagrees 2x | → human (не зацикливаться) |
+| Council disagrees 2x | → human (don't loop) |

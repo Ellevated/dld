@@ -13,7 +13,7 @@ Transforms raw ideas into specs via Exa research + structured dialogue.
 ## When to Use
 - New feature, user flow change, architecture decision
 - New tool or prompt modification
-- **Bug fix** — после диагностики причины, перед фиксом
+- **Bug fix** — after diagnosing cause, before fix
 
 **Don't use:** Hotfixes <5 LOC (fix directly), pure refactoring without spec
 
@@ -36,12 +36,12 @@ Transforms raw ideas into specs via Exa research + structured dialogue.
 
 ## Mode Detection
 
-Spark работает в двух режимах:
+Spark operates in two modes:
 
 | Trigger | Mode | Method |
 |---------|------|--------|
-| "новая фича", "добавь", "хочу", "оформи фичу", "оформи спеку", "создай спеку", "напиши спецификацию", "сделай фичу" | **Feature Mode** | Socratic Dialogue |
-| "баг", "ошибка", "падает", "не работает" | **Bug Mode** | 5 Whys + Reproduce |
+| "new feature", "add", "want", "create feature", "create spec", "write specification", "make feature" | **Feature Mode** | Socratic Dialogue |
+| "bug", "error", "crashes", "doesn't work" | **Bug Mode** | 5 Whys + Reproduce |
 
 ## Socratic Dialogue (Feature Mode)
 
@@ -49,15 +49,15 @@ For NEW features — ask 5-7 deep questions. One at a time!
 
 **Question Bank (pick 5-7 relevant):**
 
-1. **Problem:** "Какую проблему решаем?" (не фичу, а боль)
-2. **User:** "Кто пользователь этой функции? Seller? Buyer? Admin?"
-3. **Current state:** "Как сейчас решается без этой фичи?"
-4. **MVP:** "Какой минимальный scope даст 80% ценности?"
-5. **Risks:** "Что может пойти не так? Edge cases?"
-6. **Verification:** "Как будем проверять что работает?"
-7. **Existing:** "Есть ли готовое решение, которое можно адаптировать?"
-8. **Priority:** "Насколько это срочно? P0/P1/P2?"
-9. **Dependencies:** "От чего зависит? Что блокирует?"
+1. **Problem:** "What problem are we solving?" (not feature, but pain)
+2. **User:** "Who is the user of this function? Seller? Buyer? Admin?"
+3. **Current state:** "How is it solved now without this feature?"
+4. **MVP:** "What's the minimum scope that delivers 80% of value?"
+5. **Risks:** "What can go wrong? Edge cases?"
+6. **Verification:** "How will we verify it works?"
+7. **Existing:** "Is there an existing solution we can adapt?"
+8. **Priority:** "How urgent is this? P0/P1/P2?"
+9. **Dependencies:** "What does it depend on? What's blocking?"
 
 **Rules:**
 - Ask ONE question at a time — wait for answer
@@ -72,23 +72,23 @@ For BUGS — find ROOT CAUSE before creating spec!
 ### Phase 1: REPRODUCE
 
 ```
-"Покажи точные шаги воспроизведения:"
-1. Какая команда/действие?
-2. Какой input?
-3. Какой output получаем?
-4. Какой output ожидаем?
+"Show exact reproduction steps:"
+1. What command/action?
+2. What input?
+3. What output do we get?
+4. What output do we expect?
 ```
 
-**Get EXACT error output!** Not "тест падает" but actual traceback.
+**Get EXACT error output!** Not "test fails" but actual traceback.
 
 ### Phase 2: ISOLATE
 
 ```
-Найти границы проблемы:
-- Когда началось? (последний working commit?)
-- Где именно падает? (file:line)
-- Воспроизводится ли всегда?
-- Есть ли related файлы?
+Find problem boundaries:
+- When did it start? (last working commit?)
+- Where exactly does it fail? (file:line)
+- Does it reproduce every time?
+- Are there related files?
 ```
 
 Read files, grep, find the exact location.
@@ -96,22 +96,22 @@ Read files, grep, find the exact location.
 ### Phase 3: ROOT CAUSE — 5 Whys
 
 ```
-Why 1: Почему тест падает?
-  → "Потому что функция возвращает None"
+Why 1: Why does the test fail?
+  → "Because function returns None"
 
-Why 2: Почему функция возвращает None?
-  → "Потому что условие X не выполняется"
+Why 2: Why does function return None?
+  → "Because condition X is not met"
 
-Why 3: Почему условие X не выполняется?
-  → "Потому что переменная Y не инициализирована"
+Why 3: Why is condition X not met?
+  → "Because variable Y is not initialized"
 
-Why 4: Почему переменная Y не инициализирована?
-  → "Потому что миграция не добавила default value"
+Why 4: Why is variable Y not initialized?
+  → "Because migration didn't add default value"
 
-Why 5: Почему миграция не добавила default?
-  → "Потому что забыли при добавлении колонки"
+Why 5: Why didn't migration add default?
+  → "Because we forgot when adding the column"
 
-ROOT CAUSE: Миграция XXX не имеет DEFAULT для новой колонки.
+ROOT CAUSE: Migration XXX doesn't have DEFAULT for new column.
 ```
 
 **STOP when you find the REAL cause, not symptom!**
@@ -125,7 +125,7 @@ Only after root cause is found → create BUG-XXX spec:
 
 **Status:** queued | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
 
-## Симптом
+## Symptom
 [What user sees / test failure]
 
 ## Root Cause (5 Whys Result)
@@ -141,29 +141,29 @@ Only after root cause is found → create BUG-XXX spec:
 
 ## Impact Tree Analysis (ARCH-392)
 
-### Step 1: ВВЕРХ — кто использует?
+### Step 1: UP — who uses?
 - [ ] `grep -r "from.*{module}" . --include="*.py"` → ___ results
 - [ ] All callers identified: [list files]
 
-### Step 2: ВНИЗ — от чего зависит?
+### Step 2: DOWN — what depends on?
 - [ ] Imports in changed file checked
 - [ ] External dependencies: [list]
 
-### Step 3: ПО ТЕРМИНУ — grep по всему проекту
+### Step 3: BY TERM — grep entire project
 - [ ] `grep -rn "{old_term}" . --include="*.py" --include="*.sql"` → ___ results
 
 | File | Line | Status | Action |
 |------|------|--------|--------|
 | _fill_ | _fill_ | _fill_ | _fill_ |
 
-### Step 4: CHECKLIST — обязательные папки
+### Step 4: CHECKLIST — mandatory folders
 - [ ] `tests/**` checked
 - [ ] `db/migrations/**` checked
 - [ ] `ai/glossary/**` checked (if money-related)
 
 ### Verification
-- [ ] Все найденные файлы добавлены в Allowed Files
-- [ ] grep по старому термину = 0 (или добавлена cleanup задача)
+- [ ] All found files added to Allowed Files
+- [ ] grep by old term = 0 (or cleanup task added)
 
 ## Allowed Files
 1. `path/to/file.py` — fix location
@@ -215,11 +215,11 @@ ls db/migrations/*.sql | tail -1
 ## Execution Style (No Commentary)
 
 When invoking spark for bugs:
-- ✅ "Запускаю spark для BUG-XXX"
-- ❌ "Это BUG, не feature, но раз просите спеку..."
+- ✅ "Running spark for BUG-XXX"
+- ❌ "This is BUG, not feature, but since you asked for spec..."
 - ❌ "This is not a Spark task, but since you asked..."
 
-**Rule:** Не комментируй процесс — просто выполняй. Баги идут через spark → plan → autopilot.
+**Rule:** Don't comment on the process — just execute. Bugs go through spark → plan → autopilot.
 
 ## STRICT RULES
 
@@ -241,7 +241,7 @@ When user corrects you during Spark dialogue — capture the learning!
 **Detection:** User says something that contradicts/corrects your assumption
 
 **Action:**
-1. Acknowledge: "Понял, учту: [краткое правило]"
+1. Acknowledge: "Got it, noted: [brief rule]"
 2. Append to `ai/diary/corrections.md`:
 ```markdown
 ## YYYY-MM-DD: During TYPE-XXX
@@ -254,10 +254,10 @@ When user corrects you during Spark dialogue — capture the learning!
 ```
 
 **Examples of corrections to capture:**
-- "Нет, у нас не так работает" → capture how it actually works
-- "Это слишком сложно, сделай проще" → capture simplicity preference
-- "Всегда используй X вместо Y" → capture tool/pattern preference
-- "Это уже есть в Z" → capture existing solution location
+- "No, that's not how it works for us" → capture how it actually works
+- "This is too complex, make it simpler" → capture simplicity preference
+- "Always use X instead of Y" → capture tool/pattern preference
+- "This already exists in Z" → capture existing solution location
 
 **Goal:** Build project memory. Same mistakes won't repeat.
 
@@ -312,37 +312,37 @@ See `.claude/agents/scout.md` for details.
 
 ## ID Determination Protocol (MANDATORY)
 
-Перед созданием спеки — определи следующий ID:
+Before creating spec — determine next ID:
 
-1. **Определи тип:** FTR | BUG | SEC | REFACTOR | ARCH | TECH
-2. **Сканируй backlog:** Открой ai/backlog.md
-3. **Найди все ID типа:** Используй паттерн TYPE-\d+
-4. **Возьми максимальный:** Сортируй числа, возьми max
-5. **Добавь +1:** Следующий ID = max + 1
+1. **Determine type:** FTR | BUG | SEC | REFACTOR | ARCH | TECH
+2. **Scan backlog:** Open ai/backlog.md
+3. **Find all IDs of type:** Use pattern TYPE-\d+
+4. **Take maximum:** Sort numbers, take max
+5. **Add +1:** Next ID = max + 1
 
-**Пример:**
-- Backlog содержит: FTR-179, FTR-180, FTR-181
-- Следующий ID: FTR-182
+**Example:**
+- Backlog contains: FTR-179, FTR-180, FTR-181
+- Next ID: FTR-182
 
-**ЗАПРЕЩЕНО:** Угадывать ID или использовать "примерно следующий".
+**FORBIDDEN:** Guessing ID or using "approximately next".
 
 ## Impact Tree Analysis (MANDATORY)
 
-Перед созданием плана:
+Before creating plan:
 
-1. Определи ключевые термины/файлы которые меняются
-2. Выполни Impact Tree Analysis:
-   - ВВЕРХ: `grep -r "from.*{module}" . --include="*.py"`
-   - ПО ТЕРМИНУ: `grep -rn "{term}" . --include="*.py" --include="*.sql" --include="*.ts" --include="*.md"`
-   - CHECKLIST: проверь tests/, migrations/, edge functions/, glossary/
-3. ВСЕ найденные файлы включи в Allowed Files
-4. Если grep по старому термину > 0 → добавь задачу на cleanup
-5. Проверь glossary — нужно ли добавить новые термины?
+1. Identify key terms/files being changed
+2. Execute Impact Tree Analysis:
+   - UP: `grep -r "from.*{module}" . --include="*.py"`
+   - BY TERM: `grep -rn "{term}" . --include="*.py" --include="*.sql" --include="*.ts" --include="*.md"`
+   - CHECKLIST: check tests/, migrations/, edge functions/, glossary/
+3. ALL found files include in Allowed Files
+4. If grep by old term > 0 → add cleanup task
+5. Check glossary — need to add new terms?
 
-**ЗАПРЕЩЕНО:**
-- Grep только по одной папке
-- Пропускать tests/ в анализе
-- Помечать done если grep по старому термину > 0
+**FORBIDDEN:**
+- Grep only in one folder
+- Skip tests/ in analysis
+- Mark done if grep by old term > 0
 
 ## Process (7 Phases)
 
@@ -372,8 +372,8 @@ Map every User Flow step to Implementation Task:
 # Feature: [FTR-XXX] Title
 **Status:** queued | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
 
-## Зачем (RU)
-## Контекст (RU)
+## Why
+## Context
 
 ---
 ## Scope
@@ -381,29 +381,29 @@ In scope: ... | Out of scope: ...
 
 ## Impact Tree Analysis (ARCH-392)
 
-### Step 1: ВВЕРХ — кто использует?
+### Step 1: UP — who uses?
 - [ ] `grep -r "from.*{module}" . --include="*.py"` → ___ results
 - [ ] All callers identified: [list files]
 
-### Step 2: ВНИЗ — от чего зависит?
+### Step 2: DOWN — what depends on?
 - [ ] Imports in changed file checked
 - [ ] External dependencies: [list]
 
-### Step 3: ПО ТЕРМИНУ — grep по всему проекту
+### Step 3: BY TERM — grep entire project
 - [ ] `grep -rn "{old_term}" . --include="*.py" --include="*.sql"` → ___ results
 
 | File | Line | Status | Action |
 |------|------|--------|--------|
 | _fill_ | _fill_ | _fill_ | _fill_ |
 
-### Step 4: CHECKLIST — обязательные папки
+### Step 4: CHECKLIST — mandatory folders
 - [ ] `tests/**` checked
 - [ ] `db/migrations/**` checked
 - [ ] `ai/glossary/**` checked (if money-related)
 
 ### Verification
-- [ ] Все найденные файлы добавлены в Allowed Files
-- [ ] grep по старому термину = 0 (или добавлена cleanup задача)
+- [ ] All found files added to Allowed Files
+- [ ] grep by old term = 0 (or cleanup task added)
 
 ## Allowed Files
 **ONLY these files may be modified during implementation:**
@@ -465,18 +465,18 @@ Type: code | Files: create/modify | Pattern: [url] | Acceptance: ...
 
 ## Pre-Completion Checklist (BLOCKING)
 
-⛔ **НЕ ЗАВЕРШАЙ SPARK** без выполнения ВСЕХ пунктов:
+⛔ **DO NOT COMPLETE SPARK** without checking ALL items:
 
-1. [ ] **ID определён по протоколу** — не угадан!
-2. [ ] **Проверка уникальности** — grep по backlog не нашёл такого ID
-3. [ ] **Файл спеки создан** — ai/features/TYPE-XXX-YYYY-MM-DD-name.md
-4. [ ] **Запись добавлена в backlog** — в секцию `## Очередь`
-5. [ ] **Статус = queued** — спека готова для autopilot!
+1. [ ] **ID determined by protocol** — not guessed!
+2. [ ] **Uniqueness check** — grep backlog didn't find this ID
+3. [ ] **Spec file created** — ai/features/TYPE-XXX-YYYY-MM-DD-name.md
+4. [ ] **Entry added to backlog** — in `## Queue` section
+5. [ ] **Status = queued** — spec ready for autopilot!
 6. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
-7. [ ] **Auto-commit выполнен** — `git add -A && git commit` (без push!)
+7. [ ] **Auto-commit done** — `git add -A && git commit` (no push!)
 
-Если любой пункт не выполнен — **СТОП и выполни**.
+If any item not done — **STOP and do it**.
 
 ### Backlog Entry Verification (BLOCKING — BUG-358)
 
@@ -487,7 +487,7 @@ After creating spec file, **VERIFY** backlog entry exists:
 grep "{TASK_ID}" ai/backlog.md
 
 # 2. If NOT found → ADD NOW (don't proceed!)
-# Edit ai/backlog.md → add entry to ## Очередь table
+# Edit ai/backlog.md → add entry to ## Queue table
 
 # 3. Re-verify
 grep "{TASK_ID}" ai/backlog.md
@@ -496,7 +496,7 @@ grep "{TASK_ID}" ai/backlog.md
 # 4. Only then → complete spark
 ```
 
-⛔ **Spark без backlog entry = DATA LOSS!**
+⛔ **Spark without backlog entry = DATA LOSS!**
 Autopilot reads ONLY backlog — orphan spec files are invisible to it.
 
 ### Status Sync Self-Check (SAY OUT LOUD — BUG-358)
@@ -509,45 +509,45 @@ When setting status in spec, **verbally confirm**:
 "Both set? ✓"                              [Verify match]
 ```
 
-⛔ **Одно место = рассинхрон = autopilot не увидит задачу!**
+⛔ **One place only = desync = autopilot won't see the task!**
 
-### Формат записи в backlog:
+### Backlog entry format:
 ```
-| ID | Задача | Status | Priority | Feature.md |
-|----|--------|--------|----------|------------|
-| FTR-XXX | Название задачи | queued | P1 | [FTR-XXX](features/FTR-XXX-YYYY-MM-DD-name.md) |
+| ID | Task | Status | Priority | Feature.md |
+|----|------|--------|----------|------------|
+| FTR-XXX | Task name | queued | P1 | [FTR-XXX](features/FTR-XXX-YYYY-MM-DD-name.md) |
 ```
 
-### Статусы при выходе из Spark:
-| Ситуация | Статус | Причина |
-|----------|--------|---------|
-| Spark завершился полностью | `queued` | Autopilot может подхватить |
-| Спека создана, но прервались | `draft` | Autopilot НЕ берёт draft |
-| Нужно обсудить/отложить | `draft` | Остаётся на доработку |
+### Status on Spark exit:
+| Situation | Status | Reason |
+|-----------|--------|--------|
+| Spark completed fully | `queued` | Autopilot can pick up |
+| Spec created but interrupted | `draft` | Autopilot does NOT take draft |
+| Needs discussion/postponed | `draft` | Left for refinement |
 
 ## Backlog Format (STRICT)
 
-**Структура ai/backlog.md — неизменяема:**
+**Structure of ai/backlog.md — immutable:**
 
 ```
-## Очередь          ← единственная таблица задач
-## Статусы          ← справочник статусов
-## Архив            ← ссылка на архив
-## Ideas            ← ссылка на ideas.md
+## Queue          ← single task table
+## Statuses       ← status reference
+## Archive        ← link to archive
+## Ideas          ← link to ideas.md
 ```
 
-**ЗАПРЕЩЕНО:**
-- Создавать новые секции/таблицы
-- Группировать задачи по категориям
-- Добавлять заголовки типа "## Tests" или "## Legacy"
+**FORBIDDEN:**
+- Creating new sections/tables
+- Grouping tasks by categories
+- Adding headers like "## Tests" or "## Legacy"
 
-**При добавлении записи:**
-1. Открыть `ai/backlog.md`
-2. Найти секцию `## Очередь`
-3. Добавить строку в **конец** таблицы (перед `---`)
-4. НЕ создавать новые секции
+**When adding entry:**
+1. Open `ai/backlog.md`
+2. Find `## Queue` section
+3. Add row to **end** of table (before `---`)
+4. DO NOT create new sections
 
-**Почему:** LLM путается при множестве таблиц и не знает куда добавлять новые записи. Одна таблица = одно место = нет путаницы.
+**Why:** LLM gets confused with multiple tables and doesn't know where to add new entries. One table = one place = no confusion.
 
 ## Auto-Commit (MANDATORY before handoff!)
 
@@ -572,7 +572,7 @@ git commit -m "docs: create spec ${TASK_ID}"
 - Commit is protected locally — won't be lost
 - Autopilot will push everything at the end of PHASE 3
 
-**When:** ALWAYS before asking "Запускаю autopilot?"
+**When:** ALWAYS before asking "Run autopilot?"
 
 ## Auto-Handoff to Autopilot
 
@@ -580,18 +580,18 @@ After Spec is complete — auto-handoff to Autopilot. No manual "plan" step!
 
 **Flow:**
 1. Spec saved to `ai/features/TYPE-XXX.md`
-2. Ask user: "Spec готов. Запускаю autopilot?"
+2. Ask user: "Spec ready. Run autopilot?"
 3. If user confirms → invoke Skill tool with `skill: "autopilot"`
 4. If user declines → stop and let user decide
 
 **Announcement format:**
 ```
-Spec готов: `ai/features/TYPE-XXX-YYYY-MM-DD-name.md`
+Spec ready: `ai/features/TYPE-XXX-YYYY-MM-DD-name.md`
 
 **Summary:**
 - [2-3 bullet points what will be done]
 
-Запускаю autopilot?
+Run autopilot?
 ```
 
 **What happens in Autopilot:**
@@ -603,10 +603,10 @@ Spec готов: `ai/features/TYPE-XXX-YYYY-MM-DD-name.md`
 **Exception: Council first**
 If task is complex/controversial (architecture change, >10 files, breaking change):
 ```
-Spec готов, но рекомендую Council review перед имплементацией.
-Причина: [why controversial]
+Spec ready, but recommend Council review before implementation.
+Reason: [why controversial]
 
-Запустить council?
+Run council?
 ```
 
 ## Output

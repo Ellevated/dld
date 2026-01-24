@@ -12,11 +12,11 @@ READ-ONLY systematic analysis for finding patterns, inconsistencies, and issues.
 
 ## When to Use
 
-- Find patterns: "найди все места где X"
-- Consistency check: "нигде не осталось Y?"
-- Refactor-scan: "где ещё обновить после Z"
-- Security scan: "проверь на уязвимости"
-- Coverage check: "что не покрыто тестами"
+- Find patterns: "find all places where X"
+- Consistency check: "is there anywhere left with Y?"
+- Refactor-scan: "where else to update after Z"
+- Security scan: "check for vulnerabilities"
+- Coverage check: "what's not covered by tests"
 
 **Don't use:** Features → `/spark`, Bug fixes → `/spark`
 
@@ -37,15 +37,15 @@ ZONE: billing
 SCOPE: src/domains/billing/, tests/*billing*
 
 CHECK:
-□ Копейки vs рубли — единицы везде консистентны?
-□ Транзакции — все операции в try/except с rollback?
-□ Баланс — race conditions при параллельных списаниях?
-□ Округление — Decimal или float? (float = bug)
-□ Negative balance — защита от минуса?
-□ Audit trail — логируются ли все money operations?
+□ Kopecks vs rubles — units consistent everywhere?
+□ Transactions — all operations in try/except with rollback?
+□ Balance — race conditions on parallel deductions?
+□ Rounding — Decimal or float? (float = bug)
+□ Negative balance — protection from going negative?
+□ Audit trail — all money operations logged?
 
 PATTERNS:
-- `* 100`, `/ 100` — конверсия единиц
+- `* 100`, `/ 100` — unit conversion
 - `amount`, `balance`, `price` — money fields
 - `transaction`, `charge`, `refund` — operations
 ```
@@ -57,12 +57,12 @@ ZONE: seller (SellerBot)
 SCOPE: src/domains/seller/, src/config/prompts/
 
 CHECK:
-□ Prompt injection — user input не попадает напрямую в prompt?
-□ Token limits — есть ли truncation для длинных inputs?
-□ Fallback — что если LLM не отвечает / timeout?
-□ Cost control — логируется ли usage? Есть ли лимиты?
-□ Prompt versioning — версии в отдельных файлах?
-□ Temperature — детерминизм где нужен (temp=0)?
+□ Prompt injection — user input doesn't go directly into prompt?
+□ Token limits — truncation for long inputs?
+□ Fallback — what if LLM doesn't respond / timeout?
+□ Cost control — usage logged? Limits in place?
+□ Prompt versioning — versions in separate files?
+□ Temperature — determinism where needed (temp=0)?
 
 PATTERNS:
 - `openai.chat`, `completion` — LLM calls
@@ -77,12 +77,12 @@ ZONE: buyer (BuyerBot)
 SCOPE: src/domains/buyer/, src/api/telegram/buyer/
 
 CHECK:
-□ FSM completeness — все states имеют handlers?
-□ Dead-ends — есть ли states без выхода?
-□ Callback orphans — все callback_data имеют handlers?
-□ Back navigation — можно ли вернуться из любого state?
-□ Timeout handling — что если user молчит 24h?
-□ Input validation — все user inputs валидируются?
+□ FSM completeness — all states have handlers?
+□ Dead-ends — any states without exit?
+□ Callback orphans — all callback_data have handlers?
+□ Back navigation — can return from any state?
+□ Timeout handling — what if user silent for 24h?
+□ Input validation — all user inputs validated?
 
 PATTERNS:
 - `state=`, `@router.message` — FSM handlers
@@ -98,11 +98,11 @@ SCOPE: src/domains/campaigns/, src/domains/outreach/
 
 CHECK:
 □ Slot lifecycle — create → assign → complete → close?
-□ Offer expiration — просроченные offers обрабатываются?
-□ Double-booking — защита от duplicate assignments?
-□ Status transitions — валидны ли все переходы?
-□ Notifications — buyer/seller уведомляются о changes?
-□ Metrics — считаются ли conversion rates?
+□ Offer expiration — expired offers handled?
+□ Double-booking — protection from duplicate assignments?
+□ Status transitions — all transitions valid?
+□ Notifications — buyer/seller notified of changes?
+□ Metrics — conversion rates calculated?
 
 PATTERNS:
 - `slot`, `offer`, `campaign` — entities
@@ -117,12 +117,12 @@ ZONE: tests
 SCOPE: tests/, src/**/test_*.py
 
 CHECK:
-□ Coverage gaps — какие modules < 80%?
-□ Edge cases — негативные сценарии покрыты?
-□ Mocks vs real — не слишком ли много mocks?
-□ Flaky tests — есть ли random failures?
-□ Test isolation — tests не зависят друг от друга?
-□ Fixtures — переиспользуются или дублируются?
+□ Coverage gaps — which modules < 80%?
+□ Edge cases — negative scenarios covered?
+□ Mocks vs real — too many mocks?
+□ Flaky tests — random failures?
+□ Test isolation — tests don't depend on each other?
+□ Fixtures — reused or duplicated?
 
 PATTERNS:
 - `@pytest.mark.skip` — skipped tests (why?)
@@ -138,12 +138,12 @@ ZONE: migrations
 SCOPE: db/migrations/
 
 CHECK:
-□ Rollback — каждая миграция reversible?
-□ Data loss — DROP/DELETE без backup?
-□ Indexes — большие таблицы имеют индексы?
-□ Foreign keys — constraints на месте?
-□ Default values — NOT NULL без DEFAULT?
-□ One statement — один statement на файл? (TECH-073)
+□ Rollback — every migration reversible?
+□ Data loss — DROP/DELETE without backup?
+□ Indexes — large tables have indexes?
+□ Foreign keys — constraints in place?
+□ Default values — NOT NULL without DEFAULT?
+□ One statement — one statement per file? (TECH-073)
 
 PATTERNS:
 - `DROP`, `DELETE`, `TRUNCATE` — destructive
@@ -159,12 +159,12 @@ ZONE: security
 SCOPE: entire codebase
 
 CHECK:
-□ SQL injection — raw queries с f-strings?
-□ XSS — user input в HTML без escape?
-□ Auth bypass — endpoints без auth check?
+□ SQL injection — raw queries with f-strings?
+□ XSS — user input in HTML without escape?
+□ Auth bypass — endpoints without auth check?
 □ Secrets — hardcoded keys/passwords?
-□ SSRF — user-controlled URLs в requests?
-□ Rate limiting — protection от abuse?
+□ SSRF — user-controlled URLs in requests?
+□ Rate limiting — protection from abuse?
 
 PATTERNS:
 - `f"SELECT`, `f"INSERT` — SQL injection risk
@@ -203,7 +203,7 @@ PATTERNS:
 
 ### Custom Query
 ```
-/audit "найди все hardcoded URLs"
+/audit "find all hardcoded URLs"
 ```
 → Custom search, full codebase
 

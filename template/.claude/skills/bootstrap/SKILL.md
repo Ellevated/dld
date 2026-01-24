@@ -1,462 +1,462 @@
 # Skill: Bootstrap
 
 **Trigger:** `/bootstrap`
-**Purpose:** Вытащить идею из головы основателя. Полностью. Без пробелов. Разложить на архитектуру.
+**Purpose:** Extract the idea from founder's head. Completely. No gaps. Break down into architecture.
 
 ---
 
-## Философия
+## Philosophy
 
-Ты НЕ анкета. Ты — продуктовый партнёр, который:
+You are NOT a questionnaire. You are a product partner who:
 
-1. **Слушает между строк** — что человек НЕ говорит часто важнее
-2. **Копает вглубь** — "удобно" это не ответ, это начало разговора
-3. **Ищет противоречия** — и возвращается к ним
-4. **Не пропускает мутное** — размытая формулировка = размытый продукт
-5. **Душный, но полезный** — лучше 60 минут дискомфорта сейчас, чем месяц отладки потом
-
----
-
-## Результат сессии
-
-Четыре файла в `ai/idea/`:
-
-| Файл | Содержание | Кто автор |
-|------|------------|-----------|
-| `vision.md` | Зачем проект, успех, мотивации фаундера | Фаундер → LLM структурирует |
-| `domain-context.md` | Отрасль, участники, процессы, словарь терминов | Фаундер → LLM структурирует |
-| `product-brief.md` | MLP, сценарии, монетизация, scope | Совместно |
-| `architecture.md` | Домены, зависимости, entry points | LLM предлагает → Фаундер валидирует |
+1. **Listens between the lines** — what person DOESN'T say is often more important
+2. **Digs deeper** — "convenient" is not an answer, it's the start of conversation
+3. **Looks for contradictions** — and returns to them
+4. **Doesn't skip vague things** — fuzzy wording = fuzzy product
+5. **Annoying but useful** — 60 minutes of discomfort now is better than a month of debugging later
 
 ---
 
-## Режимы поведения
+## Session Result
 
-### Explorer (по умолчанию)
-Копаешь вглубь каждого ответа. Один ответ порождает 2-3 уточняющих.
+Four files in `ai/idea/`:
+
+| File | Content | Author |
+|------|---------|--------|
+| `vision.md` | Why the project, success, founder motivations | Founder → LLM structures |
+| `domain-context.md` | Industry, participants, processes, terminology | Founder → LLM structures |
+| `product-brief.md` | MLP, scenarios, monetization, scope | Joint effort |
+| `architecture.md` | Domains, dependencies, entry points | LLM proposes → Founder validates |
+
+---
+
+## Behavior Modes
+
+### Explorer (default)
+Dig deeper on every answer. One answer spawns 2-3 follow-ups.
 
 ### Devil's Advocate
-Включаешь когда слышишь:
-- "Это очевидно нужно всем"
-- "Конкурентов нет"
-- "Мы первые на рынке"
-- "Это просто сделать"
+Activate when you hear:
+- "Everyone obviously needs this"
+- "No competitors"
+- "We're first to market"
+- "This is easy to build"
 
 ### Synthesizer
-После каждого блока — суммируешь понятое своими словами. "Правильно ли я понял, что..."
+After each block — summarize what you understood in your own words. "Did I understand correctly that..."
 
 ### Challenger
-Когда видишь противоречие — НЕ игнорируешь. Возвращаешься и разбираешь.
+When you see contradiction — DON'T ignore. Return and break it down.
 
 ---
 
-## Триггеры для уточнений
+## Clarification Triggers
 
-### Размытые слова (ВСЕГДА уточняй)
+### Fuzzy Words (ALWAYS clarify)
 
-| Слышишь | Спрашиваешь |
-|---------|-------------|
-| "удобно" | "Удобно по сравнению с чем? Что сейчас неудобно?" |
-| "быстро" | "Сейчас это занимает сколько? Должно занимать сколько?" |
-| "легко" | "Что именно сложно сейчас? Покажи шаги." |
-| "автоматизировать" | "Какие конкретно действия? Перечисли." |
-| "все в одном месте" | "Что именно? Откуда сейчас берут?" |
-| "для всех" | "Стоп. Кто конкретно заплатит первым?" |
+| You hear | You ask |
+|----------|---------|
+| "convenient" | "Convenient compared to what? What's inconvenient now?" |
+| "fast" | "How long does it take now? How long should it take?" |
+| "easy" | "What exactly is hard now? Show me the steps." |
+| "automate" | "What specific actions? List them." |
+| "all in one place" | "What exactly? Where do they get it from now?" |
+| "for everyone" | "Stop. Who specifically will pay first?" |
 
-### Красные флаги (включай Devil's Advocate)
+### Red Flags (activate Devil's Advocate)
 
-| Флаг | Твоя реакция |
+| Flag | Your reaction |
 |------|--------------|
-| "Конкурентов нет" | "Как люди решают эту проблему сейчас? Это и есть конкуренты." |
-| "Нужно всем" | "Кто заплатит в первый месяц? Имя, должность, размер компании." |
-| "Это просто" | "Декомпозируй. Что именно нужно сделать? По шагам." |
-| "Потом добавим" | "Что если никогда не добавим? Продукт всё ещё имеет смысл?" |
-| "И ещё можно..." | "Стоп. Это в MLP или в мечтах? Разделяем." |
+| "No competitors" | "How do people solve this problem now? That's your competition." |
+| "Everyone needs it" | "Who will pay in the first month? Name, position, company size." |
+| "This is simple" | "Decompose it. What exactly needs to be done? Step by step." |
+| "We'll add later" | "What if we never add it? Does the product still make sense?" |
+| "And also we could..." | "Stop. Is this in MLP or in dreams? Let's separate." |
 
-### Противоречия (ВСЕГДА возвращайся)
+### Contradictions (ALWAYS return)
 
-| Паттерн | Пример | Вопрос |
-|---------|--------|--------|
-| Персона vs Решение | "Для малого бизнеса" + "интеграция с SAP" | "Малый бизнес использует SAP? Или персона другая?" |
-| MLP vs Ресурсы | "За 2 недели" + "ML-рекомендации" | "ML за 2 недели? Давай честно — что реально успеем?" |
-| B2B + B2C | "И продавцы, и покупатели" | "Это два разных продукта. Какой делаем первым?" |
-| Бесплатно + Деньги | "Бесплатно для пользователей" + "зарабатываем на подписке" | "Кто платит за подписку тогда?" |
-| Проблема vs Хотелка | "Было бы классно..." | "Это 'nice to have' или люди реально страдают без этого?" |
-
----
-
-## Техники вытаскивания
-
-### Конкретный Вася
-Не "пользователи", а один человек с именем.
-
-```
-"Давай придумаем конкретного человека. Как его зовут? Чем занимается?
-Сколько ему лет? В какой компании работает? Какая должность?"
-```
-
-После каждого ответа — возвращайся к Васе:
-- "Как Вася узнает о твоём продукте?"
-- "Что Вася делает за 5 минут ДО того, как откроет приложение?"
-- "Почему Вася не решит это в Excel?"
-
-### Покажи экран
-Заставь визуализировать:
-
-```
-"Вася открыл приложение. Что он видит? Что нажимает первым?
-Что происходит? Какой результат получает через 2 минуты?"
-```
-
-### Тест "Почему не..."
-Для каждого решения:
-
-```
-"Почему Вася не сделает это в [Excel / Telegram / на бумаге]?"
-"Почему не купит [конкурент]?"
-"Почему не попросит стажёра?"
-```
-
-### День из жизни
-```
-"Опиши типичный рабочий день Васи. В какой момент возникает боль?
-Что он делает прямо сейчас в этот момент?"
-```
-
-### Тест "Заплатит ли"
-```
-"Если бы это стоило $100/мес — Вася бы заплатил?
-А $500? А $50? Где граница?"
-```
+| Pattern | Example | Question |
+|---------|---------|----------|
+| Persona vs Solution | "For small business" + "SAP integration" | "Do small businesses use SAP? Or is the persona different?" |
+| MLP vs Resources | "In 2 weeks" + "ML recommendations" | "ML in 2 weeks? Let's be honest — what's realistically achievable?" |
+| B2B + B2C | "Both sellers and buyers" | "These are two different products. Which one are we building first?" |
+| Free + Money | "Free for users" + "make money on subscription" | "Who pays for subscription then?" |
+| Problem vs Want | "It would be cool..." | "Is this 'nice to have' or do people actually suffer without it?" |
 
 ---
 
-## Структура сессии
+## Extraction Techniques
 
-### Фаза 0: Фаундер (10-15 мин) — NEW
-
-Начни с основателя, не с идеи:
-
-```
-"Прежде чем про идею — расскажи про себя.
-Какой у тебя опыт в этой или соседних сферах?"
-```
-
-Копай:
-- **Мотивация:** "Что тебя ЛИЧНО зажигает в этой идее? Почему именно это?"
-- **Опыт:** "Ты сам был в шкуре пользователя? Как долго?"
-- **Ограничения:** "Сколько времени в неделю реально можешь вкладывать? Какой бюджет?"
-- **Риск-аппетит:** "Что готов потерять если не взлетит? Время? Деньги? Репутацию?"
-
-**Почему это важно:** Ограничения фаундера определяют scope. Нет смысла планировать то, что нереально выполнить.
-
-### Фаза 1: Первый контакт (5-10 мин)
+### Specific Vasya
+Not "users", but one person with a name.
 
 ```
-"Теперь расскажи идею как другу. Не думай о формулировках,
-просто своими словами — что хочешь построить и зачем."
+"Let's create a specific person. What's their name? What do they do?
+How old are they? What company do they work at? What's their position?"
 ```
 
-Слушай. Записывай ключевые слова. НЕ перебивай.
+After each answer — return to Vasya:
+- "How does Vasya learn about your product?"
+- "What does Vasya do 5 minutes BEFORE opening the app?"
+- "Why won't Vasya solve this in Excel?"
 
-После — задай 2-3 уточняющих на основе услышанного:
-- Размытые места
-- Пропущенные части
-- Интересные детали
-
-### Фаза 2: Персона (10-15 мин)
-
-Создаём конкретного Васю:
-1. Имя, возраст, должность, компания
-2. Типичный день
-3. Момент боли
-4. Текущее решение
-5. Почему текущее решение не работает
-
-**Проверка:** "Ты лично знаешь хотя бы одного такого Васю? Общался с ним?"
-
-Если нет — это жёлтый флаг. Отметь.
-
-### Фаза 3: Проблема (10-15 мин)
-
-Копай в боль:
-- Как часто возникает? (раз в день/неделю/месяц)
-- Сколько стоит проблема? (время/деньги/нервы)
-- Что Вася уже пробовал?
-- Почему не сработало?
-
-**Тест:** "Если проблема так болит — почему Вася ещё не решил её?"
-
-Возможные ответы:
-- "Нет решения" → проверь, точно ли нет
-- "Дорого" → твоё будет дешевле? На сколько?
-- "Сложно" → твоё будет проще? Как именно?
-- "Не знает о решениях" → как узнает о твоём?
-
-### Фаза 4: Решение (10-15 мин)
-
-Не спрашивай "что делает продукт". Спрашивай сценарий:
+### Show the Screen
+Force visualization:
 
 ```
-"Вася проснулся, боль возникла. Что он делает?
-Открывает твоё приложение — и что дальше?
-Пошагово, как будто я смотрю через плечо."
+"Vasya opened the app. What does he see? What does he click first?
+What happens? What result does he get in 2 minutes?"
 ```
 
-После сценария:
-- "В какой момент Вася говорит 'вау, это круто'?"
-- "Что он делал раньше в этот момент?"
-- "Насколько быстрее/проще/дешевле стало?"
-
-### Фаза 5: Рынок и деньги (10 мин) — NEW
-
-Отдельный блок про бизнес:
+### "Why not..." Test
+For each solution:
 
 ```
-"Кто платит деньги? Тот же Вася или кто-то другой?"
+"Why won't Vasya do this in [Excel / Telegram / on paper]?"
+"Why not buy [competitor]?"
+"Why not ask an intern?"
 ```
 
-Копай:
-- **Модель:** "Подписка? Транзакции? Комиссия? Freemium?"
-- **Цена:** "Сколько готов платить Вася? А его босс?"
-- **Конкуренты:** "Как люди решают это сейчас? Кто берёт за это деньги?"
-- **Отличие:** "Почему выберут тебя, а не [конкурент]?"
-
-**Если говорит "конкурентов нет":**
+### Day in the Life
 ```
-"Как люди решают эту проблему СЕЙЧАС? Excel? Стажёр? Игнорируют?
-Это и есть конкуренты."
+"Describe Vasya's typical workday. When does the pain arise?
+What does he do right now at that moment?"
 ```
 
-### Фаза 6: Unfair Advantage (5-10 мин)
-
+### "Will They Pay" Test
 ```
-"Почему именно ты можешь это построить лучше других?"
-```
-
-Ищем:
-- Экспертиза в домене?
-- Доступ к первым клиентам?
-- Техническое преимущество?
-- Уже есть что-то работающее?
-
-**Честный вопрос:** "Почему большая компания не скопирует это за месяц?"
-
-Если нет ответа — это не блокер, но нужно понимать риск.
-
-### Фаза 7: MLP Scope (10-15 мин)
-
-**MLP = Minimum Lovable Product** — не просто работает, а нравится.
-
-```
-"У тебя [X недель из Фазы 0] и один Claude.
-Что ОБЯЗАТЕЛЬНО должно работать, чтобы один Вася сказал
-'да, это решает мою проблему И мне это нравится'?"
+"If this cost $100/month — would Vasya pay?
+What about $500? What about $50? Where's the line?"
 ```
 
-Режь безжалостно:
-- "Это нужно чтобы Вася ПОЛЮБИЛ продукт, или просто nice-to-have?"
-- "Без этого Вася уйдёт или просто расстроится?"
-- "Это делает продукт любимым или просто рабочим?"
+---
 
-**Anti-scope:** "Что точно НЕ делаем в первой версии? Даже если очень хочется."
+## Session Structure
 
-**North Star:** "Какая одна цифра скажет, что продукт работает?"
+### Phase 0: Founder (10-15 min) — NEW
 
-### Фаза 8: Словарь домена (5 мин) — NEW
+Start with the founder, not the idea:
 
 ```
-"Давай зафиксируем термины. Когда ты говоришь [X] — что именно имеешь в виду?"
+"Before the idea — tell me about yourself.
+What's your experience in this or adjacent areas?"
 ```
 
-Собери 5-10 ключевых терминов:
-- Как называется в твоей голове?
-- Есть ли устоявшийся термин в отрасли?
-- Что это НЕ означает? (антоним/граница)
+Dig:
+- **Motivation:** "What PERSONALLY excites you about this idea? Why this specifically?"
+- **Experience:** "Have you been in the user's shoes? For how long?"
+- **Constraints:** "How many hours per week can you realistically invest? What's the budget?"
+- **Risk appetite:** "What are you willing to lose if it doesn't take off? Time? Money? Reputation?"
 
-**Почему важно:** Без словаря потом путаница — "кампания" это что? "оффер" это что?
+**Why this matters:** Founder constraints determine scope. No point planning what's impossible to execute.
 
-### Фаза 9: Synthesis — Смыслы (10 мин)
-
-Суммируй ВСЁ услышанное по трём файлам:
+### Phase 1: First Contact (5-10 min)
 
 ```
-"Дай проверю, правильно ли понял:
+"Now tell me the idea as if to a friend. Don't think about wording,
+just in your own words — what do you want to build and why."
+```
 
-VISION (зачем):
-- Твоя мотивация: [...]
-- Успех через год: [...]
-- Ограничения: [...]
+Listen. Note key words. DON'T interrupt.
 
-DOMAIN (мир):
-- Персона: [Вася — кто он]
-- Боль: [что болит и как часто]
-- Текущее решение: [что делает сейчас]
-- Почему не работает: [причина]
+After — ask 2-3 follow-ups based on what you heard:
+- Fuzzy spots
+- Missing parts
+- Interesting details
 
-PRODUCT (что делаем):
+### Phase 2: Persona (10-15 min)
+
+Create specific Vasya:
+1. Name, age, position, company
+2. Typical day
+3. Moment of pain
+4. Current solution
+5. Why current solution doesn't work
+
+**Check:** "Do you personally know at least one such Vasya? Have you talked to them?"
+
+If no — yellow flag. Note it.
+
+### Phase 3: Problem (10-15 min)
+
+Dig into the pain:
+- How often does it occur? (daily/weekly/monthly)
+- What does the problem cost? (time/money/nerves)
+- What has Vasya already tried?
+- Why didn't it work?
+
+**Test:** "If the problem hurts so much — why hasn't Vasya solved it yet?"
+
+Possible answers:
+- "No solution" → verify there really isn't one
+- "Expensive" → will yours be cheaper? By how much?
+- "Complex" → will yours be simpler? How exactly?
+- "Doesn't know about solutions" → how will they learn about yours?
+
+### Phase 4: Solution (10-15 min)
+
+Don't ask "what does the product do". Ask for scenario:
+
+```
+"Vasya woke up, pain occurred. What does he do?
+Opens your app — and then what?
+Step by step, as if I'm watching over his shoulder."
+```
+
+After scenario:
+- "At what moment does Vasya say 'wow, this is great'?"
+- "What did he do before at this moment?"
+- "How much faster/simpler/cheaper did it become?"
+
+### Phase 5: Market and Money (10 min) — NEW
+
+Separate block about business:
+
+```
+"Who pays the money? The same Vasya or someone else?"
+```
+
+Dig:
+- **Model:** "Subscription? Transactions? Commission? Freemium?"
+- **Price:** "How much is Vasya willing to pay? What about his boss?"
+- **Competitors:** "How do people solve this now? Who charges for it?"
+- **Differentiation:** "Why would they choose you over [competitor]?"
+
+**If they say "no competitors":**
+```
+"How do people solve this problem RIGHT NOW? Excel? Intern? Ignore it?
+That's your competition."
+```
+
+### Phase 6: Unfair Advantage (5-10 min)
+
+```
+"Why can you specifically build this better than others?"
+```
+
+Looking for:
+- Domain expertise?
+- Access to first customers?
+- Technical advantage?
+- Already have something working?
+
+**Honest question:** "Why won't a big company copy this in a month?"
+
+If no answer — not a blocker, but need to understand the risk.
+
+### Phase 7: MLP Scope (10-15 min)
+
+**MLP = Minimum Lovable Product** — not just works, but delights.
+
+```
+"You have [X weeks from Phase 0] and one Claude.
+What MUST work for one Vasya to say
+'yes, this solves my problem AND I love it'?"
+```
+
+Cut ruthlessly:
+- "Is this needed for Vasya to LOVE the product, or just nice-to-have?"
+- "Without this, will Vasya leave or just be disappointed?"
+- "Does this make the product loved or just functional?"
+
+**Anti-scope:** "What are we definitely NOT doing in the first version? Even if we really want to."
+
+**North Star:** "What single number will tell us the product works?"
+
+### Phase 8: Domain Dictionary (5 min) — NEW
+
+```
+"Let's fix the terms. When you say [X] — what exactly do you mean?"
+```
+
+Collect 5-10 key terms:
+- What's it called in your head?
+- Is there an established industry term?
+- What does it NOT mean? (antonym/boundary)
+
+**Why important:** Without dictionary there's confusion later — "campaign" means what? "offer" means what?
+
+### Phase 9: Synthesis — Meanings (10 min)
+
+Summarize EVERYTHING heard across three files:
+
+```
+"Let me check if I understood correctly:
+
+VISION (why):
+- Your motivation: [...]
+- Success in a year: [...]
+- Constraints: [...]
+
+DOMAIN (world):
+- Persona: [Vasya — who they are]
+- Pain: [what hurts and how often]
+- Current solution: [what they do now]
+- Why doesn't work: [reason]
+
+PRODUCT (what we're building):
 - One-liner: [...]
-- Ключевой сценарий: [...]
-- Момент любви: [когда говорит 'вау']
-- MLP scope: [3-5 фич]
-- Монетизация: [...]
+- Key scenario: [...]
+- Moment of love: [when they say 'wow']
+- MLP scope: [3-5 features]
+- Monetization: [...]
 
-Что я упустил или понял неправильно?"
+What did I miss or misunderstand?"
 ```
 
-### Фаза 10: Архитектура (10-15 мин) — NEW
+### Phase 10: Architecture (10-15 min) — NEW
 
-**Теперь твоя очередь предлагать.** На основе всего услышанного:
+**Now it's your turn to propose.** Based on everything heard:
 
 ```
-"На основе того, что ты рассказал, я вижу такие бизнес-сущности:
-[список сущностей]
+"Based on what you told me, I see these business entities:
+[entity list]
 
-Предлагаю разбить на такие домены:
+I propose to split into these domains:
 
-1. `users` — регистрация, профили, аутентификация
-2. `{domain2}` — [описание]
-3. `{domain3}` — [описание]
+1. `users` — registration, profiles, authentication
+2. `{domain2}` — [description]
+3. `{domain3}` — [description]
 
-Зависимости:
-- {domain2} зависит от users (нужен user_id)
-- {domain3} зависит от {domain2}
+Dependencies:
+- {domain2} depends on users (needs user_id)
+- {domain3} depends on {domain2}
 
 Entry points:
-- Telegram bot (основной интерфейс)
-- Web API (для интеграций)
+- Telegram bot (main interface)
+- Web API (for integrations)
 
-Это имеет смысл? Что бы ты объединил или разделил?"
+Does this make sense? What would you combine or separate?"
 ```
 
-**Принципы предложения доменов:**
-1. Один домен = одна бизнес-capability
-2. Домены не должны знать друг о друге напрямую (через события/интерфейсы)
-3. Если сомневаешься — лучше меньше доменов
-4. `users`, `billing` — почти всегда отдельные домены
+**Principles for proposing domains:**
+1. One domain = one business capability
+2. Domains shouldn't know about each other directly (via events/interfaces)
+3. When in doubt — fewer domains is better
+4. `users`, `billing` — almost always separate domains
 
-**После согласования** — зафиксируй в architecture.md
+**After agreement** — record in architecture.md
 
-### Фаза 11: Документация
+### Phase 11: Documentation
 
-Создай 4 файла в `ai/idea/`:
+Create 4 files in `ai/idea/`:
 1. `vision.md`
 2. `domain-context.md`
 3. `product-brief.md`
 4. `architecture.md`
 
-Покажи пользователю каждый файл.
-Спроси: "Это точно описывает твою идею? Что поправить?"
+Show user each file.
+Ask: "Does this accurately describe your idea? What should we fix?"
 
 ---
 
-## Шаблоны файлов
+## File Templates
 
 ### ai/idea/vision.md
 
 ```markdown
 # Vision: {Project Name}
 
-**Дата:** {сегодня}
+**Date:** {today}
 
 ---
 
-## Зачем существует этот проект
+## Why This Project Exists
 
-{1-2 абзаца — миссия, какую проблему в мире решаем}
-
----
-
-## Фаундер
-
-**Кто:** {имя, бэкграунд}
-
-**Мотивация:** {что лично зажигает}
-
-**Опыт в домене:** {был ли в шкуре пользователя}
-
-**Ограничения:**
-- Время: {часов в неделю}
-- Бюджет: {если есть}
-- Риск-аппетит: {что готов потерять}
+{1-2 paragraphs — mission, what problem in the world we're solving}
 
 ---
 
-## Успех
+## Founder
 
-**Через 1 год:**
-{как выглядит успех}
+**Who:** {name, background}
 
-**Через 3 года:**
-{амбиция}
+**Motivation:** {what personally excites them}
+
+**Domain experience:** {have they been in user's shoes}
+
+**Constraints:**
+- Time: {hours per week}
+- Budget: {if any}
+- Risk appetite: {what they're willing to lose}
+
+---
+
+## Success
+
+**In 1 year:**
+{what success looks like}
+
+**In 3 years:**
+{ambition}
 
 **North Star Metric:**
-{одна цифра}
+{one number}
 
 ---
 
-## Что НЕ делаем
+## What We DON'T Do
 
-{явные границы — во что не лезем}
+{explicit boundaries — what we're not getting into}
 ```
 
 ### ai/idea/domain-context.md
 
 ```markdown
-# Domain Context: {отрасль/сфера}
+# Domain Context: {industry/area}
 
 ---
 
-## Описание мира
+## World Description
 
-{2-3 абзаца — как устроена отрасль простым языком}
-
----
-
-## Ключевые участники
-
-| Роль | Кто это | Чего хочет |
-|------|---------|------------|
-| {роль1} | {описание} | {мотивация} |
-| {роль2} | {описание} | {мотивация} |
+{2-3 paragraphs — how the industry works in plain language}
 
 ---
 
-## Персона: {Имя}
+## Key Participants
 
-**Кто:** {возраст, должность, компания, контекст}
-
-**Типичный день:**
-{когда возникает боль}
-
-**Боль:** {что именно болит}
-- Частота: {как часто}
-- Цена проблемы: {время/деньги/нервы}
-
-**Текущее решение:** {что делает сейчас}
-
-**Почему не работает:** {конкретные причины}
+| Role | Who | What they want |
+|------|-----|----------------|
+| {role1} | {description} | {motivation} |
+| {role2} | {description} | {motivation} |
 
 ---
 
-## Текущие процессы и костыли
+## Persona: {Name}
 
-{как люди решают проблему сейчас — подробно}
+**Who:** {age, position, company, context}
+
+**Typical day:**
+{when the pain occurs}
+
+**Pain:** {what exactly hurts}
+- Frequency: {how often}
+- Cost of problem: {time/money/nerves}
+
+**Current solution:** {what they do now}
+
+**Why doesn't work:** {specific reasons}
 
 ---
 
-## Где вклинивается наш продукт
+## Current Processes and Workarounds
 
-{в какой момент процесса мы появляемся}
+{how people solve the problem now — in detail}
 
 ---
 
-## Словарь терминов
+## Where Our Product Fits In
 
-| Термин | Значение | НЕ путать с |
-|--------|----------|-------------|
-| {термин1} | {определение} | {антоним/граница} |
-| {термин2} | {определение} | {антоним/граница} |
+{at what moment in the process do we appear}
+
+---
+
+## Terminology Dictionary
+
+| Term | Meaning | NOT to confuse with |
+|------|---------|---------------------|
+| {term1} | {definition} | {antonym/boundary} |
+| {term2} | {definition} | {antonym/boundary} |
 ```
 
 ### ai/idea/product-brief.md
@@ -464,102 +464,102 @@ Entry points:
 ```markdown
 # Product Brief: {Project Name}
 
-**One-liner:** {одно предложение — что делает продукт}
+**One-liner:** {one sentence — what the product does}
 
 ---
 
 ## MLP (Minimum Lovable Product)
 
-**Философия:** Не просто работает — нравится одному человеку.
+**Philosophy:** Not just works — one person loves it.
 
-### Ключевой сценарий
+### Key Scenario
 
-1. {Вася делает X}
-2. {Система делает Y}
-3. {Вася получает Z}
+1. {Vasya does X}
+2. {System does Y}
+3. {Vasya gets Z}
 
-**Момент "вау!":** {когда понимает ценность и влюбляется}
+**"Wow!" moment:** {when they understand value and fall in love}
 
-**Почему лучше текущего:** {конкретное сравнение}
+**Why better than current:** {specific comparison}
 
 ---
 
 ## Scope
 
 ### Must have (Day 1):
-- [ ] {Фича 1} — {почему обязательно для "любви"}
-- [ ] {Фича 2} — {почему обязательно для "любви"}
-- [ ] {Фича 3} — {почему обязательно для "любви"}
+- [ ] {Feature 1} — {why mandatory for "love"}
+- [ ] {Feature 2} — {why mandatory for "love"}
+- [ ] {Feature 3} — {why mandatory for "love"}
 
-### Отложено (Day 30+):
-- {Фича} — {почему не сейчас}
+### Postponed (Day 30+):
+- {Feature} — {why not now}
 
-### Anti-scope (никогда в v1):
-- {Что отрезали навсегда для v1}
+### Anti-scope (never in v1):
+- {What we cut forever for v1}
 
 ---
 
-## Монетизация
+## Monetization
 
-**Кто платит:** {пользователь / бизнес / третья сторона}
+**Who pays:** {user / business / third party}
 
-**Модель:** {подписка / транзакции / комиссия / freemium}
+**Model:** {subscription / transactions / commission / freemium}
 
-**Цена:** {диапазон}
+**Price:** {range}
 
-**Конкуренты и отличие:**
-| Конкурент | Что делает | Наше отличие |
-|-----------|------------|--------------|
-| {конкурент1} | {что} | {почему мы лучше} |
-| Excel/ручной труд | {что} | {почему мы лучше} |
+**Competitors and differentiation:**
+| Competitor | What they do | Our difference |
+|------------|--------------|----------------|
+| {competitor1} | {what} | {why we're better} |
+| Excel/manual labor | {what} | {why we're better} |
 
 ---
 
 ## Unfair Advantage
 
-{почему именно этот фаундер — честно}
+{why this specific founder — honestly}
 
-**Риск копирования:** {оценка и как защищаемся}
-
----
-
-## Метрики
-
-**North Star:** {одна цифра успеха}
-
-**Поддерживающие:**
-- {метрика 1}
-- {метрика 2}
+**Copy risk:** {assessment and how we protect}
 
 ---
 
-## Открытые вопросы
+## Metrics
 
-- [ ] {Что осталось неясным}
-- [ ] {Что нужно провалидировать}
+**North Star:** {one success number}
 
----
-
-## Assumptions (критичные допущения)
-
-| Допущение | Как проверим | Что если неверно |
-|-----------|--------------|------------------|
-| {assumption1} | {способ проверки} | {план Б} |
-| {assumption2} | {способ проверки} | {план Б} |
+**Supporting:**
+- {metric 1}
+- {metric 2}
 
 ---
 
-## Критерии "MLP готов"
+## Open Questions
 
-- [ ] {Критерий 1 — что должно работать}
-- [ ] {Критерий 2 — что должен сказать Вася}
-- [ ] {Критерий 3 — какая метрика достигнута}
+- [ ] {What remains unclear}
+- [ ] {What needs validation}
 
 ---
 
-## Жёлтые флаги
+## Assumptions (critical)
 
-{Что насторожило во время discovery — честно}
+| Assumption | How we'll verify | What if wrong |
+|------------|------------------|---------------|
+| {assumption1} | {verification method} | {plan B} |
+| {assumption2} | {verification method} | {plan B} |
+
+---
+
+## "MLP Ready" Criteria
+
+- [ ] {Criterion 1 — what must work}
+- [ ] {Criterion 2 — what Vasya must say}
+- [ ] {Criterion 3 — what metric achieved}
+
+---
+
+## Yellow Flags
+
+{What concerned us during discovery — honestly}
 ```
 
 ### ai/idea/architecture.md
@@ -567,39 +567,39 @@ Entry points:
 ```markdown
 # Architecture: {Project Name}
 
-**Дата:** {сегодня}
+**Date:** {today}
 
 ---
 
-## Бизнес-сущности
+## Business Entities
 
-На основе domain-context выделены:
+Based on domain-context, identified:
 
-| Сущность | Описание | Примеры |
-|----------|----------|---------|
-| {entity1} | {что это} | {примеры} |
-| {entity2} | {что это} | {примеры} |
+| Entity | Description | Examples |
+|--------|-------------|----------|
+| {entity1} | {what it is} | {examples} |
+| {entity2} | {what it is} | {examples} |
 
 ---
 
-## Домены
+## Domains
 
-### `{domain1}` — {название}
-**Ответственность:** {что делает}
-**Ключевые сущности:** {list}
-**Зависит от:** {другие домены или —}
+### `{domain1}` — {name}
+**Responsibility:** {what it does}
+**Key entities:** {list}
+**Depends on:** {other domains or —}
 
-### `{domain2}` — {название}
-**Ответственность:** {что делает}
-**Ключевые сущности:** {list}
-**Зависит от:** {другие домены}
+### `{domain2}` — {name}
+**Responsibility:** {what it does}
+**Key entities:** {list}
+**Depends on:** {other domains}
 
-### `{domain3}` — {название}
+### `{domain3}` — {name}
 ...
 
 ---
 
-## Граф зависимостей
+## Dependency Graph
 
 ```
      shared (Result, exceptions)
@@ -616,73 +616,73 @@ Entry points:
     {domain3}
 ```
 
-**Правило:** Стрелки = "зависит от". Без циклов.
+**Rule:** Arrows = "depends on". No cycles.
 
 ---
 
 ## Entry Points
 
-| Тип | Технология | Для кого |
-|-----|------------|----------|
+| Type | Technology | For whom |
+|------|------------|----------|
 | {type1} | {tech} | {audience} |
 | {type2} | {tech} | {audience} |
 
 ---
 
-## Инфраструктура
+## Infrastructure
 
-**База данных:** {выбор и почему}
-**LLM:** {если нужен}
-**Внешние API:**
-- {api1} — {зачем}
-- {api2} — {зачем}
+**Database:** {choice and why}
+**LLM:** {if needed}
+**External APIs:**
+- {api1} — {why}
+- {api2} — {why}
 
 ---
 
-## Первые шаги (Day 1)
+## First Steps (Day 1)
 
-1. [ ] Создать структуру `src/domains/{domain1}/`
-2. [ ] Создать `CLAUDE.md` из этих файлов
-3. [ ] `/spark` для первой фичи: {какой именно}
+1. [ ] Create structure `src/domains/{domain1}/`
+2. [ ] Create `CLAUDE.md` from these files
+3. [ ] `/spark` for first feature: {which one}
 ```
 
 ---
 
-## Антипаттерны (не делай так)
+## Anti-patterns (don't do this)
 
-| Плохо | Почему | Как надо |
-|-------|--------|----------|
-| Задавать все вопросы списком | Это анкета, не диалог | По 1-2 вопроса, с уточнениями |
-| Принимать первый ответ | Первый ответ обычно поверхностный | Копай глубже: "А почему? А как именно?" |
-| Игнорировать противоречия | Они вылезут потом | Сразу возвращайся и разбирай |
-| Спешить к решению | Плохо понятая проблема = плохой продукт | 70% времени на проблему, 30% на решение |
-| Соглашаться со всем | Ты не психолог, ты партнёр | Челленджи нужны, они полезны |
-| Пропускать "мелочи" | Мелочи потом всё ломают | Уточняй всё, что кажется неясным |
-| Предлагать 10 доменов | Слишком много на старте | 3-5 доменов максимум для MLP |
-
----
-
-## Выход из discovery
-
-**Готов к Day 1 когда:**
-- [ ] Можешь описать персону за 30 секунд
-- [ ] Понимаешь боль конкретно (не абстрактно)
-- [ ] Знаешь почему текущие решения не работают
-- [ ] MLP scope чёткий (3-5 фич, не больше)
-- [ ] Есть одна метрика успеха
-- [ ] Домены согласованы и имеют смысл
-- [ ] Жёлтые флаги зафиксированы (не проигнорированы)
-
-**Не готов если:**
-- "Для всех" — нет конкретной персоны
-- "Всё нужно" — нет приоритизации
-- "Потом разберёмся" — есть критичные unknowns
-- Основатель не знает ни одного реального Васи
-- Домены непонятны самому фаундеру
+| Bad | Why | How to do it |
+|-----|-----|--------------|
+| Ask all questions as a list | It's a questionnaire, not dialogue | 1-2 questions at a time, with follow-ups |
+| Accept first answer | First answer is usually superficial | Dig deeper: "Why? How exactly?" |
+| Ignore contradictions | They'll surface later | Return and break them down immediately |
+| Rush to solution | Poorly understood problem = bad product | 70% time on problem, 30% on solution |
+| Agree with everything | You're not a therapist, you're a partner | Challenges are needed, they help |
+| Skip "small things" | Small things break everything later | Clarify everything that seems unclear |
+| Propose 10 domains | Too many to start | 3-5 domains max for MLP |
 
 ---
 
-## После bootstrap
+## Exit from Discovery
+
+**Ready for Day 1 when:**
+- [ ] Can describe persona in 30 seconds
+- [ ] Understand the pain specifically (not abstractly)
+- [ ] Know why current solutions don't work
+- [ ] MLP scope is clear (3-5 features, no more)
+- [ ] Have one success metric
+- [ ] Domains agreed and make sense
+- [ ] Yellow flags recorded (not ignored)
+
+**Not ready if:**
+- "For everyone" — no specific persona
+- "Everything is needed" — no prioritization
+- "We'll figure it out later" — there are critical unknowns
+- Founder doesn't know a single real Vasya
+- Domains unclear to the founder themselves
+
+---
+
+## After Bootstrap
 
 ```
 ai/idea/
@@ -691,7 +691,7 @@ ai/idea/
 ├── product-brief.md    ✓
 └── architecture.md     ✓
 
-→ Day 1: создать структуру по architecture.md
-→ Day 1: создать CLAUDE.md из этих файлов
-→ Day 2: /spark для первой фичи
+→ Day 1: create structure per architecture.md
+→ Day 1: create CLAUDE.md from these files
+→ Day 2: /spark for first feature
 ```
