@@ -1,11 +1,11 @@
 # Project Dependencies
 
-Карта зависимостей между компонентами проекта.
+Dependency map between project components.
 
-## Как читать
+## How to Read
 
-- `A → B` означает "A использует B"
-- `A ← B` означает "A используется в B"
+- `A → B` means "A uses B"
+- `A ← B` means "A is used by B"
 
 ---
 
@@ -13,53 +13,53 @@
 
 **Path:** `src/domains/{domain_name}/`
 
-### Использует (→)
+### Uses (→)
 
-| Что | Где | Функция |
-|-----|-----|---------|
+| What | Where | Function |
+|------|-------|----------|
 | {dependency} | {path} | {function}() |
 
-### Используется в (←)
+### Used by (←)
 
-| Кто | Файл:строка | Функция |
-|-----|-------------|---------|
+| Who | File:line | Function |
+|-----|-----------|----------|
 | {caller} | {file}:{line} | {function}() |
 
-### При изменении API проверить
+### When changing API, check
 
 - [ ] {dependent_1}
 - [ ] {dependent_2}
 
 ---
 
-## Пример: billing
+## Example: billing
 
 **Path:** `src/domains/billing/`
 
-### Использует (→)
+### Uses (→)
 
-| Что | Где | Функция |
-|-----|-----|---------|
+| What | Where | Function |
+|------|-------|----------|
 | users | infra/db | get_user() |
 | database | infra/db | transactions table |
 
-### Используется в (←)
+### Used by (←)
 
-| Кто | Файл:строка | Функция |
-|-----|-------------|---------|
+| Who | File:line | Function |
+|-----|-----------|----------|
 | campaigns | services.py:45 | get_balance() |
 | campaigns | services.py:78 | check_can_spend() |
 | seller | actions.py:23 | deduct_balance() |
 
-### При изменении API проверить
+### When changing API, check
 
 - [ ] campaigns
 - [ ] seller
 
 ---
 
-## Последнее обновление
+## Last Update
 
-| Дата | Что | Кто |
-|------|-----|-----|
-| YYYY-MM-DD | Инициализация карты зависимостей | spark |
+| Date | What | Who |
+|------|------|-----|
+| YYYY-MM-DD | Initialize dependency map | spark |

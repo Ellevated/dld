@@ -10,10 +10,10 @@ Execute this protocol AFTER completing work that changes project knowledge.
 
 | What you did | What to update |
 |--------------|----------------|
-| Created new public function/class | Add to domain "Сущности" |
+| Created new public function/class | Add to domain "Entities" |
 | Created new cross-domain call | Add to dependencies.md |
-| Established new pattern | Add to domain "Паттерны" |
-| Discovered forbidden action | Add to domain "Запрещено" |
+| Established new pattern | Add to domain "Patterns" |
+| Discovered forbidden action | Add to domain "Forbidden" |
 | Changed existing API signature | Update dependents list |
 | Added new term | Add to ai/glossary/{domain}.md |
 
@@ -23,7 +23,7 @@ Execute this protocol AFTER completing work that changes project knowledge.
 
 ### Adding new entity to domain context
 
-In `.claude/rules/domains/{domain}.md`, section "Сущности":
+In `.claude/rules/domains/{domain}.md`, section "Entities":
 
 ```markdown
 | {Name} | {file}:{line} | {description} |
@@ -34,13 +34,13 @@ In `.claude/rules/domains/{domain}.md`, section "Сущности":
 In `.claude/rules/dependencies.md`, section "{domain}":
 
 ```markdown
-### Используется в (←)
+### Used by (←)
 | {caller_domain} | {file}:{line} | {function}() |
 ```
 
 ### Adding history entry
 
-In `.claude/rules/domains/{domain}.md`, section "История":
+In `.claude/rules/domains/{domain}.md`, section "History":
 
 ```markdown
 | {YYYY-MM-DD} | {what changed} | {TASK-ID} | coder |
@@ -89,7 +89,7 @@ After updating, confirm:
 ```yaml
 context_updates:
   - file: .claude/rules/domains/billing.md
-    change: "Added Transaction.refund() to Сущности"
+    change: "Added Transaction.refund() to Entities"
   - file: .claude/rules/dependencies.md
     change: "Added: seller → billing.refund()"
 ```

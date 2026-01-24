@@ -37,17 +37,17 @@ attempts: "what was tried"
 ```markdown
 # Session: {task_id} — {date}
 
-## Проблемы
+## Problems
 - {auto-detected problem description}
 
-## Контекст
+## Context
 - Error: {error_message}
 - Files: {files_changed}
 - Attempts: {attempts}
 
-## TODO для рефлексии
-- Разобрать причину
-- Добавить правило если паттерн повторяется
+## TODO for reflection
+- Analyze root cause
+- Add rule if pattern repeats
 ```
 
 ### Index Row
@@ -70,7 +70,7 @@ ai/diary/
 
 - **Minimal** — brief description, not essay
 - **Factual** — what happened, not interpretation
-- **Russian** — problems in Russian for human review
+- **Readable** — problems in plain language for human review
 - **No fix** — just record, don't try to solve
 - **Always index** — every entry must have index row
 

@@ -119,7 +119,7 @@ When stuck on unfamiliar error — search for solutions via Scout subagent.
 **Trigger conditions:**
 - Error message is unfamiliar (not seen in this codebase)
 - After 2 failed fix attempts
-- User says "пошарь эту ошибку" or "search this error"
+- User says "search this error" or similar
 
 **How to call:**
 ```yaml

@@ -1,8 +1,8 @@
 # Architecture
 
-Архитектурные решения и паттерны проекта.
+Architectural decisions and patterns for the project.
 
-## Структура проекта
+## Project Structure
 
 ```
 src/
@@ -12,54 +12,54 @@ src/
 └── api/        # Entry points (telegram, http, cli)
 ```
 
-## Направление импортов
+## Import Direction
 
 ```
 shared ← infra ← domains ← api
-       (НИКОГДА в обратную сторону)
+       (NEVER in reverse)
 ```
 
-**Правило:** Каждый слой может импортировать только из слоёв левее себя.
+**Rule:** Each layer can only import from layers to the left of it.
 
 ---
 
-## Паттерны (СЛЕДОВАТЬ)
+## Patterns (FOLLOW)
 
-| Паттерн | Где применять | Пример |
-|---------|---------------|--------|
-| Result[T, E] | Все domain функции | `async def get_user() -> Result[User, UserError]` |
-| Async everywhere | Все IO операции | `async def`, `await` |
-| Копейки для денег | Все money-related | `amount: int` (не float, не Decimal) |
-| Explicit errors | Domain boundaries | `UserNotFoundError`, не generic Exception |
+| Pattern | Where to apply | Example |
+|---------|----------------|---------|
+| Result[T, E] | All domain functions | `async def get_user() -> Result[User, UserError]` |
+| Async everywhere | All IO operations | `async def`, `await` |
+| Cents for money | All money-related | `amount: int` (not float, not Decimal) |
+| Explicit errors | Domain boundaries | `UserNotFoundError`, not generic Exception |
 
 ---
 
-## Анти-паттерны (ЗАПРЕЩЕНО)
+## Anti-patterns (FORBIDDEN)
 
-| Что | Почему | Вместо этого |
-|-----|--------|--------------|
-| Float для денег | Precision loss | int (копейки) |
-| Bare exceptions | Скрывает ошибки | Explicit error types |
-| Cross-domain import | Coupling | Через infra или shared |
-| Файл > 400 LOC | LLM-unfriendly | Split на модули |
-| Circular imports | Архитектурная проблема | Рефакторинг зависимостей |
+| What | Why | Instead |
+|------|-----|---------|
+| Float for money | Precision loss | int (cents) |
+| Bare exceptions | Hides errors | Explicit error types |
+| Cross-domain import | Coupling | Through infra or shared |
+| File > 400 LOC | LLM-unfriendly | Split into modules |
+| Circular imports | Architectural problem | Refactor dependencies |
 
 ---
 
 ## ADR (Architecture Decision Records)
 
-| ID | Решение | Дата | Причина |
-|----|---------|------|---------|
-| ADR-001 | Деньги в копейках | YYYY-MM | Избежать float precision errors |
-| ADR-002 | Result вместо exceptions | YYYY-MM | Explicit error handling |
+| ID | Decision | Date | Reason |
+|----|----------|------|--------|
+| ADR-001 | Money in cents | YYYY-MM | Avoid float precision errors |
+| ADR-002 | Result instead of exceptions | YYYY-MM | Explicit error handling |
 | ADR-003 | Async everywhere | YYYY-MM | Consistency, performance |
 
 ---
 
-## Лимиты
+## Limits
 
-| Что | Лимит | Причина |
-|-----|-------|---------|
+| What | Limit | Reason |
+|------|-------|--------|
 | LOC per file | 400 (600 for tests) | LLM context window |
 | Exports in __init__.py | 5 | Explicit public API |
 | Nesting depth | 3 levels | Readability |

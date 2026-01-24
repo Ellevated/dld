@@ -103,7 +103,7 @@ Save to `ai/features/FTR-XXX-YYYY-MM-DD-name.md`
 **Why:** Context is fresh now. Coder will lose it later without plan.
 
 **Language rule:**
-- `Зачем` and `Контекст` — Russian (for human)
+- `Why` and `Context` — for human understanding
 - Everything else — English (for Autopilot)
 
 **Add:**

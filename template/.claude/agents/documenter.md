@@ -155,8 +155,8 @@ Before reporting "completed", verify each item:
 
 7. RUN Consistency Verification (Step 5) — MANDATORY
    ├── Glossary sync (if money/pricing changed)
-   ├── Module headers актуальны?
-   ├── grep=0 для старых терминов
+   ├── Module headers up to date?
+   ├── grep=0 for old terms
    └── REQUIRED for ALL change types (even FIX if money-related)
 
 8. REPORT
@@ -165,12 +165,12 @@ Before reporting "completed", verify each item:
 ## Step 4: Architecture Documentation (MANDATORY CHECK)
 
 **⚠️ Root Cause of Stale Changelog (2026-01-11):**
-Changelog отставал на 1.5 дня и ~10 изменений потому что:
-1. Документер запускался только в autopilot
-2. Фиксы делались вручную без запуска documenter
-3. Не было явного trigger при `status → done`
+Changelog was lagging 1.5 days and ~10 changes because:
+1. Documenter only ran in autopilot
+2. Fixes were made manually without running documenter
+3. No explicit trigger on `status → done`
 
-**Правило:** После КАЖДОГО `status → done` — проверить changelog!
+**Rule:** After EVERY `status → done` — check changelog!
 
 After code-level docs, check architecture docs:
 
@@ -250,22 +250,22 @@ Create ADR if:
 - [ ] New domain? → Added to `ARCHITECTURE.md` + created `architecture/{domain}.md`
 - [ ] Dependency changed? → Updated graph in `ARCHITECTURE.md`
 - [ ] Important decision? → Created ADR
-- [ ] **BREAKING/FEATURE? → Added changelog entry** ← MANDATORY, не пропускай!
+- [ ] **BREAKING/FEATURE? → Added changelog entry** ← MANDATORY, don't skip!
 
 ### Changelog Trigger Checklist (NEW)
 
-**Когда обновлять `ai/changelog/ARCHITECTURE-CHANGELOG.md`:**
+**When to update `ai/changelog/ARCHITECTURE-CHANGELOG.md`:**
 
-| Изменение | Changelog? |
-|-----------|------------|
-| Новый инфраструктурный паттерн (retry, logging, etc.) | ✅ Да |
-| Новая feature в промпте (СТОП-паттерн, flow) | ✅ Да |
-| Новый RPC/SQL migration с логикой | ✅ Да |
-| Изменение public API (tool signature, model) | ✅ Да |
-| Bug fix без архитектурного impact | ❌ Нет |
-| Refactor internal code (same API) | ❌ Нет |
+| Change | Changelog? |
+|--------|------------|
+| New infrastructure pattern (retry, logging, etc.) | ✅ Yes |
+| New feature in prompt (STOP pattern, flow) | ✅ Yes |
+| New RPC/SQL migration with logic | ✅ Yes |
+| Public API change (tool signature, model) | ✅ Yes |
+| Bug fix without architectural impact | ❌ No |
+| Refactor internal code (same API) | ❌ No |
 
-**Формат записи:**
+**Entry format:**
 ```markdown
 ## [YYYY-MM-DD] — vX.X
 
@@ -340,21 +340,21 @@ reason: "why skipped"  # if skipped
 
 ## Consistency Verification (MANDATORY)
 
-Перед завершением:
+Before completing:
 
 1. Grep verification:
-   - `grep -rn "{old_term}" .` = 0 результатов?
+   - `grep -rn "{old_term}" .` = 0 results?
 
 2. Module headers:
-   - Все изменённые файлы имеют актуальные headers?
+   - All changed files have up-to-date headers?
 
 3. Glossary sync:
-   - Новые термины добавлены?
-   - Изменённые термины обновлены?
+   - New terms added?
+   - Changed terms updated?
 
 4. Documentation:
-   - ai/architecture/*.md актуальны?
-   - .claude/contexts/*.md актуальны?
+   - ai/architecture/*.md up to date?
+   - .claude/contexts/*.md up to date?
 
 ## Glossary Mapping
 

@@ -119,25 +119,25 @@ research_sources_used:
 
 ## Module Headers Workflow (MANDATORY)
 
-При работе с файлом:
+When working with a file:
 
 ```
-1. ОТКРЫЛ файл
-   └── Прочитал module header (если есть)
+1. OPENED file
+   └── Read module header (if exists)
 
-2. ПРОВЕРИЛ consistency
-   ├── Header пустой? → Оформи перед работой
-   ├── Uses/Used by актуальны?
-   └── Glossary ссылки валидны?
+2. CHECKED consistency
+   ├── Header empty? → Fill before working
+   ├── Uses/Used by up to date?
+   └── Glossary references valid?
 
-3. ВНЁС изменения в код
+3. MADE changes to code
 
-4. ПЕРЕЧИТАЛ module header
-   ├── Добавил новые dependencies в Uses?
-   ├── Изменился Role?
-   └── Нужно обновить Used by? (grep кто использует)
+4. RE-READ module header
+   ├── Added new dependencies to Uses?
+   ├── Role changed?
+   └── Need to update Used by? (grep who uses it)
 
-5. СОХРАНИЛ файл
+5. SAVED file
 ```
 
 ### Module Header Format
@@ -145,8 +145,8 @@ research_sources_used:
 ```python
 """
 Module: {module_name}
-Role: {что делает модуль}
-Source of Truth: {где primary implementation, если wrapper}
+Role: {what the module does}
+Source of Truth: {where primary implementation is, if wrapper}
 
 Uses:
   - {module}:{Class/function}
@@ -203,7 +203,7 @@ action_required: "Split file / reduce exports / move to correct domain"
 
 **SSOT:** `.claude/rules/database.md#migrations`
 
-⛔ **Autopilot НИКОГДА не применяет миграции! CI — единственный источник apply.**
+⛔ **Autopilot NEVER applies migrations! CI is the only source of apply.**
 
 ```
 CODER → VALIDATE (squawk) → COMMIT → PUSH → CI applies

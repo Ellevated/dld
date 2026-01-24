@@ -5,50 +5,50 @@ path: src/domains/{name}/
 
 # {Name} Domain
 
-## Назначение
+## Purpose
 
-{1-2 предложения о том, что делает этот домен}
+{1-2 sentences about what this domain does}
 
 ---
 
-## Сущности
+## Entities
 
-| Сущность | Файл:строка | Описание |
-|----------|-------------|----------|
+| Entity | File:line | Description |
+|--------|-----------|-------------|
 | {Entity} | {file}:{line} | {description} |
 
 ---
 
-## Публичный API
+## Public API
 
-| Функция | Сигнатура | Описание |
-|---------|-----------|----------|
+| Function | Signature | Description |
+|----------|-----------|-------------|
 | {func}() | `async def {func}(...) -> Result[T, E]` | {what it does} |
 
 ---
 
-## Паттерны домена
+## Domain Patterns
 
 - {pattern 1}
 - {pattern 2}
 
 ---
 
-## Запрещено в этом домене
+## Forbidden in this Domain
 
 - {forbidden 1}
 - {forbidden 2}
 
 ---
 
-## Glossary ссылка
+## Glossary Reference
 
-См. `ai/glossary/{domain}.md` для терминов и правил.
+See `ai/glossary/{domain}.md` for terms and rules.
 
 ---
 
-## История изменений
+## Change History
 
-| Дата | Что | Задача | Кто |
-|------|-----|--------|-----|
-| YYYY-MM-DD | Создан домен | {TASK-ID} | spark |
+| Date | What | Task | Who |
+|------|------|------|-----|
+| YYYY-MM-DD | Created domain | {TASK-ID} | spark |
