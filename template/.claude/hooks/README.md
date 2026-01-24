@@ -179,3 +179,16 @@ To test a hook manually:
 ```bash
 echo '{"tool_input": {"command": "git push origin main"}}' | python3 .claude/hooks/pre_bash.py
 ```
+
+---
+
+## Known Limitations
+
+### API Content Filtering Errors
+
+Some tool calls may fail with "Output blocked by content filtering policy" error from Anthropic API. **Hooks cannot intercept these errors** — they occur after the tool call is made.
+
+**Mitigation:**
+- CLAUDE.md contains tool preference rules (use Glob instead of Search, etc.)
+- If autopilot encounters this error, it should retry with alternative tool
+- See "Tool Preferences (API Error Prevention)" section in CLAUDE.md

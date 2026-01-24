@@ -1,15 +1,15 @@
-# Метрики качества
+# Quality Metrics
 
 ## Thresholds
 
-| Метрика | Плохо | Хорошо | Отлично |
-|---------|-------|--------|---------|
-| Контекст домена | >300 строк | 150-300 | <150 строк |
-| Файлы в домене | >15 | 8-15 | <8 |
-| LOC в файле | >500 | 200-300 | <200 |
-| Exports в __init__.py | >10 | 5-10 | ≤5 |
-| Глубина вложенности | >4 | 3-4 | ≤3 |
-| Время понимания структуры | >5 мин | 2-5 мин | <1 мин |
+| Metric | Bad | Good | Excellent |
+|--------|-----|------|-----------|
+| Domain context | >300 lines | 150-300 | <150 lines |
+| Files in domain | >15 | 8-15 | <8 |
+| LOC per file | >500 | 200-300 | <200 |
+| Exports in __init__.py | >10 | 5-10 | ≤5 |
+| Nesting depth | >4 | 3-4 | ≤3 |
+| Time to understand structure | >5 min | 2-5 min | <1 min |
 | Import violations | >0 | 0 | 0 |
 
 ---
@@ -17,20 +17,20 @@
 ## CI Gates
 
 ```yaml
-# Обязательные проверки
+# Mandatory checks
 - python scripts/check_domain_imports.py --strict  # 0 violations
-- python scripts/check_file_sizes.py --max-lines 400 # нет файлов >400 LOC (600 для тестов)
+- python scripts/check_file_sizes.py --max-lines 400 # no files >400 LOC (600 for tests)
 ```
 
 ---
 
-## Как измерить
+## How to Measure
 
 ```bash
-# LOC в файле
+# LOC per file
 wc -l src/domains/**/*.py | sort -n
 
-# Exports в __init__.py
+# Exports in __init__.py
 grep -c "^from\|^import" src/domains/*/__init__.py
 
 # Import violations

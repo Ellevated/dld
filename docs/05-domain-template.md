@@ -1,6 +1,6 @@
-# Шаблон домена
+# Domain Template
 
-## Структура
+## Structure
 
 ```
 domains/{name}/
@@ -21,33 +21,33 @@ domains/{name}/
 ```markdown
 # {Name} Domain
 
-## Назначение
-{Одно предложение: что делает этот домен}
+## Purpose
+{One sentence: what this domain does}
 
-## Ключевые файлы
-- `service.py` — бизнес-логика ({operation1}, {operation2})
+## Key Files
+- `service.py` — business logic ({operation1}, {operation2})
 - `models.py` — {Entity}, {EntityStatus}
-- `repository.py` — CRUD операции с БД
+- `repository.py` — CRUD operations with DB
 
-## Зависимости
-- `domains/auth` — для проверки пользователя
-- `infra/db` — для персистенции
+## Dependencies
+- `domains/auth` — for user verification
+- `infra/db` — for persistence
 
-## Типичные операции
+## Typical Operations
 
 ```python
 from domains.{name} import create_entity, get_entity
 
-# Создать
+# Create
 entity = await create_entity(data, user_id)
 
-# Получить
+# Get
 entity = await get_entity(entity_id)
 ```
 
 ## Entry points
-- POST /api/{name} — создание
-- GET /api/{name}/{id} — получение
+- POST /api/{name} — create
+- GET /api/{name}/{id} — get
 - Telegram: /{name} command
 ```
 

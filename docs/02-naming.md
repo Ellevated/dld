@@ -1,32 +1,32 @@
-# Правила именования
+# Naming Rules
 
-## Файлы: Self-describing names
+## Files: Self-describing names
 
 ```
-# ❌ ПЛОХО: Неочевидные имена
-src/services/sm.py           # что такое sm?
-src/utils/helpers.py         # helpers чего?
-src/core/manager.py          # manager чего?
+# ❌ BAD: Non-obvious names
+src/services/sm.py           # what is sm?
+src/utils/helpers.py         # helpers for what?
+src/core/manager.py          # manager of what?
 
-# ✅ ХОРОШО: Очевидные имена
+# ✅ GOOD: Obvious names
 src/domains/orders/slot_assignment.py
 src/domains/payments/invoice_generator.py
 src/shared/result.py
 ```
 
-**Правило:** Имя файла должно отвечать на вопрос "что внутри?" без открытия.
+**Rule:** File name should answer "what's inside?" without opening it.
 
 ---
 
-## Функции: Verb + Noun
+## Functions: Verb + Noun
 
 ```python
-# ❌ ПЛОХО
+# ❌ BAD
 def process(data): ...
 def handle(request): ...
 def do_stuff(): ...
 
-# ✅ ХОРОШО
+# ✅ GOOD
 def assign_slot_to_buyer(slot_id, buyer_id): ...
 def calculate_cashback_amount(order): ...
 def validate_phone_number(phone): ...
@@ -34,15 +34,15 @@ def validate_phone_number(phone): ...
 
 ---
 
-## Классы: Noun + Role
+## Classes: Noun + Role
 
 ```python
-# ❌ ПЛОХО
+# ❌ BAD
 class Manager: ...
 class Handler: ...
 class Helper: ...
 
-# ✅ ХОРОШО
+# ✅ GOOD
 class OrderRepository: ...
 class PaymentProcessor: ...
 class SlotAssignmentService: ...
@@ -50,15 +50,15 @@ class SlotAssignmentService: ...
 
 ---
 
-## Константы: UPPER_SNAKE с контекстом
+## Constants: UPPER_SNAKE with context
 
 ```python
-# ❌ ПЛОХО
+# ❌ BAD
 MAX = 10
 TIMEOUT = 30
 DEFAULT = "ru"
 
-# ✅ ХОРОШО
+# ✅ GOOD
 MAX_SLOTS_PER_CAMPAIGN = 10
 API_REQUEST_TIMEOUT_SEC = 30
 DEFAULT_LOCALE = "ru"
@@ -66,15 +66,15 @@ DEFAULT_LOCALE = "ru"
 
 ---
 
-## Единообразие
+## Consistency
 
 ```python
-# ❌ ПЛОХО: Разные стили
+# ❌ BAD: Different styles
 src/handlers/userHandler.py      # camelCase
 src/handlers/order_handler.py    # snake_case
 src/handlers/PaymentHandlers.py  # PascalCase
 
-# ✅ ХОРОШО: Единый стиль (snake_case для файлов)
+# ✅ GOOD: Single style (snake_case for files)
 src/domains/users/handlers.py
 src/domains/orders/handlers.py
 src/domains/payments/handlers.py

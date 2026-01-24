@@ -11,6 +11,8 @@ Usage:
     from utils import allow_tool, deny_tool, read_hook_input
 """
 
+from __future__ import annotations
+
 import fnmatch
 import glob as glob_module
 import json
@@ -223,7 +225,9 @@ def extract_allowed_files(spec_path: str) -> list[str]:
         return []
 
     # Find ## Allowed Files section
-    match = re.search(r"## Allowed Files\s*\n(.*?)(?=\n##|\Z)", content, re.DOTALL | re.IGNORECASE)
+    match = re.search(
+        r"## Allowed Files\s*\n(.*?)(?=\n##|\Z)", content, re.DOTALL | re.IGNORECASE
+    )
     if not match:
         return []
 

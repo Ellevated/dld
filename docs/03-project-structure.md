@@ -1,4 +1,4 @@
-# Структура проекта
+# Project Structure
 
 ```
 {project}/

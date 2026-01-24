@@ -1,144 +1,144 @@
 # Step 0: Bootstrap
 
-## Философия
+## Philosophy
 
-Эти принципы — результат сотен часов проб и ошибок. Они работают, потому что:
+These principles are the result of hundreds of hours of trial and error. They work because:
 
-1. **LLM понимает структуру** — colocation, flat, self-describing names
-2. **Guardrails предотвращают хаос** — CI checks, immutable tests
-3. **Skills дают workflow** — не думаешь "что делать дальше"
+1. **LLM understands structure** — colocation, flat, self-describing names
+2. **Guardrails prevent chaos** — CI checks, immutable tests
+3. **Skills provide workflow** — no need to think "what to do next"
 
-Но принципы бесполезны без понимания **что строишь**.
+But principles are useless without understanding **what you're building**.
 
 ---
 
-## Порядок запуска нового проекта
+## Order of launching a new project
 
 ```
-Step 0: Прочитай этот файл (5 мин)
+Step 0: Read this file (5 min)
      ↓
-Step 1: /bootstrap — распаковка идеи с Claude (60-90 мин)
+Step 1: /bootstrap — unpacking the idea with Claude (60-90 min)
      ↓
      → ai/idea/vision.md
      → ai/idea/domain-context.md
      → ai/idea/product-brief.md
      → ai/idea/architecture.md
      ↓
-Day 1: Структура проекта (09-onboarding.md)
+Day 1: Project structure (09-onboarding.md)
      ↓
-Day 2+: /spark для первой фичи
+Day 2+: /spark for the first feature
 ```
 
 ---
 
-## Чеклист "Готов к /bootstrap"
+## Checklist "Ready for /bootstrap"
 
-- [ ] Есть идея (хотя бы смутная)
-- [ ] Создал пустую папку проекта
-- [ ] Скопировал `ai/principles/` в проект
-- [ ] Запустил Claude Code в папке проекта
-- [ ] Готов потратить 60-90 минут на честный разговор
-
----
-
-## Что делает /bootstrap
-
-**Это НЕ анкета.** Это интерактивная сессия с продуктовым партнёром.
-
-| Фаза | Что происходит | Кто ведёт |
-|------|----------------|-----------|
-| 0. Фаундер | Мотивации, опыт, ограничения | Claude спрашивает |
-| 1-4. Идея | Персона, боль, решение | Claude копает вглубь |
-| 5-6. Бизнес | Деньги, конкуренты, advantage | Совместно |
-| 7-8. Scope | MLP, словарь терминов | Claude режет лишнее |
-| 9. Synthesis | Проверка понимания | Claude суммирует |
-| 10. Архитектура | Домены, зависимости | **Claude предлагает** |
-| 11. Документация | 4 файла | Claude создаёт |
-
-**Ключевое:** Claude будет "душным" — уточнять размытое, возвращаться к противоречиям, не пропускать "мелочи".
+- [ ] Have an idea (even a vague one)
+- [ ] Created an empty project folder
+- [ ] Copied `ai/principles/` to the project
+- [ ] Launched Claude Code in the project folder
+- [ ] Ready to spend 60-90 minutes on an honest conversation
 
 ---
 
-## Результат /bootstrap
+## What /bootstrap does
+
+**This is NOT a questionnaire.** This is an interactive session with a product partner.
+
+| Phase | What happens | Who leads |
+|-------|--------------|-----------|
+| 0. Founder | Motivations, experience, constraints | Claude asks |
+| 1-4. Idea | Persona, pain, solution | Claude digs deeper |
+| 5-6. Business | Money, competitors, advantage | Jointly |
+| 7-8. Scope | MLP, terminology dictionary | Claude cuts excess |
+| 9. Synthesis | Understanding check | Claude summarizes |
+| 10. Architecture | Domains, dependencies | **Claude proposes** |
+| 11. Documentation | 4 files | Claude creates |
+
+**Key point:** Claude will be "annoying" — clarifying vague points, returning to contradictions, not skipping "details".
+
+---
+
+## Result of /bootstrap
 
 ```
 ai/idea/
-├── vision.md           # Зачем проект, фаундер, успех
-├── domain-context.md   # Отрасль, персона, словарь
-├── product-brief.md    # MLP, scope, монетизация, assumptions
-└── architecture.md     # Домены, зависимости, entry points
+├── vision.md           # Why the project, founder, success
+├── domain-context.md   # Industry, persona, dictionary
+├── product-brief.md    # MLP, scope, monetization, assumptions
+└── architecture.md     # Domains, dependencies, entry points
 ```
 
 ---
 
-## Чеклист "Готов к Day 1"
+## Checklist "Ready for Day 1"
 
-После `/bootstrap` у тебя должны быть:
+After `/bootstrap` you should have:
 
-- [ ] **vision.md** — понятно зачем делаем
-- [ ] **domain-context.md** — понятен мир и персона
-- [ ] **product-brief.md** — понятен MLP scope (3-5 фич)
-- [ ] **architecture.md** — понятны домены (3-5 шт)
-- [ ] North Star metric определена
-- [ ] Assumptions записаны
-- [ ] Жёлтые флаги зафиксированы
+- [ ] **vision.md** — clear why we're doing this
+- [ ] **domain-context.md** — clear understanding of the world and persona
+- [ ] **product-brief.md** — clear MLP scope (3-5 features)
+- [ ] **architecture.md** — clear domains (3-5 of them)
+- [ ] North Star metric defined
+- [ ] Assumptions documented
+- [ ] Yellow flags recorded
 
-**Не готов если:**
-- "Для всех" — нет конкретной персоны
-- "Всё нужно" — нет приоритизации
-- "Потом разберёмся" — критичные unknowns не зафиксированы
+**Not ready if:**
+- "For everyone" — no specific persona
+- "Everything is needed" — no prioritization
+- "We'll figure it out later" — critical unknowns not documented
 
 ---
 
-## После bootstrap: Day 1
+## After bootstrap: Day 1
 
 ```bash
-# 1. Создать структуру по architecture.md
+# 1. Create structure based on architecture.md
 mkdir -p src/domains/{domain1,domain2,domain3}
 mkdir -p src/{shared,infra,api}
 mkdir -p .claude/{contexts,skills}
 mkdir -p tests/{integration,contracts,regression}
 
-# 2. Создать CLAUDE.md из ai/idea/* файлов
-# (Claude поможет на основе 04-claude-md-template.md)
+# 2. Create CLAUDE.md from ai/idea/* files
+# (Claude will help based on 04-claude-md-template.md)
 
-# 3. Создать backlog
+# 3. Create backlog
 touch ai/backlog.md
 
-# 4. Первая фича
-/spark {первая фича из architecture.md}
+# 4. First feature
+/spark {first feature from architecture.md}
 ```
 
 ---
 
-## Минимальный набор для копирования в новый проект
+## Minimal set for copying to a new project
 
 ```
 ai/
-├── principles/          # Скопировать целиком
-└── idea/               # Создаст /bootstrap
+├── principles/          # Copy entirely
+└── idea/               # Created by /bootstrap
     ├── vision.md
     ├── domain-context.md
     ├── product-brief.md
     └── architecture.md
 
 .claude/
-├── skills/             # Скопировать из principles/skills/
+├── skills/             # Copy from principles/skills/
 │   └── bootstrap/SKILL.md
-└── settings.json       # Настроить
+└── settings.json       # Configure
 ```
 
 ---
 
-## Что читать из principles
+## What to read from principles
 
-**Перед /bootstrap (5 мин):**
-- Этот файл
+**Before /bootstrap (5 min):**
+- This file
 
-**После /bootstrap, перед Day 1 (15 мин):**
-- `01-principles.md` — понять философию
-- `03-project-structure.md` — понять структуру
-- `09-onboarding.md` — чеклист Day 1-4
+**After /bootstrap, before Day 1 (15 min):**
+- `01-principles.md` — understand the philosophy
+- `03-project-structure.md` — understand the structure
+- `09-onboarding.md` — Day 1-4 checklist
 
-**По мере необходимости:**
-- Остальные документы — reference material
+**As needed:**
+- Other documents — reference material

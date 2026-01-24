@@ -1,31 +1,31 @@
-# Антипаттерны
+# Antipatterns
 
 ## 1. God Files
 
 ```python
-# ❌ ПЛОХО: 2000 строк в одном файле
+# ❌ BAD: 2000 lines in one file
 # src/services/main_service.py (2000 LOC)
 
-# ✅ ХОРОШО: Разбить по ответственности
+# ✅ GOOD: Split by responsibility
 # src/domains/orders/service.py (200 LOC)
 # src/domains/orders/validation.py (100 LOC)
 # src/domains/orders/notifications.py (150 LOC)
 ```
 
-**Правило:** Файл > 400 LOC — сигнал к разбиению (600 для тестов).
+**Rule:** File > 400 LOC — signal to split (600 for tests).
 
 ---
 
-## 2. Utils/Helpers свалка
+## 2. Utils/Helpers Junk Drawer
 
 ```python
-# ❌ ПЛОХО
-src/utils/helpers.py  # 50 несвязанных функций
+# ❌ BAD
+src/utils/helpers.py  # 50 unrelated functions
 
-# ✅ ХОРОШО
-src/shared/formatting.py      # форматирование
-src/shared/validation.py      # валидация
-src/domains/orders/utils.py   # utils специфичные для orders
+# ✅ GOOD
+src/shared/formatting.py      # formatting
+src/shared/validation.py      # validation
+src/domains/orders/utils.py   # utils specific to orders
 ```
 
 ---
@@ -33,14 +33,14 @@ src/domains/orders/utils.py   # utils специфичные для orders
 ## 3. Circular Imports
 
 ```python
-# ❌ ПЛОХО
+# ❌ BAD
 # domains/orders/service.py
 from domains.users.service import UserService
 
 # domains/users/service.py
 from domains.orders.service import OrderService  # CIRCULAR!
 
-# ✅ ХОРОШО: Dependency Injection
+# ✅ GOOD: Dependency Injection
 # domains/orders/service.py
 from shared.interfaces import IUserService
 
@@ -54,13 +54,13 @@ class OrderService:
 ## 4. Implicit Dependencies
 
 ```python
-# ❌ ПЛОХО: Глобальный импорт
-from config import db  # откуда это?
+# ❌ BAD: Global import
+from config import db  # where is this from?
 
 def get_order(id):
-    return db.query(...)  # неявная зависимость
+    return db.query(...)  # implicit dependency
 
-# ✅ ХОРОШО: Явная зависимость
+# ✅ GOOD: Explicit dependency
 from infra.db import Database
 
 class OrderRepository:
@@ -73,12 +73,12 @@ class OrderRepository:
 ## 5. Inconsistent Naming
 
 ```python
-# ❌ ПЛОХО: Разные стили
+# ❌ BAD: Different styles
 src/handlers/userHandler.py      # camelCase
 src/handlers/order_handler.py    # snake_case
 src/handlers/PaymentHandlers.py  # PascalCase
 
-# ✅ ХОРОШО: Единый стиль (snake_case для файлов)
+# ✅ GOOD: Single style (snake_case for files)
 src/domains/users/handlers.py
 src/domains/orders/handlers.py
 src/domains/payments/handlers.py
@@ -89,11 +89,11 @@ src/domains/payments/handlers.py
 ## 6. Deep Nesting
 
 ```python
-# ❌ ПЛОХО
+# ❌ BAD
 src/domains/orders/services/internal/core/base/abstract/handler.py
 
-# ✅ ХОРОШО
+# ✅ GOOD
 src/domains/orders/service.py
 ```
 
-**Правило:** Максимум 3 уровня вложенности.
+**Rule:** Maximum 3 levels of nesting.

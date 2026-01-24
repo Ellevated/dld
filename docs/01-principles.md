@@ -1,19 +1,19 @@
-# Ключевые принципы
+# Key Principles
 
-## Принцип #1: Colocation by Domain
+## Principle #1: Colocation by Domain
 
-Группируй код по бизнес-смыслу, не по техническому типу.
+Group code by business meaning, not by technical type.
 
 ```
-# ❌ ПЛОХО: Separation by type
+# ❌ BAD: Separation by type
 src/
-├── handlers/           # ВСЕ handlers вместе
-├── services/           # ВСЕ services вместе
-├── models/             # ВСЕ models вместе
-├── repositories/       # ВСЕ repos вместе
-└── utils/              # свалка
+├── handlers/           # ALL handlers together
+├── services/           # ALL services together
+├── models/             # ALL models together
+├── repositories/       # ALL repos together
+└── utils/              # junk drawer
 
-# ✅ ХОРОШО: Colocation by domain
+# ✅ GOOD: Colocation by domain
 src/
 ├── domains/
 │   ├── orders/
@@ -24,15 +24,15 @@ src/
 │   │   └── README.md
 │   └── payments/
 │       └── ...
-├── shared/             # базовые типы, exceptions
+├── shared/             # base types, exceptions
 └── infra/              # db, cache, external APIs
 ```
 
-**Почему:** Когда LLM работает с заказами, он читает ТОЛЬКО `domains/orders/`. Не нужно искать по всему проекту.
+**Why:** When LLM works with orders, it reads ONLY `domains/orders/`. No need to search the entire project.
 
 ---
 
-## Принцип #2: Три слоя
+## Principle #2: Three Layers
 
 ```
 ┌─────────────────────────────────────────┐
@@ -42,7 +42,7 @@ src/
                   │
 ┌─────────────────▼───────────────────────┐
 │               Domains                   │  ← domains/
-│    (бизнес-логика, изолированная)       │
+│    (business logic, isolated)           │
 └─────────────────┬───────────────────────┘
                   │
 ┌─────────────────▼───────────────────────┐
@@ -51,34 +51,34 @@ src/
 └─────────────────────────────────────────┘
 ```
 
-**Правила зависимостей:**
+**Dependency rules:**
 - Entry Points → Domains → Infrastructure
-- Domains НЕ зависят друг от друга напрямую (через shared interfaces)
-- Infrastructure НЕ знает о Domains
+- Domains do NOT depend on each other directly (through shared interfaces)
+- Infrastructure does NOT know about Domains
 
 ---
 
-## Принцип #3: Flat > Deep
+## Principle #3: Flat > Deep
 
 ```
-# ❌ ПЛОХО: Глубокая вложенность
+# ❌ BAD: Deep nesting
 src/domains/orders/services/internal/helpers/utils/format.py
 
-# ✅ ХОРОШО: Плоская структура
+# ✅ GOOD: Flat structure
 src/domains/orders/formatting.py
 ```
 
-**Правило:** Максимум 3 уровня вложенности внутри домена.
+**Rule:** Maximum 3 levels of nesting within a domain.
 
 ---
 
-## Почему это важно
+## Why This Matters
 
-LLM работает с ограниченным контекстом. Чем понятнее структура:
+LLM works with limited context. The clearer the structure:
 
-| Проблема | Решение |
-|----------|---------|
-| LLM путает файлы | Colocation by domain |
-| Много Grep/Glob запросов | Self-describing names |
-| Непонятно куда класть код | Чёткие слои (api → domains → infra) |
-| Долгий онбординг новой сессии | README в каждом домене |
+| Problem | Solution |
+|---------|----------|
+| LLM confuses files | Colocation by domain |
+| Many Grep/Glob queries | Self-describing names |
+| Unclear where to put code | Clear layers (api → domains → infra) |
+| Long onboarding for new session | README in each domain |

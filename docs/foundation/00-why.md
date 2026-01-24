@@ -1,85 +1,85 @@
-# Why DLD: Боль предпринимателя
+# Why DLD: The Entrepreneur's Pain
 
-## Исходная проблема
+## The Core Problem
 
-Предприниматель с сильным продуктовым видением сталкивается с узким горлышком:
-
-```
-Идея в голове → [?] → Работающий продукт
-```
-
-**Классический путь:**
-1. Нанять разработчиков
-2. Объяснить видение
-3. Ждать месяцы
-4. Получить "почти то, что хотел"
-5. Масштабироваться через найм и менеджмент
-
-**Проблемы классического пути:**
-- Медленно и дорого
-- "Люди делают по-своему" — потеря видения
-- Предприниматель превращается в менеджера, а не творца
-- Идеи остаются "в голове" из-за friction
-
----
-
-## Ключевое наблюдение
-
-> **Узкое горлышко — не идея, а скорость изменений.**
-
-Предприниматель должен быть:
-- Источником смыслов
-- UX-тестировщиком
-- Принимателем продуктовых решений
-
-Предприниматель НЕ должен быть:
-- Микроменеджером разработки
-- Диспетчером задач
-- Переводчиком между "бизнесом" и "техникой"
-
----
-
-## Что ценно в предпринимателе
-
-| Магия | Рутина |
-|-------|--------|
-| Живой UX-тест | Постановка задач |
-| "Это неудобно" / "Aha!" | Координация разработчиков |
-| Продуктовые решения | Код-ревью |
-| Новые смыслы | Деплой и мониторинг |
-
-**DLD берёт рутину → освобождает магию.**
-
----
-
-## Первопричина DLD
-
-1. **Предприниматель генерирует смыслы**, а не управляет рутиной
-2. **Скорость изменений** — главная метрика, не количество фич
-3. **Корректность реализации** — фича должна работать как задумано
-4. **Автономность** — человек финальный судья UX, а не ремесленник
-
----
-
-## "Зелёные кнопки"
-
-Принцип проверки: если реализовал "зелёные кнопки", они должны быть:
-- Реально зелёными
-- Работать корректно
-
-Если выглядит тупо — **это тупая идея, а не кривой код**.
-
-DLD обязан реализовать задумку точно, чтобы:
-- Хорошая идея → сразу видно, что хорошая
-- Плохая идея → сразу видно, что плохая (и можно быстро поменять)
-
----
-
-## Резюме
+An entrepreneur with a strong product vision faces a bottleneck:
 
 ```
-До DLD:  Идея → [месяцы] → Компромисс → "Ну, типа работает"
-После:   Идея → [часы]  → Точная реализация → Ясное понимание
+Idea in head → [?] → Working product
 ```
 
-**Следующий шаг:** [01-double-loop.md](01-double-loop.md) — как это работает
+**The classic path:**
+1. Hire developers
+2. Explain the vision
+3. Wait months
+4. Get "almost what you wanted"
+5. Scale through hiring and management
+
+**Problems with the classic path:**
+- Slow and expensive
+- "People do it their own way" — loss of vision
+- Entrepreneur becomes a manager, not a creator
+- Ideas remain "in the head" due to friction
+
+---
+
+## Key Observation
+
+> **The bottleneck is not the idea, but the speed of changes.**
+
+The entrepreneur should be:
+- Source of meaning
+- UX tester
+- Product decision maker
+
+The entrepreneur should NOT be:
+- Development micromanager
+- Task dispatcher
+- Translator between "business" and "tech"
+
+---
+
+## What's Valuable in an Entrepreneur
+
+| Magic | Routine |
+|-------|---------|
+| Live UX testing | Task assignment |
+| "This is inconvenient" / "Aha!" | Developer coordination |
+| Product decisions | Code review |
+| New meanings | Deploy and monitoring |
+
+**DLD takes the routine → frees up the magic.**
+
+---
+
+## The Root Cause of DLD
+
+1. **Entrepreneur generates meanings**, not manages routine
+2. **Speed of changes** — the main metric, not the number of features
+3. **Implementation correctness** — feature must work as intended
+4. **Autonomy** — human is the final UX judge, not a craftsman
+
+---
+
+## "Green Buttons"
+
+Validation principle: if you implemented "green buttons", they must be:
+- Actually green
+- Work correctly
+
+If it looks stupid — **it's a stupid idea, not bad code**.
+
+DLD must implement the idea exactly so that:
+- Good idea → immediately visible that it's good
+- Bad idea → immediately visible that it's bad (and can quickly change)
+
+---
+
+## Summary
+
+```
+Before DLD:  Idea → [months] → Compromise → "Well, kinda works"
+After:       Idea → [hours]  → Exact implementation → Clear understanding
+```
+
+**Next step:** [01-double-loop.md](01-double-loop.md) — how it works

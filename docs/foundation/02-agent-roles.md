@@ -1,11 +1,11 @@
-# Agent Roles: Роли в DLD v3.0
+# Agent Roles: Roles in DLD v3.0
 
-## Архитектура
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         SPARK                                       │
-│   Идея → Socratic Dialogue → Research (Exa/Context7) → Spec        │
+│   Idea → Socratic Dialogue → Research (Exa/Context7) → Spec        │
 └─────────────────────────────────────────────────────────────────────┘
                               ↓ auto-handoff
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -35,56 +35,56 @@
 
 ## Spark (Specification)
 
-**Скилл:** `/spark`
-**Модель:** Opus (глубокий анализ)
+**Skill:** `/spark`
+**Model:** Opus (deep analysis)
 
-### Что делает
-1. **Socratic Dialogue** — 5-7 глубоких вопросов (один за раз)
-2. **Research** — Exa (паттерны, примеры) + Context7 (official docs)
-3. **5 Whys** — для багов (root cause до spec)
-4. **Spec** — `ai/features/TYPE-XXX.md` с Allowed Files
+### What it does
+1. **Socratic Dialogue** — 5-7 deep questions (one at a time)
+2. **Research** — Exa (patterns, examples) + Context7 (official docs)
+3. **5 Whys** — for bugs (root cause before spec)
+4. **Spec** — `ai/features/TYPE-XXX.md` with Allowed Files
 
-### Границы (из "Planner")
+### Boundaries (from "Planner")
 
-| Spark спрашивает | Spark решает сам |
-|------------------|------------------|
-| "Какую проблему решаем?" | Технический подход |
-| "Кто пользователь?" | Паттерны реализации |
-| "Какой минимальный scope?" | API design |
-| "Как проверим что работает?" | Тайминги, ретраи |
+| Spark asks | Spark decides on its own |
+|------------|--------------------------|
+| "What problem are we solving?" | Technical approach |
+| "Who is the user?" | Implementation patterns |
+| "What's the minimum scope?" | API design |
+| "How will we verify it works?" | Timings, retries |
 
-### Результат
+### Result
 ```
 ai/features/FTR-XXX-YYYY-MM-DD-name.md
-├── Зачем / Контекст
+├── Why / Context
 ├── Scope (in/out)
 ├── Allowed Files (STRICT!)
-├── Approaches (с Research Sources)
+├── Approaches (with Research Sources)
 ├── Implementation Plan
 └── Definition of Done
 ```
 
 ### Auto-handoff
-После spec → автоматически запускает Autopilot (без ручного шага).
+After spec → automatically launches Autopilot (no manual step).
 
 ---
 
-## Plan Subagent (Детализация)
+## Plan Subagent (Detailing)
 
-**Тип:** Subagent в Autopilot
-**Модель:** Opus + ultrathink
+**Type:** Subagent in Autopilot
+**Model:** Opus + ultrathink
 
-### Когда включается
-Если spec не содержит `## Detailed Implementation Plan`.
+### When it activates
+If spec doesn't contain `## Detailed Implementation Plan`.
 
-### Что делает
-1. **Ultrathink** — глубокий анализ spec + codebase
-2. **Декомпозиция** — разбивает на атомарные задачи
-3. **Acceptance criteria** — для каждой задачи
-4. **Execution order** — зависимости между задачами
+### What it does
+1. **Ultrathink** — deep analysis of spec + codebase
+2. **Decomposition** — breaks down into atomic tasks
+3. **Acceptance criteria** — for each task
+4. **Execution order** — dependencies between tasks
 
-### Результат
-Добавляет в spec:
+### Result
+Adds to spec:
 ```markdown
 ## Detailed Implementation Plan
 
@@ -100,22 +100,22 @@ Type: code | Files: create src/domains/X/repository.py | Acceptance: ...
 
 ---
 
-## Coder (Реализация)
+## Coder (Implementation)
 
-**Тип:** Fresh subagent per task
-**Модель:** Sonnet (90% capability, 2x speed)
+**Type:** Fresh subagent per task
+**Model:** Sonnet (90% capability, 2x speed)
 
-### Что делает
-1. Читает task из плана
-2. **Проверяет Allowed Files** — файл не в списке = STOP
-3. Использует Research Sources из spec
-4. Пишет код + тесты
-5. Возвращает `files_changed`
+### What it does
+1. Reads task from the plan
+2. **Checks Allowed Files** — file not in list = STOP
+3. Uses Research Sources from spec
+4. Writes code + tests
+5. Returns `files_changed`
 
-### Ключевое
-- **Fresh context** — каждая задача = новый subagent
-- **No gold plating** — только то что в spec
-- **Allowlist enforcement** — не в списке = blocked
+### Key points
+- **Fresh context** — each task = new subagent
+- **No gold plating** — only what's in spec
+- **Allowlist enforcement** — not in list = blocked
 
 ### LLM-Friendly Gates
 - ≤400 LOC per file (600 for tests)
@@ -124,13 +124,13 @@ Type: code | Files: create src/domains/X/repository.py | Acceptance: ...
 
 ---
 
-## Tester (Проверка)
+## Tester (Verification)
 
-**Тип:** Fresh subagent per task
-**Модель:** Sonnet
+**Type:** Fresh subagent per task
+**Model:** Sonnet
 
 ### Smart Testing
-Не гоняет всё подряд — выбирает по `files_changed`:
+Doesn't run everything — selects based on `files_changed`:
 
 | Changed file | Tests to run |
 |--------------|--------------|
@@ -149,24 +149,24 @@ TEST FAILED
       └─ DON'T FIX! Log: "⚠️ Out-of-scope: test_X. SKIPPED."
 ```
 
-Не чинит чужие баги — только то что сломал.
+Doesn't fix others' bugs — only what it broke.
 
 ---
 
 ## Debugger (Root Cause)
 
-**Тип:** Fresh subagent (вызывается при fail)
-**Модель:** Opus (глубокий анализ)
+**Type:** Fresh subagent (called on fail)
+**Model:** Opus (deep analysis)
 
-### Когда включается
+### When it activates
 Tester fails + in-scope failure.
 
-### Что делает
-1. Анализирует traceback
+### What it does
+1. Analyzes traceback
 2. 4-phase debugging: Reproduce → Isolate → Root Cause → Hypothesis
-3. Возвращает `fix_hypothesis` + `affected_files`
+3. Returns `fix_hypothesis` + `affected_files`
 
-### Лимиты
+### Limits
 - Max 3 debug loops per task
 - After 3 → Council escalation
 
@@ -175,24 +175,24 @@ Tester fails + in-scope failure.
 ## Two-Stage Review
 
 ### Stage 1: Spec Reviewer
-**Модель:** Sonnet
+**Model:** Sonnet
 
-**Вопрос:** "Код соответствует spec ТОЧНО?"
+**Question:** "Does the code match the spec EXACTLY?"
 
-| Результат | Действие |
-|-----------|----------|
+| Result | Action |
+|--------|--------|
 | `approved` | → Stage 2 |
-| `needs_implementation` | → CODER добавляет |
-| `needs_removal` | → CODER удаляет лишнее |
+| `needs_implementation` | → CODER adds |
+| `needs_removal` | → CODER removes excess |
 
 ### Stage 2: Code Quality Reviewer
-**Модель:** Opus
-**Скилл:** `/review`
+**Model:** Opus
+**Skill:** `/review`
 
-**Вопрос:** "Архитектура, дублирование, качество?"
+**Question:** "Architecture, duplication, quality?"
 
-| Результат | Действие |
-|-----------|----------|
+| Result | Action |
+|--------|--------|
 | `approved` | → COMMIT |
 | `needs_refactor` | → CODER fix → re-review (max 2) |
 
@@ -210,39 +210,39 @@ Only path:
 
 ## Documenter
 
-**Тип:** Runs in main context
-**Модель:** Sonnet
+**Type:** Runs in main context
+**Model:** Sonnet
 
-### Что делает
-1. Проверяет — нужно ли обновить docs?
-2. Обновляет: README, ARCHITECTURE.md, ADR
-3. Пишет Autopilot Log в spec
+### What it does
+1. Checks — do docs need updating?
+2. Updates: README, ARCHITECTURE.md, ADR
+3. Writes Autopilot Log in spec
 
-### Когда пропускает
-- Файлы `.claude/*`, `*.md` — no tests, no docs needed
+### When it skips
+- Files `.claude/*`, `*.md` — no tests, no docs needed
 
 ---
 
 ## Council (Escalation)
 
-**Скилл:** `/council`
-**Модель:** Opus (5 экспертов)
+**Skill:** `/council`
+**Model:** Opus (5 experts)
 
-### Когда включается
+### When it activates
 - Debug loop > 3
 - Refactor loop > 2
-- Architecture decision нужен
+- Architecture decision needed
 
-### Состав
-| Эксперт | Фокус |
-|---------|-------|
+### Composition
+| Expert | Focus |
+|--------|-------|
 | Product Manager | UX, user journey, edge cases |
 | Architect | DRY, SSOT, dependencies |
 | Pragmatist | YAGNI, complexity, feasibility |
 | Security | OWASP, attack surfaces |
-| **Synthesizer** | Финальное решение |
+| **Synthesizer** | Final decision |
 
-### Возвращает
+### Returns
 ```yaml
 decision: solution_found | architecture_change | needs_human
 solution: "..."
@@ -265,14 +265,14 @@ fix_steps: [...]
 | Documenter | Sonnet | Routine updates |
 | Council | Opus | Complex decisions |
 
-**Экономия:** Sonnet для routine → 50%+ cost reduction.
+**Savings:** Sonnet for routine → 50%+ cost reduction.
 
 ---
 
-## Резюме: Mapping концепция → реализация
+## Summary: Mapping concept → implementation
 
-| Концепция (исходная) | Реализация DLD v3.0 |
-|----------------------|---------------------|
+| Concept (original) | DLD v3.0 Implementation |
+|--------------------|-------------------------|
 | Planner | **Spark** + **Plan Subagent** |
 | Developer | **Coder** (fresh per task) |
 | Tester | **Tester** + Smart Testing + Scope Protection |
@@ -281,5 +281,5 @@ fix_steps: [...]
 
 ---
 
-**Назад:** [01-double-loop.md](01-double-loop.md) — концепция двух петель
-**К практике:** [../00-bootstrap.md](../00-bootstrap.md) — как начать проект
+**Back:** [01-double-loop.md](01-double-loop.md) — the two loops concept
+**To practice:** [../00-bootstrap.md](../00-bootstrap.md) — how to start a project

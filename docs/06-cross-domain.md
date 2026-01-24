@@ -1,10 +1,10 @@
 # Cross-Domain Communication
 
-## Проблема
+## Problem
 
-Домены не должны напрямую импортировать друг друга — это создаёт circular imports и tight coupling.
+Domains should not directly import each other — this creates circular imports and tight coupling.
 
-## Решение: Protocol + Dependency Injection
+## Solution: Protocol + Dependency Injection
 
 ```python
 # shared/interfaces.py
@@ -24,11 +24,11 @@ class OrderService:
         # ...
 ```
 
-## Правило
+## Rule
 
-Домен НЕ импортирует другой домен напрямую. Используй Protocol + DI.
+A domain does NOT import another domain directly. Use Protocol + DI.
 
-## Wiring (в Entry Points)
+## Wiring (in Entry Points)
 
 ```python
 # api/deps.py
@@ -39,8 +39,8 @@ def get_order_service() -> OrderService:
     return OrderService(user_repo=UserRepository())
 ```
 
-## Преимущества
+## Benefits
 
-1. **Тестируемость** — можно подменить зависимость на mock
-2. **Изоляция** — домен не знает о реализации другого домена
-3. **Нет циклов** — Protocol определён в shared, не в домене
+1. **Testability** — can replace dependency with mock
+2. **Isolation** — domain doesn't know about another domain's implementation
+3. **No cycles** — Protocol is defined in shared, not in domain

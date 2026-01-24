@@ -1,118 +1,118 @@
-# Double Loop: Две петли
+# Double Loop: Two Loops
 
-## Концепция
+## Concept
 
-DLD (Double Loop Delivery) — операционная модель из двух петель:
+DLD (Double Loop Delivery) — an operational model with two loops:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    ПЕТЛЯ 1: Автономная                          │
+│                    LOOP 1: Autonomous                           │
 │                    (Execution Loop)                             │
 │                                                                 │
-│   backlog → spec → код/тесты → dev-deploy → автопроверки       │
+│   backlog → spec → code/tests → dev-deploy → auto-checks       │
 │      ↑                                              │           │
 │      └──────────────────────────────────────────────┘           │
-│                    (без участия человека)                       │
+│                    (without human participation)                │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
-                      готово для UX-прогона
+                      ready for UX walkthrough
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    ПЕТЛЯ 2: Человеческая                        │
+│                    LOOP 2: Human                                │
 │                    (Sensemaking Loop)                           │
 │                                                                 │
-│   UX-тест → неудобства/aha → решения → новые смыслы → backlog  │
+│   UX-test → inconveniences/aha → decisions → new meanings → backlog  │
 │      ↑                                              │           │
 │      └──────────────────────────────────────────────┘           │
-│                    (только предприниматель)                     │
+│                    (entrepreneur only)                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Петля 1: Автономная
+## Loop 1: Autonomous
 
-**Цель:** Довести задачу до dev-результата без дёргания человека.
+**Goal:** Bring a task to dev-result without bothering the human.
 
-**Поток:**
-1. Задача из backlog
-2. Planner уточняет и создаёт spec
-3. Developer реализует
-4. Tester проверяет
-5. Supervisor контролирует
-6. Deploy в dev
+**Flow:**
+1. Task from backlog
+2. Planner clarifies and creates spec
+3. Developer implements
+4. Tester verifies
+5. Supervisor controls
+6. Deploy to dev
 
-**Ключевое:** Человек не участвует до момента UX-проверки.
-
----
-
-## Петля 2: Человеческая
-
-**Цель:** Генерация смыслов через живое тестирование.
-
-**Поток:**
-1. Предприниматель тестирует как пользователь
-2. Ловит неудобства и aha-моменты
-3. Принимает продуктовые решения
-4. Формирует новые задачи → backlog
-
-**Ключевое:** Предприниматель — финальный судья UX, не ремесленник.
+**Key point:** Human doesn't participate until UX verification.
 
 ---
 
-## Скорость изменений
+## Loop 2: Human
 
-DLD решает **скорость изменений** — главную боль предпринимателя.
+**Goal:** Generate meanings through live testing.
 
-| Без DLD | С DLD |
-|---------|-------|
-| Идея → недели → результат | Идея → часы → результат |
-| "Давайте обсудим" | "Давайте проверим" |
-| Гипотезы в голове | Гипотезы в продукте |
-| Страх менять | Легко менять |
+**Flow:**
+1. Entrepreneur tests as a user
+2. Catches inconveniences and aha-moments
+3. Makes product decisions
+4. Forms new tasks → backlog
 
----
-
-## Качество реализации
-
-DLD доводит фичу до состояния **"работает именно так, как задумано"**.
-
-Почему это важно:
-- Если фича плохая → видно, что **плохая идея**
-- Если фича хорошая → видно, что **хорошая идея**
-- Нет неопределённости "это идея плохая или реализация кривая?"
+**Key point:** Entrepreneur is the final UX judge, not a craftsman.
 
 ---
 
-## Минимальные требования DLD v1
+## Speed of Changes
 
-1. **Берёт фичу** — из backlog или голосом
-2. **Делает реализацию** — код + тесты
-3. **Прогоняет тестирование** — unit/integration/e2e
-4. **Выдаёт dev-результат** — отражающий задумку, не компромисс
+DLD solves **speed of changes** — the main pain of the entrepreneur.
+
+| Without DLD | With DLD |
+|-------------|----------|
+| Idea → weeks → result | Idea → hours → result |
+| "Let's discuss" | "Let's verify" |
+| Hypotheses in head | Hypotheses in product |
+| Fear of changing | Easy to change |
 
 ---
 
-## Граница автономности
+## Implementation Quality
+
+DLD brings a feature to the state **"works exactly as intended"**.
+
+Why this matters:
+- If feature is bad → visible that **it's a bad idea**
+- If feature is good → visible that **it's a good idea**
+- No uncertainty "is this a bad idea or bad implementation?"
+
+---
+
+## Minimum Requirements DLD v1
+
+1. **Takes a feature** — from backlog or verbally
+2. **Makes implementation** — code + tests
+3. **Runs testing** — unit/integration/e2e
+4. **Delivers dev-result** — reflecting the intention, not a compromise
+
+---
+
+## Autonomy Boundary
 
 ```
-Вопросы к человеку:
-├── "Зачем эта фича?" ← ДА (бизнес-смысл)
-├── "Какой UX лучше?" ← ДА (продуктовое решение)
-├── "3 или 5 секунд таймаут?" ← НЕТ (техническая деталь)
-└── "SQL или NoSQL?" ← НЕТ (техническое решение)
+Questions for human:
+├── "Why this feature?" ← YES (business meaning)
+├── "Which UX is better?" ← YES (product decision)
+├── "3 or 5 seconds timeout?" ← NO (technical detail)
+└── "SQL or NoSQL?" ← NO (technical decision)
 ```
 
-Planner общается на языке **бизнес-логики и продукта**.
-Технические детали — ответственность системы.
+Planner communicates in the language of **business logic and product**.
+Technical details — system's responsibility.
 
 ---
 
-## Резюме
+## Summary
 
-| Петля | Кто | Что делает |
-|-------|-----|------------|
-| Автономная | Агенты | Превращают задачу в работающий код |
-| Человеческая | Предприниматель | Превращает опыт в новые задачи |
+| Loop | Who | What they do |
+|------|-----|--------------|
+| Autonomous | Agents | Transform task into working code |
+| Human | Entrepreneur | Transform experience into new tasks |
 
-**Следующий шаг:** [02-agent-roles.md](02-agent-roles.md) — кто внутри автономной петли
+**Next step:** [02-agent-roles.md](02-agent-roles.md) — who's inside the autonomous loop

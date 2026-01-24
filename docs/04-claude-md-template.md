@@ -1,4 +1,4 @@
-# Шаблон CLAUDE.md
+# CLAUDE.md Template
 
 ```markdown
 # {Project Name}
