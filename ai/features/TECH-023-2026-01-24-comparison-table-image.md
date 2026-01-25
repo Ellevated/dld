@@ -1,6 +1,6 @@
 # TECH: [TECH-023] Comparison Table Image
 
-**Status:** in_progress | **Priority:** P3 | **Date:** 2026-01-24
+**Status:** done | **Priority:** P3 | **Date:** 2026-01-24
 
 ## Problem
 

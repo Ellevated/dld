@@ -26,7 +26,7 @@
 | TECH-020 | Example: AI Autonomous Company | done | P3 | [TECH-020](features/TECH-020-2026-01-24-example-autonomous-company.md) |
 | TECH-021 | Example: Content Factory | done | P3 | [TECH-021](features/TECH-021-2026-01-24-example-content-factory.md) |
 | TECH-022 | Workflow diagram | done | P3 | [TECH-022](features/TECH-022-2026-01-24-workflow-diagram.md) |
-| TECH-023 | Comparison table image | in_progress | P3 | [TECH-023](features/TECH-023-2026-01-24-comparison-table-image.md) |
+| TECH-023 | Comparison table image | done | P3 | [TECH-023](features/TECH-023-2026-01-24-comparison-table-image.md) |
 
 ---
 
