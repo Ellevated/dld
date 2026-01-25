@@ -118,9 +118,9 @@ name: Winston
 
 research:
   - query: "exact search query you used"
-    found: "[Title](url) — key insight extracted"
+    found: "[Title]({url}) — key insight extracted"
   - query: "second search query"
-    found: "[Title](url) — relevant pattern"
+    found: "[Title]({url}) — relevant pattern"
 
 analysis: |
   [Your architectural analysis in 3-5 paragraphs]
@@ -152,9 +152,9 @@ name: Winston
 
 research:
   - query: "telegram bot rate limiting architecture patterns"
-    found: "[Rate Limiting Best Practices](url) — use token bucket at gateway level"
+    found: "[Rate Limiting Best Practices](https://cloud.google.com/architecture/rate-limiting-strategies-techniques) — use token bucket at gateway level"
   - query: "python domain events cross-domain communication"
-    found: "[Domain Events Pattern](url) — prefer events over direct imports"
+    found: "[Domain Events Pattern](https://martinfowler.com/eaaDev/DomainEvent.html) — prefer events over direct imports"
 
 analysis: |
   Looking at the proposed campaign creation flow, I see a potential SSOT violation.

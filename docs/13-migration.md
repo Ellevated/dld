@@ -35,9 +35,10 @@ Even during migration — set up linter so new code follows the rules.
 # scripts/check_domain_imports.py
 # You can add a whitelist for legacy files:
 
+# Example whitelist (replace with your actual files)
 LEGACY_WHITELIST = {
-    "src/services/order_service.py",  # TODO: migrate by 2026-02-01
-    "src/utils/helpers.py",           # TODO: split into shared/
+    "src/services/order_service.py",  # example: migrate by deadline
+    "src/utils/helpers.py",           # example: split into shared/
 }
 ```
 

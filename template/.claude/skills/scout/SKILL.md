@@ -26,17 +26,29 @@ Task tool:
   prompt: |
     MODE: quick | deep
     QUERY: {research question}
-    TYPE: library | pattern | architecture | general
+    TYPE: library | pattern | architecture | error | company | general
     DATE: {current date}
 ```
 
 ## Research Tools
 
 Scout has access to:
-- `mcp__exa__web_search_exa` — web search
-- `mcp__exa__get_code_context_exa` — code examples
+
+**Exa (web research):**
+- `mcp__exa__web_search_exa` — web search with clean content
+- `mcp__exa__web_search_advanced_exa` — filtered search (date, domain)
+- `mcp__exa__get_code_context_exa` — code from GitHub, StackOverflow
+- `mcp__exa__deep_search_exa` — deep search with query expansion
+- `mcp__exa__crawling_exa` — extract content from specific URL
+- `mcp__exa__company_research_exa` — company information
+- `mcp__exa__deep_researcher_start` — start AI researcher (complex topics)
+- `mcp__exa__deep_researcher_check` — get deep research results
+
+**Context7 (library docs):**
 - `mcp__plugin_context7_context7__resolve-library-id` — find library ID
-- `mcp__plugin_context7_context7__query-docs` — official docs
+- `mcp__plugin_context7_context7__query-docs` — official documentation
+
+**Local:**
 - Read, Glob, Grep — codebase exploration
 
 ## Output

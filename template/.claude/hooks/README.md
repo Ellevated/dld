@@ -89,7 +89,6 @@ Hooks are configured in `.claude/settings.json`:
 
 **Detection patterns:**
 - "create new feature", "implement X", "add endpoint"
-- Russian equivalents: "создай фичу", "добавь api"
 
 **Skips if:**
 - User already typed `/spark`, `/autopilot`, `/audit`, etc.

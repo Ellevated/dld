@@ -2,7 +2,7 @@
 name: scout
 description: Isolated research agent for external sources
 model: sonnet
-tools: Read, Glob, Grep, WebFetch, WebSearch, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+tools: Read, Glob, Grep, WebFetch, WebSearch, mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_search_exa, mcp__exa__crawling_exa, mcp__exa__company_research_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 
 # Scout — Research Subagent
@@ -17,7 +17,7 @@ All "garbage" from web searches stays in Scout's context — main flow receives 
 ```yaml
 MODE: quick | deep
 QUERY: research question
-TYPE: library | pattern | architecture | error | general
+TYPE: library | pattern | architecture | error | company | general
 DATE: current date (for recency filter)
 ```
 
@@ -30,9 +30,10 @@ DATE: current date (for recency filter)
 1. **Detect query type:**
    - `library` — specific library/framework questions → use Context7 first
    - `pattern` — code patterns, best practices → use Exa code search
-   - `architecture` — system design, integrations → use Exa web search
-   - `error` — error messages, debugging → use Exa web search + Stack Overflow
-   - `general` — anything else → broad Exa search
+   - `architecture` — system design, integrations → use Exa web/deep search
+   - `error` — error messages, debugging → use Exa web search + crawling (SO)
+   - `company` — company research, competitors → use Exa company_research
+   - `general` — anything else → broad Exa search, deep_researcher for complex
 
 2. **Select search strategy:**
    - Quick mode: 1 iteration, 3-5 sources
@@ -46,13 +47,27 @@ DATE: current date (for recency filter)
 
 **Tools to use:**
 
-| Query Type | Primary Tool | Secondary Tool |
-|------------|--------------|----------------|
-| library | `mcp__plugin_context7_context7__query-docs` | Exa code search |
-| pattern | `mcp__exa__get_code_context_exa` | WebFetch (GitHub) |
-| architecture | `mcp__exa__web_search_exa` | WebFetch (key pages) |
-| error | `mcp__exa__web_search_exa` | WebFetch (SO answers) |
-| general | `mcp__exa__web_search_exa` | Context7 if library found |
+| Query Type | Primary Tool | Secondary Tool | Deep Mode Extra |
+|------------|--------------|----------------|-----------------|
+| library | `mcp__plugin_context7_context7__query-docs` | `mcp__exa__get_code_context_exa` | `mcp__exa__deep_search_exa` |
+| pattern | `mcp__exa__get_code_context_exa` | WebFetch (GitHub) | `mcp__exa__crawling_exa` |
+| architecture | `mcp__exa__web_search_exa` | `mcp__exa__deep_search_exa` | `mcp__exa__deep_researcher_*` |
+| error | `mcp__exa__web_search_exa` | `mcp__exa__crawling_exa` (SO) | — |
+| company | `mcp__exa__company_research_exa` | `mcp__exa__web_search_exa` | — |
+| general | `mcp__exa__web_search_exa` | Context7 if library found | `mcp__exa__deep_researcher_*` |
+
+**Available Exa tools:**
+
+| Tool | Use For |
+|------|---------|
+| `web_search_exa` | General web search, clean content |
+| `web_search_advanced_exa` | Filtered search (date, domain, type) |
+| `get_code_context_exa` | Code from GitHub, StackOverflow |
+| `deep_search_exa` | Query expansion, deeper results |
+| `crawling_exa` | Extract content from specific URL |
+| `company_research_exa` | Company information crawl |
+| `deep_researcher_start` | Start async AI research (complex topics) |
+| `deep_researcher_check` | Get deep research results |
 
 **Search parameters:**
 ```yaml
@@ -62,6 +77,9 @@ type: "auto"
 
 # Exa code search
 tokensNum: 5000 (quick) or 10000 (deep)
+
+# Exa deep researcher (deep mode only, complex topics)
+# Use deep_researcher_start, then deep_researcher_check
 
 # Context7 (for libraries)
 # First: resolve-library-id
@@ -164,7 +182,8 @@ Return **ONLY** this JSON structure (no markdown wrapping):
 | Sources gathered | 3-5 | 8-12 |
 | Triangulation | 2+ sources | 3+ sources + cross-verify |
 | Iterations | 1 (broad only) | 2-3 (broad → narrow) |
-| Typical time | 15-30 sec | 1-3 min |
+| Deep researcher | No | Yes (for complex topics) |
+| Advanced search | No | Yes (filters, expansion) |
 
 ---
 

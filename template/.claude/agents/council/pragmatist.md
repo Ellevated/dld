@@ -119,9 +119,9 @@ name: Amelia
 
 research:
   - query: "exact search query you used"
-    found: "[Title](url) — simpler approach found"
+    found: "[Title]({url}) — simpler approach found"
   - query: "second search query"
-    found: "[Title](url) — YAGNI example"
+    found: "[Title]({url}) — YAGNI example"
 
 analysis: |
   [Your pragmatic analysis in 3-5 paragraphs]
@@ -162,9 +162,9 @@ name: Amelia
 
 research:
   - query: "event sourcing vs simple state YAGNI"
-    found: "[Simple State Wins](url) — event sourcing adds 10x complexity for 1% of use cases"
+    found: "[Simple State Wins](https://www.simplethread.com/20-things-ive-learned-in-my-20-years-as-a-software-engineer/) — event sourcing adds 10x complexity for 1% of use cases"
   - query: "python simple caching without redis"
-    found: "[In-Memory Caching](url) — functools.lru_cache handles 90% of cases"
+    found: "[In-Memory Caching](https://docs.python.org/3/library/functools.html#functools.lru_cache) — functools.lru_cache handles 90% of cases"
 
 analysis: |
   *sighs*

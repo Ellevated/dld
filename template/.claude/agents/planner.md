@@ -242,7 +242,7 @@ Task 1 → Task 2 → Task 3
 
 ### Research Sources (if used)
 
-- [Pattern name](url) — what we learned
+- [Pattern name]({url}) — what we learned
 ```
 
 ## Quality Standards

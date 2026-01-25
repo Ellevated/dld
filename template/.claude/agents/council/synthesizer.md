@@ -194,7 +194,7 @@ dissenting_opinions:
     resolution: "How/why overruled"
 
 research_highlights:
-  - "[Key finding](url) — how it influenced decision"
+  - "[Key finding]({url}) — how it influenced decision"
 
 confidence: high | medium | low
 confidence_reason: "Why this confidence level"
@@ -274,8 +274,8 @@ dissenting_opinions:
     resolution: "Addressed via blocking_issues — fix before implementation"
 
 research_highlights:
-  - "[OWASP A01](url) — IDOR is #1 vulnerability, confirms Viktor's finding"
-  - "[Simple State Guide](url) — supports Amelia's simplification suggestion"
+  - "[OWASP A01](https://owasp.org/Top10/A01_2021-Broken_Access_Control/) — IDOR is #1 vulnerability, confirms Viktor's finding"
+  - "[Simple State Guide](https://www.simplethread.com/20-things-ive-learned-in-my-20-years-as-a-software-engineer/) — supports Amelia's simplification suggestion"
 
 confidence: high
 confidence_reason: "Clear consensus on issues, straightforward fixes, well-researched"

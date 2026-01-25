@@ -2,13 +2,29 @@
 
 Model Context Protocol (MCP) servers extend Claude Code's capabilities with external tools.
 
+## Quick Start
+
+**Fastest way to get started:**
+
+```bash
+# Context7 — library documentation
+claude mcp add context7 -- npx -y @context7/mcp-server
+
+# Exa — web search (hosted, all tools enabled)
+claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,linkedin_search_exa,deep_researcher_start,deep_researcher_check"
+```
+
+That's it! Restart Claude Code and MCP tools are available.
+
+---
+
 ## Overview
 
 DLD uses MCP servers for:
 - **Documentation lookup** — Context7 for up-to-date library docs
-- **Web research** — Exa for intelligent web search
+- **Web research** — Exa for intelligent web search, code examples, company research, deep research
 
-All MCP servers are **optional**. DLD works without them, but skills like `/scout` are more powerful with MCP.
+All MCP servers are **optional**. DLD works without them, but skills like `/scout` are significantly more powerful with MCP.
 
 ---
 
@@ -55,21 +71,30 @@ mcp__plugin_context7_context7__query-docs:
 
 ### Exa
 
-**Purpose:** Intelligent web search with semantic understanding.
+**Purpose:** Intelligent web search, code examples, company research, and deep AI-powered research.
 
 **Used by:** `/scout`, `/spark` (research phase)
 
-**Installation:**
+**Installation (Recommended — Hosted):**
+
+No API key needed! Connect directly to Exa's hosted MCP server:
+
+```bash
+# All tools enabled
+claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,linkedin_search_exa,deep_researcher_start,deep_researcher_check"
+```
+
+**Alternative — Local with API key:**
 
 1. Get API key from [exa.ai](https://exa.ai)
 
 2. Add to MCP config:
-```bash
+```json
 {
   "mcpServers": {
     "exa": {
       "command": "npx",
-      "args": ["-y", "@anthropic/mcp-server-exa"],
+      "args": ["-y", "exa-mcp-server"],
       "env": {
         "EXA_API_KEY": "your-api-key-here"
       }
@@ -79,14 +104,39 @@ mcp__plugin_context7_context7__query-docs:
 ```
 
 **Available tools:**
-- `mcp__exa__web_search_exa` — semantic web search
-- `mcp__exa__get_code_context_exa` — code-focused search
+
+| Tool | Description | Default |
+|------|-------------|---------|
+| `web_search_exa` | Web search with clean content extraction | Yes |
+| `get_code_context_exa` | Code snippets from GitHub, StackOverflow | Yes |
+| `company_research_exa` | Research companies by crawling websites | Yes |
+| `web_search_advanced_exa` | Advanced search with filters | No |
+| `deep_search_exa` | Deep search with query expansion | No |
+| `crawling_exa` | Extract content from specific URLs | No |
+| `linkedin_search_exa` | Search LinkedIn for people/companies | No |
+| `deep_researcher_start` | Start AI researcher for complex questions | No |
+| `deep_researcher_check` | Check research status and get report | No |
+
+**Enable specific tools:**
+
+```
+https://mcp.exa.ai/mcp?tools=web_search_exa,deep_search_exa,crawling_exa
+```
 
 **Example usage in agent:**
 ```yaml
+# Basic web search
 mcp__exa__web_search_exa:
-  query: "FastAPI best practices 2024"
+  query: "FastAPI best practices 2025"
   numResults: 5
+
+# Deep research (async)
+mcp__exa__deep_researcher_start:
+  query: "Compare React Server Components vs traditional SSR"
+
+# Get content from URL
+mcp__exa__crawling_exa:
+  url: "https://example.com/article"
 ```
 
 ---
@@ -111,6 +161,25 @@ Project settings override global settings.
 
 ## Full Example Configuration
 
+**Option 1: Hosted Exa (no API key needed)**
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@context7/mcp-server"]
+    },
+    "exa": {
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,linkedin_search_exa,deep_researcher_start,deep_researcher_check"
+    }
+  }
+}
+```
+
+**Option 2: Local Exa with API key**
+
 ```json
 {
   "mcpServers": {
@@ -120,7 +189,7 @@ Project settings override global settings.
     },
     "exa": {
       "command": "npx",
-      "args": ["-y", "@anthropic/mcp-server-exa"],
+      "args": ["-y", "exa-mcp-server"],
       "env": {
         "EXA_API_KEY": "your-api-key-here"
       }

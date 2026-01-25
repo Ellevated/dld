@@ -387,7 +387,7 @@ To apply this pattern to your organization:
 5. **Start small** — One agent, one domain, conservative limits
 6. **Expand gradually** — Add agents as trust builds
 
-See [Migration Guide](/docs/13-migration.md) for DLD setup instructions.
+See [Migration Guide](../../docs/13-migration.md) for DLD setup instructions.
 
 ---
 

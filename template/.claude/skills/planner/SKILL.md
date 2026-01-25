@@ -8,7 +8,7 @@ agent: .claude/agents/planner.md
 
 Transforms feature specs into executable bite-sized tasks.
 
-> **Architecture v3.0:** Plan is an INTERNAL SUBAGENT called by Autopilot.
+> **Architecture v3.4:** Plan is an INTERNAL SUBAGENT called by Autopilot.
 > Users don't call this directly — Autopilot invokes Plan in PHASE 1.
 > The agent file `.claude/agents/planner.md` is the source of truth.
 

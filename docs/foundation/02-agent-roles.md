@@ -1,4 +1,4 @@
-# Agent Roles: Roles in DLD v3.0
+# Agent Roles: Roles in DLD v3.4
 
 ## Architecture
 
@@ -271,7 +271,7 @@ fix_steps: [...]
 
 ## Summary: Mapping concept → implementation
 
-| Concept (original) | DLD v3.0 Implementation |
+| Concept (original) | DLD v3.4 Implementation |
 |--------------------|-------------------------|
 | Planner | **Spark** + **Plan Subagent** |
 | Developer | **Coder** (fresh per task) |

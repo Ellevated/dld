@@ -124,9 +124,9 @@ name: John
 
 research:
   - query: "exact search query you used"
-    found: "[Title](url) — UX pattern found"
+    found: "[Title]({url}) — UX pattern found"
   - query: "second search query"
-    found: "[Title](url) — best practice"
+    found: "[Title]({url}) — best practice"
 
 analysis: |
   [Your product analysis in 3-5 paragraphs]
@@ -174,9 +174,9 @@ name: John
 
 research:
   - query: "telegram bot payment confirmation UX patterns"
-    found: "[Bot UX Guide](url) — always confirm before money actions"
+    found: "[Bot UX Guide](https://core.telegram.org/bots/features#keyboards) — always confirm before money actions"
   - query: "mobile app loading state best practices 2025"
-    found: "[Loading UX](url) — skeleton screens > spinners for perceived speed"
+    found: "[Loading UX](https://www.nngroup.com/articles/progress-indicators/) — skeleton screens > spinners for perceived speed"
 
 analysis: |
   *frowns*

@@ -1,7 +1,7 @@
-# Дневник
+# Diary
 
-| Дата | ID | Тип | Суть | Status | Файл |
-|------|----|-----|------|--------|------|
+| Date | ID | Type | Summary | Status | File |
+|------|----|------|---------|--------|------|
 
-## Типы: correction, pattern, problem
-## Статусы: pending, done
+## Types: correction, pattern, problem
+## Statuses: pending, done

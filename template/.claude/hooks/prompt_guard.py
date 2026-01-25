@@ -7,7 +7,6 @@ Soft block:
 Detects patterns like:
 - "create new feature", "implement X"
 - "add endpoint", "write function"
-- Russian equivalents
 """
 
 import os
@@ -19,17 +18,10 @@ from utils import approve_prompt, ask_tool, get_user_prompt, read_hook_input
 
 # Complexity indicators (keywords + explicit code requests)
 COMPLEXITY_PATTERNS = [
-    # Russian keywords + target
-    r"\b(добавь|создай|сделай|реализуй|напиши)\b.{0,30}\b(фич|функци|endpoint|api|сервис|handler|middleware)",
-    r"\bновая?\s+(фича|функция|feature|фичу)",
-    # English keywords + target
+    # Keywords + target
     r"\b(implement|create|build|add|write)\b.{0,30}\b(feature|function|endpoint|api|service|handler)",
     r"\bnew\s+(feature|functionality)",
-    # Direct code requests (Russian)
-    r"\bнапиши\s+(функцию|класс|метод|код|скрипт)",
-    r"\bсделай\s+(endpoint|api|handler|сервис)",
-    r"\bдобавь\s+(api|endpoint|метод|функцию)",
-    # Direct code requests (English)
+    # Direct code requests
     r"\bwrite\s+(a\s+)?(function|class|method|code|script)",
     r"\bcreate\s+(a\s+)?(endpoint|api|handler|service)",
 ]

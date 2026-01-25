@@ -4,7 +4,7 @@ description: Autonomous task execution with subagents (coder, tester, debugger, 
 model: opus
 ---
 
-# Autopilot v3.0 — Fresh Subagents + Worktree Always
+# Autopilot v3.4 — Fresh Subagents + Worktree Always
 
 Autonomous execution: Plan → Fresh subagent per task → commit → next.
 

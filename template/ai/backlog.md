@@ -1,29 +1,29 @@
 # Backlog
 
-## Очередь
+## Queue
 
-| ID | Задача | Status | Priority | Feature.md |
-|----|--------|--------|----------|------------|
-
----
-
-## Статусы
-
-| Status | Значение |
-|--------|----------|
-| draft | Спека в процессе |
-| queued | Готово для autopilot |
-| in_progress | Autopilot работает |
-| blocked | Нужен человек |
-| resumed | Человек готов, продолжай |
-| done | Завершено |
+| ID | Task | Status | Priority | Feature.md |
+|----|------|--------|----------|------------|
 
 ---
 
-## Архив
+## Statuses
 
-Завершённые задачи: [archive.md](archive.md)
+| Status | Meaning |
+|--------|---------|
+| draft | Spec in progress |
+| queued | Ready for autopilot |
+| in_progress | Autopilot working |
+| blocked | Needs human |
+| resumed | Human ready, continue |
+| done | Completed |
+
+---
+
+## Archive
+
+Completed tasks: [archive.md](archive.md)
 
 ## Ideas
 
-Идеи без спеки: [ideas.md](ideas.md)
+Ideas without spec: [ideas.md](ideas.md)

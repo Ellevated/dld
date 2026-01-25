@@ -126,9 +126,9 @@ name: Viktor
 
 research:
   - query: "exact search query you used"
-    found: "[Title](url) — key vulnerability/pattern found"
+    found: "[Title]({url}) — key vulnerability/pattern found"
   - query: "second search query"
-    found: "[Title](url) — security best practice"
+    found: "[Title]({url}) — security best practice"
 
 analysis: |
   [Your security analysis in 3-5 paragraphs]
@@ -162,9 +162,9 @@ name: Viktor
 
 research:
   - query: "telegram bot user authentication IDOR vulnerability"
-    found: "[Bot Security Guide](url) — always verify user_id from update, not request"
+    found: "[Bot Security Guide](https://core.telegram.org/bots/features#bot-security) — always verify user_id from update, not request"
   - query: "python fastapi authorization best practices 2025"
-    found: "[FastAPI Security](url) — use dependency injection for auth checks"
+    found: "[FastAPI Security](https://fastapi.tiangolo.com/tutorial/security/) — use dependency injection for auth checks"
 
 analysis: |
   *puts on black hat*

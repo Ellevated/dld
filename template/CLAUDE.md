@@ -13,10 +13,17 @@
 
 ## Quick Start
 
-1. Run `/bootstrap` to unpack your idea
-2. Fill this file based on `ai/idea/*.md`
-3. Create domains structure
-4. Run `/spark` for first feature
+1. **Configure MCP servers** (recommended):
+   ```bash
+   claude mcp add context7 -- npx -y @context7/mcp-server
+   claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
+   ```
+2. Run `/bootstrap` to unpack your idea
+3. Fill this file based on `ai/idea/*.md`
+4. Create domains structure
+5. Run `/spark` for first feature
+
+> MCP enables `/scout` research with Exa (web search, deep research) and Context7 (library docs).
 
 ---
 
@@ -99,7 +106,7 @@ Glossary: ai/glossary/{domain}.md
 
 ---
 
-## Skills (v3.3)
+## Skills (v3.4)
 
 **Rule:** If skill applies — MUST use it.
 
@@ -122,7 +129,7 @@ Bug:         diagnose (5 Whys) → /spark → /autopilot
 Hotfix:      <5 LOC → fix directly with user approval
 ```
 
-**New in v3.3:**
+**New in v3.4:**
 - Spark auto-hands off to autopilot (no manual "plan" step)
 - Autopilot always uses worktree (isolation)
 - Fresh subagent per task (context stays clean)
@@ -212,7 +219,7 @@ src/
 
 ai/
 ├── idea/       # From /bootstrap
-├── diary/      # Session learnings (v3.3)
+├── diary/      # Session learnings (v3.4)
 ├── features/   # Task specs
 ├── ARCHITECTURE.md
 └── backlog.md

@@ -506,7 +506,7 @@ To apply this pattern to your content needs:
 5. **Measure quality** — Track fact-check failures, revision rounds, human ratings
 6. **Iterate** — Refine gates and knowledge based on failures
 
-See [Migration Guide](/docs/13-migration.md) for step-by-step DLD setup instructions.
+See [Migration Guide](../../docs/13-migration.md) for step-by-step DLD setup instructions.
 
 ---
 

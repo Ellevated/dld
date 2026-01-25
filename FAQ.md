@@ -8,7 +8,7 @@ Common questions about DLD methodology.
 
 ### What is DLD?
 
-DLD (Domain-Level Design) is an LLM-first architecture methodology. It provides structure for AI-assisted development: spec-first workflow, domain isolation, and multi-agent pipelines. DLD optimizes code organization for LLM context windows rather than human reading patterns.
+DLD (Double-Loop Development) is a methodology that turns unpredictable AI sessions into systematic, reproducible development. It provides structure for AI-assisted development: spec-first workflow, domain isolation, and multi-agent pipelines.
 
 ### Who is DLD for?
 

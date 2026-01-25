@@ -1,4 +1,4 @@
-# Skills Setup Guide v3.3
+# Skills Setup Guide v3.4
 
 How to deploy the LLM skills system in a new project.
 
@@ -12,7 +12,7 @@ Skills are specialized LLM workflows:
 spark → autopilot (plan is subagent inside autopilot)
 ```
 
-**v3.3 Changes:**
+**v3.4 Changes:**
 - **Council decomposition** — 5 separate expert agents in `agents/council/`
 - **Spark agent** — dedicated agent file for idea generation
 - **Diary recorder** — auto-captures problems for future reflection
@@ -38,7 +38,7 @@ spark → autopilot (plan is subagent inside autopilot)
 
 ---
 
-## File Structure (v3.3)
+## File Structure (v3.4)
 
 ```
 .claude/

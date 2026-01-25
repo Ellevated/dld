@@ -208,7 +208,7 @@ This example demonstrates DLD principles. To apply to your project:
 3. Create specs before coding (what exactly needs to happen?)
 4. Run each task in isolation (fresh context, worktree)
 
-See [Migration Guide](/docs/13-migration.md) for step-by-step instructions.
+See [Migration Guide](../../docs/13-migration.md) for step-by-step instructions.
 
 ---
 

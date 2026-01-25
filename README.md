@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-blue.svg)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/version-3.3-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.4-green.svg)](CHANGELOG.md)
 
 ---
 
@@ -23,30 +23,36 @@ DLD (Double-Loop Development) is a methodology that turns unpredictable AI sessi
 Ask any LLM to evaluate this approach:
 
 ```
-Analyze the DLD methodology from github.com/[your-repo]/dld
+Analyze the DLD methodology from github.com/Ellevated/dld
 Compare with how you currently handle multi-file changes
 What problems does this solve?
 ```
 
 ---
 
-## Quick Start (3 Steps)
+## Quick Start (4 Steps)
 
 ```bash
 # 1. Clone and copy template
-git clone https://github.com/[your-repo]/dld
+git clone https://github.com/Ellevated/dld
 mkdir my-project && cd my-project
 cp -r ../dld/template/* .
 cp -r ../dld/template/.claude .
 
-# 2. Start Claude Code
+# 2. Configure MCP servers (optional but recommended)
+claude mcp add context7 -- npx -y @context7/mcp-server
+claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
+
+# 3. Start Claude Code
 claude
 
-# 3. Unpack your idea
+# 4. Unpack your idea
 > /bootstrap
 ```
 
 That's it. Bootstrap will guide you through extracting your idea into structured specs.
+
+> **Note:** MCP servers enhance `/scout` and `/spark` with real-time documentation and web research. See [MCP Setup](docs/20-mcp-setup.md) for details.
 
 ---
 

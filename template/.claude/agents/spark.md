@@ -111,12 +111,12 @@ Save to `ai/features/FTR-XXX-YYYY-MM-DD-name.md`
 ## Implementation Plan
 
 ### Research Sources
-- [Pattern](url) — description for Coder
+- [Pattern]({url}) — description for Coder
 
 ### Task 1: [Name]
 **Type:** code | test | migrate
 **Files:** create: ... | modify: ...
-**Pattern:** [url] — use this approach
+**Pattern:** [{url}] — use this approach
 **Acceptance:** what to verify
 
 ### Execution Order

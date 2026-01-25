@@ -2,7 +2,7 @@
 
 ## Concept
 
-DLD (Double Loop Delivery) — an operational model with two loops:
+DLD (Double-Loop Development) — an operational model with two loops:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
