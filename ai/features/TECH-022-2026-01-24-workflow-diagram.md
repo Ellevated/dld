@@ -1,6 +1,6 @@
 # TECH: [TECH-022] Workflow Diagram
 
-**Status:** in_progress | **Priority:** P3 | **Date:** 2026-01-24
+**Status:** done | **Priority:** P3 | **Date:** 2026-01-24
 
 ## Problem
 
