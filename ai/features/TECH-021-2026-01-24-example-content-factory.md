@@ -1,6 +1,6 @@
 # TECH: [TECH-021] Example: Content Factory
 
-**Status:** queued | **Priority:** P3 | **Date:** 2026-01-24
+**Status:** in_progress | **Priority:** P3 | **Date:** 2026-01-24
 
 ## Problem
 
