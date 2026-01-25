@@ -52,18 +52,54 @@ That's it. Bootstrap will guide you through extracting your idea into structured
 
 ## How It Works
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   /spark    │ ──▶ │  /autopilot │ ──▶ │    Done     │
-│  (ideation) │     │ (execution) │     │  (commit)   │
-└─────────────┘     └─────────────┘     └─────────────┘
-       │                   │
-       ▼                   ▼
-   Feature Spec      Plan + Code + Test + Review
-   + Research        (isolated worktree)
+```mermaid
+flowchart LR
+    A[Idea] --> B[/spark]
+    B --> C{Spec Ready?}
+    C -->|Yes| D[/autopilot]
+    C -->|No| B
+    D --> E[Plan Subagent]
+    E --> F[Coder]
+    F --> G[Tester]
+    G --> H{Tests Pass?}
+    H -->|Yes| I[Reviewer]
+    H -->|No| F
+    I --> J{Approved?}
+    J -->|Yes| K[Commit]
+    J -->|No| F
+    K --> L{More Tasks?}
+    L -->|Yes| F
+    L -->|No| M[Done]
 ```
 
-**Key insight:** Separate *thinking* from *doing*. Spark researches and writes specs. Autopilot executes mechanically.
+### Workflow Steps
+
+1. **Idea** — You describe what you want to build
+2. **/spark** — AI researches and creates a detailed spec
+3. **Spec Ready?** — Human reviews and approves the spec
+4. **/autopilot** — Autonomous execution begins in isolated worktree
+5. **Plan → Code → Test → Review** — Each task is executed by fresh subagents
+6. **Done** — All tasks completed, merged to develop
+
+### Fresh Subagents Per Task
+
+```mermaid
+flowchart TD
+    subgraph Autopilot
+        P[Planner] --> C1[Task 1]
+        C1 --> |Fresh Agent| CO1[Coder]
+        CO1 --> TE1[Tester]
+        TE1 --> RE1[Reviewer]
+        RE1 --> CM1[Commit]
+        CM1 --> C2[Task 2]
+        C2 --> |Fresh Agent| CO2[Coder]
+        CO2 --> TE2[Tester]
+        TE2 --> RE2[Reviewer]
+        RE2 --> CM2[Commit]
+    end
+```
+
+**Key insight:** Each task gets fresh context. No cross-contamination between tasks. If Task 1 fails, Task 2 isn't affected.
 
 ---
 
