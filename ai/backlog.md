@@ -27,6 +27,11 @@
 | TECH-021 | Example: Content Factory | done | P3 | [TECH-021](features/TECH-021-2026-01-24-example-content-factory.md) |
 | TECH-022 | Workflow diagram | done | P3 | [TECH-022](features/TECH-022-2026-01-24-workflow-diagram.md) |
 | TECH-023 | Comparison table image | done | P3 | [TECH-023](features/TECH-023-2026-01-24-comparison-table-image.md) |
+| TECH-025 | README tagline optimization | queued | P2 | [TECH-025](features/TECH-025-2026-01-26-readme-tagline.md) |
+| TECH-026 | i18n hooks to English | queued | P2 | [TECH-026](features/TECH-026-2026-01-26-i18n-hooks.md) |
+| TECH-027 | CI/CD GitHub workflows | queued | P1 | [TECH-027](features/TECH-027-2026-01-26-cicd-workflows.md) |
+| TECH-028 | CLI scaffolder (npx create-dld) | queued | P1 | [TECH-028](features/TECH-028-2026-01-26-cli-scaffolder.md) |
+| TECH-029 | Dev.to article draft | queued | P2 | [TECH-029](features/TECH-029-2026-01-26-devto-article.md) |
 
 ---
 
