@@ -225,7 +225,7 @@ Task tool:
    - Research (Exa, Context7)
    - Socratic Dialogue
    - Create spec → Status = queued
-3. "Spec ready. Запускаю autopilot?"
+3. "Spec ready. Starting autopilot?"
 4. /autopilot (auto-handoff)
    - PHASE 0: Worktree + CI check
    - PHASE 1: [planner] → tasks

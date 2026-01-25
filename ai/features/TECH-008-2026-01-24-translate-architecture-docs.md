@@ -1,6 +1,6 @@
 # TECH: [TECH-008] Translate Architecture Docs (01-08)
 
-**Status:** queued | **Priority:** P1 | **Date:** 2026-01-24
+**Status:** done | **Priority:** P1 | **Date:** 2026-01-24
 
 ## Problem
 

@@ -1,6 +1,6 @@
 # TECH: [TECH-016] Draft HackerNews Post
 
-**Status:** queued | **Priority:** P2 | **Date:** 2026-01-24
+**Status:** done | **Priority:** P2 | **Date:** 2026-01-24
 
 ## Problem
 

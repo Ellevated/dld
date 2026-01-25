@@ -1,6 +1,6 @@
 # TECH: [TECH-010] Translate LLM Workflow Docs (15-19)
 
-**Status:** queued | **Priority:** P1 | **Date:** 2026-01-24
+**Status:** done | **Priority:** P1 | **Date:** 2026-01-24
 
 ## Problem
 
