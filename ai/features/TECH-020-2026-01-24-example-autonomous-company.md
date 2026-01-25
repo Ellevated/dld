@@ -165,4 +165,11 @@ Trade-off: Less flexible, more reliable
 
 ## Autopilot Log
 
-*(Filled by Autopilot during execution)*
+- **2026-01-25**: Created examples/ai-autonomous-company/README.md
+  - Multi-agent architecture with CEO/COO/CFO/CSO agents
+  - Domain structure: strategy, operations, finance, customer
+  - DLD principles: agent isolation, structured handoffs, fresh context
+  - 3 ADRs explaining key decisions
+  - 4 lessons learned from experimental projects
+  - ASCII architecture diagrams
+  - "When to use" guidance

@@ -101,4 +101,10 @@ Task 1 → Task 2 (independent, can parallel)
 
 ## Autopilot Log
 
-*(Filled by Autopilot during execution)*
+- **2026-01-25**: All 5 files translated to English
+  - `docs/15-skills-setup.md` - already in English
+  - `docs/16-forbidden.md` - already in English
+  - `docs/17-backlog-management.md` - translated
+  - `docs/18-spec-template.md` - translated
+  - `docs/19-living-architecture.md` - translated
+- No Russian text remains, structure preserved

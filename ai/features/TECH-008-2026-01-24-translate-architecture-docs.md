@@ -110,4 +110,13 @@ Task 1 → Task 2 (independent, can parallel)
 
 ## Autopilot Log
 
-*(Filled by Autopilot during execution)*
+- **2026-01-25**: All 8 files translated to English
+  - `docs/01-principles.md` - translated
+  - `docs/02-naming.md` - translated
+  - `docs/03-project-structure.md` - translated
+  - `docs/04-claude-md-template.md` - translated
+  - `docs/05-domain-template.md` - translated
+  - `docs/06-cross-domain.md` - translated
+  - `docs/07-antipatterns.md` - translated
+  - `docs/08-metrics.md` - translated
+- No Russian text remains, structure preserved

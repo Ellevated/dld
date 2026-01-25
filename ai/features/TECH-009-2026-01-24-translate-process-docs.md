@@ -104,4 +104,11 @@ Task 1 → Task 2 (independent, can parallel)
 
 ## Autopilot Log
 
-*(Filled by Autopilot during execution)*
+- **2026-01-25**: All 6 files translated to English
+  - `docs/09-onboarding.md` - translated
+  - `docs/10-testing.md` - translated
+  - `docs/11-ci-cd.md` - translated
+  - `docs/12-docker.md` - translated
+  - `docs/13-migration.md` - translated
+  - `docs/14-suggested-domains.md` - translated
+- No Russian text remains, structure preserved

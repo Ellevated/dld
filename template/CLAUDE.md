@@ -160,6 +160,14 @@ When user says "commit/push" — execute without asking:
 ### Migrations — Git-First ONLY
 **NEVER apply migrations directly! CI is the only source of apply.**
 
+### Tool Preferences (API Error Prevention)
+Some tools may trigger API content filtering errors. Use fallbacks:
+- **File search:** Use `Glob` instead of `Search` for pattern matching
+- **Content search:** Use `Grep` tool, not bash `grep`
+- **File listing:** Use `Glob` or `ls` via Bash, avoid recursive Search
+
+If a tool returns "content filtering policy" error — retry with alternative tool.
+
 ---
 
 ## Task Statuses

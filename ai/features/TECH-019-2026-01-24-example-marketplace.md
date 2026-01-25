@@ -150,4 +150,11 @@ src/
 
 ## Autopilot Log
 
-*(Filled by Autopilot during execution)*
+- **2026-01-25**: Created examples/marketplace-launch/README.md
+  - Created examples/ directory structure
+  - Comprehensive README with problem/solution story
+  - DLD principles applied: domain isolation, spec-first, fresh context, file limits
+  - Architecture diagram (ASCII)
+  - Results table with before/after metrics
+  - 4 lessons learned from real experience
+  - Tech stack and migration guidance

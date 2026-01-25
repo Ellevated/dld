@@ -21,3 +21,4 @@
 
 # Логи
 *.log
+.worktrees/

@@ -1,6 +1,6 @@
 # Frequently Asked Questions
 
-Quick answers to common questions about DLD.
+Common questions about DLD methodology.
 
 ---
 
@@ -8,44 +8,25 @@ Quick answers to common questions about DLD.
 
 ### What is DLD?
 
-**DLD (Double-Loop Development)** is an LLM-first architecture methodology. It provides:
-- A project structure optimized for AI context windows
-- Workflows for spec-first development
-- Specialized agents for different tasks (coding, testing, reviewing)
-- Rules to prevent common AI coding failures
-
-It's not an IDE or a tool — it's a way of working with AI coding assistants.
-
-### What does "Double-Loop" mean?
-
-The name comes from the two-loop development process:
-1. **Outer loop:** Human → Spark (create spec) → Council (review) → Human approves
-2. **Inner loop:** Autopilot → Plan → Code → Test → Review → Commit
-
-The outer loop handles *what* to build. The inner loop handles *how* to build it.
+DLD (Domain-Level Design) is an LLM-first architecture methodology. It provides structure for AI-assisted development: spec-first workflow, domain isolation, and multi-agent pipelines. DLD optimizes code organization for LLM context windows rather than human reading patterns.
 
 ### Who is DLD for?
 
-DLD works best for:
-- Solo developers or small teams (1-3 people)
-- Developers who use AI for most of their coding
-- Anyone building new products from scratch
-- People frustrated with AI "breaking things" during multi-file changes
-
-DLD may not be the best fit for:
-- Large enterprise teams with established processes
-- Codebases where humans do 90%+ of coding
-- Quick prototypes that won't need maintenance
+DLD is designed for:
+- Solo developers and small teams (1-5 people)
+- Anyone who uses AI coding assistants daily
+- Developers building production systems, not just prototypes
+- Those frustrated with unpredictable AI coding results
 
 ### How long does it take to learn?
 
-| Level | Time | What you'll learn |
-|-------|------|-------------------|
-| Basic | 1 hour | Run /bootstrap, /spark, /autopilot |
-| Intermediate | 1 day | Understand skills, agents, specs |
-| Advanced | 1 week | Customize agents, optimize workflows |
+- **Basic workflow:** 1 hour (run /spark, review spec, run /autopilot)
+- **Full methodology:** 1-2 days (understand principles, customize agents)
+- **Mastery:** 1-2 weeks (optimize for your specific use case)
 
-Most developers are productive within a day.
+### Is DLD a framework or library?
+
+Neither. DLD is a **methodology** — a set of principles, conventions, and workflows. It doesn't add runtime dependencies to your project. The template provides configuration files for Claude Code.
 
 ---
 
@@ -53,45 +34,24 @@ Most developers are productive within a day.
 
 ### Does it work with Python/JavaScript/Go/Rust/etc?
 
-**Yes.** DLD is language-agnostic. The template includes Python examples, but the methodology applies to any language:
-- The `src/domains/` structure works in any language
-- CLAUDE.md format is universal
-- Skills and agents don't care about your language
+Yes. DLD is **language-agnostic**. The architecture principles (domain isolation, file size limits, dependency direction) apply to any language. The template includes examples for common stacks.
 
-### Does it work with Cursor, VS Code, or other IDEs?
+### Does it work with Cursor?
 
-**Yes, with caveats:**
-- DLD is designed for **Claude Code** (Anthropic's CLI)
-- You can use any IDE for editing files
-- Skills like `/spark` and `/autopilot` require Claude Code
-- See [COMPARISON.md](COMPARISON.md) for Cursor-specific guidance
+Yes, but with limitations. DLD is designed for **Claude Code CLI**. Cursor users can adopt DLD principles (CLAUDE.md, spec-first development, domain structure) but won't have access to the full skill/agent pipeline.
+
+See [COMPARISON.md](COMPARISON.md#dld-vs-cursor) for details.
 
 ### Can I use it with my existing project?
 
-**Yes.** See the [migration guide](docs/13-migration.md). The basic process:
-1. Add `.claude/` folder with skills and agents
-2. Create `CLAUDE.md` for your project
-3. Gradually move code into `src/domains/` structure
-4. Start using specs for new features
+Yes. See [Migration Guide](docs/13-migration.md) for step-by-step instructions. The basic approach:
+1. Add `.claude/` directory structure
+2. Create CLAUDE.md
+3. Organize existing code into domains (gradually)
 
-You don't have to migrate everything at once.
+### Does it require specific AI models?
 
-### Does it work with GPT-4, Gemini, or other models?
-
-**Partially.** DLD is optimized for Claude because:
-- Agent prompts use Claude-specific features
-- Skills assume Claude Code CLI
-- Context management targets Claude's window sizes
-
-You could adapt the methodology for other models, but it would require significant prompt engineering.
-
-### Does it require MCP servers (Exa, Context7)?
-
-**No, but recommended.** The methodology works without external tools, but:
-- **Exa** enables web research during spec creation
-- **Context7** provides up-to-date library documentation
-
-Without these, Spark and Scout have limited research capabilities.
+DLD is optimized for **Claude** (Anthropic) via Claude Code CLI. The methodology could work with other LLMs, but the agents and skills assume Claude's capabilities.
 
 ---
 
@@ -99,171 +59,129 @@ Without these, Spark and Scout have limited research capabilities.
 
 ### What's the difference between Skills and Agents?
 
-| Skills | Agents |
-|--------|--------|
-| User-facing commands | Internal prompts |
-| Start with `/` (`/spark`, `/autopilot`) | Called by skills |
-| In `.claude/skills/` | In `.claude/agents/` |
-| Orchestration logic | Single-task execution |
+| Aspect | Skills | Agents |
+|--------|--------|--------|
+| Interface | User-facing (`/spark`, `/autopilot`) | Internal (called by skills) |
+| Purpose | Entry points for workflows | Specialized execution |
+| Examples | `/council`, `/audit`, `/tester` | coder, reviewer, planner |
 
-**Think of it this way:** Skills are recipes, agents are chefs. You ask for "pasta" (skill), the recipe orchestrates multiple chefs (agents) to make it.
+Skills orchestrate agents. You invoke skills; skills invoke agents.
 
 ### How does Spark differ from Autopilot?
 
 | Spark | Autopilot |
 |-------|-----------|
-| Creates specs | Implements specs |
-| Research phase | Execution phase |
-| User dialogue | Autonomous |
-| Writes to `ai/features/` | Writes to `src/` |
-| Output: Feature spec | Output: Committed code |
+| **Creates** feature specs | **Implements** feature specs |
+| Research + design | Code + test + review |
+| Outputs: spec file | Outputs: working code |
+| Interactive (dialogue) | Autonomous (runs to completion) |
 
-**Flow:** Human → Spark (creates spec) → Autopilot (implements spec) → Done
+Typical flow: `/spark` → review spec → `/autopilot` → review PR
 
 ### What if Autopilot gets stuck?
 
-Autopilot has built-in escalation:
-1. **Test fails:** Debugger agent analyzes, suggests fix
-2. **After 3 attempts:** Creates a `BUG-XXX` spec and escalates
-3. **Blocks on decisions:** Sets status to `blocked`, waits for human
+1. Check the spec — unclear specs cause most issues
+2. Look at the Autopilot Log in the spec file
+3. Run `/audit` to analyze the current state
+4. Update spec with clarifications and run `/autopilot` again
 
-If you're stuck:
-1. Check the spec file for `blocked` status
-2. Look for `ACTION REQUIRED` comments
-3. Resolve the blocker, set status to `resumed`
-4. Re-run Autopilot
+### What is the Council?
 
-### What are "worktrees" and why do they matter?
-
-Git worktrees are separate working directories for the same repo. Autopilot uses them for isolation:
-
-```bash
-# Normal repo
-my-project/  (main worktree)
-
-# During Autopilot
-my-project/  (main, untouched)
-my-project-task-1/  (worktree for current task)
-```
-
-**Why it matters:**
-- If a task fails, just delete the worktree — main is clean
-- No "let me fix the fix for the fix" spirals
-- Easy rollback: `git worktree remove my-project-task-1`
-
-### How do I add a new skill or agent?
-
-**New skill:**
-1. Create `.claude/skills/my-skill/SKILL.md`
-2. Follow the format in existing skills
-3. Add entry to CLAUDE.md skills table
-
-**New agent:**
-1. Create `.claude/agents/my-agent.md`
-2. Define frontmatter (name, model, tools)
-3. Reference from a skill using `subagent_type: my-agent`
+The Council (`/council`) is a multi-perspective review system. Five specialized agents (Architect, Pragmatist, Security, Product, Synthesizer) analyze your spec or code from different angles. Use it for:
+- Complex architectural decisions
+- High-risk changes
+- When you want diverse expert opinions
 
 ---
 
 ## Comparison
 
-### How is DLD different from Superpowers?
+### How is DLD different from Cursor/Superpowers?
 
-See [COMPARISON.md](COMPARISON.md). The short answer:
-- **Superpowers** is a VS Code extension for AI coding
-- **DLD** is a methodology that works with Claude Code
-- Superpowers focuses on automatic context detection
-- DLD focuses on explicit spec-first development
+DLD is a **methodology**, not an IDE or extension. It provides structure for *how* you work with AI, regardless of which tool you use.
+
+See [COMPARISON.md](COMPARISON.md) for detailed comparisons with:
+- Cursor
+- Claude Code (vanilla)
+- Superpowers
+- Clean Architecture
 
 ### Why not just use Claude Code directly?
 
-You can! DLD adds structure on top:
+You can. Claude Code works fine without DLD. But DLD adds:
+- **Context persistence** — CLAUDE.md and specs survive session resets
+- **Predictable results** — spec-first workflow reduces variance
+- **Safe experimentation** — worktree isolation prevents damage
+- **Specialized agents** — optimized prompts for specific tasks
+- **Quality gates** — two-stage review (spec + code)
 
-| Vanilla Claude Code | Claude Code + DLD |
-|---------------------|-------------------|
-| Chat-based | Spec-based |
-| Single context | Multiple specialized agents |
-| Ad-hoc testing | Automatic per-task testing |
-| Manual rollback | Worktree isolation |
-| No research phase | Mandatory Exa + Context7 |
+### Is DLD compatible with Clean Architecture?
 
-If your tasks are simple (< 5 files), vanilla Claude Code works fine. For complex features, DLD prevents common failures.
+Yes, with adaptations. DLD shares principles with Clean Architecture (dependency direction, domain isolation) but optimizes for LLM constraints:
+- Smaller files (max 400 LOC)
+- Context-sized domains (~100 lines of business rules)
+- Mandatory documentation (CLAUDE.md, per-domain rules)
 
-### Is DLD a replacement for Clean Architecture?
-
-**No.** DLD is a variant of domain-driven design, optimized for LLMs. Key differences:
-- DLD has strict file size limits (400 LOC)
-- DLD requires CLAUDE.md and context files
-- DLD focuses on AI comprehension, not just human readability
-
-Many DLD principles align with Clean Architecture (dependency direction, domain isolation). See [COMPARISON.md](COMPARISON.md) for details.
+See [COMPARISON.md](COMPARISON.md#dld-vs-clean-architecture) for details.
 
 ---
 
-## Troubleshooting
+## Getting Started
 
-### My CLAUDE.md is too long
+### Where do I start?
 
-Keep it under 200 lines. Move details to:
-- `.claude/rules/` for architecture rules
-- `.claude/contexts/` for domain contexts
-- `ai/glossary/` for terminology
+1. Copy the [template](template/) to your project
+2. Run `/bootstrap` to initialize
+3. Run `/spark` for your first feature
+4. Review the generated spec
+5. Run `/autopilot` to implement
 
-CLAUDE.md should be a summary, not the full specification.
+### What's the minimum setup?
 
-### Agent uses wrong model (too expensive)
+At minimum, you need:
+- Claude Code CLI installed
+- `CLAUDE.md` in your project root
+- `.claude/` directory with settings
 
-Check agent frontmatter. Default models:
-- `opus` for complex tasks (planner, debugger, council)
-- `sonnet` for routine tasks (coder, tester, documenter)
-- `haiku` for simple tasks (diary-recorder)
+Full template is recommended but not required.
 
-Override with `model:` in frontmatter.
+### Where can I get help?
 
-### Autopilot modifies files outside Allowed Files
-
-This shouldn't happen — the `pre_edit.py` hook blocks it. If it does:
-1. Check that hooks are installed (`.claude/hooks/`)
-2. Verify spec has `## Allowed Files` section
-3. Report the bug
-
-### Skills not working after upgrade
-
-After updating DLD:
-1. Copy new `.claude/skills/` to your project
-2. Update CLAUDE.md with new skill entries
-3. Check for breaking changes in release notes
+- [Documentation](docs/) — full methodology reference
+- [GitHub Issues](https://github.com/anthropics/claude-code/issues) — bug reports
+- This FAQ — common questions
 
 ---
 
-## Contributing
+## Technical
 
-### How do I report a bug?
+### What are the file size limits?
 
-Open an issue on GitHub with:
-- What you expected
-- What happened
-- Steps to reproduce
-- Your CLAUDE.md (sanitized)
+- **Max 400 lines** per file (LLM context optimization)
+- **~100 lines** of business rules per domain
+- Split larger files into modules
 
-### How do I suggest a feature?
+### How do domains relate to folders?
 
-Open a GitHub discussion in the "Ideas" category. Include:
-- Problem you're solving
-- Proposed solution
-- Alternatives considered
+```
+src/domains/
+├── users/          # Domain folder
+│   ├── index.ts    # Public API
+│   ├── service.ts  # Business logic
+│   ├── types.ts    # Domain types
+│   └── rules.md    # Domain context for LLM
+└── orders/
+    └── ...
+```
 
-### Can I contribute a new skill/agent?
+Each domain has one folder. Dependencies flow in one direction (DAG, no cycles).
 
-Yes! See [CONTRIBUTING.md](CONTRIBUTING.md). Requirements:
-- Clear use case documentation
-- Works with existing workflow
-- Tested in a real project
+### What goes in CLAUDE.md?
 
----
+- Project tech stack
+- Architecture overview
+- Key commands (build, test, lint)
+- Domain map with dependencies
+- Project-specific conventions
 
-## Still have questions?
-
-- Check the [documentation](docs/)
-- Open a [GitHub discussion](https://github.com/[your-repo]/dld/discussions)
-- Read the [comparison guide](COMPARISON.md)
+See [CLAUDE.md Template](docs/04-claude-md-template.md).

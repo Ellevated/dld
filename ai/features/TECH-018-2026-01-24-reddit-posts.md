@@ -160,4 +160,9 @@ GitHub: [link]
 
 ## Autopilot Log
 
-*(Filled by Autopilot during execution)*
+- **2026-01-25**: Created ai/launch/reddit-posts.md
+  - r/ClaudeAI: Personal story + "what works for you?" engagement
+  - r/programming: Principles-focused, skeptical audience tone
+  - r/opensource: Contribution-focused, MIT license prominent
+  - Added posting timing recommendations (stagger 1-2 days)
+  - Added subreddit-specific engagement notes

@@ -98,4 +98,9 @@ Task 1 → Task 2 (independent, can parallel)
 
 ## Autopilot Log
 
-*(Filled by Autopilot during execution)*
+- **2026-01-25**: All 4 files translated to English
+  - `docs/00-bootstrap.md` - translated
+  - `docs/foundation/00-why.md` - translated
+  - `docs/foundation/01-double-loop.md` - translated
+  - `docs/foundation/02-agent-roles.md` - translated
+- No Russian text remains, structure preserved
