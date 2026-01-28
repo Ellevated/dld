@@ -102,7 +102,7 @@ Task tool:
     FILES CHANGED: {list}
 ```
 
-### Diary Recorder
+### Diary Recorder (Problems)
 
 ```yaml
 Task tool:
@@ -112,6 +112,40 @@ Task tool:
     problem_type: {trigger}
     error_message: "{error}"
     files_changed: [...]
+```
+
+### Diary Recorder (Successes)
+
+```yaml
+# Success: first pass (no debug loop)
+IF tester passed AND debug_attempts == 0:
+  Task tool:
+    subagent_type: "diary-recorder"
+    prompt: |
+      task_id: "{TASK_ID}"
+      problem_type: first_pass_success
+      success_detail: "Task {N}/{M} passed on first attempt"
+      files_changed: [...]
+
+# Success: research was useful
+IF coder output references Research Source URL:
+  Task tool:
+    subagent_type: "diary-recorder"
+    prompt: |
+      task_id: "{TASK_ID}"
+      problem_type: research_useful
+      success_detail: "Query: {query}, Source: {url}, Used in: {file}"
+      files_changed: [...]
+
+# Success: diary pattern reused
+IF planner output mentions diary constraint:
+  Task tool:
+    subagent_type: "diary-recorder"
+    prompt: |
+      task_id: "{TASK_ID}"
+      problem_type: pattern_reused
+      success_detail: "Diary entry {entry_id} applied: {how}"
+      files_changed: [...]
 ```
 
 ## Task Parsing Algorithm

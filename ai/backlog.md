@@ -32,15 +32,15 @@
 | TECH-027 | CI/CD GitHub workflows | queued | P1 | [TECH-027](features/TECH-027-2026-01-26-cicd-workflows.md) |
 | TECH-028 | CLI scaffolder (npx create-dld) | queued | P1 | [TECH-028](features/TECH-028-2026-01-26-cli-scaffolder.md) |
 | TECH-029 | Dev.to article draft | queued | P2 | [TECH-029](features/TECH-029-2026-01-26-devto-article.md) |
-| TECH-030 | GIF demo for README | queued | P0 | [TECH-030](features/TECH-030-2026-01-26-gif-demo.md) |
-| TECH-031 | YouTube tutorial script | queued | P2 | [TECH-031](features/TECH-031-2026-01-26-youtube-script.md) |
-| TECH-032 | Discord community setup | queued | P1 | [TECH-032](features/TECH-032-2026-01-26-discord-setup.md) |
-| TECH-033 | Product Hunt launch assets | queued | P2 | [TECH-033](features/TECH-033-2026-01-26-producthunt-assets.md) |
+| TECH-030 | GIF demo for README | done | P0 | [TECH-030](features/TECH-030-2026-01-26-gif-demo.md) |
+| TECH-031 | YouTube tutorial script | done | P2 | [TECH-031](features/TECH-031-2026-01-26-youtube-script.md) |
+| TECH-032 | Discord community setup | done | P1 | [TECH-032](features/TECH-032-2026-01-26-discord-setup.md) |
+| TECH-033 | Product Hunt launch assets | done | P2 | [TECH-033](features/TECH-033-2026-01-26-producthunt-assets.md) |
 | TECH-034 | "Used By" section in README | queued | P2 | [TECH-034](features/TECH-034-2026-01-26-used-by-section.md) |
-| TECH-035 | Post-execution Exa verifier in finishing | queued | P1 | [TECH-035](features/TECH-035-2026-01-29-post-execution-verifier.md) |
-| TECH-036 | Research-enhanced /reflect with Exa | queued | P1 | [TECH-036](features/TECH-036-2026-01-29-research-enhanced-reflect.md) |
-| TECH-037 | Cross-task memory feed (planner reads diary) | queued | P2 | [TECH-037](features/TECH-037-2026-01-29-cross-task-memory-feed.md) |
-| TECH-038 | Diary records successes (not just problems) | queued | P2 | [TECH-038](features/TECH-038-2026-01-29-diary-records-successes.md) |
+| TECH-035 | Post-execution Exa verifier in finishing | done | P1 | [TECH-035](features/TECH-035-2026-01-29-post-execution-verifier.md) |
+| TECH-036 | Research-enhanced /reflect with Exa | done | P1 | [TECH-036](features/TECH-036-2026-01-29-research-enhanced-reflect.md) |
+| TECH-037 | Cross-task memory feed (planner reads diary) | done | P2 | [TECH-037](features/TECH-037-2026-01-29-cross-task-memory-feed.md) |
+| TECH-038 | Diary records successes (not just problems) | done | P2 | [TECH-038](features/TECH-038-2026-01-29-diary-records-successes.md) |
 
 ---
 

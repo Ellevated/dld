@@ -31,7 +31,7 @@ PHASE 2: Execute (per task)    → subagent-dispatch.md
   └─ COMMIT (no push)
 
 PHASE 3: Finish                → finishing.md
-  └─ Final test → status done → merge develop → cleanup
+  └─ Final test → Exa verification → status done → merge develop → cleanup
 ```
 
 **Limits & Escalation:** See `escalation.md`

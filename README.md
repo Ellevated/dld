@@ -8,6 +8,14 @@
 
 ---
 
+## See It In Action
+
+![DLD Workflow Demo](assets/demo/workflow.gif)
+
+*From idea to shipped code in 3 commands: `/bootstrap` → `/spark` → `/autopilot`*
+
+---
+
 ## The Problem
 
 **90% debugging, 6% features** — the hidden cost of AI coding.
@@ -217,6 +225,14 @@ my-project/
 ```
 
 **Success metric:** If a new developer understands the project in 30 minutes — LLM understands it in 30 seconds.
+
+---
+
+## Community
+
+Join our Discord for help, discussions, and feature requests:
+
+[![Discord](https://img.shields.io/discord/XXXXXXXXX?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/INVITE_CODE)
 
 ---
 

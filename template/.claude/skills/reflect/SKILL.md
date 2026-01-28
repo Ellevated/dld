@@ -44,6 +44,37 @@ Find all entries with `pending` status.
 
 For each pending entry — open file and analyze.
 
+### Step 2.5: Research Solutions for Found Patterns
+
+For each pattern found in diary (frequency >= 2), research external solutions:
+
+**If anti-pattern/failure:**
+```yaml
+mcp__exa__web_search_exa:
+  query: "{anti_pattern} solution best practice {tech_stack}"
+  numResults: 5
+```
+
+**If user preference/design decision:**
+```yaml
+mcp__exa__web_search_exa:
+  query: "{decision} pros cons alternatives {tech_stack} 2024 2025"
+  numResults: 3
+```
+
+**If tool/workflow pattern:**
+```yaml
+mcp__exa__get_code_context_exa:
+  query: "{tool_pattern} best practices implementation"
+  tokensNum: 3000
+```
+
+**Rules:**
+- Max 6 Exa calls total per reflect session
+- Add found solutions to spec's "Proposed Changes" with source URLs
+- If Exa confirms our rule → strengthen confidence
+- If Exa suggests different approach → note alternative in spec
+
 ### Step 3: Analyze Patterns
 
 | Pattern Type | Threshold | Action |
@@ -92,6 +123,10 @@ Compare entries with CLAUDE.md:
 ## Proposed Changes
 
 ### 1. CLAUDE.md — [Section]
+**Pattern:** {what we found in diary}
+**Frequency:** {N occurrences}
+**Exa Research:** {what external sources say}
+**Source:** {URL}
 **Add/Update:**
 ```markdown
 [exact content to add]
@@ -158,7 +193,8 @@ date +%s > ai/diary/.last_reflect
 Before completing reflect:
 
 - [ ] All pending entries analyzed
+- [ ] Exa research performed for patterns with frequency >= 2
 - [ ] Patterns counted correctly (frequency threshold)
 - [ ] Spec created (not direct edits)
-- [ ] Spec contains "Proposed Changes" section
+- [ ] Spec contains "Proposed Changes" section with Exa sources
 - [ ] Next action = "run claude-md-writer"

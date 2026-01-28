@@ -8,21 +8,24 @@ Final verification, status update, merge, and cleanup.
 1. Final test: ./test fast
    └─ must pass!
 
-2. Pre-Done Checklist (see below)
+2. Exa Verification (see below)
+   └─ warnings only, never block
+
+3. Pre-Done Checklist (see below)
    └─ ALL items must be checked
 
-3. Update status → done
+4. Update status → done
    └─ Spec file: **Status:** done
    └─ Backlog: done
    └─ VERIFY both match!
 
-4. Commit status change:
+5. Commit status change:
    git commit -m "docs: mark {TYPE}-XXX as done"
 
-5. Push feature branch (backup):
+6. Push feature branch (backup):
    git push -u origin {type}/{ID}
 
-6. Merge to develop:
+7. Merge to develop:
    cd "$MAIN_REPO"
    git checkout develop
    git stash push -m "autopilot-temp" (if uncommitted)
@@ -31,13 +34,44 @@ Final verification, status update, merge, and cleanup.
    git push origin develop
    git stash pop (if stashed)
 
-7. Cleanup:
+8. Cleanup:
    git worktree remove ".worktrees/{ID}" --force
    git branch -d {type}/{ID}
 
-8. Auto-compact:
+9. Auto-compact:
    /compact (free context before next spec)
 ```
+
+## Exa Verification
+
+After `./test fast` passes, verify the approach against known pitfalls:
+
+**Step 1:** Extract key patterns from spec
+- Read spec's `## Design` and `## Approaches` sections
+- Identify: libraries used, patterns chosen, architecture decisions
+
+**Step 2:** Search for pitfalls
+```yaml
+mcp__exa__web_search_exa:
+  query: "{pattern_used} {library} common pitfalls production issues"
+  numResults: 5
+```
+
+**Step 3:** Search for security concerns
+```yaml
+mcp__exa__web_search_exa:
+  query: "{library} security vulnerabilities 2024 2025"
+  numResults: 3
+```
+
+**Step 4:** Evaluate findings
+- If critical issue found → add WARNING to Autopilot Log, flag for human review
+- If minor concern → note in Autopilot Log
+- If nothing found → proceed
+
+**Rules:** Max 3 Exa calls. Don't block on this — warnings only.
+
+---
 
 ## Pre-Done Checklist
 
@@ -90,6 +124,7 @@ Add to feature file:
 - Documenter: completed | skipped (no docs needed)
 - Spec Reviewer: approved | needs_implementation | needs_removal
 - Code Quality Reviewer: approved | needs_refactor
+- Exa Verify: no issues | WARNING: {description}
 - Commit: abc1234 | BLOCKED (reviewer not approved)
 ```
 

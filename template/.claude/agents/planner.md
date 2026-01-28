@@ -33,6 +33,14 @@ You are the PLAN AGENT. Your mission: transform a feature spec into a detailed, 
 - Flag if spec missing dependent components
 - Follow established patterns from architecture.md
 
+**Load recent diary (cross-task memory):**
+1. Read `ai/diary/index.md` — find last 5 pending entries
+2. Check relevance: match files/libraries against current spec's Allowed Files
+3. For relevant entries: read full diary file, extract warnings
+4. Feed warnings into Phase 3 Risk Assessment as known constraints
+
+If `ai/diary/index.md` doesn't exist → skip (no diary yet).
+
 ### Phase 1: Deep Reading
 
 Read the entire spec. Extract:
@@ -89,6 +97,13 @@ File A:func1 → File B:func2 → File C:handler
 - Risk: Missing error handling
 - Risk: Race condition
 ```
+
+**Known Issues (from diary):**
+```
+- {constraint from diary entry}
+- {constraint from diary entry}
+```
+(Leave empty if no relevant diary entries found in Phase 0)
 
 ### Phase 4: Task Generation
 
