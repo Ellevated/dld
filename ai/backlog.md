@@ -41,6 +41,9 @@
 | TECH-036 | Research-enhanced /reflect with Exa | done | P1 | [TECH-036](features/TECH-036-2026-01-29-research-enhanced-reflect.md) |
 | TECH-037 | Cross-task memory feed (planner reads diary) | done | P2 | [TECH-037](features/TECH-037-2026-01-29-cross-task-memory-feed.md) |
 | TECH-038 | Diary records successes (not just problems) | done | P2 | [TECH-038](features/TECH-038-2026-01-29-diary-records-successes.md) |
+| TECH-039 | Expand reflect & claude-md-writer scope + Three-Expert Gate | done | P1 | [TECH-039](features/TECH-039-2026-01-29-reflect-scope-expansion.md) |
+| TECH-040 | Bootstrap Exa research validation | done | P2 | [TECH-040](features/TECH-040-2026-01-29-bootstrap-exa-research.md) |
+| TECH-041 | Bootstrap Three-Expert compression (766→178 lines) | done | P2 | [TECH-041](features/TECH-041-2026-01-29-bootstrap-three-expert-compression.md) |
 
 ---
 
