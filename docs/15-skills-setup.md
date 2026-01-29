@@ -19,7 +19,7 @@ spark → autopilot (plan is subagent inside autopilot)
 - **Wrapper skills** — tester/coder/planner as standalone skills
 - **Research tools** — Exa + Context7 integration in agents
 - **Bootstrap skill** — Day 0 discovery, unpack idea from founder
-- **Claude-md-writer** — CLAUDE.md optimization with 3-tier system
+- **Skill-writer** — CREATE agents/skills + UPDATE CLAUDE.md/rules (unified)
 
 | Skill | Purpose | Model |
 |-------|---------|-------|
@@ -34,7 +34,7 @@ spark → autopilot (plan is subagent inside autopilot)
 | **coder** | Write code (wrapper) | sonnet |
 | **planner** | Create implementation plan (wrapper) | opus |
 | **bootstrap** | Day 0 — unpack idea from founder | opus |
-| **claude-md-writer** | Optimize CLAUDE.md (3-tier system) | opus |
+| **skill-writer** | Create agents/skills or optimize CLAUDE.md/rules | opus |
 
 ---
 
@@ -72,7 +72,7 @@ spark → autopilot (plan is subagent inside autopilot)
 │   ├── coder/SKILL.md          ← Wrapper → agents/coder.md
 │   ├── planner/SKILL.md        ← Wrapper → agents/planner.md
 │   ├── bootstrap/SKILL.md      ← Standalone (Day 0 discovery)
-│   └── claude-md-writer/SKILL.md ← Standalone (CLAUDE.md optimization)
+│   └── skill-writer/SKILL.md ← Standalone (CREATE + UPDATE prompts)
 │
 ├── contexts/
 │   ├── shared.md               ← infra, db, llm
@@ -180,7 +180,7 @@ agent: .claude/agents/tester.md
     { "name": "coder", "path": ".claude/skills/coder/SKILL.md" },
     { "name": "planner", "path": ".claude/skills/planner/SKILL.md" },
     { "name": "bootstrap", "path": ".claude/skills/bootstrap/SKILL.md" },
-    { "name": "claude-md-writer", "path": ".claude/skills/claude-md-writer/SKILL.md" }
+    { "name": "skill-writer", "path": ".claude/skills/skill-writer/SKILL.md" }
   ]
 }
 ```

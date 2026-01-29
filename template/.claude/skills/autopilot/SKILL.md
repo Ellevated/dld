@@ -187,6 +187,6 @@ No more queued → END
 ## References
 
 - Agent roles: `docs/foundation/02-agent-roles.md`
-- Creating skills: `/scaffold` skill
+- Creating skills: `/skill-writer create` skill
 - Smart Testing: `.claude/agents/tester.md`
 - Migrations: `.claude/rules/database.md`

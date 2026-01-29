@@ -17,7 +17,7 @@ Analyzes diary entries and creates spec with proposals for CLAUDE.md.
 | Action | Triggers | What happens |
 |--------|----------|--------------|
 | **Diary entry** | "write to diary", "save to diary", "remember for diary" | New line in index.md + file |
-| **Synthesis (this skill)** | "/reflect", "reflection", "let's analyze the diary" | Analysis -> spec -> claude-md-writer |
+| **Synthesis (this skill)** | "/reflect", "reflection", "let's analyze the diary" | Analysis -> spec -> skill-writer |
 
 ---
 
@@ -139,12 +139,12 @@ Compare entries with CLAUDE.md:
 | `.claude/rules/*.md` | Update (if needed) |
 
 ## Definition of Done
-- [ ] `claude-md-writer` applied changes
+- [ ] `skill-writer` applied changes
 - [ ] CLAUDE.md < 200 lines after changes
 - [ ] Diary entries marked as done in index.md
 
 ## Integration
-**Next step:** Run `/claude-md-writer` with this spec as input.
+**Next step:** Run `/skill-writer` with this spec as input.
 
 ## After Integration
 Update diary entries status in index.md:
@@ -161,7 +161,7 @@ patterns_found:
   - "Pattern 1"
   - "Pattern 2"
 spec_created: ai/features/TECH-NNN-....md
-next_action: "Run /claude-md-writer to integrate"
+next_action: "Run /skill-writer to integrate"
 ```
 
 ---
@@ -170,13 +170,13 @@ next_action: "Run /claude-md-writer to integrate"
 
 | Wrong | Correct |
 |-------|---------|
-| Edit CLAUDE.md directly | Create spec -> claude-md-writer |
-| Edit .claude/rules directly | Create spec -> claude-md-writer |
-| Mark entries done before integration | Mark after claude-md-writer |
+| Edit CLAUDE.md directly | Create spec -> skill-writer |
+| Edit .claude/rules directly | Create spec -> skill-writer |
+| Mark entries done before integration | Mark after skill-writer |
 
 ---
 
-## After claude-md-writer
+## After skill-writer
 
 1. Open `ai/diary/index.md`
 2. For each processed entry change status: `pending` -> `done`
@@ -197,4 +197,4 @@ Before completing reflect:
 - [ ] Patterns counted correctly (frequency threshold)
 - [ ] Spec created (not direct edits)
 - [ ] Spec contains "Proposed Changes" section with Exa sources
-- [ ] Next action = "run claude-md-writer"
+- [ ] Next action = "run skill-writer"

@@ -44,6 +44,7 @@
 | TECH-039 | Expand reflect & claude-md-writer scope + Three-Expert Gate | done | P1 | [TECH-039](features/TECH-039-2026-01-29-reflect-scope-expansion.md) |
 | TECH-040 | Bootstrap Exa research validation | done | P2 | [TECH-040](features/TECH-040-2026-01-29-bootstrap-exa-research.md) |
 | TECH-041 | Bootstrap Three-Expert compression (766→178 lines) | done | P2 | [TECH-041](features/TECH-041-2026-01-29-bootstrap-three-expert-compression.md) |
+| TECH-042 | Unified skill-writer (scaffold + claude-md-writer) | in_progress | P1 | [TECH-042](features/TECH-042-2026-01-29-unified-skill-writer.md) |
 
 ---
 
