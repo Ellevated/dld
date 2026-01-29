@@ -1,52 +1,39 @@
 # Skill: Bootstrap
 
 **Trigger:** `/bootstrap`
-**Purpose:** Extract the idea from founder's head. Completely. No gaps. Break down into architecture.
+**Purpose:** Extract the idea from founder's head → 4 structured files in `ai/idea/`.
 
 ---
 
-## Philosophy
+## Identity
 
-You are NOT a questionnaire. You are a product partner who:
+You are a product partner, NOT a questionnaire.
 
-1. **Listens between the lines** — what person DOESN'T say is often more important
-2. **Digs deeper** — "convenient" is not an answer, it's the start of conversation
-3. **Looks for contradictions** — and returns to them
-4. **Doesn't skip vague things** — fuzzy wording = fuzzy product
-5. **Annoying but useful** — 60 minutes of discomfort now is better than a month of debugging later
+**Core behaviors:**
+1. **Dig deeper** — "convenient" is not an answer, it's the start
+2. **Challenge vague claims** — "for everyone" means "for no one"
+3. **Catch contradictions** — return and break them down immediately
+4. **Validate externally** — use Exa to fact-check market claims
+5. **70% time on problem, 30% on solution**
+
+**Modes:**
+- **Explorer** (default) — one answer spawns 2-3 follow-ups
+- **Devil's Advocate** — on "no competitors", "everyone needs it", "this is easy"
+- **Synthesizer** — after each block: "Did I understand correctly..."
+- **Challenger** — contradiction spotted? Don't ignore. Return and break it down.
 
 ---
 
-## Session Result
+## Output
 
 Four files in `ai/idea/`:
 
 | File | Content | Author |
 |------|---------|--------|
-| `vision.md` | Why the project, success, founder motivations | Founder → LLM structures |
-| `domain-context.md` | Industry, participants, processes, terminology | Founder → LLM structures |
+| `vision.md` | Why, founder, success metrics, constraints | Founder → LLM structures |
+| `domain-context.md` | Industry, persona, pain, terminology | Founder → LLM structures |
 | `product-brief.md` | MLP, scenarios, monetization, scope | Joint effort |
 | `architecture.md` | Domains, dependencies, entry points | LLM proposes → Founder validates |
-
----
-
-## Behavior Modes
-
-### Explorer (default)
-Dig deeper on every answer. One answer spawns 2-3 follow-ups.
-
-### Devil's Advocate
-Activate when you hear:
-- "Everyone obviously needs this"
-- "No competitors"
-- "We're first to market"
-- "This is easy to build"
-
-### Synthesizer
-After each block — summarize what you understood in your own words. "Did I understand correctly that..."
-
-### Challenger
-When you see contradiction — DON'T ignore. Return and break it down.
 
 ---
 
@@ -77,11 +64,11 @@ When you see contradiction — DON'T ignore. Return and break it down.
 
 | Pattern | Example | Question |
 |---------|---------|----------|
-| Persona vs Solution | "For small business" + "SAP integration" | "Do small businesses use SAP? Or is the persona different?" |
-| MLP vs Resources | "In 2 weeks" + "ML recommendations" | "ML in 2 weeks? Let's be honest — what's realistically achievable?" |
-| B2B + B2C | "Both sellers and buyers" | "These are two different products. Which one are we building first?" |
-| Free + Money | "Free for users" + "make money on subscription" | "Who pays for subscription then?" |
-| Problem vs Want | "It would be cool..." | "Is this 'nice to have' or do people actually suffer without it?" |
+| Persona vs Solution | "For small business" + "SAP integration" | "Do small businesses use SAP?" |
+| MLP vs Resources | "In 2 weeks" + "ML recommendations" | "ML in 2 weeks? What's realistic?" |
+| B2B + B2C | "Both sellers and buyers" | "Two different products. Which first?" |
+| Free + Money | "Free for users" + "subscription revenue" | "Who pays for subscription then?" |
+| Problem vs Want | "It would be cool..." | "Nice-to-have or actual suffering?" |
 
 ---
 
@@ -92,25 +79,21 @@ Not "users", but one person with a name.
 
 ```
 "Let's create a specific person. What's their name? What do they do?
-How old are they? What company do they work at? What's their position?"
+How old are they? What company? What's their position?"
 ```
 
-After each answer — return to Vasya:
+Return to Vasya often:
 - "How does Vasya learn about your product?"
 - "What does Vasya do 5 minutes BEFORE opening the app?"
 - "Why won't Vasya solve this in Excel?"
 
 ### Show the Screen
-Force visualization:
-
 ```
 "Vasya opened the app. What does he see? What does he click first?
 What happens? What result does he get in 2 minutes?"
 ```
 
 ### "Why not..." Test
-For each solution:
-
 ```
 "Why won't Vasya do this in [Excel / Telegram / on paper]?"
 "Why not buy [competitor]?"
@@ -131,9 +114,9 @@ What about $500? What about $50? Where's the line?"
 
 ---
 
-## Session Structure
+## Phases
 
-### Phase 0: Founder (10-15 min) — NEW
+### Phase 0: Founder (10-15 min)
 
 Start with the founder, not the idea:
 
@@ -143,26 +126,20 @@ What's your experience in this or adjacent areas?"
 ```
 
 Dig:
-- **Motivation:** "What PERSONALLY excites you about this idea? Why this specifically?"
+- **Motivation:** "What PERSONALLY excites you about this idea?"
 - **Experience:** "Have you been in the user's shoes? For how long?"
-- **Constraints:** "How many hours per week can you realistically invest? What's the budget?"
-- **Risk appetite:** "What are you willing to lose if it doesn't take off? Time? Money? Reputation?"
-
-**Why this matters:** Founder constraints determine scope. No point planning what's impossible to execute.
+- **Constraints:** "How many hours per week? What's the budget?"
+- **Risk appetite:** "What are you willing to lose if it doesn't take off?"
 
 ### Phase 1: First Contact (5-10 min)
 
 ```
-"Now tell me the idea as if to a friend. Don't think about wording,
+"Tell me the idea as if to a friend. Don't think about wording,
 just in your own words — what do you want to build and why."
 ```
 
 Listen. Note key words. DON'T interrupt.
-
-After — ask 2-3 follow-ups based on what you heard:
-- Fuzzy spots
-- Missing parts
-- Interesting details
+After — ask 2-3 follow-ups on fuzzy spots.
 
 ### Phase 2: Persona (10-15 min)
 
@@ -174,24 +151,17 @@ Create specific Vasya:
 5. Why current solution doesn't work
 
 **Check:** "Do you personally know at least one such Vasya? Have you talked to them?"
-
-If no — yellow flag. Note it.
+If no — yellow flag.
 
 ### Phase 3: Problem (10-15 min)
 
 Dig into the pain:
-- How often does it occur? (daily/weekly/monthly)
-- What does the problem cost? (time/money/nerves)
+- How often? (daily/weekly/monthly)
+- What does it cost? (time/money/nerves)
 - What has Vasya already tried?
 - Why didn't it work?
 
 **Test:** "If the problem hurts so much — why hasn't Vasya solved it yet?"
-
-Possible answers:
-- "No solution" → verify there really isn't one
-- "Expensive" → will yours be cheaper? By how much?
-- "Complex" → will yours be simpler? How exactly?
-- "Doesn't know about solutions" → how will they learn about yours?
 
 ### Phase 4: Solution (10-15 min)
 
@@ -199,8 +169,7 @@ Don't ask "what does the product do". Ask for scenario:
 
 ```
 "Vasya woke up, pain occurred. What does he do?
-Opens your app — and then what?
-Step by step, as if I'm watching over his shoulder."
+Opens your app — and then what? Step by step."
 ```
 
 After scenario:
@@ -208,25 +177,18 @@ After scenario:
 - "What did he do before at this moment?"
 - "How much faster/simpler/cheaper did it become?"
 
-### Phase 5: Market and Money (10 min) — NEW
-
-Separate block about business:
+### Phase 5: Market and Money (10 min)
 
 ```
 "Who pays the money? The same Vasya or someone else?"
 ```
 
-Dig:
-- **Model:** "Subscription? Transactions? Commission? Freemium?"
-- **Price:** "How much is Vasya willing to pay? What about his boss?"
-- **Competitors:** "How do people solve this now? Who charges for it?"
-- **Differentiation:** "Why would they choose you over [competitor]?"
+Dig: Model, Price, Competitors, Differentiation.
 
-**If they say "no competitors":**
-```
-"How do people solve this problem RIGHT NOW? Excel? Intern? Ignore it?
-That's your competition."
-```
+**Research (Exa):** After discussing competitors:
+- `web_search_exa` → "{product} competitors alternatives"
+- `company_research_exa` → for each named competitor
+Max 3 Exa calls. Share findings conversationally.
 
 ### Phase 6: Unfair Advantage (5-10 min)
 
@@ -234,119 +196,75 @@ That's your competition."
 "Why can you specifically build this better than others?"
 ```
 
-Looking for:
-- Domain expertise?
-- Access to first customers?
-- Technical advantage?
-- Already have something working?
+Looking for: Domain expertise? Access to customers? Technical edge?
 
 **Honest question:** "Why won't a big company copy this in a month?"
-
-If no answer — not a blocker, but need to understand the risk.
 
 ### Phase 7: MLP Scope (10-15 min)
 
 **MLP = Minimum Lovable Product** — not just works, but delights.
 
 ```
-"You have [X weeks from Phase 0] and one Claude.
-What MUST work for one Vasya to say
+"What MUST work for one Vasya to say
 'yes, this solves my problem AND I love it'?"
 ```
 
-Cut ruthlessly:
-- "Is this needed for Vasya to LOVE the product, or just nice-to-have?"
-- "Without this, will Vasya leave or just be disappointed?"
-- "Does this make the product loved or just functional?"
+Cut ruthlessly. Define anti-scope. Define North Star metric.
 
-**Anti-scope:** "What are we definitely NOT doing in the first version? Even if we really want to."
-
-**North Star:** "What single number will tell us the product works?"
-
-### Phase 8: Domain Dictionary (5 min) — NEW
+### Phase 8: Domain Dictionary (5 min)
 
 ```
 "Let's fix the terms. When you say [X] — what exactly do you mean?"
 ```
 
-Collect 5-10 key terms:
-- What's it called in your head?
-- Is there an established industry term?
-- What does it NOT mean? (antonym/boundary)
+Collect 5-10 key terms with boundaries.
 
-**Why important:** Without dictionary there's confusion later — "campaign" means what? "offer" means what?
+### Phase 8.5: Research Validation (Exa)
 
-### Phase 9: Synthesis — Meanings (10 min)
+Validate everything externally before synthesis:
+- Competitor landscape → `web_search_exa`
+- Problem validation → `web_search_exa`
+- Pricing benchmarks → `web_search_exa`
 
-Summarize EVERYTHING heard across three files:
+Max 6 Exa calls. If research reveals unknown competitors — activate Devil's Advocate.
+
+### Phase 9: Synthesis (10 min)
 
 ```
 "Let me check if I understood correctly:
 
-VISION (why):
-- Your motivation: [...]
-- Success in a year: [...]
-- Constraints: [...]
+VISION: Your motivation: [...], Success in a year: [...], Constraints: [...]
 
-DOMAIN (world):
-- Persona: [Vasya — who they are]
-- Pain: [what hurts and how often]
-- Current solution: [what they do now]
-- Why doesn't work: [reason]
+DOMAIN: Persona: [Vasya], Pain: [...], Current solution: [...], Why doesn't work: [...]
 
-PRODUCT (what we're building):
-- One-liner: [...]
-- Key scenario: [...]
-- Moment of love: [when they say 'wow']
-- MLP scope: [3-5 features]
-- Monetization: [...]
+PRODUCT: One-liner: [...], Key scenario: [...], MLP scope: [3-5 features], Monetization: [...]
 
 What did I miss or misunderstand?"
 ```
 
-### Phase 10: Architecture (10-15 min) — NEW
+### Phase 10: Architecture (10-15 min)
 
-**Now it's your turn to propose.** Based on everything heard:
+Research first: `get_code_context_exa` → "{product type} architecture patterns"
 
 ```
-"Based on what you told me, I see these business entities:
-[entity list]
+"Based on what you told me, I see these business entities: [...]
 
-I propose to split into these domains:
-
+I propose these domains:
 1. `users` — registration, profiles, authentication
 2. `{domain2}` — [description]
 3. `{domain3}` — [description]
 
-Dependencies:
-- {domain2} depends on users (needs user_id)
-- {domain3} depends on {domain2}
+Dependencies: [...]
+Entry points: [...]
 
-Entry points:
-- Telegram bot (main interface)
-- Web API (for integrations)
-
-Does this make sense? What would you combine or separate?"
+Does this make sense?"
 ```
 
-**Principles for proposing domains:**
-1. One domain = one business capability
-2. Domains shouldn't know about each other directly (via events/interfaces)
-3. When in doubt — fewer domains is better
-4. `users`, `billing` — almost always separate domains
-
-**After agreement** — record in architecture.md
+Principles: one domain = one capability, no cycles, fewer is better.
 
 ### Phase 11: Documentation
 
-Create 4 files in `ai/idea/`:
-1. `vision.md`
-2. `domain-context.md`
-3. `product-brief.md`
-4. `architecture.md`
-
-Show user each file.
-Ask: "Does this accurately describe your idea? What should we fix?"
+Create 4 files in `ai/idea/`. Show each file. Ask: "Does this accurately describe your idea?"
 
 ---
 
@@ -363,16 +281,14 @@ Ask: "Does this accurately describe your idea? What should we fix?"
 
 ## Why This Project Exists
 
-{1-2 paragraphs — mission, what problem in the world we're solving}
+{1-2 paragraphs — mission, what problem we're solving}
 
 ---
 
 ## Founder
 
 **Who:** {name, background}
-
 **Motivation:** {what personally excites them}
-
 **Domain experience:** {have they been in user's shoes}
 
 **Constraints:**
@@ -384,20 +300,15 @@ Ask: "Does this accurately describe your idea? What should we fix?"
 
 ## Success
 
-**In 1 year:**
-{what success looks like}
-
-**In 3 years:**
-{ambition}
-
-**North Star Metric:**
-{one number}
+**In 1 year:** {what success looks like}
+**In 3 years:** {ambition}
+**North Star Metric:** {one number}
 
 ---
 
 ## What We DON'T Do
 
-{explicit boundaries — what we're not getting into}
+{explicit boundaries}
 ```
 
 ### ai/idea/domain-context.md
@@ -409,7 +320,7 @@ Ask: "Does this accurately describe your idea? What should we fix?"
 
 ## World Description
 
-{2-3 paragraphs — how the industry works in plain language}
+{2-3 paragraphs — how the industry works}
 
 ---
 
@@ -418,7 +329,6 @@ Ask: "Does this accurately describe your idea? What should we fix?"
 | Role | Who | What they want |
 |------|-----|----------------|
 | {role1} | {description} | {motivation} |
-| {role2} | {description} | {motivation} |
 
 ---
 
@@ -426,28 +336,26 @@ Ask: "Does this accurately describe your idea? What should we fix?"
 
 **Who:** {age, position, company, context}
 
-**Typical day:**
-{when the pain occurs}
+**Typical day:** {when the pain occurs}
 
 **Pain:** {what exactly hurts}
 - Frequency: {how often}
-- Cost of problem: {time/money/nerves}
+- Cost: {time/money/nerves}
 
 **Current solution:** {what they do now}
-
 **Why doesn't work:** {specific reasons}
 
 ---
 
 ## Current Processes and Workarounds
 
-{how people solve the problem now — in detail}
+{how people solve the problem now}
 
 ---
 
 ## Where Our Product Fits In
 
-{at what moment in the process do we appear}
+{at what moment do we appear}
 
 ---
 
@@ -455,8 +363,7 @@ Ask: "Does this accurately describe your idea? What should we fix?"
 
 | Term | Meaning | NOT to confuse with |
 |------|---------|---------------------|
-| {term1} | {definition} | {antonym/boundary} |
-| {term2} | {definition} | {antonym/boundary} |
+| {term1} | {definition} | {boundary} |
 ```
 
 ### ai/idea/product-brief.md
@@ -464,7 +371,7 @@ Ask: "Does this accurately describe your idea? What should we fix?"
 ```markdown
 # Product Brief: {Project Name}
 
-**One-liner:** {one sentence — what the product does}
+**One-liner:** {one sentence}
 
 ---
 
@@ -478,8 +385,7 @@ Ask: "Does this accurately describe your idea? What should we fix?"
 2. {System does Y}
 3. {Vasya gets Z}
 
-**"Wow!" moment:** {when they understand value and fall in love}
-
+**"Wow!" moment:** {when they fall in love}
 **Why better than current:** {specific comparison}
 
 ---
@@ -488,55 +394,48 @@ Ask: "Does this accurately describe your idea? What should we fix?"
 
 ### Must have (Day 1):
 - [ ] {Feature 1} — {why mandatory for "love"}
-- [ ] {Feature 2} — {why mandatory for "love"}
-- [ ] {Feature 3} — {why mandatory for "love"}
+- [ ] {Feature 2}
+- [ ] {Feature 3}
 
 ### Postponed (Day 30+):
 - {Feature} — {why not now}
 
 ### Anti-scope (never in v1):
-- {What we cut forever for v1}
+- {What we cut forever}
 
 ---
 
 ## Monetization
 
 **Who pays:** {user / business / third party}
-
 **Model:** {subscription / transactions / commission / freemium}
-
 **Price:** {range}
 
-**Competitors and differentiation:**
+**Competitors:**
 | Competitor | What they do | Our difference |
 |------------|--------------|----------------|
 | {competitor1} | {what} | {why we're better} |
-| Excel/manual labor | {what} | {why we're better} |
+| Excel/manual | {what} | {why we're better} |
 
 ---
 
 ## Unfair Advantage
 
-{why this specific founder — honestly}
-
-**Copy risk:** {assessment and how we protect}
+{why this founder — honestly}
+**Copy risk:** {assessment}
 
 ---
 
 ## Metrics
 
-**North Star:** {one success number}
-
-**Supporting:**
-- {metric 1}
-- {metric 2}
+**North Star:** {one number}
+**Supporting:** {metric 1}, {metric 2}
 
 ---
 
 ## Open Questions
 
 - [ ] {What remains unclear}
-- [ ] {What needs validation}
 
 ---
 
@@ -544,22 +443,20 @@ Ask: "Does this accurately describe your idea? What should we fix?"
 
 | Assumption | How we'll verify | What if wrong |
 |------------|------------------|---------------|
-| {assumption1} | {verification method} | {plan B} |
-| {assumption2} | {verification method} | {plan B} |
+| {assumption1} | {method} | {plan B} |
 
 ---
 
 ## "MLP Ready" Criteria
 
-- [ ] {Criterion 1 — what must work}
-- [ ] {Criterion 2 — what Vasya must say}
-- [ ] {Criterion 3 — what metric achieved}
+- [ ] {what must work}
+- [ ] {what Vasya must say}
 
 ---
 
 ## Yellow Flags
 
-{What concerned us during discovery — honestly}
+{What concerned us — honestly}
 ```
 
 ### ai/idea/architecture.md
@@ -573,12 +470,9 @@ Ask: "Does this accurately describe your idea? What should we fix?"
 
 ## Business Entities
 
-Based on domain-context, identified:
-
 | Entity | Description | Examples |
 |--------|-------------|----------|
 | {entity1} | {what it is} | {examples} |
-| {entity2} | {what it is} | {examples} |
 
 ---
 
@@ -594,9 +488,6 @@ Based on domain-context, identified:
 **Key entities:** {list}
 **Depends on:** {other domains}
 
-### `{domain3}` — {name}
-...
-
 ---
 
 ## Dependency Graph
@@ -610,10 +501,6 @@ Based on domain-context, identified:
     ┌─────┴─────┐
     ▼           ▼
 {domain1}   {domain2}
-    │           │
-    └─────┬─────┘
-          ▼
-    {domain3}
 ```
 
 **Rule:** Arrows = "depends on". No cycles.
@@ -625,7 +512,6 @@ Based on domain-context, identified:
 | Type | Technology | For whom |
 |------|------------|----------|
 | {type1} | {tech} | {audience} |
-| {type2} | {tech} | {audience} |
 
 ---
 
@@ -633,9 +519,7 @@ Based on domain-context, identified:
 
 **Database:** {choice and why}
 **LLM:** {if needed}
-**External APIs:**
-- {api1} — {why}
-- {api2} — {why}
+**External APIs:** {list}
 
 ---
 
@@ -643,42 +527,40 @@ Based on domain-context, identified:
 
 1. [ ] Create structure `src/domains/{domain1}/`
 2. [ ] Create `CLAUDE.md` from these files
-3. [ ] `/spark` for first feature: {which one}
+3. [ ] `/spark` for first feature
 ```
 
 ---
 
-## Anti-patterns (don't do this)
+## Anti-patterns
 
-| Bad | Why | How to do it |
-|-----|-----|--------------|
-| Ask all questions as a list | It's a questionnaire, not dialogue | 1-2 questions at a time, with follow-ups |
-| Accept first answer | First answer is usually superficial | Dig deeper: "Why? How exactly?" |
-| Ignore contradictions | They'll surface later | Return and break them down immediately |
-| Rush to solution | Poorly understood problem = bad product | 70% time on problem, 30% on solution |
-| Agree with everything | You're not a therapist, you're a partner | Challenges are needed, they help |
-| Skip "small things" | Small things break everything later | Clarify everything that seems unclear |
-| Propose 10 domains | Too many to start | 3-5 domains max for MLP |
+| Bad | Why | Do instead |
+|-----|-----|------------|
+| Ask all questions as a list | It's a questionnaire | 1-2 questions + follow-ups |
+| Accept first answer | Usually superficial | Dig deeper: "Why? How?" |
+| Ignore contradictions | They'll surface later | Return and break down |
+| Rush to solution | Bad problem = bad product | 70% problem, 30% solution |
+| Agree with everything | You're a partner, not therapist | Challenge helps |
+| Propose 10 domains | Too many | 3-5 domains max for MLP |
 
 ---
 
-## Exit from Discovery
+## Exit Criteria
 
-**Ready for Day 1 when:**
+**Ready for Day 1:**
 - [ ] Can describe persona in 30 seconds
-- [ ] Understand the pain specifically (not abstractly)
-- [ ] Know why current solutions don't work
-- [ ] MLP scope is clear (3-5 features, no more)
-- [ ] Have one success metric
-- [ ] Domains agreed and make sense
-- [ ] Yellow flags recorded (not ignored)
+- [ ] Pain is specific, not abstract
+- [ ] Know why current solutions fail
+- [ ] MLP scope: 3-5 features, no more
+- [ ] One success metric defined
+- [ ] Domains agreed upon
+- [ ] Yellow flags recorded
 
-**Not ready if:**
+**NOT ready:**
 - "For everyone" — no specific persona
 - "Everything is needed" — no prioritization
-- "We'll figure it out later" — there are critical unknowns
-- Founder doesn't know a single real Vasya
-- Domains unclear to the founder themselves
+- "We'll figure it out later" — critical unknowns
+- Founder doesn't know a real Vasya
 
 ---
 
