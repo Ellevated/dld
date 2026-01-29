@@ -30,17 +30,19 @@ model: opus
 6. WRITE → create/update, report
 ```
 
-## Phase 1: Requirements
+---
 
-**CREATE:** What does it do? Who calls (user/autopilot/both)? Tools needed? Model (opus/sonnet/haiku)?
+## CREATE Mode
 
-**UPDATE:** Target file? What to change? Source (from /reflect or direct)?
+### Phase 1: Requirements
 
-## Phase 2: Research (Exa)
+Ask if not explicit:
+- **What:** One sentence — what does it do?
+- **Who calls:** User / autopilot / both?
+- **Tools:** Read, Edit, Bash, MCP tools, etc.
+- **Model:** opus (complex) / sonnet (routine) / haiku (simple)
 
-Skip for trivial. Max 3 calls for patterns/alternatives.
-
-## Phase 3: Draft — Determine Type
+### Phase 3: Determine Type
 
 ```
 Need reusable prompt for Autopilot?
@@ -50,53 +52,171 @@ Need reusable prompt for Autopilot?
         NO  → Standalone
 ```
 
-| Type | Has Agent File? |
-|------|-----------------|
-| Wrapper | Yes (agents/*.md) |
-| Orchestrator | No |
-| Standalone | No |
+| Type | Description | Has Agent File? |
+|------|-------------|-----------------|
+| Wrapper | Thin layer over agent | Yes (agents/*.md) |
+| Orchestrator | Dispatches multiple agents | No |
+| Standalone | Self-contained logic | No |
 
-## Phase 4: Three-Expert Gate
+### Templates
 
-**Karpathy:** Does Claude already know this? "If I remove, will output worsen?" No → remove.
-
-**Sutskever:** Constraining vs guiding? Principles > procedures. Examples > descriptions.
-
-**Murati:** Can steps be eliminated? Is format minimal?
-
-## Phase 5: Validate
-
-**Agent structure:**
+**Agent:**
 ```markdown
 ---
 name: {name}
 description: {One-line}
 model: {opus|sonnet|haiku}
-tools: {list}
+tools: {Read, Glob, Grep, Edit, Write, Bash, ...}
 ---
 
 # {Name} Agent
 
 {Mission.}
 
+## Input
+{input spec}
+
 ## Process
 1. {Steps}
+
+## Output
+{output spec}
 
 ## Rules
 - {Rules}
 ```
 
-**Skills:** Same structure, add `**Activation:**` trigger.
+**Wrapper Skill:**
+```markdown
+---
+name: {name}
+description: {One-line}
+---
 
-**Limits:** CLAUDE.md < 200, rules/skills < 500, verify with `wc -l`.
+# {Name} Skill
 
-## Phase 6: Write
+{What user gets.}
 
-**CREATE:** Make dir, write SKILL.md, if wrapper → also agents/{name}.md, register in CLAUDE.md.
+**Activation:** `{trigger}`
 
-**UPDATE:** Apply changes, verify limits.
+## Process
+1. Parse arguments
+2. Validate preconditions
+3. Dispatch agent via Task tool
+4. Report result
+```
+
+**Orchestrator Skill:**
+```markdown
+---
+name: {name}
+description: {One-line}
+model: opus
+---
+
+# {Name} Skill
+
+{Mission.}
+
+**Activation:** `{trigger}`
+
+## Architecture
+{Phase diagram with agents}
+
+## Process
+{Phase details with Task tool dispatch}
+```
+
+### Phase 6: Write (CREATE)
+
+1. Create directory: `.claude/skills/{name}/`
+2. Write `SKILL.md`
+3. If wrapper → also write `.claude/agents/{name}.md`
+4. Register in CLAUDE.md Skills table (if user-invocable)
+
+---
+
+## UPDATE Mode
+
+### Phase 1: Requirements
+
+- **Target file:** Which file to optimize?
+- **What to change:** Specific section or full optimization?
+- **Source:** From /reflect spec or direct request?
+
+### Documentation Hierarchy
+
+```
+1. CLAUDE.md          — always loaded, < 200 lines
+2. .claude/rules/     — conditional (paths: frontmatter), < 500 lines
+3. .claude/agents/    — loaded per Task tool dispatch
+4. .claude/skills/    — loaded per Skill tool invocation
+5. Co-located (src/)  — loaded when reading nearby code
+```
+
+### What Belongs Where
+
+| Content | Location |
+|---------|----------|
+| Universal rules, commands | `CLAUDE.md` |
+| Domain-specific logic | `.claude/rules/{domain}.md` |
+| Agent execution behavior | `.claude/agents/{name}.md` |
+| User-facing skill flow | `.claude/skills/{name}/SKILL.md` |
+| Code style | Linter config (NOT docs) |
+
+### Migration Checklist (for UPDATE)
+
+1. [ ] Read current file, count lines
+2. [ ] Identify what to change
+3. [ ] Apply Three-Expert Gate to changes
+4. [ ] Write changes
+5. [ ] Verify limits: `wc -l {file}`
+6. [ ] Check no duplication introduced
+
+### Phase 6: Write (UPDATE)
+
+1. Apply changes to target file
+2. Verify limits after edit
+3. Report what changed
+
+---
+
+## Three-Expert Gate (Both Modes)
+
+**Karpathy (Remove redundancy):**
+- Does Claude already know this? Remove.
+- "If I remove this line, will output worsen?" No → remove.
+- HOW to think vs WHAT to achieve? Prefer WHAT.
+
+**Sutskever (Unlock capability):**
+- Constraining vs guiding? Principles > procedures.
+- Fighting model's strengths? Examples > descriptions.
+
+**Murati (Simplify UX):**
+- Can steps be eliminated?
+- Is input/output format minimal?
+
+---
 
 ## Anti-Patterns
 
-- Duplicate content across files → single source of truth
-- Count manually → always `wc -l`, `grep -c`
+| Don't | Do |
+|-------|-----|
+| Duplicate across files | Single source of truth |
+| Code style in docs | Linter config |
+| Count manually | `wc -l`, `grep -c` |
+| > 200 lines CLAUDE.md | Split to rules/ |
+| Overspecify steps | Principles + examples |
+
+---
+
+## Validation
+
+**Naming:** lowercase, hyphenated (`my-skill`, not `MySkill`)
+
+**Structure checks:**
+- Agent has: frontmatter, Input, Process, Output, Rules
+- Skill has: frontmatter, Activation, Process
+- Frontmatter has: name, description, model (agent), tools (agent)
+
+**Limits:** Always verify with `wc -l {file}`
