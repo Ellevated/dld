@@ -83,13 +83,13 @@ Create `ai/features/TECH-NNN-YYYY-MM-DD-reflect-synthesis.md`:
 [every file to be modified]
 
 ## Definition of Done
-- [ ] claude-md-writer applied changes
+- [ ] skill-writer applied changes
 - [ ] Diary entries marked done
 ```
 
 ### Step 6: Handoff
 
-Suggest `/claude-md-writer` to apply. After integration: mark diary entries `pending` → `done`.
+Suggest `/skill-writer update` to apply. After integration: mark diary entries `pending` → `done`.
 
 ---
 
@@ -98,4 +98,4 @@ Suggest `/claude-md-writer` to apply. After integration: mark diary entries `pen
 - **Spec first** — never edit targets directly
 - **Research** — Exa for patterns with frequency ≥ 2
 - **Three-Expert gate** — every proposal passes all 3
-- **Mark done after apply** — not before claude-md-writer runs
+- **Mark done after apply** — not before skill-writer runs
