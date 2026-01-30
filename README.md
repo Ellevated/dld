@@ -1,6 +1,8 @@
-# DLD: LLM-First Architecture
+# DLD: Double-Loop Development
 
-> Transform AI coding chaos into deterministic development
+> Turn Claude Code into an Autonomous Developer
+
+**Write specs, not code.** A methodology for deterministic AI development with fresh subagents, worktree isolation, and automatic rollback.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-blue.svg)](https://claude.ai/code)
@@ -38,24 +40,33 @@ What problems does this solve?
 
 ---
 
-## Quick Start (4 Steps)
+## Quick Start
+
+### Option 1: NPX (Recommended)
 
 ```bash
-# 1. Clone and copy template
+npx create-dld my-project
+cd my-project
+claude
+/bootstrap
+```
+
+### Option 2: Manual
+
+```bash
 git clone https://github.com/Ellevated/dld
 mkdir my-project && cd my-project
 cp -r ../dld/template/* .
 cp -r ../dld/template/.claude .
+claude
+/bootstrap
+```
 
-# 2. Configure MCP servers (optional but recommended)
+### Optional: Configure MCP Servers
+
+```bash
 claude mcp add context7 -- npx -y @context7/mcp-server
 claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
-
-# 3. Start Claude Code
-claude
-
-# 4. Unpack your idea
-> /bootstrap
 ```
 
 That's it. Bootstrap will guide you through extracting your idea into structured specs.
@@ -233,6 +244,21 @@ my-project/
 Join our Discord for help, discussions, and feature requests:
 
 [![Discord](https://img.shields.io/discord/XXXXXXXXX?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/INVITE_CODE)
+
+---
+
+## Used By
+
+> "DLD cut my debugging time from hours to minutes. The spec-first approach changed how I think about AI coding."
+> — **@username**, [Project Name](https://github.com/user/project)
+
+### Projects Using DLD
+
+| Project | Description | Stars |
+|---------|-------------|-------|
+| *Your project here* | Be the first! | ⭐ |
+
+*Using DLD? [Add your project](https://github.com/Ellevated/dld/issues/new?template=showcase.md)*
 
 ---
 

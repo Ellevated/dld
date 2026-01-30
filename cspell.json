@@ -1,0 +1,15 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "autopilot",
+    "subagent",
+    "worktree",
+    "codebase",
+    "DLD"
+  ],
+  "ignorePaths": [
+    "node_modules",
+    ".git"
+  ]
+}

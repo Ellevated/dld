@@ -1,0 +1,15 @@
+{
+  "name": "create-dld",
+  "version": "1.0.0",
+  "description": "Create a new DLD project with Claude Code",
+  "bin": {
+    "create-dld": "./index.js"
+  },
+  "type": "module",
+  "keywords": ["dld", "claude", "ai", "scaffolding"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ellevated/dld"
+  },
+  "license": "MIT"
+}

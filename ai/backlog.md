@@ -27,16 +27,16 @@
 | TECH-021 | Example: Content Factory | done | P3 | [TECH-021](features/TECH-021-2026-01-24-example-content-factory.md) |
 | TECH-022 | Workflow diagram | done | P3 | [TECH-022](features/TECH-022-2026-01-24-workflow-diagram.md) |
 | TECH-023 | Comparison table image | done | P3 | [TECH-023](features/TECH-023-2026-01-24-comparison-table-image.md) |
-| TECH-025 | README tagline optimization | queued | P2 | [TECH-025](features/TECH-025-2026-01-26-readme-tagline.md) |
-| TECH-026 | i18n hooks to English | queued | P2 | [TECH-026](features/TECH-026-2026-01-26-i18n-hooks.md) |
-| TECH-027 | CI/CD GitHub workflows | queued | P1 | [TECH-027](features/TECH-027-2026-01-26-cicd-workflows.md) |
-| TECH-028 | CLI scaffolder (npx create-dld) | queued | P1 | [TECH-028](features/TECH-028-2026-01-26-cli-scaffolder.md) |
-| TECH-029 | Dev.to article draft | queued | P2 | [TECH-029](features/TECH-029-2026-01-26-devto-article.md) |
+| TECH-025 | README tagline optimization | done | P2 | [TECH-025](features/TECH-025-2026-01-26-readme-tagline.md) |
+| TECH-026 | i18n hooks to English | done | P2 | [TECH-026](features/TECH-026-2026-01-26-i18n-hooks.md) |
+| TECH-027 | CI/CD GitHub workflows | done | P1 | [TECH-027](features/TECH-027-2026-01-26-cicd-workflows.md) |
+| TECH-028 | CLI scaffolder (npx create-dld) | done | P1 | [TECH-028](features/TECH-028-2026-01-26-cli-scaffolder.md) |
+| TECH-029 | Dev.to article draft | done | P2 | [TECH-029](features/TECH-029-2026-01-26-devto-article.md) |
 | TECH-030 | GIF demo for README | done | P0 | [TECH-030](features/TECH-030-2026-01-26-gif-demo.md) |
 | TECH-031 | YouTube tutorial script | done | P2 | [TECH-031](features/TECH-031-2026-01-26-youtube-script.md) |
 | TECH-032 | Discord community setup | done | P1 | [TECH-032](features/TECH-032-2026-01-26-discord-setup.md) |
 | TECH-033 | Product Hunt launch assets | done | P2 | [TECH-033](features/TECH-033-2026-01-26-producthunt-assets.md) |
-| TECH-034 | "Used By" section in README | queued | P2 | [TECH-034](features/TECH-034-2026-01-26-used-by-section.md) |
+| TECH-034 | "Used By" section in README | done | P2 | [TECH-034](features/TECH-034-2026-01-26-used-by-section.md) |
 | TECH-035 | Post-execution Exa verifier in finishing | done | P1 | [TECH-035](features/TECH-035-2026-01-29-post-execution-verifier.md) |
 | TECH-036 | Research-enhanced /reflect with Exa | done | P1 | [TECH-036](features/TECH-036-2026-01-29-research-enhanced-reflect.md) |
 | TECH-037 | Cross-task memory feed (planner reads diary) | done | P2 | [TECH-037](features/TECH-037-2026-01-29-cross-task-memory-feed.md) |
@@ -44,7 +44,8 @@
 | TECH-039 | Expand reflect & claude-md-writer scope + Three-Expert Gate | done | P1 | [TECH-039](features/TECH-039-2026-01-29-reflect-scope-expansion.md) |
 | TECH-040 | Bootstrap Exa research validation | done | P2 | [TECH-040](features/TECH-040-2026-01-29-bootstrap-exa-research.md) |
 | TECH-041 | Bootstrap Three-Expert compression (766→178 lines) | done | P2 | [TECH-041](features/TECH-041-2026-01-29-bootstrap-three-expert-compression.md) |
-| TECH-042 | Unified skill-writer (scaffold + claude-md-writer) | in_progress | P1 | [TECH-042](features/TECH-042-2026-01-29-unified-skill-writer.md) |
+| TECH-042 | Unified skill-writer (scaffold + claude-md-writer) | done | P1 | [TECH-042](features/TECH-042-2026-01-29-unified-skill-writer.md) |
+| TECH-043 | Fix hooks in worktrees | done | P1 | [TECH-043](features/TECH-043-2026-01-30-fix-hooks-worktree.md) |
 
 ---
 

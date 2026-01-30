@@ -1,0 +1,84 @@
+{
+  "model": "opus",
+  "alwaysThinkingEnabled": true,
+  "defaultMode": "bypassPermissions",
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Edit",
+      "Write",
+      "Read",
+      "Grep",
+      "Glob",
+      "WebSearch",
+      "WebFetch",
+      "Task",
+      "TodoWrite",
+      "NotebookEdit",
+      "mcp__*"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/post_edit.py\"' 2>/dev/null",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/pre_bash.py\"' 2>/dev/null",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'bash \"$(git rev-parse --show-toplevel)/.claude/hooks/validate-spec-complete.sh\"'",
+            "timeout": 3000
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/pre_edit.py\"' 2>/dev/null",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/prompt_guard.py\"' 2>/dev/null",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'bash \"$(git rev-parse --show-toplevel)/.claude/hooks/session-end.sh\"'",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
