@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/post_edit.py\"' 2>/dev/null",
+            "command": "bash -c 'ROOT=$(git worktree list --porcelain | head -1 | sed \"s/^worktree //\"); python3 \"$ROOT/.claude/hooks/post_edit.py\"' 2>/dev/null",
             "timeout": 15000
           }
         ]
@@ -37,12 +37,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/pre_bash.py\"' 2>/dev/null",
+            "command": "bash -c 'ROOT=$(git worktree list --porcelain | head -1 | sed \"s/^worktree //\"); python3 \"$ROOT/.claude/hooks/pre_bash.py\"' 2>/dev/null",
             "timeout": 5000
           },
           {
             "type": "command",
-            "command": "bash -c 'bash \"$(git rev-parse --show-toplevel)/.claude/hooks/validate-spec-complete.sh\"'",
+            "command": "bash -c 'ROOT=$(git worktree list --porcelain | head -1 | sed \"s/^worktree //\"); bash \"$ROOT/.claude/hooks/validate-spec-complete.sh\"'",
             "timeout": 3000
           }
         ]
@@ -52,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/pre_edit.py\"' 2>/dev/null",
+            "command": "bash -c 'ROOT=$(git worktree list --porcelain | head -1 | sed \"s/^worktree //\"); python3 \"$ROOT/.claude/hooks/pre_edit.py\"' 2>/dev/null",
             "timeout": 5000
           }
         ]
@@ -63,7 +63,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/prompt_guard.py\"' 2>/dev/null",
+            "command": "bash -c 'ROOT=$(git worktree list --porcelain | head -1 | sed \"s/^worktree //\"); python3 \"$ROOT/.claude/hooks/prompt_guard.py\"' 2>/dev/null",
             "timeout": 3000
           }
         ]
@@ -74,7 +74,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'bash \"$(git rev-parse --show-toplevel)/.claude/hooks/session-end.sh\"'",
+            "command": "bash -c 'ROOT=$(git worktree list --porcelain | head -1 | sed \"s/^worktree //\"); bash \"$ROOT/.claude/hooks/session-end.sh\"'",
             "timeout": 5000
           }
         ]

@@ -80,7 +80,9 @@ def main():
         rel_path = normalize_path(file_path)
 
         # Check Allowed Files (Hard Block) - only when spec exists
-        spec_path = os.environ.get("CLAUDE_CURRENT_SPEC_PATH") or infer_spec_from_branch()
+        spec_path = (
+            os.environ.get("CLAUDE_CURRENT_SPEC_PATH") or infer_spec_from_branch()
+        )
         allowed, allowed_files = is_file_allowed(rel_path, spec_path)
         if not allowed:
             allowed_list = "\n".join(f"  - {f}" for f in allowed_files[:10])
@@ -107,7 +109,11 @@ def main():
 
         # Check LOC limits (Soft Block)
         # Use absolute path for file operations
-        abs_path = file_path if file_path.startswith("/") else os.path.join(os.getcwd(), file_path)
+        abs_path = (
+            file_path
+            if file_path.startswith("/")
+            else os.path.join(os.getcwd(), file_path)
+        )
 
         if os.path.exists(abs_path):
             loc = count_lines(abs_path)

@@ -158,9 +158,10 @@ One task = one commit. Tests must pass.
 
 ### Git Autonomous Mode
 When user says "commit/push" — execute without asking:
-1. `git status && git diff`
-2. `git add -A && git commit -m "..."` (Conventional Commits)
-3. If "push" — `git push`
+1. `git status && git diff` (review changes first!)
+2. `git add <files>` (add specific files, never `.env` or credentials)
+3. `git commit -m "..."` (Conventional Commits)
+4. If "push" — `git push`
 
 **Autopilot:** auto-push to `develop` allowed. Never push to `main`.
 

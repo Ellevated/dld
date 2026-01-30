@@ -517,7 +517,7 @@ Why: Integer arithmetic prevents floating-point errors.
 | Coder Step 0 / Step 7 | Load + update context |
 | Review Check 0 | Verify context was updated |
 
-### Success Metrics (from ARCH-392 awardybot)
+### Success Metrics (example metrics)
 
 | Metric | Before | After |
 |--------|--------|-------|

@@ -46,6 +46,17 @@
 | TECH-041 | Bootstrap Three-Expert compression (766→178 lines) | done | P2 | [TECH-041](features/TECH-041-2026-01-29-bootstrap-three-expert-compression.md) |
 | TECH-042 | Unified skill-writer (scaffold + claude-md-writer) | done | P1 | [TECH-042](features/TECH-042-2026-01-29-unified-skill-writer.md) |
 | TECH-043 | Fix hooks in worktrees | done | P1 | [TECH-043](features/TECH-043-2026-01-30-fix-hooks-worktree.md) |
+| TECH-044 | Fix links to wrong repository | done | P0 | [TECH-044](features/TECH-044-2026-01-30-fix-wrong-repo-links.md) |
+| TECH-045 | Remove placeholder files | done | P2 | [TECH-045](features/TECH-045-2026-01-30-remove-placeholder-files.md) |
+| TECH-046 | Secure template settings | done | P0 | [TECH-046](features/TECH-046-2026-01-30-secure-template-settings.md) |
+| TECH-047 | Unify hook paths | done | P1 | [TECH-047](features/TECH-047-2026-01-30-unify-hook-paths.md) |
+| TECH-048 | Fix CHANGELOG versions | done | P1 | [TECH-048](features/TECH-048-2026-01-30-fix-changelog-versions.md) |
+| TECH-049 | Remove awardybot references | done | P1 | [TECH-049](features/TECH-049-2026-01-30-remove-awardybot-references.md) |
+| TECH-050 | Improve NPM package | done | P1 | [TECH-050](features/TECH-050-2026-01-30-improve-npm-package.md) |
+| TECH-051 | Add Python linting to CI | done | P1 | [TECH-051](features/TECH-051-2026-01-30-add-python-ci.md) |
+| TECH-052 | Expand cspell dictionary | done | P2 | [TECH-052](features/TECH-052-2026-01-30-expand-cspell-dictionary.md) |
+| TECH-053 | Fix ADR placeholder dates | done | P2 | [TECH-053](features/TECH-053-2026-01-30-fix-adr-dates.md) |
+| TECH-054 | Safe git add in template | done | P1 | [TECH-054](features/TECH-054-2026-01-30-safe-git-add-template.md) |
 
 ---
 

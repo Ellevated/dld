@@ -148,7 +148,7 @@ Full template is recommended but not required.
 ### Where can I get help?
 
 - [Documentation](docs/) — full methodology reference
-- [GitHub Issues](https://github.com/anthropics/claude-code/issues) — bug reports
+- [GitHub Issues](https://github.com/Ellevated/dld/issues) — bug reports
 - This FAQ — common questions
 
 ---

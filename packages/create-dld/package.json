@@ -2,6 +2,7 @@
   "name": "create-dld",
   "version": "1.0.0",
   "description": "Create a new DLD project with Claude Code",
+  "author": "DLD Contributors",
   "bin": {
     "create-dld": "./index.js"
   },
@@ -11,5 +12,9 @@
     "type": "git",
     "url": "https://github.com/Ellevated/dld"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": ["index.js", "README.md"]
 }

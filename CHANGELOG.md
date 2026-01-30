@@ -48,7 +48,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Autopilot skill split into 7 modular files
-- Template sync from production project (awardybot)
+- Template sync from production project
 
 ### Changed
 - Removed hardcoded project-specific references from template
@@ -80,7 +80,7 @@ Initial public release of DLD methodology.
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 3.3 | 2026-01-26 | Bootstrap, Claude-md-writer, Council decomposition, English translation |
+| 3.4 | 2026-01-26 | Bootstrap, Claude-md-writer, Council decomposition, English translation |
 | 3.2 | 2026-01-24 | GitHub community files, Hooks system |
 | 3.1 | 2026-01-23 | Autopilot modularization, Template sync |
 | 3.0 | 2026-01-23 | Initial release |

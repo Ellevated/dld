@@ -474,7 +474,7 @@ Type: code | Files: create/modify | Pattern: [url] | Acceptance: ...
 5. [ ] **Status = queued** — spec ready for autopilot!
 6. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
-7. [ ] **Auto-commit done** — `git add -A && git commit` (no push!)
+7. [ ] **Auto-commit done** — `git add ai/ && git commit` (no push!)
 
 If any item not done — **STOP and do it**.
 
@@ -554,17 +554,17 @@ When setting status in spec, **verbally confirm**:
 After spec file is created and backlog updated — commit ALL changes locally:
 
 ```bash
-# 1. Stage ALL changes (spec, backlog, diary, docs, screenshots, etc.)
-git add -A
+# 1. Stage spec-related changes only
+git add ai/
 
 # 2. Commit locally (NO PUSH!)
 git commit -m "docs: create spec ${TASK_ID}"
 ```
 
-**Why `git add -A`:**
-- Captures everything: spec, backlog, diary, docs, screenshots
-- Saves work from other agents (scout, manual edits)
-- .gitignore protects from junk (.env, __pycache__)
+**Why `git add ai/` (not `-A`):**
+- Only commits spec, backlog, diary — controlled files
+- Protects from accidental credential commits
+- .gitignore is defense-in-depth, not primary protection
 
 **Why NO push:**
 - CI doesn't trigger (saves money)

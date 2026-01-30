@@ -7,6 +7,21 @@ import { join } from 'path';
 const REPO_URL = 'https://github.com/Ellevated/dld.git';
 const TEMPLATE_DIR = 'template';
 
+// Check Node version
+const [major] = process.versions.node.split('.');
+if (parseInt(major) < 18) {
+  console.error('Error: Node.js 18+ required (current: ' + process.versions.node + ')');
+  process.exit(1);
+}
+
+// Check git availability
+try {
+  execSync('git --version', { stdio: 'pipe' });
+} catch {
+  console.error('Error: git is not installed. Please install git first.');
+  process.exit(1);
+}
+
 async function main() {
   const projectName = process.argv[2];
 
@@ -48,8 +63,17 @@ Next steps:
   /bootstrap
     `);
   } catch (error) {
-    console.error('Error:', error.message);
-    execSync(`rm -rf ${tempDir} ${projectName}`, { stdio: 'pipe' });
+    const msg = error.message || '';
+    if (msg.includes('ENOTFOUND') || msg.includes('getaddrinfo')) {
+      console.error('Error: Network unavailable. Check your internet connection.');
+    } else if (msg.includes('Repository not found') || msg.includes('not found')) {
+      console.error('Error: Could not access DLD repository. Please try again later.');
+    } else {
+      console.error('Error:', msg);
+    }
+    try {
+      execSync(`rm -rf ${tempDir} ${projectName} 2>/dev/null`, { stdio: 'pipe' });
+    } catch {}
     process.exit(1);
   }
 }
