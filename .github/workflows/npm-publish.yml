@@ -1,0 +1,44 @@
+name: Publish create-dld to NPM
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version and publish
+        working-directory: packages/create-dld
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # Bump patch version
+          npm version patch --no-git-tag-version
+
+          # Publish to NPM
+          npm publish --access public
+
+          # Get new version
+          VERSION=$(node -p "require('./package.json').version")
+
+          # Commit and push version bump
+          git add package.json
+          git commit -m "chore: bump create-dld to v${VERSION} [skip ci]"
+          git push
