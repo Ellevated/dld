@@ -16,6 +16,7 @@ Autopilot detects:
 **Problems:**
 - `bash_instead_of_tools` — Bash used where Edit/Write should be
 - `test_retry > 1` — Test failed and required debug loop
+- `escaped_defect` — Bug found after merge that should have been caught by review
 
 **Successes:**
 - `first_pass_success` — Coder + Tester passed on first attempt (no debug loop)
@@ -26,11 +27,13 @@ Autopilot detects:
 
 ```yaml
 task_id: "FTR-XXX" | "BUG-XXX" | "TECH-XXX"
-problem_type: bash_instead_of_tools | test_retry | escalation_used | first_pass_success | research_useful | pattern_reused
+problem_type: bash_instead_of_tools | test_retry | escalation_used | escaped_defect | first_pass_success | research_useful | pattern_reused
 error_message: "..."           # for problems
 success_detail: "..."          # for successes (pattern, source, reuse hint)
 files_changed: [...]
 attempts: "what was tried"     # for problems
+escaped_from: "TASK-YYY"       # for escaped_defect — which task introduced the bug
+found_by: "manual | user | CI | monitoring | /audit"  # for escaped_defect — discovery method
 ```
 
 ## Process
@@ -85,6 +88,33 @@ attempts: "what was tried"     # for problems
 
 ```markdown
 | {date} | {task_id} | success | {brief description} | pending | [->](ai/diary/{date}-{task_id}-success.md) |
+```
+
+### Escaped Defect Entry
+
+```markdown
+# Session: {task_id} — {date}
+
+## Escaped Defect
+- Bug found after merge from {escaped_from}
+- Found by: {found_by}
+
+## Context
+- Symptom: {error_message}
+- Root cause: {brief analysis}
+- Files: {files_changed}
+
+## Why Review Missed It
+- {what check was missing}
+
+## Action Required
+- Add check to prevent recurrence (see ai/diary/escaped-defects.md)
+```
+
+### Index Row (Escaped Defect)
+
+```markdown
+| {date} | {task_id} | escaped_defect | {brief description} | pending | [->](ai/diary/{date}-{task_id}-escaped.md) |
 ```
 
 ## Directory Structure
