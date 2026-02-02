@@ -11,6 +11,7 @@ When to escalate and how to handle failures.
 | ./test fast fail | 5 | → STOP (ask human) |
 | ./test llm fail | 2 | → STOP (ask human) |
 | Reviewer refactor | 2 | → Council |
+| Heavy drift (planner) | 0 | → Council (immediate) |
 | Out-of-scope failures | ∞ | skip |
 
 ## Decision Tree
@@ -34,6 +35,19 @@ After 3 debug attempts:
 └── UNCLEAR?
     └── STOP → Ask Human
         └── "Cannot determine. Need help."
+
+Heavy drift detected by Planner:
+├── Files/functions deleted?
+│   └── YES → Council (immediate)
+│       └── "Spec assumptions invalid."
+│
+├── API incompatible changes?
+│   └── YES → Council (immediate)
+│       └── "API changed since spec."
+│
+└── >50% of Allowed Files changed?
+    └── YES → Council (immediate)
+        └── "Major codebase changes."
 ```
 
 ## Spark Escalation (for bugs)
@@ -64,7 +78,7 @@ When architecture decision needed:
 Skill tool:
   skill: "council"
   args: |
-    escalation_type: debug_stuck | refactor_stuck
+    escalation_type: debug_stuck | refactor_stuck | heavy_drift
     feature: "{TASK_ID}"
     task: "{N}/{M} — {name}"
     attempts:
@@ -77,6 +91,29 @@ Skill tool:
         reason: "..."
     question: "Specific question"
 ```
+
+### Heavy Drift Escalation Template
+
+When Planner detects heavy drift:
+
+```yaml
+Skill tool:
+  skill: "council"
+  args: |
+    escalation_type: heavy_drift
+    spec_path: "{spec_path}"
+    drift_report:
+      deleted_files: [...]
+      incompatible_apis: [...]
+      removed_deps: [...]
+      percent_changed: N%
+    question: "Spec assumptions no longer valid. Should we: (a) rewrite spec, (b) adapt approach, (c) reject task?"
+```
+
+**Council returns:**
+- `rewrite_spec` → Spark creates new spec, old one archived
+- `adapt_approach` → Council provides adapted solution, Planner updates tasks
+- `reject_task` → Status: blocked, reason logged
 
 **Council returns:**
 - `solution_found` → apply fix, continue
