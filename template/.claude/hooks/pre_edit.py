@@ -76,7 +76,7 @@ def normalize_path(file_path: str) -> str:
     return file_path
 
 
-def check_sync_zone(rel_path: str) -> "str | None":
+def check_sync_zone(rel_path: str) -> str | None:
     """Returns reminder message if file is in sync zone."""
     if not rel_path:
         return None
