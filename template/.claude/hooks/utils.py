@@ -140,24 +140,6 @@ def block_prompt(reason: str) -> None:
     _output_json({"decision": "block", "reason": reason})
 
 
-# Backward compatibility (deprecated)
-
-
-def allow() -> None:
-    """Deprecated: use allow_tool() or approve_prompt() for clarity."""
-    allow_tool()
-
-
-def block(reason: str) -> None:
-    """Deprecated: use deny_tool() or block_prompt() for clarity."""
-    deny_tool(reason)
-
-
-def ask(reason: str) -> None:
-    """Deprecated: use ask_tool() for clarity."""
-    ask_tool(reason)
-
-
 def get_tool_input(data: dict, key: str) -> str | None:
     """Extract value from tool_input."""
     return data.get("tool_input", {}).get(key)
