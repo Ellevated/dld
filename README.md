@@ -50,7 +50,17 @@ Choose your path based on how much time you have:
 | ⭐ **Build a real project** | [Standard Setup](docs/getting-started/standard-setup.md) | 5 min |
 | ⚡ **Maximum productivity** | [Power Setup](docs/getting-started/power-setup.md) | 15 min |
 
-### Quick Start (Recommended)
+### Option A: Ask Claude (Recommended)
+
+Already have a project? Just say to Claude:
+
+```
+Install DLD from github.com/Ellevated/dld
+```
+
+Claude will scan your project, show what will change, and ask for confirmation before installing.
+
+### Option B: CLI
 
 ```bash
 # Create a new project

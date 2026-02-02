@@ -40,6 +40,29 @@ for f in $(find template/.claude -type f \( -name "*.md" -o -name "*.py" \) 2>/d
 done
 echo ""
 
+# Scripts sync check
+echo "=== Scripts sync check ==="
+for f in template/scripts/*.sh; do
+  root_f="${f#template/}"
+  if [ ! -f "$root_f" ]; then
+    echo "MISSING in root: $root_f"
+  else
+    if ! diff -q "$f" "$root_f" > /dev/null 2>&1; then
+      t_lines=$(wc -l < "$f" | tr -d ' ')
+      r_lines=$(wc -l < "$root_f" | tr -d ' ')
+      diff_val=$((r_lines - t_lines))
+      if [ $diff_val -gt 0 ]; then
+        echo "$root_f: template=$t_lines root=$r_lines (+$diff_val root newer)"
+      elif [ $diff_val -lt 0 ]; then
+        echo "$root_f: template=$t_lines root=$r_lines ($diff_val template newer)"
+      else
+        echo "$root_f: same LOC but content differs"
+      fi
+    fi
+  fi
+done
+echo ""
+
 echo "─────────────────────────────────────────────────────────────────"
 echo "Review divergence manually. Not all differences need syncing."
 echo "See .claude/CUSTOMIZATIONS.md for sync policy."

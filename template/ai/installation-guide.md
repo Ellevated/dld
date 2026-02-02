@@ -4,6 +4,137 @@ This document helps Claude (or other LLMs) understand DLD installation options a
 
 ---
 
+## LLM Installation Protocol (MANDATORY)
+
+**Claude, when asked to install DLD, you MUST follow this protocol. Never skip steps.**
+
+### Step 1: SCAN current project
+
+```bash
+# Check existing Claude setup
+ls -la .claude/ 2>/dev/null || echo "No .claude/ folder"
+ls -la .claude/skills/ 2>/dev/null || echo "No skills"
+ls -la .claude/agents/ 2>/dev/null || echo "No agents"
+ls -la .claude/hooks/ 2>/dev/null || echo "No hooks"
+ls -la .claude/rules/ 2>/dev/null || echo "No rules"
+
+# Check MCP servers
+claude mcp list 2>/dev/null || echo "No MCP configured"
+
+# Check CLAUDE.md
+head -50 CLAUDE.md 2>/dev/null || echo "No CLAUDE.md"
+```
+
+### Step 2: SHOW DIFF to user
+
+Present a comparison table:
+
+```markdown
+## DLD Installation Preview
+
+### Your Current Setup
+| Component | Status |
+|-----------|--------|
+| .claude/ folder | exists / missing |
+| Skills | list names or "none" |
+| Agents | list names or "none" |
+| MCP servers | list names or "none" |
+| Hooks | list names or "none" |
+| CLAUDE.md | exists / missing |
+
+### What DLD Will Add (Standard Tier)
+| Component | Action | Details |
+|-----------|--------|---------|
+| Skills | +N new | spark, scout, audit, review, ... |
+| Agents | +N new | planner, coder, tester, ... |
+| MCP | +N new | context7, exa |
+| Hooks | +N new | pre-commit validation |
+| Rules | +N new | architecture, testing |
+| CLAUDE.md | create/update | DLD template |
+
+### Conflicts (files that exist and will be overwritten)
+| File | Action |
+|------|--------|
+| .claude/skills/spark/ | backup → overwrite |
+| ... | ... |
+
+If no conflicts: "No conflicts detected."
+```
+
+### Step 3: ASK for confirmation
+
+```
+Proceed with DLD installation?
+- Type 'yes' to install
+- Type 'no' to cancel
+- Type 'customize' to cherry-pick components
+```
+
+### Step 4: INSTALL (only after confirmation)
+
+1. **Backup conflicts** (if any):
+   ```bash
+   mkdir -p .claude/backup/$(date +%Y%m%d)
+   cp -r .claude/skills/spark .claude/backup/$(date +%Y%m%d)/ 2>/dev/null
+   ```
+
+2. **Clone DLD template**:
+   ```bash
+   git clone --depth 1 https://github.com/Ellevated/dld.git /tmp/dld-install
+   ```
+
+3. **Copy components by tier** (see Tier Definitions below):
+   ```bash
+   # Standard tier example:
+   cp -r /tmp/dld-install/template/.claude/skills .claude/
+   cp -r /tmp/dld-install/template/.claude/agents .claude/
+   cp -r /tmp/dld-install/template/.claude/hooks .claude/
+   cp -r /tmp/dld-install/template/.claude/rules .claude/
+   cp /tmp/dld-install/template/CLAUDE.md ./CLAUDE.md
+   mkdir -p ai && cp -r /tmp/dld-install/template/ai/* ai/
+   ```
+
+4. **Setup MCP servers**:
+   ```bash
+   claude mcp add context7 -- npx -y @context7/mcp-server
+   claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
+   ```
+
+5. **Cleanup**:
+   ```bash
+   rm -rf /tmp/dld-install
+   ```
+
+6. **Verify**:
+   ```bash
+   ls -la .claude/skills/
+   claude mcp list
+   echo "DLD installed successfully!"
+   ```
+
+### Step 5: SHOW summary
+
+After installation, show what was done:
+
+```markdown
+## Installation Complete
+
+| Component | Status |
+|-----------|--------|
+| Skills | 8 installed |
+| Agents | 6 installed |
+| MCP | context7, exa |
+| Hooks | 2 installed |
+| CLAUDE.md | created |
+
+**Next steps:**
+1. Run `/spark` to create your first feature spec
+2. Check `ai/backlog.md` for task management
+3. Read CLAUDE.md for available commands
+```
+
+---
+
 ## Project Assessment Checklist
 
 Before recommending a tier, analyze:
