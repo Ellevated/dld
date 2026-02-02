@@ -68,7 +68,7 @@ def check_lint_warnings(file_path: str) -> list[str]:
         if result.stdout:
             return result.stdout.strip().split("\n")[:5]  # Max 5 warnings
         return []
-    except Exception:
+    except Exception:  # nosec B110 — fail-safe: lint error = skip linting
         return []
 
 

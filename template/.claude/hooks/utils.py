@@ -38,7 +38,7 @@ def read_hook_input() -> dict:
     """Read JSON from stdin (Claude Code passes context here)."""
     try:
         return json.load(sys.stdin)
-    except Exception:
+    except Exception:  # nosec B110 — fail-safe: hook must not crash on bad input
         return {}
 
 
@@ -233,7 +233,7 @@ def extract_allowed_files(spec_path: str) -> list[str]:
     try:
         with open(spec_path) as f:
             content = f.read()
-    except Exception:
+    except Exception:  # nosec B110 — fail-safe: missing spec = allow all
         return []
 
     # Find ## Allowed Files section
@@ -309,7 +309,7 @@ def infer_spec_from_branch() -> str | None:
             return matches[0]
 
         return None
-    except Exception:
+    except Exception:  # nosec B110 — fail-safe: git error = no spec inference
         return None
 
 

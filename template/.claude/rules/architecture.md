@@ -44,6 +44,9 @@ shared ← infra ← domains ← api
 | File > 400 LOC | LLM-unfriendly | Split into modules |
 | Circular imports | Architectural problem | Refactor dependencies |
 
+**Exception:** Bare `except Exception:` is ALLOWED in `.claude/hooks/` for fail-safe behavior.
+Hooks must never crash — a crashing hook breaks Claude Code. See ADR-004.
+
 ---
 
 ## ADR (Architecture Decision Records)
@@ -53,6 +56,7 @@ shared ← infra ← domains ← api
 | ADR-001 | Money in cents | 2026-01 | Avoid float precision errors |
 | ADR-002 | Result instead of exceptions | 2026-01 | Explicit error handling |
 | ADR-003 | Async everywhere | 2026-01 | Consistency, performance |
+| ADR-004 | Bare exceptions in hooks | 2026-02 | Hooks are fail-safe infrastructure — must never crash |
 
 ---
 

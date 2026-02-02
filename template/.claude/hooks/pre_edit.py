@@ -57,7 +57,7 @@ def count_lines(file_path: str) -> int:
     try:
         with open(file_path, encoding="utf-8", errors="ignore") as f:
             return sum(1 for _ in f)
-    except Exception:
+    except Exception:  # nosec B110 — fail-safe: unreadable file = 0 lines
         return 0
 
 
