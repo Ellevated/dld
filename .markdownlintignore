@@ -1,0 +1,6 @@
+# GitHub templates have specific format requirements
+.github/ISSUE_TEMPLATE/
+.github/PULL_REQUEST_TEMPLATE.md
+
+# Template files are user-customizable
+template/

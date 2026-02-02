@@ -565,7 +565,6 @@ class TestLogHookError:
 
     def test_does_not_crash_on_write_failure(self, monkeypatch):
         """Should silently fail if log write fails."""
-        from pathlib import Path as RealPath
 
         def raise_error():
             raise PermissionError("cannot write")

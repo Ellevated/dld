@@ -40,7 +40,9 @@
     "refactor",
     "preflight",
     "UltraThink",
-    "async"
+    "async",
+    "Awardybot",
+    "pytest"
   ],
   "ignorePaths": [
     "node_modules",
