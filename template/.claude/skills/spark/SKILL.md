@@ -18,7 +18,6 @@ description: |
   - User has existing spec with status: queued → use autopilot
   - Quick research question only → use scout
   - Code review or analysis → use audit
-agent: .claude/agents/spark.md
 ---
 
 # Spark — Idea Generation & Specification
