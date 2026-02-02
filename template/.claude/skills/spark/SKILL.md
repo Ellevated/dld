@@ -135,18 +135,4 @@ Quick checklist before creating spec:
 
 ## Output
 
-### If running as subagent (Task tool — no user interaction):
-⛔ **MUST use Write tool to create spec file BEFORE returning!**
-⛔ **MUST use Edit tool to add backlog entry BEFORE returning!**
-
-Returning spec_path without creating file = DATA LOSS (subagent context dies).
-
-### If running interactively (Skill tool):
-Write spec file when Phase 7 complete, then ask about autopilot handoff.
-
-### Return format:
-```yaml
-status: complete | needs_discussion | blocked
-spec_path: ai/features/TYPE-XXX.md  # file MUST exist
-handoff: autopilot | council | blocked
-```
+See `completion.md` for output format and handoff rules.

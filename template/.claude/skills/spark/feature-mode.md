@@ -97,7 +97,7 @@ Task tool:
 
 ## Deep Research
 
-**Trigger:** After dialogue (Phase 3), when approach is narrowed. MANDATORY for deep mode.
+**Trigger:** After Socratic Dialogue, when approach is narrowed. MANDATORY for deep mode.
 
 ```yaml
 Task tool:
@@ -112,7 +112,7 @@ Task tool:
 ```
 
 **How to fill from dialogue context:**
-- Use the approach user confirmed in Phase 3
+- Use the approach user confirmed in Socratic Dialogue
 - Include specific terms from discussion
 - Narrow to the exact pattern/library chosen
 
@@ -120,9 +120,9 @@ Task tool:
 
 ## Scout Results Integration
 
-- **Phase 3 questions** MUST reference Scout findings: "Found [X] in [source]. Fits us?"
-- **Phase 5 approaches** MUST cite Scout sources: "Approach 1: [Name] (based on [Scout source])"
-- **Phase 8 plan** MUST include Scout URLs in Research Sources section
+- **Socratic Dialogue** MUST reference Scout findings: "Found [X] in [source]. Fits us?"
+- **Approaches section** MUST cite Scout sources: "Approach 1: [Name] (based on [Scout source])"
+- **Implementation Plan** MUST include Scout URLs in Research Sources section
 - If Scout found nothing useful — note it and proceed with own analysis
 
 ---
@@ -314,34 +314,10 @@ Map every User Flow step to Implementation Task:
 
 ---
 
-## LLM-Friendly Architecture Checks
+## Next Steps
 
-Quick checklist before creating spec:
-- [ ] Files < 400 LOC (600 for tests)
-- [ ] New code in `src/domains/` or `src/infra/`, NOT legacy folders
-- [ ] Max 5 exports per `__init__.py`
-- [ ] Imports follow: shared → infra → domains → api
-
----
-
-## Completion Checklist
-
-Before marking Feature Mode complete:
-
-1. [ ] **ID determined** — not guessed, scanned backlog
-2. [ ] **Uniqueness verified** — grep backlog didn't find this ID
-3. [ ] **Spec file created** — ai/features/FTR-XXX-YYYY-MM-DD-name.md
-4. [ ] **Entry added to backlog** — in `## Queue` section
-5. [ ] **Status = queued** — ready for autopilot
-6. [ ] **Function overlap check** — grep other queued specs
-7. [ ] **Auto-commit done** — `git add ai/ && git commit` (no push!)
-
----
-
-## Output
-
-```yaml
-status: complete | needs_discussion | blocked
-spec_path: ai/features/FTR-XXX.md  # file MUST exist
-handoff: autopilot | council | blocked
-```
+After spec is created → read `completion.md` for:
+- ID determination protocol
+- Backlog entry format
+- Auto-commit rules
+- Output format
