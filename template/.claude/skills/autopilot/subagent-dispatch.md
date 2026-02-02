@@ -2,6 +2,8 @@
 
 How to spawn and manage subagents in autopilot workflow.
 
+**Execution Flow:** See `task-loop.md` for decision trees after each subagent.
+
 ## Agent Types
 
 ### Internal Agents (called only by Autopilot)
