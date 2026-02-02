@@ -1,0 +1,1561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DLD Demo</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #000000;
+            --primary: #00FF41;
+            --secondary: #008F11;
+            --dim: #003B00;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--primary);
+            font-family: 'JetBrains Mono', monospace;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        .matrix-rain {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.4;
+            z-index: 0;
+        }
+
+        .frame {
+            width: 1000px;
+            height: 650px;
+            border: 2px solid var(--primary);
+            position: relative;
+            background: rgba(0, 0, 0, 0.75);
+            box-shadow: 0 0 20px rgba(0, 255, 65, 0.3);
+            z-index: 1;
+        }
+
+        .header {
+            border-bottom: 1px solid var(--secondary);
+            padding: 12px 20px;
+            font-size: 0.9rem;
+            color: var(--secondary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .header-title { color: var(--primary); }
+
+        .content {
+            padding: 25px 35px;
+            height: calc(100% - 45px);
+            position: relative;
+        }
+
+        .slide {
+            position: absolute;
+            top: 25px;
+            left: 35px;
+            right: 35px;
+            bottom: 25px;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .slide.active { opacity: 1; }
+
+        /* Block reveal animation for auto mode */
+        .slide.auto-mode .slide-block {
+            opacity: 0;
+            transform: translateY(10px);
+            transition: none; /* No transition when hidden */
+        }
+
+        .slide.auto-mode .slide-block.visible {
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 0.6s ease, transform 0.6s ease; /* Transition only on appear */
+        }
+
+        /* In manual mode, show all blocks immediately */
+        .slide:not(.auto-mode) .slide-block {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Base font size - larger */
+        .phase-title {
+            font-size: 0.9rem;
+            color: var(--secondary);
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+        }
+
+        .terminal-line {
+            margin-bottom: 16px;
+            line-height: 1.6;
+            font-size: 1.2rem;
+        }
+
+        .prompt { color: var(--secondary); }
+        .command { color: var(--primary); }
+        .output { color: var(--secondary); padding-left: 20px; }
+        .highlight { color: var(--primary); text-shadow: 0 0 8px var(--primary); }
+
+        /* List items - unified */
+        .list-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 16px;
+            font-size: 1.1rem;
+        }
+
+        .list-icon {
+            color: var(--secondary);
+            margin-right: 14px;
+            min-width: 24px;
+            flex-shrink: 0;
+        }
+
+        .list-text { color: var(--primary); }
+        .list-desc { color: var(--secondary); font-size: 0.9rem; margin-top: 6px; }
+
+        /* Info block - unified style */
+        .info-block {
+            background: rgba(0, 255, 65, 0.05);
+            padding: 18px 22px;
+            margin: 15px 0;
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        .info-block .title {
+            color: var(--primary);
+            font-size: 1.05rem;
+            margin-bottom: 12px;
+        }
+
+        .info-block .bright { color: var(--primary); font-size: 1rem; }
+        .info-block .dim { color: var(--secondary); font-size: 0.95rem; }
+
+        /* Two column layout */
+        .two-col {
+            display: flex;
+            gap: 40px;
+            flex: 1;
+        }
+
+        .col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .col-title {
+            font-size: 0.95rem;
+            color: var(--primary);
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--dim);
+        }
+
+        /* Progress */
+        .progress {
+            margin-top: auto;
+            padding-top: 15px;
+            border-top: 1px solid var(--dim);
+            font-size: 0.85rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .progress-steps { display: flex; gap: 8px; }
+        .progress-step { color: var(--dim); transition: all 0.3s ease; }
+        .progress-step.active { color: var(--primary); text-shadow: 0 0 5px var(--primary); }
+        .progress-step.done { color: var(--secondary); }
+        .progress-arrow { color: var(--dim); }
+        .progress-bar { color: var(--primary); }
+
+        /* Navigation */
+        .nav {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .nav button {
+            background: transparent;
+            border: 1px solid var(--secondary);
+            color: var(--primary);
+            padding: 8px 20px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .nav button:hover {
+            border-color: var(--primary);
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
+        }
+
+        .scanlines {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.1),
+                rgba(0, 0, 0, 0.1) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            z-index: 10;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 10px;
+            height: 18px;
+            background: var(--primary);
+            animation: blink 1s step-end infinite;
+            vertical-align: middle;
+            margin-left: 4px;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        .pulse { animation: pulse 2s ease-in-out infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        /* Big centered text */
+        .big-text {
+            font-size: 1.6rem;
+            text-align: center;
+            color: var(--primary);
+            text-shadow: 0 0 10px var(--primary);
+            margin: 25px 0;
+        }
+
+        .medium-text {
+            font-size: 1.2rem;
+            color: var(--primary);
+            margin-bottom: 15px;
+        }
+
+        .small-note {
+            font-size: 0.8rem;
+            color: var(--secondary);
+            text-align: center;
+            margin-top: 15px;
+        }
+
+        /* Light mode for human-zone slides (before "entering the matrix") */
+        .slide[data-mode="light"] {
+            --primary: #E0E0E0;
+            --secondary: #909090;
+            --dim: #505050;
+        }
+
+        .slide[data-mode="light"] .highlight {
+            color: #FFFFFF;
+            text-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+        }
+
+        .slide[data-mode="light"] .cursor {
+            background: #E0E0E0;
+        }
+
+        .slide[data-mode="light"] .info-block {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .slide[data-mode="light"] .diagram-box {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .slide[data-mode="light"] .diagram-box.highlight-box {
+            border-color: #E0E0E0;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+        }
+
+        /* Transition slide styling */
+        .slide[data-mode="transition"] .big-text {
+            animation: glitch 0.3s ease-in-out infinite;
+        }
+
+        @keyframes glitch {
+            0%, 100% { text-shadow: 0 0 10px var(--primary); }
+            25% { text-shadow: -2px 0 #00FF41, 2px 0 #008F11; }
+            75% { text-shadow: 2px 0 #00FF41, -2px 0 #008F11; }
+        }
+
+        /* CTA styling */
+        .cta-box {
+            border: 2px solid var(--primary);
+            padding: 30px;
+            text-align: center;
+            margin: 25px 0;
+            box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
+        }
+
+        .cta-command {
+            font-size: 1.15rem;
+            color: var(--primary);
+            margin-bottom: 15px;
+        }
+
+        .cta-url {
+            font-size: 0.95rem;
+            color: var(--secondary);
+        }
+
+        /* Diagram without borders */
+        .diagram {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+            font-size: 1rem;
+        }
+
+        .diagram-box {
+            background: rgba(0, 255, 65, 0.08);
+            padding: 15px 25px;
+            text-align: center;
+        }
+
+        .diagram-box.highlight-box {
+            border: 1px solid var(--primary);
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.2);
+        }
+
+        .diagram-arrow {
+            color: var(--secondary);
+            font-size: 1.2rem;
+        }
+
+        /* Flow list for self-healing */
+        .flow-step {
+            display: flex;
+            align-items: center;
+            margin-bottom: 18px;
+            font-size: 1rem;
+        }
+
+        .flow-number {
+            color: var(--secondary);
+            margin-right: 15px;
+            min-width: 25px;
+        }
+
+        .flow-text { color: var(--primary); }
+        .flow-desc { color: var(--secondary); font-size: 0.85rem; margin-left: 40px; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <canvas class="matrix-rain" id="matrix"></canvas>
+
+    <div class="frame">
+        <div class="scanlines"></div>
+
+        <div class="header">
+            <span class="header-title">DLD_SYSTEM.RUN();</span>
+            <span id="phase-indicator">phase: idea</span>
+        </div>
+
+        <div class="content">
+
+            <!-- ==================== SLIDE 1: IDEA ==================== -->
+            <div class="slide active" data-phase="idea" data-mode="light">
+                <div class="slide-block">
+                    <div class="phase-title">[INPUT]</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[user]&gt;</span>
+                        <span class="command pulse">make the app work offline</span>
+                        <span class="cursor"></span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="info-block">
+                        <div class="bright" style="font-size: 1.1rem; margin-bottom: 15px;">RAW IDEA</div>
+                        <div class="dim">no spec, no plan</div>
+                        <div class="dim">just developer intent</div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div style="text-align: center; margin-top: 30px;">
+                        <div class="medium-text">enter /spark to begin</div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step active">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">shipped</span>
+                    </div>
+                    <span class="progress-bar">[█·········] 5%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 2: SPARK DIALOGUE ==================== -->
+            <div class="slide" data-phase="spark" data-mode="light">
+                <div class="slide-block">
+                    <div class="phase-title">[/spark] clarify before coding</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[dialogue]&gt;</span>
+                        <span class="command">5 questions to nail the scope</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="diagram" style="margin: 20px 0;">
+                        <div class="diagram-box" style="background: rgba(255, 255, 255, 0.05);">
+                            <span style="color: #E0E0E0;">IDEA</span>
+                        </div>
+                        <div class="diagram-arrow" style="color: #909090;">→</div>
+                        <div class="diagram-box" style="background: rgba(255, 255, 255, 0.05); border: 1px solid #E0E0E0; box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);">
+                            <span style="color: #FFFFFF; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6);">QUESTIONS</span>
+                        </div>
+                        <div class="diagram-arrow" style="color: #909090;">→</div>
+                        <div class="diagram-box" style="background: rgba(255, 255, 255, 0.05);">
+                            <span style="color: #E0E0E0;">CLARITY</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="two-col">
+                        <div class="col">
+                            <div class="col-title">questions first</div>
+                            <div class="list-item">
+                                <span class="list-icon">?</span>
+                                <div><div class="list-text">what problem are we solving?</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">?</span>
+                                <div><div class="list-text">who is the user?</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">?</span>
+                                <div><div class="list-text">current workaround?</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">?</span>
+                                <div><div class="list-text">MVP scope?</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">?</span>
+                                <div><div class="list-text">what can go wrong?</div></div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="col-title">why this matters</div>
+                            <div class="info-block" style="margin: 0;">
+                                <div class="dim">without spark:</div>
+                                <div class="dim">idea → code → wrong code → rewrite</div>
+                                <div style="margin-top: 15px;"></div>
+                                <div class="bright">with spark:</div>
+                                <div class="bright">idea → clarity → right code first time</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step active">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">shipped</span>
+                    </div>
+                    <span class="progress-bar">[██········] 15%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 3: TRANSITION ==================== -->
+            <div class="slide" data-phase="transition" data-mode="transition">
+                <div class="slide-block">
+                    <div class="phase-title">[FOUNDATION]</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[problem]&gt;</span>
+                        <span class="command">AI builds what it thinks, not what you meant</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="two-col" style="margin-top: 20px;">
+                        <div class="col" style="border: 1px solid #909090; padding: 15px;">
+                            <div class="col-title" style="color: #909090; border-bottom-color: #505050;">without DLD</div>
+                            <div style="margin: 0;">
+                                <div style="color: #909090;">idea → code → "not what I wanted"</div>
+                                <div style="color: #909090;">→ rewrite → "still wrong"</div>
+                                <div style="color: #909090;">→ frustration</div>
+                                <div style="margin-top: 15px;"></div>
+                                <div style="color: #909090;">features that "kind of work"</div>
+                                <div style="color: #909090;">quality by accident</div>
+                            </div>
+                        </div>
+                        <div class="col" style="border: 1px solid var(--primary); padding: 15px; box-shadow: 0 0 10px rgba(0, 255, 65, 0.2);">
+                            <div class="col-title">with DLD</div>
+                            <div style="margin: 0;">
+                                <div class="bright">idea → spec → exactly what you meant</div>
+                                <div class="bright">→ backlog → priority queue</div>
+                                <div class="bright">→ autopilot</div>
+                                <div style="margin-top: 15px;"></div>
+                                <div class="bright">features as designed</div>
+                                <div class="bright">quality by intention</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="big-text" style="margin-top: 25px; font-size: 2rem;">
+                        ENTERING AUTONOMOUS ZONE
+                    </div>
+                    <div style="font-size: 1.1rem; color: var(--secondary); text-align: center; margin-top: 10px; margin-bottom: 25px;">
+                        from here on, system works while you sleep
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step active">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">shipped</span>
+                    </div>
+                    <span class="progress-bar">[██········] 20%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 4: SPARK RESEARCH ==================== -->
+            <div class="slide" data-phase="spark">
+                <div class="slide-block">
+                    <div class="phase-title">[/spark] research externally</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[scout]&gt;</span>
+                        <span class="command">web + docs + codebase (isolated context)</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="diagram">
+                        <div class="diagram-box">
+                            <div class="bright">MAIN CONTEXT</div>
+                            <div class="dim" style="font-size: 0.85rem;">(your session)</div>
+                            <div style="margin-top: 10px;"></div>
+                            <div class="dim">stays clean</div>
+                            <div class="dim">no pollution</div>
+                        </div>
+                        <div class="diagram-arrow">←→</div>
+                        <div class="diagram-box highlight-box">
+                            <div class="bright">SCOUT AGENT</div>
+                            <div class="dim" style="font-size: 0.85rem;">(isolated)</div>
+                            <div style="margin-top: 10px;"></div>
+                            <div class="bright">does research</div>
+                            <div class="bright">returns summary</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="two-col">
+                        <div class="col">
+                            <div class="list-item">
+                                <span class="list-icon">→</span>
+                                <div>
+                                    <div class="list-text">web search</div>
+                                    <div class="list-desc">PWA patterns, service workers</div>
+                                </div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">→</span>
+                                <div>
+                                    <div class="list-text">docs lookup</div>
+                                    <div class="list-desc">library documentation</div>
+                                </div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">→</span>
+                                <div>
+                                    <div class="list-text">codebase grep</div>
+                                    <div class="list-desc">existing patterns</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="list-item">
+                                <span class="list-icon">✓</span>
+                                <div>
+                                    <div class="list-text">API layer at src/api/</div>
+                                </div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">✓</span>
+                                <div>
+                                    <div class="list-text">cache utils exist</div>
+                                </div>
+                            </div>
+                            <div class="info-block" style="margin-top: 20px;">
+                                <div class="bright">scout returns clean summary</div>
+                                <div class="dim">main context stays focused</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step active">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">shipped</span>
+                    </div>
+                    <span class="progress-bar">[███·······] 25%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 5: SPARK SPEC ==================== -->
+            <div class="slide" data-phase="spark">
+                <div class="slide-block">
+                    <div class="phase-title">[/spark] output spec</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[spec]&gt;</span>
+                        <span class="command">FEAT-087-offline-mode.md with allowed_files</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="diagram" style="margin: 20px 0;">
+                        <div class="diagram-box">
+                            <div class="bright">CLARITY</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box highlight-box">
+                            <div class="bright">SPEC</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box">
+                            <div class="bright">WHITELIST</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="two-col">
+                        <div class="col">
+                            <div class="col-title">spec preview</div>
+                            <div class="info-block" style="margin: 0;">
+                                <div class="bright" style="margin-bottom: 10px;">FEAT-087-offline-mode.md</div>
+                                <div class="dim">allowed files:</div>
+                                <div class="bright">  ✓ src/sw.ts</div>
+                                <div class="bright">  ✓ src/cache.ts</div>
+                                <div class="bright">  ✓ src/api/offline.ts</div>
+                                <div class="dim">  ✗ everything else</div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="col-title">allowed files = whitelist</div>
+                            <div class="list-item">
+                                <span class="list-icon">!</span>
+                                <div>
+                                    <div class="list-text">coder can ONLY touch listed files</div>
+                                    <div class="list-desc">physical constraint, not suggestion</div>
+                                </div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">!</span>
+                                <div>
+                                    <div class="list-text">prevents scope creep</div>
+                                    <div class="list-desc">no "while I'm here..." changes</div>
+                                </div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">!</span>
+                                <div>
+                                    <div class="list-text">safe for unattended runs</div>
+                                    <div class="list-desc">won't break unrelated code</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step active">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">shipped</span>
+                    </div>
+                    <span class="progress-bar">[████······] 35%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 6: AUTOPILOT PLANNER ==================== -->
+            <div class="slide" data-phase="autopilot">
+                <div class="slide-block">
+                    <div class="phase-title">[/autopilot] create plan</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[planner]&gt;</span>
+                        <span class="command">spec → micro-tasks with code snippets</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="diagram" style="margin: 20px 0;">
+                        <div class="diagram-box">
+                            <div class="bright">SPEC</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box highlight-box">
+                            <div class="bright">PLANNER</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box">
+                            <div class="bright">TASKS + CODE</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="two-col">
+                        <div class="col">
+                            <div class="col-title">planner does</div>
+                            <div class="list-item">
+                                <span class="list-icon">✓</span>
+                                <div><div class="list-text">validates spec consistency</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">✓</span>
+                                <div><div class="list-text">checks allowed files exist</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">✓</span>
+                                <div><div class="list-text">breaks into micro-tasks</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">✓</span>
+                                <div><div class="list-text">writes code snippets for each</div></div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="col-title">key insight</div>
+                            <div class="info-block" style="margin: 0;">
+                                <div class="bright">planner writes HOW</div>
+                                <div class="bright">coder just executes</div>
+                                <div style="margin-top: 10px;"></div>
+                                <div class="dim">no improvisation</div>
+                                <div class="dim">predictable results</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step active">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">shipped</span>
+                    </div>
+                    <span class="progress-bar">[█████·····] 45%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 7: AUTOPILOT CODER ==================== -->
+            <div class="slide" data-phase="autopilot">
+                <div class="slide-block">
+                    <div class="phase-title">[/autopilot] write code</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[coder]&gt;</span>
+                        <span class="command">only allowed files, follow the plan</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="info-block" style="margin: 20px 0;">
+                        <div><span class="bright">[✓]</span> <span class="bright">Task 1:</span> Register service worker <span class="dim">→ src/sw.ts</span></div>
+                        <div><span class="bright">[✓]</span> <span class="bright">Task 2:</span> Implement cache strategy <span class="dim">→ src/cache.ts</span></div>
+                        <div><span class="bright">[⚡]</span> <span class="bright">Task 3:</span> Add offline fallback <span class="dim">→ src/api/</span></div>
+                        <div><span class="dim">[ ] Task 4:</span> <span class="dim">Cache static assets → src/sw.ts</span></div>
+                        <div><span class="dim">[ ] Task 5:</span> <span class="dim">Add tests → tests/</span></div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="two-col">
+                        <div class="col">
+                            <div class="col-title">coder constraints</div>
+                            <div class="list-item">
+                                <span class="list-icon">!</span>
+                                <div><div class="list-text">only allowed files</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">!</span>
+                                <div><div class="list-text">follows planner's code</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">!</span>
+                                <div><div class="list-text">no creative additions</div></div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="col-title">why constraints?</div>
+                            <div class="list-item">
+                                <span class="list-icon">→</span>
+                                <div><div class="list-text">predictable output</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">→</span>
+                                <div><div class="list-text">safe unattended execution</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">→</span>
+                                <div><div class="list-text">run overnight, no surprises</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step active">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">shipped</span>
+                    </div>
+                    <span class="progress-bar">[██████····] 55%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 8: AUTOPILOT TESTER ==================== -->
+            <div class="slide" data-phase="autopilot">
+                <div class="slide-block">
+                    <div class="phase-title">[/autopilot] run tests</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[tester]&gt;</span>
+                        <span class="command">3 passed, 47 skipped (scope protection)</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="diagram" style="margin: 20px 0;">
+                        <div class="diagram-box">
+                            <div class="dim">changed files</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box highlight-box">
+                            <div class="bright">scope protection</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box">
+                            <div class="bright">only relevant tests</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="info-block">
+                        <div><span class="highlight">[pass]</span> test_service_worker.py</div>
+                        <div><span class="highlight">[pass]</span> test_cache_strategy.py</div>
+                        <div><span class="highlight">[pass]</span> test_offline_fallback.py</div>
+                        <div><span class="dim">[skip] 47 unrelated tests</span></div>
+                        <div style="margin-top: 10px;"></div>
+                        <div><span class="bright">coverage: 94% on changed files</span></div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step active">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">shipped</span>
+                    </div>
+                    <span class="progress-bar">[██████····] 60%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 9: AUTOPILOT REVIEW ==================== -->
+            <div class="slide" data-phase="autopilot">
+                <div class="slide-block">
+                    <div class="phase-title">[/autopilot] quality gate</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[review]&gt;</span>
+                        <span class="command">DRY ✓ patterns ✓ security ✓ approved</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="diagram" style="margin: 20px 0;">
+                        <div class="diagram-box">
+                            <div class="bright">CODE</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box highlight-box">
+                            <div class="bright">REVIEW</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box">
+                            <div class="bright">APPROVED</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="two-col">
+                        <div class="col">
+                            <div class="col-title">quality checks</div>
+                            <div class="list-item">
+                                <span class="list-icon">✓</span>
+                                <div><div class="list-text">DRY analysis — no copy-paste</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">✓</span>
+                                <div><div class="list-text">duplication scan — 142 files</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">✓</span>
+                                <div><div class="list-text">pattern compliance</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">✓</span>
+                                <div><div class="list-text">tech debt: delta 0</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">✓</span>
+                                <div><div class="list-text">security basics (OWASP)</div></div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="col-title">review powers</div>
+                            <div class="list-item">
+                                <span class="list-icon">!</span>
+                                <div><div class="list-text">BLOCKS if quality drops</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">!</span>
+                                <div><div class="list-text">suggests refactoring</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">!</span>
+                                <div><div class="list-text">checks injection, XSS</div></div>
+                            </div>
+                            <div class="info-block" style="margin-top: 15px;">
+                                <div class="bright">[approved] ready for merge</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step active">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">shipped</span>
+                    </div>
+                    <span class="progress-bar">[███████···] 70%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 10: AUTOPILOT SELF-HEALING ==================== -->
+            <div class="slide" data-phase="autopilot">
+                <div class="slide-block">
+                    <div class="phase-title">[/autopilot] error? escalate</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[recovery]&gt;</span>
+                        <span class="command">retry → council → human (last resort)</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="diagram" style="margin: 20px 0;">
+                        <div class="diagram-box">
+                            <div class="bright">ERROR</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box highlight-box">
+                            <div class="bright">RETRY</div>
+                            <div class="dim" style="font-size: 0.8rem;">2-3x</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box">
+                            <div class="bright">COUNCIL</div>
+                            <div class="dim" style="font-size: 0.8rem;">5 experts</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box">
+                            <div class="dim">HUMAN</div>
+                            <div class="dim" style="font-size: 0.8rem;">last resort</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="two-col">
+                        <div class="col">
+                            <div class="col-title">escalation ladder</div>
+                            <div class="list-item">
+                                <span class="list-icon">1.</span>
+                                <div><div class="list-text">retry with different approach</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">2.</span>
+                                <div><div class="list-text">call review for suggestions</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">3.</span>
+                                <div><div class="list-text">invoke /council for debate</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">4.</span>
+                                <div><div class="list-text">ask human if all else fails</div></div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="col-title">why this matters</div>
+                            <div class="info-block" style="margin: 0;">
+                                <div class="bright">maximum autonomy</div>
+                                <div class="bright">minimum interruption</div>
+                                <div style="margin-top: 10px;"></div>
+                                <div class="dim">run overnight</div>
+                                <div class="dim">wake up to results</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step active">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step">shipped</span>
+                    </div>
+                    <span class="progress-bar">[████████··] 80%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 11: SHIPPED ==================== -->
+            <div class="slide" data-phase="shipped">
+                <div class="slide-block">
+                    <div class="phase-title">[SHIPPED]</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[git]&gt;</span>
+                        <span class="command">feat(offline): service worker support</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="diagram" style="margin: 20px 0;">
+                        <div class="diagram-box">
+                            <div class="bright">PLAN</div>
+                            <div class="dim" style="font-size: 0.8rem;">✓</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box">
+                            <div class="bright">CODE</div>
+                            <div class="dim" style="font-size: 0.8rem;">✓</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box">
+                            <div class="bright">TEST</div>
+                            <div class="dim" style="font-size: 0.8rem;">✓</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box highlight-box">
+                            <div class="bright">SHIPPED</div>
+                            <div class="dim" style="font-size: 0.8rem;">✓</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="col-title">parallel execution — scale to teams</div>
+                    <div class="diagram" style="margin: 20px 0;">
+                        <div class="diagram-box">
+                            <div class="bright">SPEC A</div>
+                            <div class="dim">branch: a</div>
+                            <div class="dim">autopilot</div>
+                        </div>
+                        <div class="diagram-box">
+                            <div class="bright">SPEC B</div>
+                            <div class="dim">branch: b</div>
+                            <div class="dim">autopilot</div>
+                        </div>
+                        <div class="diagram-box">
+                            <div class="bright">SPEC C</div>
+                            <div class="dim">branch: c</div>
+                            <div class="dim">autopilot</div>
+                        </div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div class="bright">isolated contexts, no conflicts</div>
+                        <div class="dim">merge when ready</div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step active">shipped</span>
+                    </div>
+                    <span class="progress-bar">[█████████·] 90%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 12: REFLECT ==================== -->
+            <div class="slide" data-phase="reflect">
+                <div class="slide-block">
+                    <div class="phase-title">[/reflect] learning loop</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[diary]&gt;</span>
+                        <span class="command">"use IndexedDB not localStorage" → rule</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="diagram" style="margin: 20px 0;">
+                        <div class="diagram-box">
+                            <div class="bright">SESSION</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box highlight-box">
+                            <div class="bright">DIARY</div>
+                        </div>
+                        <div class="diagram-arrow">→</div>
+                        <div class="diagram-box">
+                            <div class="bright">RULES</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="two-col">
+                        <div class="col">
+                            <div class="col-title">correction captured</div>
+                            <div class="list-item">
+                                <span class="list-icon">→</span>
+                                <div><div class="list-text">user: "use IndexedDB"</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">→</span>
+                                <div><div class="list-text">saved to diary</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">→</span>
+                                <div><div class="list-text">rule proposed</div></div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="col-title">continuous improvement</div>
+                            <div class="list-item">
+                                <span class="list-icon dim">1-2</span>
+                                <div><div class="list-text dim">mistake happens</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">3</span>
+                                <div><div class="list-text">rule added</div></div>
+                            </div>
+                            <div class="list-item">
+                                <span class="list-icon">4+</span>
+                                <div><div class="list-text">never repeats</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">shipped</span>
+                    </div>
+                    <span class="progress-bar">[██████████] 95%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 13: DOUBLE LOOP DIAGRAM ==================== -->
+            <div class="slide" data-phase="summary">
+                <div class="slide-block">
+                    <div class="phase-title">[DOUBLE-LOOP]</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[dld]&gt;</span>
+                        <span class="command">one goal, double loop: ship what you meant</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <!-- SVG Double Loop Diagram -->
+                    <div style="display: flex; justify-content: center; margin-top: 10px;">
+                        <svg width="900" height="280" viewBox="0 0 900 280" style="max-width: 100%;">
+                            <defs>
+                                <filter id="glow">
+                                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                                    <feMerge>
+                                        <feMergeNode in="coloredBlur"/>
+                                        <feMergeNode in="SourceGraphic"/>
+                                    </feMerge>
+                                </filter>
+                            </defs>
+
+                            <!-- LOOP 1: smaller circle (left) - shifted right -->
+                            <ellipse cx="230" cy="155" rx="88" ry="76" fill="none" stroke="#909090" stroke-width="2"/>
+
+                            <!-- LOOP 2: larger ellipse (right) -->
+                            <ellipse cx="580" cy="155" rx="260" ry="110" fill="none" stroke="#00FF41" stroke-width="2" filter="url(#glow)"/>
+
+                            <!-- LOOP 1 title (above circle) -->
+                            <text x="230" y="50" fill="#909090" font-size="13" text-anchor="middle" font-family="JetBrains Mono, monospace">LOOP 1: HUMAN</text>
+
+                            <!-- Loop 1 nodes positioned on the circle edge -->
+                            <!-- Idea at 9 o'clock (left) -->
+                            <rect x="112" y="145" width="55" height="22" fill="#000"/>
+                            <text x="140" y="162" fill="#E0E0E0" font-size="16" text-anchor="middle" font-family="JetBrains Mono, monospace">Idea</text>
+
+                            <!-- Questions at 12 o'clock (top) -->
+                            <rect x="170" y="70" width="105" height="22" fill="#000"/>
+                            <text x="222" y="87" fill="#E0E0E0" font-size="16" text-anchor="middle" font-family="JetBrains Mono, monospace">Questions</text>
+
+                            <!-- Verify at 6 o'clock (bottom) -->
+                            <rect x="190" y="220" width="70" height="22" fill="#000"/>
+                            <text x="225" y="237" fill="#E0E0E0" font-size="16" text-anchor="middle" font-family="JetBrains Mono, monospace">Verify</text>
+
+                            <!-- Spec/Backlog at 3 o'clock - positioned to overlap BOTH circles -->
+                            <rect x="285" y="130" width="85" height="52" fill="#000"/>
+                            <text x="327" y="155" fill="#00FF41" font-size="20" font-weight="bold" text-anchor="middle" font-family="JetBrains Mono, monospace" filter="url(#glow)">Spec</text>
+                            <text x="327" y="176" fill="#008F11" font-size="13" text-anchor="middle" font-family="JetBrains Mono, monospace">[backlog]</text>
+
+                            <!-- LOOP 2 title (above ellipse) -->
+                            <text x="580" y="20" fill="#00FF41" font-size="13" text-anchor="middle" font-family="JetBrains Mono, monospace">LOOP 2: AUTONOMOUS</text>
+
+                            <!-- Loop 2 nodes with black background -->
+                            <!-- Plan at ~11 o'clock -->
+                            <rect x="395" y="55" width="55" height="22" fill="#000"/>
+                            <text x="422" y="72" fill="#00FF41" font-size="16" text-anchor="middle" font-family="JetBrains Mono, monospace">Plan</text>
+
+                            <!-- Coder at ~1 o'clock -->
+                            <rect x="720" y="60" width="65" height="22" fill="#000"/>
+                            <text x="752" y="77" fill="#00FF41" font-size="16" text-anchor="middle" font-family="JetBrains Mono, monospace">Coder</text>
+
+                            <!-- Tester at 3 o'clock -->
+                            <rect x="800" y="145" width="70" height="22" fill="#000"/>
+                            <text x="835" y="162" fill="#00FF41" font-size="16" text-anchor="middle" font-family="JetBrains Mono, monospace">Tester</text>
+
+                            <!-- Review at ~5 o'clock -->
+                            <rect x="720" y="225" width="70" height="22" fill="#000"/>
+                            <text x="755" y="242" fill="#00FF41" font-size="16" text-anchor="middle" font-family="JetBrains Mono, monospace">Review</text>
+
+                            <!-- Deploy at 6 o'clock - moved down -->
+                            <rect x="530" y="255" width="70" height="22" fill="#000"/>
+                            <text x="565" y="272" fill="#00FF41" font-size="16" text-anchor="middle" font-family="JetBrains Mono, monospace">Deploy</text>
+
+                            <!-- Reflect at ~8 o'clock - moved down -->
+                            <rect x="350" y="218" width="80" height="22" fill="#000"/>
+                            <text x="390" y="235" fill="#00FF41" font-size="16" text-anchor="middle" font-family="JetBrains Mono, monospace">Reflect</text>
+
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <!-- Message -->
+                    <div style="text-align: center; margin-top: 10px; font-size: 1.05rem;">
+                        <span style="color: var(--primary);">spend your time creating features</span>
+                        <span style="color: var(--secondary);"> — not hunting bugs</span>
+                    </div>
+
+                    <div class="info-block" style="text-align: center; margin-top: 15px;">
+                        <div class="bright">spec = contract between loops</div>
+                        <div class="dim">defines WHAT + allowed files → autopilot can't go beyond</div>
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">shipped</span>
+                    </div>
+                    <span class="progress-bar">[██████████] 97%</span>
+                </div>
+            </div>
+
+            <!-- ==================== SLIDE 14: CTA ==================== -->
+            <div class="slide" data-phase="cta">
+                <div class="slide-block">
+                    <div class="phase-title">[DLD]</div>
+                    <div class="terminal-line">
+                        <span class="prompt">[you]&gt;</span>
+                        <span class="command">join the loop</span>
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="big-text" style="margin-top: 20px;">
+                        DOUBLE-LOOP DEVELOPMENT
+                    </div>
+                </div>
+
+                <div class="slide-block">
+                    <div class="cta-box">
+                        <div class="cta-command">
+                            [user]&gt; claude, integrate DLD into this project
+                        </div>
+                        <div class="cta-url">
+                            github.com/Ellevated/dld
+                        </div>
+                    </div>
+                    <div class="info-block" style="text-align: center;">
+                        <div class="bright">TURN CLAUDE CODE INTO AN AUTONOMOUS DEVELOPER</div>
+                        <div style="margin-top: 10px;"></div>
+                        <div class="dim">idea → spec → code → shipped</div>
+                        <div class="dim">while you sleep</div>
+                    </div>
+                    <div class="small-note" style="margin-top: 20px;">
+                        END OF TRANSMISSION.
+                    </div>
+                </div>
+
+                <div class="progress">
+                    <div class="progress-steps">
+                        <span class="progress-step done">idea</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/spark</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">/autopilot</span>
+                        <span class="progress-arrow">→</span>
+                        <span class="progress-step done">shipped</span>
+                    </div>
+                    <span class="progress-bar">[██████████] 100%</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="nav">
+        <button onclick="prevSlide()">← prev</button>
+        <button onclick="nextSlide()">next →</button>
+        <button id="autoBtn" onclick="toggleAuto()">auto</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*';
+        const fontSize = 14;
+        const columns = canvas.width / fontSize;
+        const drops = Array(Math.floor(columns)).fill(1);
+
+        function drawMatrix() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#00FF41';
+            ctx.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < drops.length; i++) {
+                const text = chars[Math.floor(Math.random() * chars.length)];
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+                if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+
+        setInterval(drawMatrix, 50);
+
+        const slides = document.querySelectorAll('.slide');
+        const phaseIndicator = document.getElementById('phase-indicator');
+        let currentSlide = 0;
+        let autoPlay = false;
+        let autoTimeouts = [];
+        const BLOCK_DELAY = 2000; // 2 seconds between blocks
+
+        function showSlide(index, isAuto = false) {
+            if (index < 0) index = slides.length - 1;
+            if (index >= slides.length) index = 0;
+
+            slides.forEach(s => {
+                s.classList.remove('active', 'auto-mode');
+                // Reset all blocks
+                s.querySelectorAll('.slide-block').forEach(b => b.classList.remove('visible'));
+            });
+
+            const slide = slides[index];
+
+            // Add auto-mode BEFORE active so blocks are hidden when slide appears
+            if (isAuto) {
+                slide.classList.add('auto-mode');
+            }
+            slide.classList.add('active');
+
+            phaseIndicator.textContent = 'phase: ' + slide.dataset.phase;
+            currentSlide = index;
+
+            // In auto mode, reveal blocks sequentially (first block immediately)
+            if (isAuto) {
+                const blocks = slide.querySelectorAll('.slide-block');
+                blocks.forEach((block, i) => {
+                    if (i === 0) {
+                        // First block appears immediately
+                        block.classList.add('visible');
+                    } else {
+                        const timeout = setTimeout(() => {
+                            block.classList.add('visible');
+                        }, i * BLOCK_DELAY);
+                        autoTimeouts.push(timeout);
+                    }
+                });
+            }
+        }
+
+        function nextSlide() { showSlide(currentSlide + 1, autoPlay); }
+        function prevSlide() { showSlide(currentSlide - 1, autoPlay); }
+
+        function clearAutoTimeouts() {
+            autoTimeouts.forEach(t => clearTimeout(t));
+            autoTimeouts = [];
+        }
+
+        function toggleAuto() {
+            autoPlay = !autoPlay;
+            clearAutoTimeouts();
+
+            const autoBtn = document.getElementById('autoBtn');
+
+            if (autoPlay) {
+                autoBtn.textContent = '■ stop';
+                autoBtn.style.borderColor = 'var(--primary)';
+                autoBtn.style.boxShadow = '0 0 10px rgba(0, 255, 65, 0.3)';
+
+                // Show current slide in auto mode
+                showSlide(currentSlide, true);
+
+                // Calculate total time for 3 blocks + pause before next slide
+                const totalSlideTime = 3 * BLOCK_DELAY + BLOCK_DELAY; // 8 seconds total
+
+                function autoAdvance() {
+                    if (!autoPlay) return;
+
+                    clearAutoTimeouts();
+                    const nextIndex = (currentSlide + 1) % slides.length;
+                    showSlide(nextIndex, true);
+
+                    // Schedule next advance
+                    const advanceTimeout = setTimeout(autoAdvance, totalSlideTime);
+                    autoTimeouts.push(advanceTimeout);
+                }
+
+                // Schedule first advance
+                const firstTimeout = setTimeout(autoAdvance, totalSlideTime);
+                autoTimeouts.push(firstTimeout);
+            } else {
+                autoBtn.textContent = 'auto';
+                autoBtn.style.borderColor = '';
+                autoBtn.style.boxShadow = '';
+
+                // Exit auto mode - show all blocks
+                slides.forEach(s => s.classList.remove('auto-mode'));
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+            if (e.key === 'ArrowLeft') prevSlide();
+            if (e.key === 'a') toggleAuto();
+        });
+    </script>
+</body>
+</html>
