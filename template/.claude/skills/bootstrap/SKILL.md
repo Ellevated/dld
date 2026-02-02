@@ -1,21 +1,6 @@
 ---
 name: bootstrap
-description: |
-  Day-0 skill: extract idea from founder's head → structured files in ai/idea/.
-
-  AUTO-ACTIVATE when user says:
-  - "new project", "start project", "day 0"
-  - "bootstrap", "initial setup"
-  - "extract idea", "define product"
-
-  Also activate when:
-  - ai/idea/ folder is empty
-  - User describes business idea without existing structure
-
-  DO NOT USE when:
-  - Project already has ai/idea/ files → use spark for features
-  - User wants implementation → use autopilot
-  - User wants research → use scout
+description: Day-0 skill: extract idea from founder's head → structured files in ai/idea/.
 model: opus
 ---
 

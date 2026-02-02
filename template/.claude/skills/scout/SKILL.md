@@ -1,23 +1,6 @@
 ---
 name: scout
-description: |
-  Isolated research agent for external sources (Exa + Context7).
-
-  AUTO-ACTIVATE when user says:
-  - "research", "find out", "look up"
-  - "how does X work", "what's the best way to"
-  - "find docs", "find examples"
-  - "compare options", "what are alternatives"
-
-  Also activate when:
-  - User asks about library/framework usage
-  - User needs current best practices (2024-2026)
-  - Error message needs external context
-
-  DO NOT USE when:
-  - User wants full feature spec → use spark
-  - User ready to implement → use autopilot
-  - Analysis of own codebase → use audit
+description: Isolated research agent for external sources (Exa + Context7).
 agent: .claude/agents/scout.md
 ---
 

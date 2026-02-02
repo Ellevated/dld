@@ -1,22 +1,6 @@
 ---
 name: autopilot
-description: |
-  Autonomous spec execution with subagents (planner, coder, tester, reviewer).
-
-  AUTO-ACTIVATE when user says:
-  - "implement", "execute", "start working on"
-  - "run autopilot", "execute spec"
-  - "build this", "code this"
-
-  Also activate when:
-  - Spec exists with status: queued in ai/backlog.md
-  - User references specific TECH-XXX/FTR-XXX/BUG-XXX task
-
-  DO NOT USE when:
-  - No spec exists yet → use spark first
-  - User exploring ideas, not ready to implement → use spark
-  - Need research before implementation → use scout
-  - Architecture decision needed → use council
+description: Autonomous spec execution with subagents (planner, coder, tester, reviewer).
 model: opus
 ---
 

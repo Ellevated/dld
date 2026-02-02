@@ -1,23 +1,6 @@
 ---
 name: reflect
-description: |
-  Analyze diary entries → propose improvements to rules, agents, skills.
-
-  AUTO-ACTIVATE when user says:
-  - "reflect", "reflection", "analyze diary"
-  - "what did we learn", "lessons learned"
-  - "update rules", "improve prompts"
-  - "weekly review", "maintenance"
-
-  Also activate when:
-  - 5+ pending entries in ai/diary/
-  - Series of similar bugs occurred
-  - Before major work (refresh memory)
-
-  DO NOT USE when:
-  - User wants new feature → use spark
-  - User wants research → use scout
-  - User wants code analysis → use audit
+description: Analyze diary entries → propose improvements to rules, agents, skills.
 model: opus
 ---
 

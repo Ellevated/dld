@@ -1,23 +1,6 @@
 ---
 name: spark
-description: |
-  Feature specification and research agent. Creates specs in ai/features/.
-
-  AUTO-ACTIVATE when user says:
-  - "add feature", "new feature", "create feature"
-  - "create spec", "write specification"
-  - "bug" or "error" without clear solution
-  - "how should we implement X?"
-
-  Also activate when:
-  - User viewing/editing ai/features/*.md files
-  - User describes problem without asking for immediate fix
-
-  DO NOT USE when:
-  - User says "implement", "execute", "start working" → use autopilot
-  - User has existing spec with status: queued → use autopilot
-  - Quick research question only → use scout
-  - Code review or analysis → use audit
+description: Feature specification and research agent. Creates specs in ai/features/.
 ---
 
 # Spark — Idea Generation & Specification

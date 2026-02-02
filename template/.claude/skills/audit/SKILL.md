@@ -1,24 +1,6 @@
 ---
 name: audit
-description: |
-  Systematic code analysis (READ-ONLY). Finds patterns and issues in codebase.
-
-  AUTO-ACTIVATE when user says:
-  - "find all", "where is", "check for"
-  - "analyze code", "review code", "audit"
-  - "security check", "vulnerability scan"
-  - "what's not tested", "coverage check"
-  - "consistency check", "find duplicates"
-
-  Also activate when:
-  - User asks about codebase patterns
-  - User wants to find all usages of X
-  - Preparing for refactoring
-
-  DO NOT USE when:
-  - User wants to create feature → use spark
-  - User wants external research → use scout
-  - User wants to fix something → use spark then autopilot
+description: Systematic code analysis (READ-ONLY). Finds patterns and issues in codebase.
 model: opus
 ---
 

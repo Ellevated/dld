@@ -1,24 +1,6 @@
 ---
 name: council
-description: |
-  Multi-agent review with 5 expert perspectives for architectural decisions.
-
-  AUTO-ACTIVATE when user says:
-  - "should we", "which approach", "what's better"
-  - "debate", "discuss options", "pros and cons"
-  - "review architecture", "review design"
-  - "controversial", "risky change"
-
-  Also activate when:
-  - Change affects >10 files
-  - Breaking change to API/interfaces
-  - User uncertain about approach
-
-  DO NOT USE when:
-  - Simple task (<3 files) → just implement
-  - Urgent hotfix → fix directly
-  - User wants to create spec → use spark
-  - User wants implementation → use autopilot
+description: Multi-agent review with 5 expert perspectives for architectural decisions.
 model: opus
 ---
 
