@@ -7,13 +7,13 @@ Thank you for your interest in contributing to DLD!
 ### Reporting Bugs
 
 1. Check [existing issues](https://github.com/Ellevated/dld/issues) to avoid duplicates
-2. Use the [bug report template](https://github.com/Ellevated/dld/issues/new?template=bug-report.md)
+2. Use the [bug report template](https://github.com/Ellevated/dld/issues/new?template=bug_report.md)
 3. Include steps to reproduce, expected and actual behavior
 
 ### Suggesting Features
 
 1. Check [existing issues](https://github.com/Ellevated/dld/issues) for similar requests
-2. Use the [feature request template](https://github.com/Ellevated/dld/issues/new?template=feature-request.md)
+2. Use the [feature request template](https://github.com/Ellevated/dld/issues/new?template=feature_request.md)
 3. Describe the problem and your proposed solution
 
 ### Submitting Pull Requests
