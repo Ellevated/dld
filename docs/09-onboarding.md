@@ -68,7 +68,7 @@ For each domain:
 
 ## Readiness Checklist
 
-- [ ] CLAUDE.md < 100 lines
+- [ ] CLAUDE.md < 200 lines
 - [ ] Import linter passes
 - [ ] No files > 400 LOC (600 for tests)
 - [ ] Each domain has README.md
