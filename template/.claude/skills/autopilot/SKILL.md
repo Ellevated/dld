@@ -20,13 +20,26 @@ description: |
 model: opus
 ---
 
-# Autopilot v3.4 — Fresh Subagents + Worktree Always
+# Autopilot v3.5 — Fresh Subagents + Ralph Mode
 
 Autonomous execution: Plan → Fresh subagent per task → commit → next.
 
 **Activation:**
-- `autopilot` — creates worktree, plans, executes (default)
+- `autopilot` — process all queued specs (interactive)
+- `autopilot SPEC_ID` — process single spec only (Ralph mode)
 - `autopilot --no-worktree` — skip worktree (for tiny fixes only)
+
+## Ralph Mode
+
+When called with `autopilot TECH-069` (specific SPEC_ID):
+
+1. **Process ONLY that spec** — ignore other queued specs
+2. **Exit after completion** — do NOT continue to next spec
+3. **Let external orchestrator handle next** — fresh context per spec
+
+This enables `ralph-autopilot.sh` to run overnight with fresh context per spec.
+
+**Detection:** If first argument matches pattern `(TECH|FTR|BUG|ARCH)-\d+`, enter Ralph mode.
 
 ## Quick Reference
 
@@ -128,6 +141,7 @@ For EACH task from plan:
 
 ## Main Loop
 
+### Interactive Mode (no SPEC_ID)
 ```
 while (queued/resumed tasks in ai/backlog.md):
   1. Read backlog → find first queued/resumed (P0 first)
@@ -154,6 +168,18 @@ while (queued/resumed tasks in ai/backlog.md):
 
   7. Continue to next spec
 ```
+
+### Ralph Mode (SPEC_ID provided)
+```
+1. Validate SPEC_ID exists in backlog
+2. Verify status is queued or resumed (not in_progress!)
+3. Set status → in_progress
+4. PHASE 0-3: Same as interactive
+5. EXIT (do NOT continue to next spec)
+   └─ External orchestrator provides fresh context
+```
+
+**Why Ralph mode?** Prevents context accumulation. Each spec = fresh Claude session.
 
 ---
 
@@ -190,14 +216,26 @@ Skip if either check fails.
 
 ## Context Management
 
-Compact after each spec to prevent context explosion:
+### Interactive Mode
+Context accumulates. AUTO-COMPACT after each spec (legacy).
+
+### Ralph Mode (Recommended)
+Each spec = fresh Claude session via external orchestrator.
 
 ```
-Spec 1 → PHASE 0-3 → AUTO-COMPACT
-Spec 2 → PHASE 0-3 → AUTO-COMPACT
-...
-No more queued → END
+ralph-autopilot.sh:
+  └─ claude "autopilot TECH-065" → fresh context
+  └─ claude "autopilot TECH-066" → fresh context
+  └─ claude "autopilot TECH-067" → fresh context
+  └─ ...
 ```
+
+**Memory persists via files:**
+- `ai/backlog.md` — task status
+- `ai/diary/autopilot-progress.md` — learnings
+- Git history — code changes
+
+See: `./scripts/ralph-autopilot.sh`
 
 ---
 

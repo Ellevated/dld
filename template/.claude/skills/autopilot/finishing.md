@@ -1,5 +1,8 @@
 # Finishing Workflow (PHASE 3)
 
+**Note:** In Ralph mode (SPEC_ID provided), step 9 exits immediately after merge.
+External orchestrator (`ralph-autopilot.sh`) provides fresh context for next spec.
+
 Final verification, status update, merge, and cleanup.
 
 ## Flow
@@ -38,8 +41,16 @@ Final verification, status update, merge, and cleanup.
    git worktree remove ".worktrees/{ID}" --force
    git branch -d {type}/{ID}
 
-9. Auto-compact:
-   /compact (free context before next spec)
+9. Ralph Mode Exit Check:
+   If SPEC_ID was provided (Ralph mode):
+   - Do NOT continue to next spec
+   - Do NOT call /compact
+   - EXIT cleanly — external orchestrator handles next
+   - Fresh context will be provided for next spec
+
+   If interactive mode (no SPEC_ID):
+   - Continue to next queued spec
+   - Context already managed by orchestrator
 ```
 
 ## Exa Verification

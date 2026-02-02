@@ -303,6 +303,85 @@ Step 3: Setup + baseline
 
 ---
 
+## Ralph Autopilot (Overnight Execution)
+
+Run multiple specs with fresh context per spec. No context accumulation.
+
+### When to Use
+
+| Mode | Use When |
+|------|----------|
+| **Interactive** (`autopilot`) | 1-2 specs, want to monitor |
+| **Ralph** (`ralph-autopilot.sh`) | 3+ specs, overnight runs, context-sensitive work |
+
+### Usage
+
+```bash
+# Run with default 20 iterations
+./scripts/ralph-autopilot.sh
+
+# Run with custom max iterations
+./scripts/ralph-autopilot.sh 50
+
+# Check what's next without running
+./scripts/ralph-autopilot.sh --check
+```
+
+### How It Works
+
+```
+ralph-autopilot.sh (bash loop)
+  │
+  ├─ claude "autopilot TECH-065"  → fresh context
+  │    └─ PHASE 0-3 → done
+  │
+  ├─ claude "autopilot TECH-066"  → fresh context
+  │    └─ PHASE 0-3 → done
+  │
+  └─ ... until all queued complete or blocked
+```
+
+**Key principle:** Each spec = fresh Claude session. Memory persists via files, not Claude's memory.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `scripts/ralph-autopilot.sh` | Bash orchestrator |
+| `ai/diary/autopilot-progress.md` | Learnings between iterations |
+| `ai/backlog.md` | Task status (SSOT) |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | All specs complete |
+| 1 | Spec blocked (needs human) |
+| 2 | Max iterations reached |
+
+### Troubleshooting
+
+**Script exits immediately:**
+- Check `ai/backlog.md` has specs with `queued` status
+- Verify spec files exist in `ai/features/`
+
+**Spec stays in_progress:**
+- Claude session may have ended early
+- Ralph will retry on next iteration
+- If persists, check spec for issues
+
+**Blocked status:**
+- Human intervention required
+- Check spec file for `ACTION REQUIRED` section
+- Fix issue, change status to `resumed`, re-run
+
+### Reference
+
+Based on [snarktank/ralph](https://github.com/snarktank/ralph) pattern.
+See Geoffrey Huntley's [Ralph article](https://ghuntley.com/ralph/) for background.
+
+---
+
 ## Native Language Triggers
 
 Call skills in your native language instead of slash commands.
