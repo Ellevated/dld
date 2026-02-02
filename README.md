@@ -269,13 +269,11 @@ Join discussions and get help:
 
 ## Used By
 
-This is a new project. Be among the first to try it!
+- **Dowry** — Telegram bot for wedding gift registry
+- **Awardybot** — Telegram bot for team recognition and awards
+- **Turtle Parkour** — Mobile game with obstacle courses
 
-If you're using DLD, we'd love to hear about it:
-- [Share your experience](https://github.com/Ellevated/dld/issues/new?labels=testimonial&title=My+DLD+Experience)
-- [Submit a showcase](https://github.com/Ellevated/dld/issues/new?template=showcase.md)
-
-Early adopters will be featured here.
+Using DLD? [Let us know](https://github.com/Ellevated/dld/discussions) to be featured here.
 
 ---
 
