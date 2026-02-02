@@ -147,6 +147,7 @@ Full template is recommended but not required.
 
 ### Where can I get help?
 
+- [GitHub Discussions](https://github.com/Ellevated/dld/discussions) — ask questions, share ideas
 - [Documentation](docs/) — full methodology reference
 - [GitHub Issues](https://github.com/Ellevated/dld/issues) — bug reports
 - This FAQ — common questions

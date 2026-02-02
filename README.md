@@ -261,9 +261,9 @@ my-project/
 
 ## Community
 
-Join our Discord for help, discussions, and feature requests:
+Join discussions and get help:
 
-[![Discord](https://img.shields.io/discord/XXXXXXXXX?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/INVITE_CODE)
+[![Discussions](https://img.shields.io/github/discussions/Ellevated/dld?color=blue&logo=github)](https://github.com/Ellevated/dld/discussions)
 
 ---
 

@@ -65,7 +65,6 @@ Place new examples in `examples/` directory following the existing structure.
 ## Questions?
 
 - Open a [Discussion](https://github.com/Ellevated/dld/discussions)
-- Join our [Discord](https://discord.gg/INVITE_CODE)
 - Use the [question template](../../issues/new?template=question.md)
 
 ## License
