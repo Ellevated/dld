@@ -4,22 +4,19 @@ import io
 import json
 import sys
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 # Import after adding hooks to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "template" / ".claude" / "hooks"))
 from utils import (
     allow_tool,
-    ask_tool,
-    deny_tool,
     approve_prompt,
+    ask_tool,
     block_prompt,
-    post_continue,
-    post_block,
+    deny_tool,
     get_tool_input,
     get_user_prompt,
+    post_block,
+    post_continue,
     read_hook_input,
 )
 
@@ -211,11 +208,10 @@ class TestPostBlock:
 
 
 # Import additional functions for file allowlist tests
-from utils import (
+from utils import (  # noqa: E402
     extract_allowed_files,
-    is_file_allowed,
     infer_spec_from_branch,
-    ALWAYS_ALLOWED_PATTERNS,
+    is_file_allowed,
 )
 
 
@@ -448,7 +444,6 @@ class TestInferSpecFromBranch:
         spec_file.write_text("# Test Spec")
 
         # Mock glob to find our test file
-        import glob as glob_module
 
         monkeypatch.setattr("glob.glob", lambda p: [str(spec_file)])
 
@@ -471,8 +466,6 @@ class TestInferSpecFromBranch:
         spec_file = tmp_path / "ai" / "features" / "TECH-059-hooks.md"
         spec_file.parent.mkdir(parents=True, exist_ok=True)
         spec_file.write_text("# Test Spec")
-
-        import glob as glob_module
 
         monkeypatch.setattr("glob.glob", lambda p: [str(spec_file)])
 

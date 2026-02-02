@@ -7,8 +7,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
-
 # Add hooks to path
 sys.path.insert(
     0,

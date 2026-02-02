@@ -225,9 +225,7 @@ def extract_allowed_files(spec_path: str) -> list[str]:
         return []
 
     # Find ## Allowed Files section
-    match = re.search(
-        r"## Allowed Files\s*\n(.*?)(?=\n##|\Z)", content, re.DOTALL | re.IGNORECASE
-    )
+    match = re.search(r"## Allowed Files\s*\n(.*?)(?=\n##|\Z)", content, re.DOTALL | re.IGNORECASE)
     if not match:
         return []
 

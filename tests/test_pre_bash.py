@@ -4,8 +4,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
-
 # Import after adding hooks to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "template" / ".claude" / "hooks"))
 from pre_bash import main

@@ -1,23 +1,17 @@
 """Tests for .claude/hooks/pre_edit.py"""
 
-import io
 import json
 import sys
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 # Import after adding hooks to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "template" / ".claude" / "hooks"))
 from pre_edit import (
+    MAX_LOC_CODE,
+    WARN_THRESHOLD,
     count_lines,
     is_test_file,
     normalize_path,
-    MAX_LOC_CODE,
-    MAX_LOC_TEST,
-    WARN_THRESHOLD,
-    PROTECTED_PATHS,
 )
 
 
