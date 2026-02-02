@@ -11,6 +11,19 @@
 
 ---
 
+## DLD Tier
+
+**Current:** ⭐ Standard
+
+**What's included:**
+- MCP: Context7 + Exa
+- Skills: spark, scout, commit, audit, review
+- Hooks: Safety validation
+
+**Upgrade:** Run `./scripts/setup-mcp.sh --tier 3` for Power tier (council, autopilot, planner)
+
+---
+
 ## Quick Start
 
 1. **Configure MCP servers** (recommended):

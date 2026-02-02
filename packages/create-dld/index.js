@@ -37,6 +37,47 @@ try {
   process.exit(1);
 }
 
+// Parse CLI flags
+function parseFlags() {
+  const args = process.argv.slice(2);
+  const flags = {
+    help: args.includes('--help') || args.includes('-h'),
+    quick: args.includes('--quick'),
+    standard: args.includes('--standard'),
+    power: args.includes('--power'),
+    projectName: args.find(arg => !arg.startsWith('-'))
+  };
+
+  // Validate: only one tier flag allowed
+  const tierFlags = [flags.quick, flags.standard, flags.power].filter(Boolean);
+  if (tierFlags.length > 1) {
+    console.error('Error: Only one tier flag allowed (--quick, --standard, or --power)');
+    process.exit(1);
+  }
+
+  return flags;
+}
+
+function showHelp() {
+  console.log(`
+Usage: npx create-dld <project-name> [options]
+
+Options:
+  --quick      🏃 Quick tier (2 min) - No MCP, basic skills only
+  --standard   ⭐ Standard tier (5 min) - Context7 + Exa MCP [recommended]
+  --power      ⚡ Power tier (15 min) - All MCP servers
+  --help, -h   Show this help message
+
+Examples:
+  npx create-dld my-project           # Interactive setup
+  npx create-dld my-project --quick   # Fast setup, no MCP
+  npx create-dld my-project --standard # Recommended setup
+  npx create-dld my-project --power   # Full setup
+
+Learn more: https://github.com/Ellevated/dld
+`);
+}
+
 async function addMcpServer(server) {
   return new Promise((resolve) => {
     console.log(`  Adding ${server.name}...`);
@@ -74,10 +115,18 @@ async function setupMcp(tier) {
 }
 
 async function main() {
-  const projectName = process.argv[2];
+  const flags = parseFlags();
+
+  if (flags.help) {
+    showHelp();
+    process.exit(0);
+  }
+
+  const projectName = flags.projectName;
 
   if (!projectName) {
-    console.log('Usage: npx create-dld <project-name>');
+    console.log('Usage: npx create-dld <project-name> [options]');
+    console.log('Run with --help for all options');
     process.exit(1);
   }
 
@@ -107,25 +156,42 @@ async function main() {
 
     console.log(`\nProject created: ${projectName}`);
 
-    // MCP setup prompt
-    const response = await prompts({
-      type: 'select',
-      name: 'mcpTier',
-      message: 'Configure MCP servers?',
-      choices: [
-        { title: 'Recommended (Context7 + Exa)', description: 'No API keys needed', value: 1 },
-        { title: 'Skip for now', description: 'Run ./scripts/setup-mcp.sh later', value: 0 },
-        { title: 'Power tier', description: 'Requires API keys (advanced)', value: 2 }
-      ],
-      initial: 0
-    });
+    // Determine tier (flag or interactive)
+    let mcpTier;
 
-    // Handle Ctrl+C
-    if (response.mcpTier === undefined) {
-      console.log('\nSetup cancelled. Project created without MCP.');
+    if (flags.quick) {
+      mcpTier = 0;
+      console.log('\n🏃 Quick tier selected (no MCP)');
+    } else if (flags.standard) {
+      mcpTier = 1;
+      console.log('\n⭐ Standard tier selected (Context7 + Exa)');
+    } else if (flags.power) {
+      mcpTier = 2;
+      console.log('\n⚡ Power tier selected (all MCP)');
     } else {
-      await setupMcp(response.mcpTier);
+      // Interactive mode (existing behavior)
+      const response = await prompts({
+        type: 'select',
+        name: 'mcpTier',
+        message: 'Configure MCP servers?',
+        choices: [
+          { title: '⭐ Standard (Recommended)', description: 'Context7 + Exa, 5 min setup', value: 1 },
+          { title: '🏃 Quick', description: 'No MCP, 2 min setup', value: 0 },
+          { title: '⚡ Power', description: 'All MCP servers, 15 min setup', value: 2 }
+        ],
+        initial: 0
+      });
+
+      // Handle Ctrl+C
+      if (response.mcpTier === undefined) {
+        console.log('\nSetup cancelled. Project created without MCP.');
+        mcpTier = 0;
+      } else {
+        mcpTier = response.mcpTier;
+      }
     }
+
+    await setupMcp(mcpTier);
 
     console.log(`
 Next steps:
