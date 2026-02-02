@@ -35,6 +35,21 @@ MAX_LOC_TEST = 600
 # 7/8 = 0.875 -> gives round thresholds: 350 LOC (code), 525 LOC (tests)
 WARN_THRESHOLD = 0.875
 
+# Sync zones (files that should stay in sync with template/)
+SYNC_ZONES = [
+    ".claude/",
+    "scripts/",
+]
+
+# Excluded from sync reminders (DLD-specific customizations)
+EXCLUDE_FROM_SYNC = [
+    ".claude/rules/localization.md",
+    ".claude/rules/template-sync.md",
+    ".claude/rules/git-local-folders.md",
+    ".claude/CUSTOMIZATIONS.md",
+    ".claude/settings.local.json",
+]
+
 
 def count_lines(file_path: str) -> int:
     """Count lines in file."""
@@ -61,6 +76,38 @@ def normalize_path(file_path: str) -> str:
     return file_path
 
 
+def check_sync_zone(rel_path: str) -> "str | None":
+    """Returns reminder message if file is in sync zone."""
+    if not rel_path:
+        return None
+
+    # Check if file is in a sync zone
+    in_sync_zone = False
+    for zone in SYNC_ZONES:
+        if rel_path.startswith(zone):
+            in_sync_zone = True
+            break
+
+    if not in_sync_zone:
+        return None
+
+    # Check if file is excluded from sync
+    if rel_path in EXCLUDE_FROM_SYNC:
+        return None
+
+    # Check if template version exists
+    template_path = f"template/{rel_path}"
+    if os.path.exists(template_path):
+        return (
+            f"SYNC ZONE: {rel_path}\n\n"
+            f"This file exists in template/{rel_path}\n"
+            f"Remember to sync changes bidirectionally.\n\n"
+            f"See: .claude/rules/template-sync.md"
+        )
+
+    return None
+
+
 def _log_error(error: Exception) -> None:
     """Log hook error for diagnostics."""
     try:
@@ -80,9 +127,7 @@ def main():
         rel_path = normalize_path(file_path)
 
         # Check Allowed Files (Hard Block) - only when spec exists
-        spec_path = (
-            os.environ.get("CLAUDE_CURRENT_SPEC_PATH") or infer_spec_from_branch()
-        )
+        spec_path = os.environ.get("CLAUDE_CURRENT_SPEC_PATH") or infer_spec_from_branch()
         allowed, allowed_files = is_file_allowed(rel_path, spec_path)
         if not allowed:
             allowed_list = "\n".join(f"  - {f}" for f in allowed_files[:10])
@@ -109,11 +154,7 @@ def main():
 
         # Check LOC limits (Soft Block)
         # Use absolute path for file operations
-        abs_path = (
-            file_path
-            if file_path.startswith("/")
-            else os.path.join(os.getcwd(), file_path)
-        )
+        abs_path = file_path if file_path.startswith("/") else os.path.join(os.getcwd(), file_path)
 
         if os.path.exists(abs_path):
             loc = count_lines(abs_path)
@@ -136,6 +177,13 @@ def main():
                     f"Proceed?"
                 )
                 return
+
+        # Check sync zone (Soft reminder - just info, doesn't block)
+        sync_reminder = check_sync_zone(rel_path)
+        if sync_reminder:
+            # Use ask_tool to show reminder but allow proceeding
+            ask_tool(sync_reminder)
+            return
 
         allow_tool()
     except Exception as e:

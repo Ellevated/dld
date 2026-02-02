@@ -133,6 +133,49 @@ When drift check completes, append this section to the spec:
 
 Include this section for ALL drift results (even `no_drift` for traceability).
 
+### Phase 1.6: Sync Zone Check (MANDATORY)
+
+If ANY file in Allowed Files is in a sync zone, add sync task.
+
+**Sync zones:** `.claude/`, `scripts/`
+
+**Exclude from sync:** See `.claude/CUSTOMIZATIONS.md`
+
+**Step 1:** Check each file in `## Allowed Files`:
+```
+For each file:
+  if file.startswith(".claude/") or file.startswith("scripts/"):
+    template_path = f"template/{file}"
+    if template_exists(template_path):
+      if file not in EXCLUDE_FROM_SYNC:
+        add_sync_task = true
+```
+
+**Step 2:** If sync task needed, add at END of Implementation Plan:
+```markdown
+### Task N: Sync changes to template (AUTO-GENERATED)
+
+**Type:** sync
+**Files:**
+- sync: `template/{file}` ← `./{file}`
+
+**Steps:**
+```bash
+cp {file} template/{file}
+```
+
+**Acceptance:**
+- [ ] `diff {file} template/{file}` = empty
+```
+
+**Step 3:** Report in output:
+```yaml
+sync_task_added: true | false
+sync_files:
+  - "{file1}"
+  - "{file2}"
+```
+
 ### Heavy Drift COUNCIL Escalation
 
 When heavy drift detected:
@@ -494,6 +537,8 @@ drift_items: N  # files changed since spec was written (0 = no drift)
 drift_action: none | auto_fix | council_escalation
 drift_log_added: true | false
 solution_verified: true | false  # Exa confirmed approach
+sync_task_added: true | false  # sync zone files detected
+sync_files: []  # list of files needing sync
 warnings:
   - "Task 3 has 280 LOC — consider splitting"
 blocked_reason: "..." # only if blocked
