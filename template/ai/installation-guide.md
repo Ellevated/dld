@@ -177,7 +177,7 @@ audience: Evaluators, small scripts, quick prototypes
 
 **Components:**
 - Core CLAUDE.md template
-- Basic skills: `/spark`, `/commit`
+- Basic skills: `/spark`
 - No MCP servers
 - No hooks
 
@@ -206,7 +206,7 @@ audience: Active developers, production projects
 
 **Components:**
 - Full CLAUDE.md template
-- All core skills: `/spark`, `/commit`, `/scout`, `/audit`, `/review`
+- All core skills: `/spark`, `/scout`, `/audit`, `/review`
 - MCP servers: Context7 + Exa (no API keys)
 - Safety hooks (pre-commit validation)
 - Basic rules
@@ -267,7 +267,6 @@ claude
 |-----------|-------|----------|-------|
 | CLAUDE.md | ✓ | ✓ | ✓ |
 | /spark | ✓ | ✓ | ✓ |
-| /commit | ✓ | ✓ | ✓ |
 | /scout | - | ✓ | ✓ |
 | /audit | - | ✓ | ✓ |
 | /review | - | ✓ | ✓ |

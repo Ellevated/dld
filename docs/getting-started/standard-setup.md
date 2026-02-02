@@ -7,7 +7,7 @@ The recommended setup for active development. Includes MCP servers for enhanced 
 ## What You Get
 
 - ✅ Full CLAUDE.md template
-- ✅ All core skills: `/spark`, `/scout`, `/commit`, `/audit`, `/review`
+- ✅ All core skills: `/spark`, `/scout`, `/audit`, `/review`
 - ✅ MCP: Context7 (library docs) + Exa (web research)
 - ✅ Safety hooks (pre-commit validation)
 - ❌ No advanced MCP (Memory, Sequential Thinking)
@@ -76,7 +76,6 @@ claude
 |-------|-------------|
 | `/spark` | Generate feature specifications with research |
 | `/scout` | Deep web research with Exa |
-| `/commit` | Smart git commits |
 | `/audit` | Code quality analysis |
 | `/review` | Code review automation |
 

@@ -77,7 +77,6 @@ claude mcp add memory -- npx -y @anthropic/memory-mcp
 |-------|-------------|
 | `/spark` | Feature specification with deep research |
 | `/scout` | Comprehensive web research |
-| `/commit` | Smart git commits |
 | `/audit` | Multi-zone code analysis |
 | `/review` | Automated code review |
 | `/council` | Multi-agent architectural review (5 experts) |

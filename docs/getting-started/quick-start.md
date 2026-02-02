@@ -8,7 +8,6 @@ Get DLD running in under 2 minutes. Perfect for trying it out or small scripts.
 
 - ✅ Core CLAUDE.md template
 - ✅ `/spark` for idea generation
-- ✅ `/commit` for smart commits
 - ❌ No MCP servers (uses built-in web search)
 - ❌ No hooks (no validation)
 
