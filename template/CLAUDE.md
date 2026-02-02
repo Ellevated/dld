@@ -134,6 +134,29 @@ Glossary: ai/glossary/{domain}.md
 | **scout** | Isolated research via Exa + Context7 |
 | **skill-writer** | Create agents/skills or optimize CLAUDE.md, rules, prompts |
 
+### Skill Auto-Selection
+
+Claude auto-selects skills based on user intent. Each skill has semantic triggers in its description.
+
+**How it works:**
+- User says "add login feature" → Claude activates `/spark`
+- User says "implement TECH-055" → Claude activates `/autopilot`
+- User says "how does X work?" → Claude activates `/scout`
+
+**Override:** Always use explicit `/command` to force specific skill.
+
+**Trigger examples:**
+
+| User says | Skill activated |
+|-----------|-----------------|
+| "add feature", "create spec", "bug" | spark |
+| "implement", "execute", "build this" | autopilot |
+| "should we", "which approach", "debate" | council |
+| "research", "find docs", "how does X work" | scout |
+| "find all", "analyze code", "check for" | audit |
+| "reflect", "what did we learn" | reflect |
+| "new project", "day 0" | bootstrap |
+
 **Flows:**
 ```
 New project: /bootstrap → Day 1 → /spark first feature

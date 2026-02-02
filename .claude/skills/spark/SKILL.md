@@ -308,23 +308,114 @@ Quick checklist before creating spec:
 - Imports follow: shared → infra → domains → api
 
 
-## Research Phase (via Scout)
+## Mandatory Scout Research Protocol
 
-Use Scout subagent for external research:
-- Library/framework questions
-- Best practices
-- Architecture patterns
+**Rule:** Exa search is better than our guesses. ALWAYS research before designing.
 
-**Call:**
+**When MANDATORY:** Any task that changes >5 LOC, adds a feature, fixes a non-trivial bug, or modifies prompts/agents.
+
+**When SKIP allowed:** Hotfixes <5 LOC with obvious single-line cause.
+
+---
+
+### Phase 2 Scout: Initial Recon
+
+**Trigger:** After loading context (Phase 0-1), BEFORE asking questions (Phase 3).
+
+**Prompt construction — pick template by task type:**
+
+**Feature / New functionality:**
 ```yaml
 Task tool:
+  description: "Scout: {feature_name} best practices"
   subagent_type: "scout"
+  max_turns: 8
   prompt: |
-    QUERY: {question}
-    TYPE: library | pattern | architecture
+    MODE: quick
+    QUERY: "Best practices for {feature_essence} in {tech_stack}. How to implement {pattern}? Common pitfalls, recommended approach, production-ready patterns."
+    TYPE: pattern
+    DATE: {current date}
 ```
 
-See `.claude/agents/scout.md` for details.
+**Bug / Error:**
+```yaml
+Task tool:
+  description: "Scout: {error_type} fix patterns"
+  subagent_type: "scout"
+  max_turns: 8
+  prompt: |
+    MODE: quick
+    QUERY: "{error_type}: {error_message}. Common causes and fixes in {tech_stack}. How others solved similar issues."
+    TYPE: error
+    DATE: {current date}
+```
+
+**Prompt / Agent change:**
+```yaml
+Task tool:
+  description: "Scout: {prompt_aspect} patterns"
+  subagent_type: "scout"
+  max_turns: 8
+  prompt: |
+    MODE: quick
+    QUERY: "Best practices for {prompt_aspect} in LLM agent systems. How to structure {specific_element}. Production patterns 2024-2026."
+    TYPE: pattern
+    DATE: {current date}
+```
+
+**Architecture decision:**
+```yaml
+Task tool:
+  description: "Scout: {decision} research"
+  subagent_type: "scout"
+  max_turns: 12
+  prompt: |
+    MODE: deep
+    QUERY: "{option_A} vs {option_B} for {use_case} in {tech_stack}. Production experience, trade-offs, performance benchmarks."
+    TYPE: architecture
+    DATE: {current date}
+```
+
+**How to fill `{placeholders}`:**
+- `{feature_essence}` — core of what we're building (e.g., "retry queue", "rate limiting", "webhook handler")
+- `{tech_stack}` — our stack (e.g., "Python aiogram 3", "PostgreSQL", "FastAPI")
+- `{pattern}` — specific pattern if known (e.g., "exponential backoff", "circuit breaker")
+- `{error_type}` — error class (e.g., "SQLAlchemy IntegrityError", "asyncio TimeoutError")
+- `{prompt_aspect}` — what aspect of prompt (e.g., "output format enforcement", "agent reliability", "tool selection")
+
+---
+
+### Phase 4 Scout: Deep Research
+
+**Trigger:** After dialogue (Phase 3), when approach is narrowed. MANDATORY for deep mode.
+
+```yaml
+Task tool:
+  description: "Scout deep: {refined_topic}"
+  subagent_type: "scout"
+  max_turns: 15
+  prompt: |
+    MODE: deep
+    QUERY: "{confirmed_approach} implementation in {tech_stack}. Step-by-step pattern, code structure, edge cases. {specific_context_from_dialogue}."
+    TYPE: pattern
+    DATE: {current date}
+```
+
+**How to fill from dialogue context:**
+- Use the approach user confirmed in Phase 3
+- Include specific terms from discussion
+- Narrow to the exact pattern/library chosen
+
+---
+
+### Scout Results Integration
+
+- **Phase 3 questions** MUST reference Scout findings: "Found [X] in [source]. Fits us?"
+- **Phase 5 approaches** MUST cite Scout sources: "Approach 1: [Name] (based on [Scout source])"
+- **Phase 8 plan** MUST include Scout URLs in Research Sources section
+- If Scout found nothing useful — note it and proceed with own analysis
+
+See `.claude/agents/scout.md` for Scout internals.
 
 
 ## ID Determination Protocol (MANDATORY)
@@ -365,7 +456,7 @@ Before creating plan:
 
 **See `.claude/agents/spark.md`** for detailed phases.
 
-Summary: Context → Exa Research → Clarify → Deep Search → Approaches → Design → Spec
+Summary: Context → **Scout Recon (MANDATORY)** → Clarify → **Scout Deep (MANDATORY for non-trivial)** → Approaches → Design → Spec
 
 ## Flow Coverage Matrix (REQUIRED)
 
@@ -491,7 +582,7 @@ Type: code | Files: create/modify | Pattern: [url] | Acceptance: ...
 5. [ ] **Status = queued** — spec ready for autopilot!
 6. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
-7. [ ] **Auto-commit done** — `git add ai/ && git commit` (no push!)
+7. [ ] **Auto-commit done** — `git add -A && git commit` (no push!)
 
 If any item not done — **STOP and do it**.
 
@@ -571,17 +662,17 @@ When setting status in spec, **verbally confirm**:
 After spec file is created and backlog updated — commit ALL changes locally:
 
 ```bash
-# 1. Stage spec-related changes only
-git add ai/
+# 1. Stage ALL changes (spec, backlog, diary, docs, screenshots, etc.)
+git add -A
 
 # 2. Commit locally (NO PUSH!)
 git commit -m "docs: create spec ${TASK_ID}"
 ```
 
-**Why `git add ai/` (not `-A`):**
-- Only commits spec, backlog, diary — controlled files
-- Protects from accidental credential commits
-- .gitignore is defense-in-depth, not primary protection
+**Why `git add -A`:**
+- Captures everything: spec, backlog, diary, docs, screenshots
+- Saves work from other agents (scout, manual edits)
+- .gitignore protects from junk (.env, __pycache__)
 
 **Why NO push:**
 - CI doesn't trigger (saves money)

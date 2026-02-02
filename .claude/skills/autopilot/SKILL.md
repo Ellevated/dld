@@ -34,8 +34,8 @@ Autonomous execution: Plan → Fresh subagent per task → commit → next.
 PHASE 0: Worktree Setup        → worktree-setup.md
   └─ CI check → worktree → env copy → baseline
 
-PHASE 1: Plan                  → subagent-dispatch.md
-  └─ [Plan Agent] opus → tasks in spec
+PHASE 1: Plan (ALWAYS)         → subagent-dispatch.md
+  └─ [Plan Agent] opus → validates spec + creates/updates tasks
 
 PHASE 2: Execute (per task)    → subagent-dispatch.md
   └─ [Coder] sonnet → files
@@ -73,8 +73,8 @@ PHASE 3: Finish                → finishing.md
 PHASE 0: WORKTREE SETUP
   See: worktree-setup.md
 
-PHASE 1: PLAN (if no detailed plan exists)
-  [Plan Subagent] → detailed tasks in spec
+PHASE 1: PLAN (ALWAYS — validates spec against current codebase)
+  [Plan Subagent] → re-validates + creates/updates detailed tasks
   See: subagent-dispatch.md#plan-subagent
 
 PHASE 2: FOR EACH TASK (fresh subagent per task!)
@@ -135,9 +135,9 @@ while (queued/resumed tasks in ai/backlog.md):
   3. PHASE 0: Worktree Setup
      See: worktree-setup.md
 
-  4. PHASE 1: Plan (if needed)
-     Check for "## Implementation Plan"
-     Missing? → dispatch Plan Subagent
+  4. PHASE 1: Plan (ALWAYS)
+     Dispatch Plan Subagent — validates spec against current codebase,
+     verifies solution via Exa, creates/updates detailed tasks
 
   5. PHASE 2: Execute
      FOR EACH TASK:
@@ -161,9 +161,8 @@ while (queued/resumed tasks in ai/backlog.md):
 Before taking a task:
 
 1. **Status:** Must be `queued` or `resumed`
-2. **Plan:** Must have `## Implementation Plan`
 
-Skip if either check fails.
+Skip if status check fails. Plan is created/updated by PHASE 1 (always runs).
 
 ---
 
@@ -203,6 +202,6 @@ No more queued → END
 ## References
 
 - Agent roles: `docs/foundation/02-agent-roles.md`
-- Creating skills: `/skill-writer create` skill
+- Creating skills: `/scaffold` skill
 - Smart Testing: `.claude/agents/tester.md`
 - Migrations: `.claude/rules/database.md`
