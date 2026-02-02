@@ -303,7 +303,7 @@ Step 3: Setup + baseline
 
 ---
 
-## Ralph Autopilot (Overnight Execution)
+## Autopilot Loop (Overnight Execution)
 
 Run multiple specs with fresh context per spec. No context accumulation.
 
@@ -312,25 +312,25 @@ Run multiple specs with fresh context per spec. No context accumulation.
 | Mode | Use When |
 |------|----------|
 | **Interactive** (`autopilot`) | 1-2 specs, want to monitor |
-| **Ralph** (`ralph-autopilot.sh`) | 3+ specs, overnight runs, context-sensitive work |
+| **Loop** (`autopilot-loop.sh`) | 3+ specs, overnight runs, context-sensitive work |
 
 ### Usage
 
 ```bash
 # Run with default 20 iterations
-./scripts/ralph-autopilot.sh
+./scripts/autopilot-loop.sh
 
 # Run with custom max iterations
-./scripts/ralph-autopilot.sh 50
+./scripts/autopilot-loop.sh 50
 
 # Check what's next without running
-./scripts/ralph-autopilot.sh --check
+./scripts/autopilot-loop.sh --check
 ```
 
 ### How It Works
 
 ```
-ralph-autopilot.sh (bash loop)
+autopilot-loop.sh (bash loop)
   │
   ├─ claude "autopilot TECH-065"  → fresh context
   │    └─ PHASE 0-3 → done
@@ -347,7 +347,7 @@ ralph-autopilot.sh (bash loop)
 
 | File | Purpose |
 |------|---------|
-| `scripts/ralph-autopilot.sh` | Bash orchestrator |
+| `scripts/autopilot-loop.sh` | Bash orchestrator |
 | `ai/diary/autopilot-progress.md` | Learnings between iterations |
 | `ai/backlog.md` | Task status (SSOT) |
 
@@ -367,18 +367,13 @@ ralph-autopilot.sh (bash loop)
 
 **Spec stays in_progress:**
 - Claude session may have ended early
-- Ralph will retry on next iteration
+- Loop will retry on next iteration
 - If persists, check spec for issues
 
 **Blocked status:**
 - Human intervention required
 - Check spec file for `ACTION REQUIRED` section
 - Fix issue, change status to `resumed`, re-run
-
-### Reference
-
-Based on [snarktank/ralph](https://github.com/snarktank/ralph) pattern.
-See Geoffrey Huntley's [Ralph article](https://ghuntley.com/ralph/) for background.
 
 ---
 

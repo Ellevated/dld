@@ -1,7 +1,7 @@
 # Finishing Workflow (PHASE 3)
 
-**Note:** In Ralph mode (SPEC_ID provided), step 9 exits immediately after merge.
-External orchestrator (`ralph-autopilot.sh`) provides fresh context for next spec.
+**Note:** In loop mode (SPEC_ID provided), step 9 exits immediately after merge.
+External orchestrator (`autopilot-loop.sh`) provides fresh context for next spec.
 
 Final verification, status update, merge, and cleanup.
 
@@ -41,8 +41,8 @@ Final verification, status update, merge, and cleanup.
    git worktree remove ".worktrees/{ID}" --force
    git branch -d {type}/{ID}
 
-9. Ralph Mode Exit Check:
-   If SPEC_ID was provided (Ralph mode):
+9. Loop Mode Exit Check:
+   If SPEC_ID was provided (loop mode):
    - Do NOT continue to next spec
    - Do NOT call /compact
    - EXIT cleanly — external orchestrator handles next

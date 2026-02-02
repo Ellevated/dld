@@ -20,16 +20,16 @@ description: |
 model: opus
 ---
 
-# Autopilot v3.5 — Fresh Subagents + Ralph Mode
+# Autopilot v3.5 — Fresh Subagents + Loop Mode
 
 Autonomous execution: Plan → Fresh subagent per task → commit → next.
 
 **Activation:**
 - `autopilot` — process all queued specs (interactive)
-- `autopilot SPEC_ID` — process single spec only (Ralph mode)
+- `autopilot SPEC_ID` — process single spec only (loop mode)
 - `autopilot --no-worktree` — skip worktree (for tiny fixes only)
 
-## Ralph Mode
+## Loop Mode (Single Spec)
 
 When called with `autopilot TECH-069` (specific SPEC_ID):
 
@@ -37,9 +37,9 @@ When called with `autopilot TECH-069` (specific SPEC_ID):
 2. **Exit after completion** — do NOT continue to next spec
 3. **Let external orchestrator handle next** — fresh context per spec
 
-This enables `ralph-autopilot.sh` to run overnight with fresh context per spec.
+This enables `autopilot-loop.sh` to run overnight with fresh context per spec.
 
-**Detection:** If first argument matches pattern `(TECH|FTR|BUG|ARCH)-\d+`, enter Ralph mode.
+**Detection:** If first argument matches pattern `(TECH|FTR|BUG|ARCH)-\d+`, enter loop mode.
 
 ## Quick Reference
 
@@ -169,7 +169,7 @@ while (queued/resumed tasks in ai/backlog.md):
   7. Continue to next spec
 ```
 
-### Ralph Mode (SPEC_ID provided)
+### Loop Mode (SPEC_ID provided)
 ```
 1. Validate SPEC_ID exists in backlog
 2. Verify status is queued or resumed (not in_progress!)
@@ -179,7 +179,7 @@ while (queued/resumed tasks in ai/backlog.md):
    └─ External orchestrator provides fresh context
 ```
 
-**Why Ralph mode?** Prevents context accumulation. Each spec = fresh Claude session.
+**Why loop mode?** Prevents context accumulation. Each spec = fresh Claude session.
 
 ---
 
@@ -219,11 +219,11 @@ Skip if either check fails.
 ### Interactive Mode
 Context accumulates. AUTO-COMPACT after each spec (legacy).
 
-### Ralph Mode (Recommended)
+### Loop Mode (Recommended)
 Each spec = fresh Claude session via external orchestrator.
 
 ```
-ralph-autopilot.sh:
+autopilot-loop.sh:
   └─ claude "autopilot TECH-065" → fresh context
   └─ claude "autopilot TECH-066" → fresh context
   └─ claude "autopilot TECH-067" → fresh context
@@ -235,7 +235,7 @@ ralph-autopilot.sh:
 - `ai/diary/autopilot-progress.md` — learnings
 - Git history — code changes
 
-See: `./scripts/ralph-autopilot.sh`
+See: `./scripts/autopilot-loop.sh`
 
 ---
 

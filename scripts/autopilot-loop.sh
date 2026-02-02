@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# ralph-autopilot.sh - Long-running autonomous spec execution loop
+# autopilot-loop.sh - Long-running autonomous spec execution loop
 # Each spec gets a fresh Claude context. Memory persists via files.
 #
 # Usage:
-#   ./scripts/ralph-autopilot.sh              # Run max 20 iterations
-#   ./scripts/ralph-autopilot.sh 50           # Run max 50 iterations
-#   ./scripts/ralph-autopilot.sh --check      # Show next queued spec only
-#
-# Based on: https://github.com/snarktank/ralph (9.1k stars)
+#   ./scripts/autopilot-loop.sh              # Run max 20 iterations
+#   ./scripts/autopilot-loop.sh 50           # Run max 50 iterations
+#   ./scripts/autopilot-loop.sh --check      # Show next queued spec only
 
 set -euo pipefail
 
@@ -25,7 +23,7 @@ NC='\033[0m'
 
 # Parse arguments
 if [[ "${1:-}" == "--check" ]]; then
-    echo -e "${BLUE}Ralph Autopilot - Check Mode${NC}"
+    echo -e "${BLUE}DLD Autopilot Loop - Check Mode${NC}"
     SPEC_ID=$(grep -E '\|\s*(queued|resumed)\s*\|' "$BACKLOG_FILE" 2>/dev/null | head -1 | \
               grep -oE '(TECH|FTR|BUG|ARCH)-[0-9]+' | head -1 || echo "")
     if [[ -z "$SPEC_ID" ]]; then
@@ -53,10 +51,10 @@ fi
 mkdir -p "$(dirname "$PROGRESS_FILE")"
 if [[ ! -f "$PROGRESS_FILE" ]]; then
     cat > "$PROGRESS_FILE" << 'EOF'
-# Ralph Autopilot Progress
+# Autopilot Loop Progress
 
 Progress log for autonomous spec execution.
-Each entry = one Claude session = one spec.
+Each spec = fresh Claude context. Memory persists via files.
 
 ---
 
@@ -71,14 +69,13 @@ fi
 } >> "$PROGRESS_FILE"
 
 echo -e "${BLUE}"
-echo "  ____       _       _"
-echo " |  _ \ __ _| |_ __ | |__"
-echo " | |_) / _\` | | '_ \| '_ \\"
-echo " |  _ < (_| | | |_) | | | |"
-echo " |_| \_\__,_|_| .__/|_| |_|"
-echo "              |_|"
+echo "  ___  _    ___"
+echo " |   \| |  |   \\"
+echo " | |) | |__| |) |"
+echo " |___/|____|___/"
+echo ""
 echo -e "${NC}"
-echo "Ralph Autopilot - Fresh Context per Spec"
+echo "DLD Autopilot Loop - Fresh Context per Spec"
 echo "Max iterations: $MAX_ITERATIONS"
 echo ""
 
@@ -114,7 +111,7 @@ while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
         echo "Started: $(date '+%Y-%m-%d %H:%M')"
     } >> "$PROGRESS_FILE"
 
-    # 3. Run Claude with fresh context (Ralph mode)
+    # 3. Run Claude with fresh context
     # --print captures output, autopilot processes single spec
     set +e
     OUTPUT=$(claude --print "autopilot $SPEC_ID" 2>&1 | tee /dev/stderr)
