@@ -330,8 +330,9 @@ class TestMatchesPattern:
         # *.md matches any .md file
         assert _matches_pattern("README.md", "*.md") is True
         assert _matches_pattern("ai/features/FTR-100.md", "ai/features/*.md") is True
-        # Note: fnmatch * DOES match / in Python (unlike shell glob)
-        # So ai/features/*.md also matches nested paths
+        # Per Python docs: "the filename separator '/' is not special to this module"
+        # https://docs.python.org/3/library/fnmatch.html
+        # So fnmatch('a/b/c.md', '*.md') returns True (unlike shell glob where * stops at /)
         assert _matches_pattern("ai/features/sub/FTR-100.md", "ai/features/*.md") is True
 
     def test_exact_file_patterns(self):
