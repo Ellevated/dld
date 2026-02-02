@@ -17,7 +17,7 @@
 
 **What's included:**
 - MCP: Context7 + Exa
-- Skills: spark, scout, commit, audit, review
+- Skills: spark, scout, audit, review
 - Hooks: Safety validation
 
 **Upgrade:** Run `./scripts/setup-mcp.sh --tier 3` for Power tier (council, autopilot, planner)

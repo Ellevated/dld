@@ -50,9 +50,9 @@ shared ← infra ← domains ← api
 
 | ID | Decision | Date | Reason |
 |----|----------|------|--------|
-| ADR-001 | Money in cents | YYYY-MM | Avoid float precision errors |
-| ADR-002 | Result instead of exceptions | YYYY-MM | Explicit error handling |
-| ADR-003 | Async everywhere | YYYY-MM | Consistency, performance |
+| ADR-001 | Money in cents | 2026-01 | Avoid float precision errors |
+| ADR-002 | Result instead of exceptions | 2026-01 | Explicit error handling |
+| ADR-003 | Async everywhere | 2026-01 | Consistency, performance |
 
 ---
 

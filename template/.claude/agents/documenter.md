@@ -91,8 +91,8 @@ For BREAKING and FEATURE changes:
 
 | Code Changed | Update |
 |--------------|--------|
-| `src/domains/seller/*` | `.claude/contexts/dowry.md` |
-| `src/domains/buyer/*` | `.claude/contexts/awardy.md` |
+| `src/domains/{domain1}/*` | `.claude/contexts/{domain1}.md` |
+| `src/domains/{domain2}/*` | `.claude/contexts/{domain2}.md` |
 | `src/domains/billing/*` | `.claude/contexts/shared.md` |
 | `src/infra/*`, `src/shared/*` | `.claude/contexts/shared.md` |
 | `db/migrations/*.sql` | Relevant context file |

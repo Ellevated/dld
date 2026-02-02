@@ -11,20 +11,20 @@ HOW TO USE:
 5. Optional: Add more languages by duplicating the section
 -->
 
-## [Your Language]
+## Spanish (es)
 
 | Trigger | Skill |
 |---------|-------|
-| "your word for spark", "alternative trigger" | `/spark` |
-| "your word for autopilot" | `/autopilot` |
-| "your word for council" | `/council` |
-| "your word for audit" | `/audit` |
-| "your word for scout" | `/scout` |
-| "your word for reflect" | `/reflect` |
-| "your word for tester" | `/tester` |
-| "your word for coder" | `/coder` |
-| "your word for planner" | `/planner` |
-| "your word for review" | `/review` |
+| "chispa", "crear especificación" | `/spark` |
+| "piloto automático", "ejecutar" | `/autopilot` |
+| "consejo", "debate" | `/council` |
+| "auditoría", "revisar código" | `/audit` |
+| "explorador", "investigar" | `/scout` |
+| "reflexionar" | `/reflect` |
+| "probador", "ejecutar pruebas" | `/tester` |
+| "codificador" | `/coder` |
+| "planificador" | `/planner` |
+| "revisión" | `/review` |
 
 ## Action
 
