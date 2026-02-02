@@ -150,6 +150,7 @@ claude
 | Safety Hooks | - | ✓ | ✓ |
 | Diary System | - | - | ✓ |
 | Custom Rules | - | - | ✓ |
+| Localization | - | Template | Template |
 
 ---
 
@@ -191,6 +192,23 @@ rm -rf /tmp/dld
 cp -r /tmp/dld/template/.claude/hooks .claude/
 chmod +x .claude/hooks/*.py
 ```
+
+### Add Localization (Native Language Triggers)
+
+For non-English users who want to invoke skills in their native language:
+
+```bash
+# Copy localization template
+cp template/.claude/rules/localization.md .claude/rules/
+
+# Edit with your language triggers
+# See docs/22-native-language-triggers.md for examples
+```
+
+**When to recommend:**
+- User's system language is not English
+- User communicates in non-English language
+- User explicitly asks about native language support
 
 ---
 

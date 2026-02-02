@@ -49,7 +49,7 @@
 | TECH-065 | Enhanced MCP Integration | done | P1 | [spec](features/TECH-065-2026-02-02-enhanced-mcp-integration.md) |
 | TECH-066 | Tiered User Experience (LLM-First Install) | in_progress | P1 | [spec](features/TECH-066-2026-02-02-tiered-user-experience.md) |
 | TECH-067 | Planner Mandatory Drift Check | done | P1 | [spec](features/TECH-067-2026-02-02-planner-mandatory-drift-check.md) |
-| TECH-068 | Native Language Skill Triggers | queued | P2 | [spec](features/TECH-068-2026-02-02-native-language-skill-triggers.md) |
+| TECH-068 | Native Language Skill Triggers | done | P2 | [spec](features/TECH-068-2026-02-02-native-language-skill-triggers.md) |
 | TECH-069 | Ralph Loop Autopilot (Fresh Context per Spec) | queued | P1 | [spec](features/TECH-069-2026-02-02-ralph-loop-autopilot.md) |
 | TECH-070 | Sync LOC Limits Across Documentation | queued | P2 | [spec](features/TECH-070-2026-02-02-loc-limits-sync.md) |
 | INT-001 | Unit tests for hooks | draft | P3 | — |

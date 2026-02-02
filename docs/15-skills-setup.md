@@ -303,6 +303,25 @@ Step 3: Setup + baseline
 
 ---
 
+## Native Language Triggers
+
+Call skills in your native language instead of slash commands.
+
+**Quick Setup:**
+1. Create `.claude/rules/localization.md`
+2. Add trigger mappings for your language
+3. Claude recognizes native phrases
+
+**Example (Russian):**
+```
+User: "спарк"
+Claude: [activates /spark]
+```
+
+See [Native Language Triggers](22-native-language-triggers.md) for full documentation and examples in multiple languages.
+
+---
+
 ## Common Issues
 
 ### Skill not recognized
@@ -319,3 +338,6 @@ Fix CI first — worktree setup checks status.
 
 ### Council not reaching consensus
 Synthesizer has final say. If needs_human → STOP.
+
+### Native triggers not working
+See [Native Language Triggers](22-native-language-triggers.md) — check localization.md exists.
