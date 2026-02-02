@@ -10,7 +10,7 @@ How to spawn and manage subagents in autopilot workflow.
 
 | Agent | subagent_type | Model | When |
 |-------|---------------|-------|------|
-| Plan | `planner` | opus | PHASE 1 (if no plan) |
+| Plan | `planner` | opus | PHASE 1 (ALWAYS) |
 | Coder | `coder` | sonnet | PHASE 2 per task |
 | Tester | `tester` | sonnet | PHASE 2 per task |
 | Debugger | `debugger` | opus | If Tester fails (max 3) |
@@ -28,16 +28,20 @@ How to spawn and manage subagents in autopilot workflow.
 
 ## Dispatch Templates
 
-### Plan Subagent
+### Plan Subagent (ALWAYS runs — even if spec has plan)
 
 ```yaml
 Task tool:
-  description: "Create detailed plan for {TASK_ID}"
+  description: "Plan: validate + refine {TASK_ID}"
   subagent_type: "planner"
   prompt: |
     INPUT:
       SPEC_PATH: ai/features/{TASK_ID}-*.md
       TASK_ID: {task_id}
+
+    ALWAYS RUN — even if spec already has Implementation Plan.
+    Planner re-validates spec against CURRENT codebase state,
+    verifies solutions via Exa research, and creates/updates tasks.
 ```
 
 ### Coder Subagent
