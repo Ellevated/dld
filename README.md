@@ -99,45 +99,16 @@ That's it. Bootstrap will guide you through extracting your idea into structured
 
 ```mermaid
 flowchart LR
-    A[Idea] --> B[/spark]
-    B --> C{Spec Ready?}
-    C -->|Yes| D[/autopilot]
-    C -->|No| B
-    D --> E[Plan Subagent]
-    E --> F[Coder]
-    F --> G[Tester]
-    G --> H{Tests Pass?}
-    H -->|Yes| I[Reviewer]
-    H -->|No| F
-    I --> J{Approved?}
-    J -->|Yes| K[Commit]
-    J -->|No| F
-    K --> L{More Tasks?}
-    L -->|Yes| F
-    L -->|No| M[Done]
-```
-
-### Workflow Steps
-
-1. **Idea** — You describe what you want to build
-2. **/spark** — AI researches and creates a detailed spec
-3. **Spec Ready?** — Human reviews and approves the spec
-4. **/autopilot** — Autonomous execution begins in isolated worktree
-5. **Plan → Code → Test → Review** — Each task is executed by fresh subagents
-6. **Done** — All tasks completed, merged to develop
-
-### Fresh Subagents Per Task
-
-```mermaid
-flowchart TD
     subgraph Autopilot
-        P[Planner] --> C1[Task 1]
-        C1 --> |Fresh Agent| CO1[Coder]
+        P[Planner] --> T1[Task 1]
+        T1 --> F1[Fresh Agent]
+        F1 --> CO1[Coder]
         CO1 --> TE1[Tester]
         TE1 --> RE1[Reviewer]
         RE1 --> CM1[Commit]
-        CM1 --> C2[Task 2]
-        C2 --> |Fresh Agent| CO2[Coder]
+        CM1 --> T2[Task 2]
+        T2 --> F2[Fresh Agent]
+        F2 --> CO2[Coder]
         CO2 --> TE2[Tester]
         TE2 --> RE2[Reviewer]
         RE2 --> CM2[Commit]
@@ -145,6 +116,24 @@ flowchart TD
 ```
 
 **Key insight:** Each task gets fresh context. No cross-contamination between tasks. If Task 1 fails, Task 2 isn't affected.
+
+### Double-Loop Workflow
+
+**Loop 1: Human** — clarify before coding
+1. **Idea** — You describe what you want to build
+2. **Questions** — `/spark` asks clarifying questions
+3. **Spec** — AI creates detailed spec with allowed_files
+4. **Verify** — Human reviews and approves the spec
+
+**Spec = contract between loops** — defines WHAT + allowed files → autopilot can't go beyond
+
+**Loop 2: Autonomous** — execute while you sleep
+5. **Plan** — `/autopilot` breaks spec into micro-tasks with code snippets
+6. **Coder** — Writes code (only allowed files, follows planner's code)
+7. **Tester** — Runs tests (scope protection: only relevant tests)
+8. **Review** — Quality gate (DRY, patterns, security)
+9. **Deploy** — Commit to branch
+10. **Reflect** — Learnings saved to diary → rules for next time
 
 ---
 
