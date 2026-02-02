@@ -269,8 +269,8 @@ Join discussions and get help:
 
 ## Used By
 
-- **Dowry** — Telegram bot for wedding gift registry
-- **Awardybot** — Telegram bot for team recognition and awards
+- **Dowry** — Telegram bot for marketplace shopping with cashback
+- **Awardybot** — Service for marketplace sellers: product promotion and UGC content
 - **Turtle Parkour** — Mobile game with obstacle courses
 
 Using DLD? [Let us know](https://github.com/Ellevated/dld/discussions) to be featured here.
