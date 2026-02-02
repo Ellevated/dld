@@ -43,7 +43,7 @@
 
 | ID | Задача | Status | Priority | Feature.md |
 |----|--------|--------|----------|------------|
-| TECH-055 | Auto-Review Agent (AI-on-AI Review) | draft | P2 | [spec](features/TECH-055-2026-02-01-auto-review-agent.md) |
+| TECH-055 | Review Pipeline Hardening (bug fix + enhancements) | queued | P1 | [spec](features/TECH-055-2026-02-01-auto-review-agent.md) |
 | TECH-056 | Instinct Extraction Hook | draft | P2 | [spec](features/TECH-056-2026-02-01-instinct-extraction-hook.md) |
 | TECH-057 | Semantic Skill Auto-Selection | draft | P3 | [spec](features/TECH-057-2026-02-01-semantic-skill-triggers.md) |
 | TECH-058 | Split spark/SKILL.md into modules | draft | P3 | [spec](features/TECH-058-2026-02-01-split-spark-skill.md) |
