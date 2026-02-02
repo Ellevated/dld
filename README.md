@@ -249,16 +249,13 @@ Join our Discord for help, discussions, and feature requests:
 
 ## Used By
 
-> "DLD cut my debugging time from hours to minutes. The spec-first approach changed how I think about AI coding."
-> — **@username**, [Project Name](https://github.com/user/project)
+This is a new project. Be among the first to try it!
 
-### Projects Using DLD
+If you're using DLD, we'd love to hear about it:
+- [Share your experience](https://github.com/Ellevated/dld/issues/new?labels=testimonial&title=My+DLD+Experience)
+- [Submit a showcase](https://github.com/Ellevated/dld/issues/new?template=showcase.md)
 
-| Project | Description | Stars |
-|---------|-------------|-------|
-| *Your project here* | Be the first! | ⭐ |
-
-*Using DLD? [Add your project](https://github.com/Ellevated/dld/issues/new?template=showcase.md)*
+Early adopters will be featured here.
 
 ---
 
