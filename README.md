@@ -40,26 +40,29 @@ What problems does this solve?
 
 ---
 
-## Quick Start
+## Getting Started
 
-### Option 1: NPX (Recommended)
+Choose your path based on how much time you have:
+
+| I want to... | Path | Time |
+|--------------|------|------|
+| 🏃 **Try DLD quickly** | [Quick Start](docs/getting-started/quick-start.md) | 2 min |
+| ⭐ **Build a real project** | [Standard Setup](docs/getting-started/standard-setup.md) | 5 min |
+| ⚡ **Maximum productivity** | [Power Setup](docs/getting-started/power-setup.md) | 15 min |
+
+### Quick Start (Recommended)
 
 ```bash
+# Create a new project
 npx create-dld my-project
+
+# Or specify tier directly
+npx create-dld my-project --quick      # 🏃 2 min, no MCP
+npx create-dld my-project --standard   # ⭐ 5 min, with MCP
+npx create-dld my-project --power      # ⚡ 15 min, everything
+
 cd my-project
 claude
-/bootstrap
-```
-
-### Option 2: Manual
-
-```bash
-git clone https://github.com/Ellevated/dld
-mkdir my-project && cd my-project
-cp -r ../dld/template/* .
-cp -r ../dld/template/.claude .
-claude
-/bootstrap
 ```
 
 ### Optional: Configure MCP Servers
