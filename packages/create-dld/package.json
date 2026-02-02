@@ -1,6 +1,6 @@
 {
   "name": "create-dld",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Create a new DLD project with Claude Code",
   "author": "DLD Contributors",
   "bin": {
@@ -15,6 +15,9 @@
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "prompts": "^2.4.2"
   },
   "files": ["index.js", "README.md"]
 }

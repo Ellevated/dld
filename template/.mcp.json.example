@@ -1,0 +1,40 @@
+// MCP Configuration Template for DLD
+// Copy to .claude/settings.json and uncomment desired tier
+// Docs: https://github.com/Ellevated/dld/blob/main/docs/20-mcp-setup.md
+
+{
+  "mcpServers": {
+    // ===========================================
+    // TIER 1: Zero (No MCP - skip this section)
+    // ===========================================
+
+    // ===========================================
+    // TIER 2: Recommended (Context7 + Exa)
+    // No API keys needed - uses hosted services
+    // ===========================================
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@context7/mcp-server"]
+    },
+    "exa": {
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
+    }
+
+    // ===========================================
+    // TIER 3: Power (add to Tier 2)
+    // Requires: Memory MCP API key
+    // ===========================================
+    // "memory": {
+    //   "command": "npx",
+    //   "args": ["-y", "@anthropic/memory-mcp"],
+    //   "env": {
+    //     "MEMORY_API_KEY": "your-key-here"
+    //   }
+    // },
+    // "sequential-thinking": {
+    //   "command": "npx",
+    //   "args": ["-y", "@anthropic/sequential-thinking-mcp"]
+    // }
+  }
+}

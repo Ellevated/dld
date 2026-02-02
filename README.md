@@ -64,14 +64,20 @@ claude
 
 ### Optional: Configure MCP Servers
 
+**Recommended** (no API keys needed):
 ```bash
 claude mcp add context7 -- npx -y @context7/mcp-server
 claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
 ```
 
-That's it. Bootstrap will guide you through extracting your idea into structured specs.
+Or run the interactive setup:
+```bash
+./scripts/setup-mcp.sh
+```
 
-> **Note:** MCP servers enhance `/scout` and `/spark` with real-time documentation and web research. See [MCP Setup](docs/20-mcp-setup.md) for details.
+MCP enhances `/scout` and `/spark` with real-time docs and web research. See [MCP Setup Guide](docs/20-mcp-setup.md) for all tiers.
+
+That's it. Bootstrap will guide you through extracting your idea into structured specs.
 
 ---
 

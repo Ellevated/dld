@@ -1,11 +1,26 @@
 #!/usr/bin/env node
 
-import { execSync } from 'child_process';
+import { execSync, exec } from 'child_process';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import prompts from 'prompts';
 
 const REPO_URL = 'https://github.com/Ellevated/dld.git';
 const TEMPLATE_DIR = 'template';
+
+// MCP server commands
+const MCP_SERVERS = {
+  context7: {
+    name: 'Context7',
+    cmd: 'claude mcp add context7 -- npx -y @context7/mcp-server',
+    test: 'npx -y @context7/mcp-server --help'
+  },
+  exa: {
+    name: 'Exa',
+    cmd: 'claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"',
+    test: 'curl -s --max-time 5 "https://mcp.exa.ai/mcp" | head -c 1'
+  }
+};
 
 // Check Node version
 const [major] = process.versions.node.split('.');
@@ -20,6 +35,42 @@ try {
 } catch {
   console.error('Error: git is not installed. Please install git first.');
   process.exit(1);
+}
+
+async function addMcpServer(server) {
+  return new Promise((resolve) => {
+    console.log(`  Adding ${server.name}...`);
+    exec(server.cmd, { timeout: 30000 }, (error) => {
+      if (error) {
+        console.log(`  Warning: ${server.name} setup may have issues`);
+        resolve(false);
+      } else {
+        console.log(`  ${server.name} added`);
+        resolve(true);
+      }
+    });
+  });
+}
+
+async function setupMcp(tier) {
+  if (tier === 0) {
+    console.log('\nSkipping MCP setup. You can run ./scripts/setup-mcp.sh later.');
+    return;
+  }
+
+  console.log('\nConfiguring MCP servers...');
+
+  if (tier >= 1) {
+    await addMcpServer(MCP_SERVERS.context7);
+    await addMcpServer(MCP_SERVERS.exa);
+  }
+
+  if (tier >= 2) {
+    console.log('\nTier 3 servers require API keys.');
+    console.log('Run ./scripts/setup-mcp.sh --tier 3 to complete setup.');
+  }
+
+  console.log('\nMCP setup complete. Restart Claude Code to activate.');
 }
 
 async function main() {
@@ -54,9 +105,29 @@ async function main() {
     // Cleanup
     execSync(`rm -rf ${tempDir}`, { stdio: 'pipe' });
 
-    console.log(`
-✓ Project created: ${projectName}
+    console.log(`\nProject created: ${projectName}`);
 
+    // MCP setup prompt
+    const response = await prompts({
+      type: 'select',
+      name: 'mcpTier',
+      message: 'Configure MCP servers?',
+      choices: [
+        { title: 'Recommended (Context7 + Exa)', description: 'No API keys needed', value: 1 },
+        { title: 'Skip for now', description: 'Run ./scripts/setup-mcp.sh later', value: 0 },
+        { title: 'Power tier', description: 'Requires API keys (advanced)', value: 2 }
+      ],
+      initial: 0
+    });
+
+    // Handle Ctrl+C
+    if (response.mcpTier === undefined) {
+      console.log('\nSetup cancelled. Project created without MCP.');
+    } else {
+      await setupMcp(response.mcpTier);
+    }
+
+    console.log(`
 Next steps:
   cd ${projectName}
   claude

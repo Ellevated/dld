@@ -2,29 +2,71 @@
 
 Model Context Protocol (MCP) servers extend Claude Code's capabilities with external tools.
 
-## Quick Start
+## Choose Your Tier
 
-**Fastest way to get started:**
+| Tier | Servers | Setup Time | API Keys | Best For |
+|------|---------|------------|----------|----------|
+| **Zero** | None | 0 min | None | Quick evaluation |
+| **Recommended** | Context7 + Exa | 2 min | None | Active development |
+| **Power** | + Memory + Sequential | 5 min | Memory key | Teams, complex projects |
 
-```bash
-# Context7 — library documentation
-claude mcp add context7 -- npx -y @context7/mcp-server
-
-# Exa — web search (hosted, all tools enabled)
-claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,linkedin_search_exa,deep_researcher_start,deep_researcher_check"
-```
-
-That's it! Restart Claude Code and MCP tools are available.
+**Recommendation:** Start with **Recommended** tier. All features work, no API keys needed.
 
 ---
 
-## Overview
+## Tier 1: Zero (No MCP)
 
-DLD uses MCP servers for:
-- **Documentation lookup** — Context7 for up-to-date library docs
-- **Web research** — Exa for intelligent web search, code examples, company research, deep research
+DLD works without MCP servers. Skills like `/scout` and `/spark` will use built-in WebSearch and WebFetch tools instead.
 
-All MCP servers are **optional**. DLD works without them, but skills like `/scout` are significantly more powerful with MCP.
+**Limitations:**
+- No real-time library documentation (Context7)
+- Basic web search instead of Exa deep research
+- Research quality is lower but functional
+
+**When to use:** Quick evaluation, offline environments, restricted networks.
+
+---
+
+## Tier 2: Recommended (Context7 + Exa)
+
+**Setup time:** 2 minutes | **API keys:** None needed
+
+```bash
+# One-liner setup
+claude mcp add context7 -- npx -y @context7/mcp-server && \
+claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
+```
+
+**What you get:**
+- **Context7** - Real-time library documentation lookup
+- **Exa** - Intelligent web search, code examples, deep research
+
+**Verify installation:**
+```bash
+./scripts/setup-mcp.sh --check
+```
+
+---
+
+## Tier 3: Power (Teams & Complex Projects)
+
+**Setup time:** 5 minutes | **API keys:** Memory MCP key required
+
+Start with Tier 2, then add:
+
+```bash
+# Memory MCP (requires API key from Anthropic)
+claude mcp add memory -- npx -y @anthropic/memory-mcp
+
+# Sequential Thinking (no key needed)
+claude mcp add sequential-thinking -- npx -y @anthropic/sequential-thinking-mcp
+```
+
+**What you get (in addition to Tier 2):**
+- **Memory** - Cross-session memory, team knowledge sharing
+- **Sequential Thinking** - Enhanced reasoning for complex problems
+
+**When to use:** Large codebases, team environments, multi-day projects.
 
 ---
 
@@ -234,14 +276,4 @@ If MCP servers are not configured:
 
 ## Troubleshooting
 
-### "MCP server not found"
-- Ensure Node.js and npm are installed
-- Try running the npx command manually to check for errors
-
-### "Tool not available"
-- Restart Claude Code after adding MCP config
-- Check that tool names match exactly (case-sensitive)
-
-### "API key invalid" (Exa)
-- Verify API key is correct
-- Check that env variable is properly set in config
+See [MCP Troubleshooting Guide](21-mcp-troubleshooting.md) for common issues and solutions.
