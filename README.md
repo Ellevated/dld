@@ -259,6 +259,26 @@ Early adopters will be featured here.
 
 ---
 
+## Development
+
+### Running Tests
+
+```bash
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ -v --cov=.claude/hooks --cov-report=term-missing
+
+# Run specific test file
+pytest tests/test_pre_edit.py -v
+```
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md)
