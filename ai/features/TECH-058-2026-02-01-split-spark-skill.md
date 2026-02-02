@@ -1,6 +1,6 @@
 # Tech: [TECH-058] Split spark/SKILL.md Into Modules
 
-**Status:** queued | **Priority:** P3 | **Date:** 2026-02-01
+**Status:** done | **Priority:** P3 | **Date:** 2026-02-01
 
 ## Why
 
@@ -270,4 +270,39 @@ Note: Total increases slightly due to module headers, but each file is maintaina
 
 ## Autopilot Log
 
-*(Filled by Autopilot during execution)*
+### Task 1/6: Create feature-mode.md — 2026-02-02 12:39
+- Coder: completed (1 file: feature-mode.md, 347 LOC)
+- Tester: skipped (no tests for .md)
+- Spec Reviewer: approved (all feature logic preserved)
+
+### Task 2/6: Create bug-mode.md — 2026-02-02 12:39
+- Coder: completed (1 file: bug-mode.md, 317 LOC)
+- Tester: skipped (no tests for .md)
+- Spec Reviewer: approved (5 Whys preserved intact)
+
+### Task 3/6: Create completion.md — 2026-02-02 12:39
+- Coder: completed (1 file: completion.md, 199 LOC)
+- Tester: skipped (no tests for .md)
+- Spec Reviewer: approved (all checklists preserved)
+
+### Task 4/6: Refactor SKILL.md — 2026-02-02 12:43
+- Coder: completed (1 file: SKILL.md, 736→152 LOC)
+- Tester: skipped (no tests for .md)
+- Spec Reviewer: approved (orchestrator pattern implemented)
+
+### Task 5/6: Verify LOC Limits — 2026-02-02 12:44
+- Verification: PASSED
+  - SKILL.md: 152 LOC (< 200) ✓
+  - feature-mode.md: 347 LOC (< 500) ✓
+  - bug-mode.md: 317 LOC (< 500) ✓
+  - completion.md: 199 LOC (< 200) ✓
+  - Total: 1015 LOC (< 1400) ✓
+
+### Task 6/6: Sync to root .claude/ — 2026-02-02 12:44
+- Sync: completed (4 files copied)
+- Diff: no differences ✓
+
+### Final — 2026-02-02 12:46
+- Commit: 451a45b
+- Branch: tech/TECH-058
+- Status: done
