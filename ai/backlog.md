@@ -17,7 +17,7 @@
 | TECH-063 | Publish create-dld to NPM | draft | ⭐⭐⭐⭐⭐ | [spec](features/TECH-063-2026-02-01-publish-npm-package.md) |
 | TECH-060 | Create Demo GIF for README | draft | ⭐⭐⭐⭐⭐ | [spec](features/TECH-060-2026-02-01-demo-gif-creation.md) |
 | TECH-061 | Fix Discord Placeholder Links | draft | ⭐⭐⭐⭐ | [spec](features/TECH-061-2026-02-01-discord-placeholder-fix.md) |
-| TECH-062 | Sync template/.claude with root .claude | draft | ⭐⭐⭐ | [spec](features/TECH-062-2026-02-01-sync-template-root.md) |
+| TECH-062 | Sync template/.claude with root .claude | queued | ⭐⭐⭐ | [spec](features/TECH-062-2026-02-01-sync-template-root.md) |
 | LAUNCH-001 | E2E test: npx create-dld → first spark | draft | ⭐⭐⭐⭐⭐ | TBD |
 | LAUNCH-002 | Real testimonials from 3 early adopters | draft | ⭐⭐⭐⭐ | TBD |
 | LAUNCH-003 | 5-minute video walkthrough | draft | ⭐⭐⭐⭐ | TBD |
