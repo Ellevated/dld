@@ -33,6 +33,26 @@ Thank you for your interest in contributing to DLD!
 
 ## DLD-Specific Contributions
 
+### Template vs Root (.claude/)
+
+DLD has TWO copies of `.claude/` configuration:
+
+```
+template/.claude/   ← Universal template (for all DLD users)
+.claude/            ← DLD project-specific (template + customizations)
+```
+
+**When modifying `.claude/` files:**
+
+| Change Type | Where to Edit | Then |
+|-------------|---------------|------|
+| Universal improvement | `template/.claude/` first | Cherry-pick to `.claude/` |
+| DLD-specific | `.claude/` only | Document in `.claude/CUSTOMIZATIONS.md` |
+
+**Check divergence:** Run `./scripts/check-sync.sh`
+
+**Details:** See `.claude/CUSTOMIZATIONS.md` for full sync policy.
+
 ### Adding Examples
 
 Place new examples in `examples/` directory following the existing structure.

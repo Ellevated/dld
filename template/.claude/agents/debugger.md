@@ -2,7 +2,7 @@
 name: debugger
 description: Analyze test failures during autopilot execution
 model: opus
-tools: Read, Glob, Grep, Task
+tools: Read, Glob, Grep, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__exa__crawling_exa
 ---
 
 # Debugger Agent (In-Task Only)
@@ -112,33 +112,57 @@ context:
   hypotheses_rejected: [...]
 ```
 
-## Web Research (via Scout) — Optional
+## Web Research (Direct Exa) — MANDATORY for non-trivial errors
 
-When stuck on unfamiliar error — search for solutions via Scout subagent.
+Search for solutions BEFORE proposing fix. Exa search finds patterns we wouldn't think of.
 
-**Trigger conditions:**
-- Error message is unfamiliar (not seen in this codebase)
-- After 2 failed fix attempts
-- User says "search this error" or similar
+**When MANDATORY:**
+- Error involves library/framework behavior (aiogram, SQLAlchemy, etc.)
+- Error spans multiple files or modules
+- Error is NOT a simple typo/syntax mistake
+- First fix attempt failed
 
-**How to call:**
+**When SKIP allowed:**
+- Obvious typo (missing comma, wrong variable name)
+- Import error with clear missing module
+- Test assertion with trivial mismatch
+
+**How to research — BEFORE proposing fix:**
+
+**Step 1:** Search for error pattern
 ```yaml
-Task tool:
-  description: "Scout error research"
-  subagent_type: "scout"
-  prompt: |
-    MODE: quick
-    QUERY: "Python error: {error_message} solution"
-    TYPE: error
-    DATE: {current date}
+mcp__exa__web_search_exa:
+  query: "{error_class}: {error_message}. Common causes and fixes in {tech_stack}"
+  numResults: 5
 ```
 
-**Use Scout result:**
-- Add `tldr` to fix hypothesis
-- Cite source if solution found
-- If multiple solutions — pick most relevant to `files_changed`
+**Step 2:** Find code examples for fix
+```yaml
+mcp__exa__get_code_context_exa:
+  query: "{error_class} fix {tech_stack} example"
+  tokensNum: 5000
+```
 
-**Example output with Scout:**
+**Step 3 (if needed):** Deep-dive best result
+```yaml
+mcp__exa__crawling_exa:
+  url: <best result URL from Step 1>
+  maxCharacters: 5000
+```
+
+**Placeholders:**
+- `{error_class}` — exception type (e.g., "asyncio.TimeoutError", "SQLAlchemy IntegrityError")
+- `{error_message}` — first line of traceback or key message
+- `{tech_stack}` — relevant stack (e.g., "Python aiogram 3 PostgreSQL")
+
+**Use research results:**
+- Add found solution to fix hypothesis
+- Cite source URL if solution found
+- If multiple solutions — pick most relevant to `files_changed`
+- If search found nothing — note it and proceed with own analysis
+- Max 4 tool calls for research (don't loop!)
+
+**Example output with research:**
 ```yaml
 status: fix_proposed
 scope: in_scope
@@ -147,10 +171,8 @@ fix:
   file: src/domains/seller/agent.py
   change: "Add await before process_message()"
   verify: "Run test_seller_agent"
-  source: "Scout found: aiogram 3.x requires await for all handlers"
+  source: "aiogram 3.x requires await for all handlers (docs.aiogram.dev)"
 ```
-
-**NOT mandatory:** Only use when stuck. Most errors don't need web search.
 
 ## Key Rules
 

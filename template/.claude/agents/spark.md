@@ -2,7 +2,7 @@
 name: spark
 description: Idea generation and specification with Exa research and structured dialogue
 model: opus
-tools: Read, Glob, Grep, Write, Edit, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa
+tools: Read, Glob, Grep, Write, Edit, mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_search_exa, mcp__exa__crawling_exa, mcp__exa__get_code_context_exa
 ---
 
 # Spark Agent
@@ -36,16 +36,31 @@ You generate ideas and refine requirements through Exa research + structured dia
 2. Find related files (prompts, tools, features)
 3. Check backlog — maybe already planned?
 
-### Phase 2: Exa Recon (REQUIRED)
-**Goal:** Don't reinvent wheels.
+### Phase 2: Research Recon (MANDATORY — no skip!)
+**Goal:** Don't reinvent wheels. Exa search is better than our guesses.
 
-Use `mcp__exa__get_code_context_exa`:
+**Step 1:** Broad search for patterns
 ```
-"aiogram 3 [task type]"
-"telegram bot [pattern] python"
+mcp__exa__deep_search_exa:
+  objective: "Best practices for {task_essence} in {tech_stack}"
+  search_queries: ["{task} {framework}", "{pattern} implementation {language}"]
 ```
 
-**Output:** Report 2-3 relevant solutions found.
+**Step 2:** Code examples
+```
+mcp__exa__get_code_context_exa:
+  query: "{framework} {specific_pattern} example"
+  tokensNum: 5000
+```
+
+**Step 3:** If library involved — check official docs
+```
+mcp__plugin_context7_context7__resolve-library-id → query-docs
+```
+
+**Output to user:** "Found N relevant solutions: [brief summary of top 2-3 with source links]"
+
+**SKIP only if:** Hotfix <5 LOC with obvious cause.
 
 ### Phase 3: Clarify
 **Rule:** Questions based on Exa findings!
@@ -61,12 +76,27 @@ Use `mcp__exa__get_code_context_exa`:
 - 1-2 edge cases named
 - Scope limited (what we DON'T do)
 
-### Phase 4: Deep Exa
-Refined search for specific patterns:
+### Phase 4: Deep Research (MANDATORY for non-trivial tasks)
+After dialogue, search with refined context:
+
+**Step 1:** Targeted advanced search with filters
 ```
-"aiogram 3 [specific pattern from discussion]"
-"telegram bot [specific feature] implementation"
+mcp__exa__web_search_advanced_exa:
+  query: "{confirmed_approach} {tech_stack} implementation"
+  startPublishedDate: "2024-01-01"
+  excludeDomains: ["w3schools.com", "geeksforgeeks.org"]
+  enableSummary: true
+  numResults: 8
 ```
+
+**Step 2:** Deep-dive best result
+```
+mcp__exa__crawling_exa:
+  url: <top result URL>
+  maxCharacters: 8000
+```
+
+**SKIP only if:** Quick bug with clear root cause (no pattern needed).
 
 ### Phase 5: Approaches
 2-3 options with sources:

@@ -21,20 +21,20 @@ description: |
 model: opus
 ---
 
-# Reflect — Diary → System Improvements
+# Reflect — Synthesize Diary into Rules
 
-Finds patterns in diary entries and proposes changes across the entire system: rules, agent prompts, skill prompts.
+Analyzes diary entries and creates spec with proposals for CLAUDE.md.
 
-**Activation:** `/reflect`, "reflection", "analyze the diary"
+**Activation:** `/reflect`, "reflection", "let's analyze the diary"
 
 ---
 
 ## Terminology
 
-| Term | Triggers | What happens |
-|------|----------|--------------|
-| **Diary entry** | "write to diary", "save to diary" | New entry in index.md + file |
-| **Reflect (this)** | "/reflect", "reflection" | Analysis → spec → skill-writer |
+| Action | Triggers | What happens |
+|--------|----------|--------------|
+| **Diary entry** | "write to diary", "save to diary", "remember for diary" | New line in index.md + file |
+| **Synthesis (this skill)** | "/reflect", "reflection", "let's analyze the diary" | Analysis -> spec -> skill-writer |
 
 ---
 
@@ -42,112 +42,144 @@ Finds patterns in diary entries and proposes changes across the entire system: r
 
 - After 5+ pending entries in diary
 - Weekly maintenance
-- After series of similar bugs
+- After a series of similar bugs
 - Before major work (refresh memory)
-
----
-
-## Scope
-
-| Target | Path | When to Propose |
-|--------|------|----------------|
-| Project rules | `CLAUDE.md`, `.claude/rules/*.md` | Pattern found in ≥2 entries |
-| Agent prompts | `.claude/agents/*.md` | Agent-specific failure ≥2 times |
-| Skill prompts | `.claude/skills/*/SKILL.md` | Skill flow issue found |
-| Dispatch logic | `subagent-dispatch.md` | Dispatch condition problem |
 
 ---
 
 ## Process
 
-### Step 1: Read Diary
+### Step 1: Read Diary Index
 
-Read `ai/diary/index.md`. Open each `pending` entry.
+```bash
+cat ai/diary/index.md
+```
 
-### Step 2: Research Solutions (Exa)
+Find all entries with `pending` status.
 
-For patterns with frequency ≥ 2:
+### Step 2: Read Pending Entries
 
-**Anti-pattern/failure:**
+For each pending entry — open file and analyze.
+
+### Step 2.5: Research Solutions for Found Patterns
+
+For each pattern found in diary (frequency >= 2), research external solutions:
+
+**If anti-pattern/failure:**
 ```yaml
 mcp__exa__web_search_exa:
   query: "{anti_pattern} solution best practice {tech_stack}"
+  numResults: 5
 ```
 
-**Tool/workflow pattern:**
+**If user preference/design decision:**
+```yaml
+mcp__exa__web_search_exa:
+  query: "{decision} pros cons alternatives {tech_stack} 2024 2025"
+  numResults: 3
+```
+
+**If tool/workflow pattern:**
 ```yaml
 mcp__exa__get_code_context_exa:
-  query: "{pattern} best practices implementation"
+  query: "{tool_pattern} best practices implementation"
+  tokensNum: 3000
 ```
 
 **Rules:**
-- Max 6 Exa calls total per session
-- Add source URLs to proposals
-- If Exa confirms rule → strengthen confidence
-- If Exa suggests alternative → note in spec
+- Max 6 Exa calls total per reflect session
+- Add found solutions to spec's "Proposed Changes" with source URLs
+- If Exa confirms our rule → strengthen confidence
+- If Exa suggests different approach → note alternative in spec
 
 ### Step 3: Analyze Patterns
 
-| Frequency | Action |
-|-----------|--------|
-| 2+ | Consider proposing fix |
-| 3+ | **MUST** propose fix |
+| Pattern Type | Threshold | Action |
+|--------------|-----------|--------|
+| User preference | 2+ | Consider adding |
+| User preference | 3+ | **MUST** add to CLAUDE.md |
+| Failure pattern | 2+ | Add as anti-pattern |
+| Design decision | 3+ | Add as guideline |
+| Tool/workflow | 2+ | Consider adding |
 
 ### Step 4: Check Existing Rules
 
-Compare entries with existing targets (`CLAUDE.md`, `.claude/rules/`, agents, skills):
+Compare entries with CLAUDE.md:
+- Rule violated? -> Strengthen wording
+- Rule helped? -> Keep
+- Rule outdated? -> Update or remove
 
-| Finding | Action |
-|---------|--------|
-| Rule violated | Strengthen wording |
-| Rule helped | Keep |
-| Rule outdated | Update or remove |
-| Agent failed pattern | Fix agent prompt |
-| Skill flow issue | Fix skill prompt |
+### Step 5: Create Spec (NOT direct edits!)
 
-### Step 5: Three-Expert Quality Gate
+**CRITICAL:** Never edit CLAUDE.md directly! Create spec.
 
-For each proposed change:
+**Location:** `ai/features/TECH-NNN-YYYY-MM-DD-reflect-synthesis.md`
 
-1. **Karpathy:** Redundant? Claude already knows this? If removing doesn't hurt — don't add.
-2. **Sutskever:** Constraining instead of guiding? Principles > rigid rules.
-3. **Murati:** Adding friction? Could be simpler or faster?
-
-### Step 6: Create Spec
-
-**CRITICAL:** Never edit targets directly.
-
-Create `ai/features/TECH-NNN-YYYY-MM-DD-reflect-synthesis.md`:
+**Format:**
 
 ```markdown
-# TECH-NNN: Reflect Synthesis — [Month Year]
+# TECH-NNN: Reflect Diary Synthesis — [Month Year]
 
 **Status:** queued | **Priority:** P2 | **Date:** YYYY-MM-DD
 
+## Context
+- Entries analyzed: [list from index.md]
+- Period: [date range]
+
 ## Findings
 
-| Pattern | Freq | Source Entries | Target File |
-|---------|------|---------------|-------------|
+### Patterns Found (threshold 2+ = MUST add)
+| Pattern | Frequency | Source | Action |
+
+### Anti-Patterns Found
+| Anti-Pattern | Frequency | Source | Action |
+
+### User Preferences Found
+| Preference | Frequency | Source | Action |
 
 ## Proposed Changes
 
-### 1. {target file} — {section}
-**Pattern:** {what we found}
-**Exa Research:** {external findings + URL}
+### 1. CLAUDE.md — [Section]
+**Pattern:** {what we found in diary}
+**Frequency:** {N occurrences}
+**Exa Research:** {what external sources say}
+**Source:** {URL}
 **Add/Update:**
-[exact content]
-
-## Allowed Files
-[every file to be modified]
-
-## Definition of Done
-- [ ] skill-writer applied changes
-- [ ] Diary entries marked done
+```markdown
+[exact content to add]
 ```
 
-### Step 7: Handoff
+## Allowed Files
+| File | Change Type |
+|------|-------------|
+| `CLAUDE.md` | Update |
+| `.claude/rules/*.md` | Update (if needed) |
 
-Suggest `/skill-writer update` to apply. After integration: mark diary entries `pending` → `done`.
+## Definition of Done
+- [ ] `skill-writer` applied changes
+- [ ] CLAUDE.md < 200 lines after changes
+- [ ] Diary entries marked as done in index.md
+
+## Integration
+**Next step:** Run `/skill-writer` with this spec as input.
+
+## After Integration
+Update diary entries status in index.md:
+```bash
+# For each processed entry, change status from pending to done
+```
+```
+
+### Step 6: Output
+
+```yaml
+entries_analyzed: N
+patterns_found:
+  - "Pattern 1"
+  - "Pattern 2"
+spec_created: ai/features/TECH-NNN-....md
+next_action: "Run /skill-writer to integrate"
+```
 
 ---
 
@@ -155,27 +187,31 @@ Suggest `/skill-writer update` to apply. After integration: mark diary entries `
 
 | Wrong | Correct |
 |-------|---------|
-| Edit targets directly | Create spec → skill-writer |
-| Mark entries done before apply | Mark after skill-writer runs |
-| Skip Exa research | Research patterns with freq ≥ 2 |
+| Edit CLAUDE.md directly | Create spec -> skill-writer |
+| Edit .claude/rules directly | Create spec -> skill-writer |
+| Mark entries done before integration | Mark after skill-writer |
+
+---
+
+## After skill-writer
+
+1. Open `ai/diary/index.md`
+2. For each processed entry change status: `pending` -> `done`
+3. Update timestamp:
+
+```bash
+date +%s > ai/diary/.last_reflect
+```
 
 ---
 
 ## Quality Checklist
 
-Before completing:
+Before completing reflect:
 
-- [ ] All pending diary entries analyzed
-- [ ] Exa research for patterns with frequency ≥ 2
+- [ ] All pending entries analyzed
+- [ ] Exa research performed for patterns with frequency >= 2
+- [ ] Patterns counted correctly (frequency threshold)
 - [ ] Spec created (not direct edits)
-- [ ] Proposed changes have Exa sources
-- [ ] Next action = "/skill-writer update"
-
----
-
-## Rules
-
-- **Spec first** — never edit targets directly
-- **Research** — Exa for patterns with frequency ≥ 2
-- **Three-Expert gate** — every proposal passes all 3
-- **Mark done after apply** — not before skill-writer runs
+- [ ] Spec contains "Proposed Changes" section with Exa sources
+- [ ] Next action = "run skill-writer"

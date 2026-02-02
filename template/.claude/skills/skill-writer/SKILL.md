@@ -181,10 +181,29 @@ model: opus
 
 ---
 
+## Preservation Checklist (BEFORE Three-Expert)
+
+**CRITICAL:** Before removing ANY section, check if it's a protective mechanism:
+
+| Section Type | Purpose | Can Remove? |
+|--------------|---------|-------------|
+| "What NOT to Do" | Prevents common mistakes | ❌ NEVER without explicit approval |
+| "Quality Checklist" | Ensures completeness | ❌ NEVER without explicit approval |
+| "When to Use" | Prevents misuse | ⚠️ Only if activation triggers are clear |
+| "Terminology" | Prevents confusion | ⚠️ Only if terms are obvious |
+| "Rules" at end | Reinforces critical behavior | ⚠️ Can compress, not delete |
+| Examples (yaml/code) | Shows correct usage | ⚠️ Keep at least 1 per pattern |
+
+**Rule:** If unsure, KEEP IT. Better verbose than broken.
+
+---
+
 ## Three-Expert Gate (Both Modes)
 
+**Apply ONLY to content that passed Preservation Checklist.**
+
 **Karpathy (Remove redundancy):**
-- Does Claude already know this? Remove.
+- Does Claude already know this? Remove **if not protective**.
 - "If I remove this line, will output worsen?" No → remove.
 - HOW to think vs WHAT to achieve? Prefer WHAT.
 
@@ -193,6 +212,7 @@ model: opus
 - Fighting model's strengths? Examples > descriptions.
 
 **Murati (Simplify UX):**
+**STOP:** Did you check Preservation Checklist first?
 - Can steps be eliminated?
 - Is input/output format minimal?
 
@@ -207,6 +227,8 @@ model: opus
 | Count manually | `wc -l`, `grep -c` |
 | > 200 lines CLAUDE.md | Split to rules/ |
 | Overspecify steps | Principles + examples |
+| Delete protective sections | Check Preservation Checklist first |
+| Compress "What NOT to Do" | Keep intact — it prevents mistakes |
 
 ---
 
