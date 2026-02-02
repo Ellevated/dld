@@ -216,16 +216,34 @@ def post_block(reason: str) -> None:
 # Allowed Files enforcement
 
 # Files always allowed to edit (regardless of spec)
-# Note: fnmatch's * matches ANY character including /
-# So "dir/*" matches "dir/a/b/c.txt" (unlike shell glob)
+# Patterns ending with /* match entire directory trees (custom logic below)
+# Other patterns use fnmatch (where * does NOT match /)
 ALWAYS_ALLOWED_PATTERNS = [
     "ai/features/*.md",
     "ai/backlog.md",
-    "ai/diary/*",  # All diary files at any depth
+    "ai/diary/*",  # All diary files at any depth (see _matches_pattern)
     ".gitignore",
     "pyproject.toml",
-    ".claude/*",  # Hooks, settings, agents, etc.
+    ".claude/*",  # Hooks, settings, agents, etc. (see _matches_pattern)
 ]
+
+
+def _matches_pattern(file_path: str, pattern: str) -> bool:
+    """Check if file matches pattern with directory support.
+
+    For patterns ending with /*, matches entire directory tree.
+    For other patterns, uses fnmatch.
+
+    Examples:
+        _matches_pattern("ai/diary/2024/log.md", "ai/diary/*") -> True
+        _matches_pattern(".claude/hooks/utils.py", ".claude/*") -> True
+        _matches_pattern("ai/features/FTR-100.md", "ai/features/*.md") -> True
+    """
+    if pattern.endswith("/*"):
+        # Directory pattern: match anything under that directory
+        dir_prefix = pattern[:-1]  # "ai/diary/*" -> "ai/diary/"
+        return file_path.startswith(dir_prefix)
+    return fnmatch.fnmatch(file_path, pattern)
 
 
 def extract_allowed_files(spec_path: str) -> list[str]:
@@ -337,7 +355,7 @@ def is_file_allowed(file_path: str, spec_path: str | None) -> tuple[bool, list[s
 
     # Always-allowed files
     for pattern in ALWAYS_ALLOWED_PATTERNS:
-        if fnmatch.fnmatch(file_path, pattern):
+        if _matches_pattern(file_path, pattern):
             return True, []
 
     # No spec = allow all (graceful degradation)

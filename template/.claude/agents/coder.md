@@ -201,8 +201,6 @@ action_required: "Split file / reduce exports / move to correct domain"
 
 ## Migration Rules — Git-First (TECH-059)
 
-**SSOT:** `.claude/rules/database.md#migrations`
-
 ⛔ **Autopilot NEVER applies migrations! CI is the only source of apply.**
 
 ```

@@ -228,4 +228,3 @@ See: `./scripts/autopilot-loop.sh`
 - Agent roles: `docs/foundation/02-agent-roles.md`
 - Creating skills: `/skill-writer create` skill
 - Smart Testing: `.claude/agents/tester.md`
-- Migrations: `.claude/rules/database.md`

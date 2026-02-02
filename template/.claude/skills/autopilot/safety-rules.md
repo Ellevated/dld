@@ -61,8 +61,6 @@ Run only tests related to changed files, not entire suite.
 
 ## Migration Safety
 
-**SSOT:** `.claude/rules/database.md#migrations`
-
 - ⛔ **NEVER apply migrations manually** — CI only!
 - Validate locally: squawk lint, dry-run
 - CI applies after push to develop

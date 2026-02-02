@@ -8,6 +8,7 @@ from pathlib import Path
 # Import after adding hooks to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "template" / ".claude" / "hooks"))
 from utils import (
+    _matches_pattern,
     allow_tool,
     approve_prompt,
     ask_tool,
@@ -304,6 +305,40 @@ Some design notes.
 
         assert "src/main.py" in result
         assert len([f for f in result if f.startswith("#")]) == 0
+
+
+class TestMatchesPattern:
+    """Tests for _matches_pattern()."""
+
+    def test_matches_directory_pattern_shallow(self):
+        """Should match files directly in directory with /* pattern."""
+        assert _matches_pattern("ai/diary/log.md", "ai/diary/*") is True
+
+    def test_matches_directory_pattern_nested(self):
+        """Should match nested files with /* pattern (directory tree)."""
+        assert _matches_pattern("ai/diary/2024/01/log.md", "ai/diary/*") is True
+        assert _matches_pattern(".claude/hooks/utils.py", ".claude/*") is True
+        assert _matches_pattern(".claude/agents/coder.md", ".claude/*") is True
+
+    def test_no_match_different_directory(self):
+        """Should not match files in different directory."""
+        assert _matches_pattern("src/main.py", "ai/diary/*") is False
+        assert _matches_pattern("tests/test.py", ".claude/*") is False
+
+    def test_fnmatch_for_non_directory_patterns(self):
+        """Should use fnmatch for patterns not ending with /*."""
+        # *.md matches any .md file
+        assert _matches_pattern("README.md", "*.md") is True
+        assert _matches_pattern("ai/features/FTR-100.md", "ai/features/*.md") is True
+        # Note: fnmatch * DOES match / in Python (unlike shell glob)
+        # So ai/features/*.md also matches nested paths
+        assert _matches_pattern("ai/features/sub/FTR-100.md", "ai/features/*.md") is True
+
+    def test_exact_file_patterns(self):
+        """Should match exact file patterns."""
+        assert _matches_pattern("ai/backlog.md", "ai/backlog.md") is True
+        assert _matches_pattern("pyproject.toml", "pyproject.toml") is True
+        assert _matches_pattern("other.toml", "pyproject.toml") is False
 
 
 class TestIsFileAllowed:
