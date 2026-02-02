@@ -157,7 +157,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils import allow_tool, ask_tool, read_hook_input
 
-def main():
+def main() -> None:
     read_hook_input()  # Required even if unused
 
     if datetime.datetime.now().weekday() == 4:

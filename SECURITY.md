@@ -24,7 +24,7 @@ We take security seriously and will address valid reports promptly.
 - **GitHub Actions** pinned to specific versions
 - All PRs require review before merge
 - No secrets in repository (use environment variables)
-- Hooks validated with ruff linting and mypy type checking
+- Hooks validated with ruff linting and mypy type checking (CI checks `template/.claude/hooks/`, root `.claude/hooks/` syncs from template)
 
 ## Security Features in DLD
 
@@ -34,4 +34,4 @@ DLD includes built-in safety mechanisms:
 - **Pre-Edit hooks** protect test files and enforce file limits
 - **Prompt guards** detect potentially risky prompts
 
-See `.claude/hooks/` for implementation details.
+See `template/.claude/hooks/` for implementation (source of truth).
