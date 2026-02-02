@@ -171,7 +171,7 @@ if __name__ == "__main__":
 
 ## Debugging
 
-Hook errors are logged to `/tmp/claude-hook-errors.log`.
+Hook errors are logged to `~/.cache/dld/hook-errors.log`.
 
 To test a hook manually:
 

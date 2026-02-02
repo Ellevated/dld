@@ -65,4 +65,4 @@ jobs:
           pip install pytest pytest-cov ruff
       - name: Run tests with coverage
         run: |
-          pytest tests/ -v --cov=.claude/hooks --cov-report=term-missing --cov-fail-under=80
+          pytest tests/ -v --cov=template/.claude/hooks --cov-report=term-missing --cov-fail-under=80

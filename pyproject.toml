@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "dld"
 version = "3.4"
 requires-python = ">=3.10"
-description = "Deep Learning Development Framework"
+description = "Double-Loop Development — AI-native development methodology"
 
 [project.optional-dependencies]
 dev = [
@@ -30,7 +30,7 @@ select = ["E", "F", "W", "I"]
 ignore = ["E501"]
 
 [tool.coverage.run]
-source = [".claude/hooks"]
+source = ["template/.claude/hooks"]
 omit = ["tests/*", "*/__pycache__/*"]
 
 [tool.coverage.report]

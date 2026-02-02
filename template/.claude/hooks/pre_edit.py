@@ -17,6 +17,7 @@ from utils import (
     allow_tool,
     ask_tool,
     deny_tool,
+    get_error_log_path,
     get_tool_input,
     infer_spec_from_branch,
     is_file_allowed,
@@ -113,7 +114,7 @@ def _log_error(error: Exception) -> None:
     try:
         import datetime
 
-        with open("/tmp/claude-hook-errors.log", "a") as f:  # nosec B108
+        with open(get_error_log_path(), "a") as f:
             f.write(f"{datetime.datetime.now()} [pre_edit]: {error}\n")
     except Exception:
         pass  # nosec B110 - intentional fail-safe

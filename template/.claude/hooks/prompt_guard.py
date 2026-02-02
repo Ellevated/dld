@@ -14,7 +14,13 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from utils import approve_prompt, ask_tool, get_user_prompt, read_hook_input
+from utils import (
+    approve_prompt,
+    ask_tool,
+    get_error_log_path,
+    get_user_prompt,
+    read_hook_input,
+)
 
 # Complexity indicators (keywords + explicit code requests)
 COMPLEXITY_PATTERNS = [
@@ -44,7 +50,7 @@ def _log_error(error: Exception) -> None:
     try:
         import datetime
 
-        with open("/tmp/claude-hook-errors.log", "a") as f:  # nosec B108
+        with open(get_error_log_path(), "a") as f:
             f.write(f"{datetime.datetime.now()} [prompt_guard]: {error}\n")
     except Exception:
         pass  # nosec B110 - intentional fail-safe

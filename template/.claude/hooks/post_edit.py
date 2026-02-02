@@ -14,7 +14,7 @@ import subprocess  # nosec: B404
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from utils import get_tool_input, post_continue, read_hook_input
+from utils import get_error_log_path, get_tool_input, post_continue, read_hook_input
 
 
 def _log_error(error: Exception) -> None:
@@ -22,7 +22,7 @@ def _log_error(error: Exception) -> None:
     try:
         import datetime
 
-        with open("/tmp/claude-hook-errors.log", "a") as f:  # nosec B108
+        with open(get_error_log_path(), "a") as f:
             f.write(f"{datetime.datetime.now()} [post_edit]: {error}\n")
     except Exception:
         pass  # nosec: B110

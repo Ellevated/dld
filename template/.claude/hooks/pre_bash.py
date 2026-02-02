@@ -17,7 +17,14 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from utils import allow_tool, ask_tool, deny_tool, get_tool_input, read_hook_input
+from utils import (
+    allow_tool,
+    ask_tool,
+    deny_tool,
+    get_error_log_path,
+    get_tool_input,
+    read_hook_input,
+)
 
 # Blocked patterns - hard deny (no confirmation)
 # Note: git push -f to feature branches is ALLOWED (rebase workflow)
@@ -92,7 +99,7 @@ def _log_error(error: Exception) -> None:
     try:
         import datetime
 
-        with open("/tmp/claude-hook-errors.log", "a") as f:  # nosec B108
+        with open(get_error_log_path(), "a") as f:
             f.write(f"{datetime.datetime.now()} [pre_bash]: {error}\n")
     except Exception:
         pass  # nosec B110 - intentional fail-safe

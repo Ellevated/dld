@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 
 import { execSync, exec } from 'child_process';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, cpSync, rmSync } from 'fs';
 import { join } from 'path';
 import prompts from 'prompts';
+
+// Validate project name to prevent shell injection
+function isValidProjectName(name) {
+  // Only allow: letters, numbers, hyphens, underscores, dots (no spaces, no shell chars)
+  return /^[a-zA-Z0-9._-]+$/.test(name) && name.length <= 100;
+}
 
 const REPO_URL = 'https://github.com/Ellevated/dld.git';
 const TEMPLATE_DIR = 'template';
@@ -130,6 +136,11 @@ async function main() {
     process.exit(1);
   }
 
+  if (!isValidProjectName(projectName)) {
+    console.error('Error: Invalid project name. Use only letters, numbers, hyphens, underscores, and dots.');
+    process.exit(1);
+  }
+
   if (existsSync(projectName)) {
     console.error(`Error: Directory '${projectName}' already exists`);
     process.exit(1);
@@ -144,15 +155,14 @@ async function main() {
     execSync(`git clone --depth 1 --filter=blob:none --sparse ${REPO_URL} ${tempDir}`, { stdio: 'pipe' });
     execSync(`git -C ${tempDir} sparse-checkout set ${TEMPLATE_DIR}`, { stdio: 'pipe' });
 
-    // Move template to project
-    mkdirSync(projectName);
-    execSync(`cp -r ${tempDir}/${TEMPLATE_DIR}/. ${projectName}/`, { stdio: 'pipe' });
+    // Move template to project (using safe Node.js API)
+    cpSync(join(tempDir, TEMPLATE_DIR), projectName, { recursive: true });
 
-    // Initialize git
-    execSync(`git -C ${projectName} init`, { stdio: 'pipe' });
+    // Initialize git (projectName validated above)
+    execSync('git init', { cwd: projectName, stdio: 'pipe' });
 
-    // Cleanup
-    execSync(`rm -rf ${tempDir}`, { stdio: 'pipe' });
+    // Cleanup (using safe Node.js API)
+    rmSync(tempDir, { recursive: true, force: true });
 
     console.log(`\nProject created: ${projectName}`);
 
@@ -209,7 +219,8 @@ Next steps:
       console.error('Error:', msg);
     }
     try {
-      execSync(`rm -rf ${tempDir} ${projectName} 2>/dev/null`, { stdio: 'pipe' });
+      rmSync(tempDir, { recursive: true, force: true });
+      rmSync(projectName, { recursive: true, force: true });
     } catch {}
     process.exit(1);
   }

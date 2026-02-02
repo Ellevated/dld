@@ -20,6 +20,18 @@ import os
 import re
 import subprocess  # nosec: B404
 import sys
+from pathlib import Path
+
+
+def get_error_log_path() -> Path:
+    """Get safe path for hook error log.
+
+    Uses ~/.cache/dld/ instead of /tmp to prevent symlink attacks
+    on multi-user systems.
+    """
+    cache_dir = Path.home() / ".cache" / "dld"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / "hook-errors.log"
 
 
 def read_hook_input() -> dict:
