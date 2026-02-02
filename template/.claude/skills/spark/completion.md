@@ -189,7 +189,7 @@ Run council?
 Returning spec_path without creating file = DATA LOSS (subagent context dies).
 
 ### If running interactively (Skill tool):
-Write spec file when Phase 7 complete, then ask about autopilot handoff.
+Write spec file when spec is complete, then ask about autopilot handoff.
 
 ### Return format:
 ```yaml

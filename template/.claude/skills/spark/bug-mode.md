@@ -253,21 +253,9 @@ When invoking spark for bugs:
 
 ---
 
-## STRICT READ-ONLY MODE
-
-**During Bug Mode spark phase:**
-- READ files — allowed
-- SEARCH/GREP — allowed
-- CREATE spec file in `ai/features/` — allowed
-- WRITE to `ai/diary/` — allowed (corrections capture)
-- MODIFY any other file — **FORBIDDEN**
-
-**Exception:**
-- Hotfix <5 LOC → fix directly without spec (with user approval)
-
----
-
 ## Pre-Completion Checklist
+
+**Note:** See `SKILL.md` for READ-ONLY rules that apply to all Spark modes.
 
 ⛔ **DO NOT COMPLETE BUG MODE** without checking ALL items:
 
