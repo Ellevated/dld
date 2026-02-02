@@ -37,21 +37,25 @@ Git worktree isolation for safe parallel development.
    | TECH-  | tech/       |
    | ARCH-  | arch/       |
 
-6. Copy .env:
+6. Link .claude directory (optional, improves performance):
+   ln -s "$MAIN_REPO/.claude" ".worktrees/{ID}/.claude"
+   (hooks work without symlink, but symlink avoids repeated root lookup)
+
+7. Copy .env:
    cp "$MAIN_REPO/.env" ".worktrees/{ID}/.env"
    (gitignored, won't be in worktree by default)
 
-7. Environment setup (spec-driven):
+8. Environment setup (spec-driven):
    └─ Python project? → uv sync / pip install
    └─ Node project? → npm install
    └─ Docker needed? → docker-compose up -d
 
-8. Baseline verification:
+9. Baseline verification:
    ./test fast
    └─ must pass before any work!
 
-9. cd to worktree:
-   cd ".worktrees/{ID}"
+10. cd to worktree:
+    cd ".worktrees/{ID}"
 ```
 
 ## Deploy Error Protocol
