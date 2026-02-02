@@ -33,8 +33,7 @@ PROTECTED_PATHS = [
 # LOC limits (Soft Block)
 MAX_LOC_CODE = 400
 MAX_LOC_TEST = 600
-# 7/8 = 0.875 -> gives round thresholds: 350 LOC (code), 525 LOC (tests)
-WARN_THRESHOLD = 0.875
+WARN_THRESHOLD = 7 / 8  # 87.5% — warning before hitting limit (350 LOC code, 525 LOC tests)
 
 # Sync zones (files that should stay in sync with template/)
 SYNC_ZONES = [
