@@ -43,7 +43,7 @@
 
 | ID | Задача | Status | Priority | Feature.md |
 |----|--------|--------|----------|------------|
-| TECH-055 | Review Pipeline Hardening (bug fix + enhancements) | in_progress | P1 | [spec](features/TECH-055-2026-02-01-auto-review-agent.md) |
+| TECH-055 | Review Pipeline Hardening (bug fix + enhancements) | done | P1 | [spec](features/TECH-055-2026-02-01-auto-review-agent.md) |
 | TECH-057 | Semantic Skill Auto-Selection | done | P3 | [spec](features/TECH-057-2026-02-01-semantic-skill-triggers.md) |
 | TECH-058 | Split spark/SKILL.md into modules | draft | P3 | [spec](features/TECH-058-2026-02-01-split-spark-skill.md) |
 | TECH-065 | Enhanced MCP Integration | done | P1 | [spec](features/TECH-065-2026-02-02-enhanced-mcp-integration.md) |

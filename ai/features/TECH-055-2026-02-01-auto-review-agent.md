@@ -1,6 +1,6 @@
 # Tech: [TECH-055] Review Pipeline Hardening
 
-**Status:** in_progress | **Priority:** P1 | **Date:** 2026-02-02
+**Status:** done | **Priority:** P1 | **Date:** 2026-02-02
 
 ## Why
 
@@ -1085,4 +1085,49 @@ Tasks 4-6 can run in parallel after Task 3.
 
 ## Autopilot Log
 
-*(Filled by Autopilot during execution)*
+### Task 1/6: Create task-loop.md — 2026-02-02
+- Coder: completed (1 file: template/.claude/skills/autopilot/task-loop.md)
+- Tester: passed (doc verification)
+- Spec Reviewer: approved
+- Code Quality: approved
+- Commit: 877cf6e
+
+### Task 2/6: Update autopilot references — 2026-02-02
+- Coder: completed (2 files: SKILL.md, subagent-dispatch.md)
+- Tester: passed (doc verification)
+- Spec Reviewer: approved
+- Code Quality: approved
+- Commit: b004233
+
+### Task 3/6: Create pre-review-check.py — 2026-02-02
+- Coder: completed (1 file: scripts/pre-review-check.py)
+- Tester: passed (12 test cases)
+- Spec Reviewer: approved
+- Code Quality: approved
+- Commit: 01753c9
+
+### Task 4/6: Enhance Spec Reviewer — 2026-02-02
+- Coder: completed (1 file: template/.claude/agents/spec-reviewer.md)
+- Tester: passed (doc verification)
+- Spec Reviewer: approved
+- Code Quality: approved
+- Commit: c553939
+
+### Task 5/6: Enhance Code Quality Reviewer — 2026-02-02
+- Coder: completed (1 file: template/.claude/agents/review.md)
+- Tester: passed (doc verification, 2 out-of-scope failures)
+- Spec Reviewer: approved
+- Code Quality: approved
+- Commit: d9426e3
+
+### Task 6/6: Create escaped defects tracking — 2026-02-02
+- Coder: completed (2 files: template/ai/diary/escaped-defects.md, template/.claude/agents/diary-recorder.md)
+- Tester: passed (doc verification)
+- Spec Reviewer: approved
+- Code Quality: approved
+- Commit: e1ee9d7
+
+### Final Verification — 2026-02-02
+- Tests: 92 passed
+- Pre-review check: PASSED
+- Definition of Done: ALL items checked
