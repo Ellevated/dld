@@ -9,23 +9,25 @@ Requirements:
 - ruff must be installed (pip install ruff)
 """
 
+from __future__ import annotations
+
 import os
 import subprocess  # nosec: B404
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from utils import get_error_log_path, get_tool_input, post_continue, read_hook_input
+from utils import get_tool_input, log_hook_error, post_continue, read_hook_input
 
+# Ruff configuration
+RUFF_TIMEOUT_SECONDS = 10  # Max time for format/lint operations
+RUFF_LINT_RULES = "E,W,F"  # Error, Warning, Pyflakes (fast, high-value checks)
+MAX_LINT_WARNINGS = 5  # Limit output to avoid flooding Claude's context
 
-def _log_error(error: Exception) -> None:
-    """Log hook error for diagnostics."""
-    try:
-        import datetime
-
-        with open(get_error_log_path(), "a") as f:
-            f.write(f"{datetime.datetime.now()} [post_edit]: {error}\n")
-    except Exception:
-        pass  # nosec: B110
+# Claude Code tools that write files
+# - Write: create new file
+# - Edit: modify existing file (old_string → new_string)
+# - MultiEdit: batch edits (reserved for future Claude Code feature)
+FILE_WRITE_TOOLS = ("Write", "Edit", "MultiEdit")
 
 
 def format_python_file(file_path: str) -> tuple[bool, str]:
@@ -39,7 +41,7 @@ def format_python_file(file_path: str) -> tuple[bool, str]:
             ["ruff", "format", file_path],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=RUFF_TIMEOUT_SECONDS,
         )
         if result.returncode == 0:
             return True, "formatted"
@@ -60,13 +62,13 @@ def check_lint_warnings(file_path: str) -> list[str]:
     """
     try:
         result = subprocess.run(  # nosec: B603, B607
-            ["ruff", "check", file_path, "--select=E,W,F"],
+            ["ruff", "check", file_path, f"--select={RUFF_LINT_RULES}"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=RUFF_TIMEOUT_SECONDS,
         )
         if result.stdout:
-            return result.stdout.strip().split("\n")[:5]  # Max 5 warnings
+            return result.stdout.strip().split("\n")[:MAX_LINT_WARNINGS]
         return []
     except Exception:  # nosec B110 — fail-safe: lint error = skip linting
         return []
@@ -77,8 +79,8 @@ def main() -> None:
         data = read_hook_input()
         tool_name = data.get("tool_name", "")
 
-        # Only process Write/Edit tools
-        if tool_name not in ("Write", "Edit", "MultiEdit"):
+        # Only process file-writing tools
+        if tool_name not in FILE_WRITE_TOOLS:
             post_continue()
             return
 
@@ -113,7 +115,7 @@ def main() -> None:
             post_continue()
 
     except Exception as e:
-        _log_error(e)
+        log_hook_error("post_edit", e)
         post_continue()  # Fail-safe: don't block on errors
 
 

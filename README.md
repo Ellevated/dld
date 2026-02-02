@@ -178,7 +178,7 @@ Before any code is written:
 my-project/
 ├── .claude/
 │   ├── skills/          # 8 skills (bootstrap, spark, autopilot, ...)
-│   ├── agents/          # 10 agent prompts (planner, coder, ...)
+│   ├── agents/          # 14 agent prompts (planner, coder, council/*, ...)
 │   ├── rules/           # Architecture constraints
 │   └── contexts/        # Domain-specific context
 ├── ai/

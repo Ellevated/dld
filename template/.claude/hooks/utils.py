@@ -22,6 +22,10 @@ import subprocess  # nosec: B404
 import sys
 from pathlib import Path
 
+# Timeout for git operations (branch detection, etc.)
+# Short timeout since git should be instant for local operations
+GIT_TIMEOUT_SECONDS = 5
+
 
 def get_error_log_path() -> Path:
     """Get safe path for hook error log.
@@ -32,6 +36,25 @@ def get_error_log_path() -> Path:
     cache_dir = Path.home() / ".cache" / "dld"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / "hook-errors.log"
+
+
+def log_hook_error(hook_name: str, error: Exception) -> None:
+    """Log hook error for diagnostics.
+
+    Args:
+        hook_name: Name of the hook (e.g., "pre_bash", "pre_edit")
+        error: The exception that occurred
+
+    Note:
+        Fail-safe: never raises. Hooks must not crash on logging errors.
+    """
+    try:
+        import datetime
+
+        with open(get_error_log_path(), "a") as f:
+            f.write(f"{datetime.datetime.now()} [{hook_name}]: {error}\n")
+    except Exception:  # nosec B110 — fail-safe: logging must never crash hook
+        pass
 
 
 def read_hook_input() -> dict:
@@ -193,13 +216,15 @@ def post_block(reason: str) -> None:
 # Allowed Files enforcement
 
 # Files always allowed to edit (regardless of spec)
+# Note: fnmatch's * matches ANY character including /
+# So "dir/*" matches "dir/a/b/c.txt" (unlike shell glob)
 ALWAYS_ALLOWED_PATTERNS = [
     "ai/features/*.md",
     "ai/backlog.md",
-    "ai/diary/**",
+    "ai/diary/*",  # All diary files at any depth
     ".gitignore",
     "pyproject.toml",
-    ".claude/**",  # Hooks, settings, agents, etc.
+    ".claude/*",  # Hooks, settings, agents, etc.
 ]
 
 
@@ -266,7 +291,7 @@ def infer_spec_from_branch() -> str | None:
             ["git", "branch", "--show-current"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=GIT_TIMEOUT_SECONDS,
         )
         if result.returncode != 0:
             return None

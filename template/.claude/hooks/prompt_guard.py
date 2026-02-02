@@ -9,6 +9,8 @@ Detects patterns like:
 - "add endpoint", "write function"
 """
 
+from __future__ import annotations
+
 import os
 import re
 import sys
@@ -17,15 +19,20 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils import (
     approve_prompt,
     ask_tool,
-    get_error_log_path,
     get_user_prompt,
+    log_hook_error,
     read_hook_input,
 )
 
+# Max chars between keyword and target in complexity patterns
+# Example: "implement a new user feature" — 12 chars between "implement" and "feature"
+# 30 chars allows reasonable phrases while avoiding false positives on long text
+KEYWORD_TARGET_GAP = 30
+
 # Complexity indicators (keywords + explicit code requests)
 COMPLEXITY_PATTERNS = [
-    # Keywords + target
-    r"\b(implement|create|build|add|write)\b.{0,30}\b(feature|function|endpoint|api|service|handler)",
+    # Keywords + target (with gap limit to avoid false positives)
+    rf"\b(implement|create|build|add|write)\b.{{0,{KEYWORD_TARGET_GAP}}}\b(feature|function|endpoint|api|service|handler)",
     r"\bnew\s+(feature|functionality)",
     # Direct code requests
     r"\bwrite\s+(a\s+)?(function|class|method|code|script)",
@@ -43,17 +50,6 @@ SKILL_INDICATORS = [
     r"\bautopilot\b",
     r"\baudit\b",
 ]
-
-
-def _log_error(error: Exception) -> None:
-    """Log hook error for diagnostics."""
-    try:
-        import datetime
-
-        with open(get_error_log_path(), "a") as f:
-            f.write(f"{datetime.datetime.now()} [prompt_guard]: {error}\n")
-    except Exception:
-        pass  # nosec B110 - intentional fail-safe
 
 
 def main() -> None:
@@ -88,7 +84,7 @@ def main() -> None:
 
         approve_prompt()
     except Exception as e:
-        _log_error(e)
+        log_hook_error("prompt_guard", e)
         approve_prompt()
 
 

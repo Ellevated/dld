@@ -259,3 +259,42 @@ class TestEdgeCases:
         result = json.loads(output.getvalue())
         assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
         assert "Push to main blocked" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+    def test_unicode_emoji_in_command(self, mock_stdin, mock_exit):
+        """Should handle unicode/emoji in git commands."""
+        mock_stdin({"tool_input": {"command": "git commit -m '🚀 feat: add feature'"}})
+
+        with mock_exit() as exit_mock:
+            main()
+
+        # Should allow (not blocked)
+        exit_mock.assert_called_once_with(0)
+
+    def test_multiline_command_with_backslash(self, mock_stdin, mock_exit):
+        """Should handle commands with line continuation."""
+        # Note: Bash sends the full command as single string
+        mock_stdin({"tool_input": {"command": "git status && \\\ngit diff"}})
+
+        with mock_exit() as exit_mock:
+            main()
+
+        exit_mock.assert_called_once_with(0)
+
+    def test_force_with_lease_allowed(self, mock_stdin, mock_exit):
+        """Should allow --force-with-lease (safe force push)."""
+        mock_stdin({"tool_input": {"command": "git push --force-with-lease origin main"}})
+
+        with mock_exit() as exit_mock:
+            main()
+
+        # Should allow (--force-with-lease is safe)
+        exit_mock.assert_called_once_with(0)
+
+    def test_force_with_lease_after_branch_allowed(self, mock_stdin, mock_exit):
+        """Should allow --force-with-lease even after branch name."""
+        mock_stdin({"tool_input": {"command": "git push origin develop --force-with-lease"}})
+
+        with mock_exit() as exit_mock:
+            main()
+
+        exit_mock.assert_called_once_with(0)

@@ -168,3 +168,64 @@ class TestPostEditMain:
         # Should continue with format message
         output_val = output.getvalue()
         assert "ruff format" in output_val or exit_mock.call_count == 1
+
+
+class TestRuffTimeout:
+    """Tests for ruff timeout handling."""
+
+    def test_handles_format_timeout(self, tmp_path, monkeypatch, mock_stdin, mock_exit):
+        """Should handle ruff format timeout gracefully."""
+        file_path = tmp_path / "slow.py"
+        file_path.write_text("x = 1")
+
+        def mock_run(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="ruff", timeout=10)
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        success, msg = format_python_file(str(file_path))
+
+        assert success is False
+        assert "timeout" in msg.lower()
+
+    def test_handles_lint_exception(self, tmp_path, monkeypatch):
+        """Should return empty list on lint exception."""
+
+        def mock_run(*args, **kwargs):
+            raise OSError("ruff crashed")
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        warnings = check_lint_warnings("/some/file.py")
+
+        assert warnings == []
+
+
+class TestMultiEditTool:
+    """Tests for MultiEdit tool handling."""
+
+    def test_processes_multi_edit_tool(
+        self, tmp_path, monkeypatch, mock_stdin, capture_stdout, mock_exit
+    ):
+        """Should process MultiEdit tool same as Edit."""
+        file_path = tmp_path / "test.py"
+        file_path.write_text("x = 1")
+
+        def mock_run(*args, **kwargs):
+            class Result:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return Result()
+
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        mock_stdin({"tool_name": "MultiEdit", "tool_input": {"file_path": str(file_path)}})
+
+        with capture_stdout():
+            with mock_exit() as exit_mock:
+                main()
+
+        # Should process (not skip)
+        assert exit_mock.call_count >= 1

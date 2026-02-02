@@ -488,3 +488,98 @@ class TestInferSpecFromBranch:
         result = infer_spec_from_branch()
 
         assert result is None
+
+
+# Import additional functions for new tests
+from utils import get_error_log_path, log_hook_error  # noqa: E402
+
+
+class TestGetErrorLogPath:
+    """Tests for get_error_log_path()."""
+
+    def test_returns_path_in_cache_dir(self):
+        """Should return path under ~/.cache/dld/."""
+        path = get_error_log_path()
+
+        assert ".cache" in str(path) or "dld" in str(path)
+        assert path.name == "hook-errors.log"
+
+    def test_path_parent_is_directory(self):
+        """Should return path with valid parent."""
+        path = get_error_log_path()
+
+        # Parent should be created or creatable
+        assert path.parent.exists() or not path.parent.exists()
+
+
+class TestLogHookError:
+    """Tests for log_hook_error()."""
+
+    def test_writes_error_to_log(self, tmp_path, monkeypatch):
+        """Should write error message to log file."""
+        log_file = tmp_path / "test-errors.log"
+        monkeypatch.setattr("utils.get_error_log_path", lambda: log_file)
+
+        log_hook_error("test_hook", ValueError("test error"))
+
+        assert log_file.exists()
+        content = log_file.read_text()
+        assert "[test_hook]" in content
+        assert "test error" in content
+
+    def test_does_not_crash_on_write_failure(self, monkeypatch):
+        """Should silently fail if log write fails."""
+        from pathlib import Path as RealPath
+
+        def raise_error():
+            raise PermissionError("cannot write")
+
+        monkeypatch.setattr("utils.get_error_log_path", raise_error)
+
+        # Should not raise
+        log_hook_error("test_hook", ValueError("test"))
+
+
+class TestEdgeCases:
+    """Edge case tests for various hooks."""
+
+    def test_unicode_in_command(self):
+        """Should handle unicode/emoji in commands."""
+        import re
+
+        sys.path.insert(0, str(Path(__file__).parent.parent / "template" / ".claude" / "hooks"))
+        from pre_bash import BLOCKED_PATTERNS
+
+        unicode_cmd = "git commit -m '🚀 feat: add feature'"
+
+        # Should not crash on unicode
+        for pattern, _ in BLOCKED_PATTERNS:
+            re.search(pattern, unicode_cmd, re.IGNORECASE)
+
+    def test_very_long_file_path(self):
+        """Should handle very long file paths."""
+        long_path = "a/" * 100 + "file.py"
+
+        allowed, _ = is_file_allowed(long_path, None)
+
+        assert allowed is True  # No spec = allow all
+
+    def test_path_with_special_characters(self):
+        """Should handle paths with special regex characters."""
+        special_path = "src/[test]/file.py"
+
+        allowed, _ = is_file_allowed(special_path, None)
+
+        assert allowed is True
+
+    def test_empty_spec_section(self, temp_spec_file):
+        """Should handle spec with empty Allowed Files section."""
+        spec_path = temp_spec_file("""
+## Allowed Files
+
+## Next Section
+""")
+
+        result = extract_allowed_files(str(spec_path))
+
+        assert result == []

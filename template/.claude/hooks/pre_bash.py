@@ -12,6 +12,8 @@ Soft blocks (ask confirmation):
 Customize BLOCKED_PATTERNS for project-specific rules.
 """
 
+from __future__ import annotations
+
 import os
 import re
 import sys
@@ -21,8 +23,8 @@ from utils import (
     allow_tool,
     ask_tool,
     deny_tool,
-    get_error_log_path,
     get_tool_input,
+    log_hook_error,
     read_hook_input,
 )
 
@@ -60,22 +62,26 @@ BLOCKED_PATTERNS = [
         "See: CLAUDE.md -> Multi-Agent Safety",
     ),
     # Force push safety (allow feature branches only)
+    # Note: --force-with-lease is ALLOWED (safe force push that checks remote state)
+    # Only block -f and --force (without -with-lease suffix)
     (
-        r"git\s+push\s+(-f|--force)[^|]*\b(develop|main)\b",
+        r"git\s+push\s+(-f|--force(?!-with-lease))[^|]*\b(develop|main)\b",
         "Force push to protected branch blocked!\n\n"
         "Force push allowed only on feature branches.\n"
         "Protected: develop, main\n\n"
-        "If rebasing feature branch, use:\n"
-        "  git push -f origin feature/{ID}\n\n"
+        "Safe alternatives:\n"
+        "  git push --force-with-lease  # checks remote state first\n"
+        "  git push -f origin feature/{ID}  # force push feature branch\n\n"
         "See: CLAUDE.md -> Git Autonomous Mode",
     ),
     (
-        r"git\s+push[^|]*\b(develop|main)\b[^|]*(-f|--force)",
+        r"git\s+push[^|]*\b(develop|main)\b[^|]*(-f|--force(?!-with-lease))",
         "Force push to protected branch blocked!\n\n"
         "Force push allowed only on feature branches.\n"
         "Protected: develop, main\n\n"
-        "If rebasing feature branch, use:\n"
-        "  git push -f origin feature/{ID}\n\n"
+        "Safe alternatives:\n"
+        "  git push --force-with-lease  # checks remote state first\n"
+        "  git push -f origin feature/{ID}  # force push feature branch\n\n"
         "See: CLAUDE.md -> Git Autonomous Mode",
     ),
 ]
@@ -94,17 +100,6 @@ MERGE_PATTERNS = [
 ]
 
 
-def _log_error(error: Exception) -> None:
-    """Log hook error for diagnostics."""
-    try:
-        import datetime
-
-        with open(get_error_log_path(), "a") as f:
-            f.write(f"{datetime.datetime.now()} [pre_bash]: {error}\n")
-    except Exception:
-        pass  # nosec B110 - intentional fail-safe
-
-
 def main() -> None:
     try:
         data = read_hook_input()
@@ -113,6 +108,9 @@ def main() -> None:
         # Hard blocks (deny immediately)
         for pattern, message in BLOCKED_PATTERNS:
             if re.search(pattern, command, re.IGNORECASE):
+                # Allow --force-with-lease (safe force push)
+                if "--force-with-lease" in command:
+                    continue
                 deny_tool(message)
                 return
 
@@ -127,7 +125,7 @@ def main() -> None:
 
         allow_tool()
     except Exception as e:
-        _log_error(e)
+        log_hook_error("pre_bash", e)
         allow_tool()
 
 

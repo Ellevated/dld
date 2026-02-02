@@ -9,6 +9,8 @@ Soft blocks:
 - Files exceeding LOC limits (400 code, 600 tests)
 """
 
+from __future__ import annotations
+
 import os
 import sys
 
@@ -17,10 +19,10 @@ from utils import (
     allow_tool,
     ask_tool,
     deny_tool,
-    get_error_log_path,
     get_tool_input,
     infer_spec_from_branch,
     is_file_allowed,
+    log_hook_error,
     read_hook_input,
 )
 
@@ -108,17 +110,6 @@ def check_sync_zone(rel_path: str) -> str | None:
     return None
 
 
-def _log_error(error: Exception) -> None:
-    """Log hook error for diagnostics."""
-    try:
-        import datetime
-
-        with open(get_error_log_path(), "a") as f:
-            f.write(f"{datetime.datetime.now()} [pre_edit]: {error}\n")
-    except Exception:
-        pass  # nosec B110 - intentional fail-safe
-
-
 def main() -> None:
     try:
         data = read_hook_input()
@@ -187,7 +178,7 @@ def main() -> None:
 
         allow_tool()
     except Exception as e:
-        _log_error(e)
+        log_hook_error("pre_edit", e)
         allow_tool()
 
 
