@@ -37,11 +37,11 @@ PHASE 0: Worktree Setup        → worktree-setup.md
 PHASE 1: Plan                  → subagent-dispatch.md
   └─ [Plan Agent] opus → tasks in spec
 
-PHASE 2: Execute (per task)    → subagent-dispatch.md
+PHASE 2: Execute (per task)    → task-loop.md
   └─ [Coder] sonnet → files
   └─ [Tester] sonnet → pass?
       └─ fail? → [Debugger] opus (max 3) → escalation.md
-  └─ DOCUMENTER (inline)
+  └─ PRE-CHECK (deterministic)
   └─ [Spec Reviewer] sonnet → approved?
   └─ [Code Quality] opus → approved?
   └─ COMMIT (no push)
@@ -61,6 +61,7 @@ PHASE 3: Finish                → finishing.md
 |--------|---------|
 | `worktree-setup.md` | Git worktree creation, env setup, cleanup |
 | `subagent-dispatch.md` | Subagent types, dispatch templates, model routing |
+| `task-loop.md` | PHASE 2 execution flow, decision trees after each step |
 | `finishing.md` | Pre-done checklist, status sync, merge flow |
 | `escalation.md` | Limits, debug/refactor loops, Spark/Council |
 | `safety-rules.md` | Forbidden actions, file/test/git safety |

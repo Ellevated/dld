@@ -70,6 +70,24 @@ Check for gold plating:
 - [ ] Only files from `## Allowed Files` modified
 - [ ] No out-of-scope changes
 
+### Code Hygiene
+
+Check for unfinished code markers:
+
+- [ ] No `# TODO` comments in new/modified code
+- [ ] No `# FIXME` comments in new/modified code
+
+**If found:**
+```yaml
+status: needs_implementation
+missing_requirements:
+  - requirement: "Remove TODO/FIXME before commit"
+    spec_location: "Code Hygiene check"
+    action: "Complete or remove: {file}:{line} — {comment}"
+```
+
+**Why:** TODO/FIXME indicates unfinished work. Complete the work or remove the comment with a tracking issue.
+
 ## Output
 
 ```yaml

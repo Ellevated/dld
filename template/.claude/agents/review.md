@@ -87,6 +87,45 @@ ls scripts/
 - Class when function suffices
 - New module for 20 lines
 
+### 3.5. Anti-Patterns (from architecture.md)
+
+Reference: `.claude/rules/architecture.md#anti-patterns-forbidden`
+
+**Check for bare exceptions:**
+```bash
+grep -n "except:" {changed_py_files}
+grep -n "except Exception:" {changed_py_files}
+```
+
+**Red flags:**
+- [ ] `except:` without re-raise (swallows all errors)
+- [ ] `except Exception:` without re-raise or specific handling
+
+**If found:**
+```yaml
+status: needs_refactor
+architecture_issues:
+  - file: {file}:{line}
+    issue: "Bare exception swallows errors"
+    action: "Use specific exception type or add re-raise"
+```
+
+**Acceptable patterns:**
+```python
+# OK: re-raises
+except Exception:
+    logger.error("Failed")
+    raise
+
+# OK: specific exception
+except ValueError as e:
+    return Err(ValidationError(str(e)))
+
+# NOT OK: swallows everything
+except:
+    pass
+```
+
 ### 4. UI Interaction Audit (for keyboard/callback changes)
 
 If diff contains keyboards or callbacks — verify completeness.

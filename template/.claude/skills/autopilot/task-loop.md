@@ -1,0 +1,187 @@
+# Task Loop — PHASE 2 Execution
+
+SSOT for task execution flow. For EACH task from Implementation Plan.
+
+## Flow Overview
+
+```
+CODER → TESTER → PRE-CHECK → SPEC REVIEWER → CODE QUALITY → COMMIT → NEXT
+```
+
+---
+
+## Step 1: CODER
+
+```yaml
+Task tool:
+  subagent_type: "coder"
+  prompt: |
+    task: "Task {N}/{M} — {title}"
+    ...
+```
+
+**Output:** `files_changed: [list of modified files]`
+
+**Next:** Step 2 (TESTER)
+
+---
+
+## Step 2: TESTER
+
+```yaml
+Task tool:
+  subagent_type: "tester"
+  prompt: |
+    files_changed: [{list}]
+    task_scope: "{TASK_ID}: {description}"
+```
+
+**Decision Tree:**
+```
+TESTER result?
+├─ PASSED → Step 3 (PRE-CHECK)
+├─ FAILED (in-scope)
+│   └─ debug_attempts < 3?
+│       ├─ YES → [Debugger] → [Coder fix] → re-test (Step 2)
+│       └─ NO → ESCALATE (see escalation.md)
+└─ FAILED (out-of-scope)
+    └─ Log "out-of-scope failure: {test}" → Step 3 (PRE-CHECK)
+```
+
+**In-scope:** Test file path contains any of `files_changed` directories.
+
+---
+
+## Step 3: PRE-REVIEW CHECK
+
+Deterministic checks BEFORE AI review (saves tokens on obvious issues).
+
+```bash
+python scripts/pre-review-check.py {files_changed}
+```
+
+**Decision Tree:**
+```
+Exit code?
+├─ 0 (PASS) → Step 4 (SPEC REVIEWER)
+└─ 1 (FAIL) → Back to CODER with issues list
+    └─ CODER fixes issues → re-run PRE-CHECK (Step 3)
+```
+
+**What PRE-CHECK catches:**
+- `# TODO` or `# FIXME` in code
+- Bare `except:` or `except Exception:` without re-raise
+- Files > 400 LOC (code) or > 600 LOC (tests)
+
+---
+
+## Step 4: SPEC REVIEWER
+
+```yaml
+Task tool:
+  subagent_type: "spec-reviewer"
+  prompt: |
+    feature_spec: "ai/features/{TASK_ID}*.md"
+    task: "Task {N}/{M} — {title}"
+    files_changed: [...]
+```
+
+**Decision Tree:**
+```
+Spec Reviewer status?
+├─ approved → Step 5 (CODE QUALITY)
+├─ needs_implementation
+│   └─ CODER adds missing → re-review (Step 4)
+│   └─ spec_review_loop < 2? YES: retry | NO: ESCALATE
+└─ needs_removal
+    └─ CODER removes extras → re-review (Step 4)
+    └─ spec_review_loop < 2? YES: retry | NO: ESCALATE
+```
+
+---
+
+## Step 5: CODE QUALITY
+
+```yaml
+Task tool:
+  subagent_type: "review"
+  prompt: |
+    TASK: {description}
+    FILES CHANGED: {list}
+```
+
+**Decision Tree:**
+```
+Code Quality status?
+├─ approved → Step 6 (COMMIT)  ← CRITICAL!
+├─ needs_refactor
+│   └─ refactor_loop < 2?
+│       ├─ YES → CODER fixes → re-test (Step 2) → re-review (Step 5)
+│       └─ NO → ESCALATE to Council
+└─ needs_discussion
+    └─ STOP → Ask human (status: blocked)
+```
+
+**CRITICAL:** `approved` means proceed to COMMIT. Do NOT stop here!
+
+---
+
+## Step 6: COMMIT
+
+**All reviews passed. Commit the changes.**
+
+```bash
+git add {files_changed}
+git commit -m "{type}({scope}): {description}"
+```
+
+**Commit message format:**
+- `feat(autopilot): add task-loop decision trees`
+- `fix(review): add TODO/FIXME check`
+- `docs(diary): create escaped-defects template`
+
+**After commit:**
+1. Log to Autopilot Log in spec file
+2. Increment task counter: `current_task += 1`
+3. Continue to NEXT TASK (back to Step 1)
+
+---
+
+## After ALL Tasks
+
+When `current_task > total_tasks`:
+
+```
+→ PHASE 3 (finishing.md)
+```
+
+---
+
+## Loop Counters
+
+| Counter | Limit | On Limit |
+|---------|-------|----------|
+| `debug_attempts` | 3 | Escalate (escalation.md) |
+| `spec_review_loop` | 2 | Escalate to Council |
+| `refactor_loop` | 2 | Escalate to Council |
+
+Reset counters at start of each task.
+
+---
+
+## Quick Reference
+
+```
+Task N:
+  CODER → files
+  TESTER → pass?
+    └─ fail in-scope? debug (max 3)
+    └─ fail out-scope? skip, continue
+  PRE-CHECK → pass?
+    └─ fail? coder fix, retry
+  SPEC REVIEWER → approved?
+    └─ needs_*? coder fix, retry (max 2)
+  CODE QUALITY → approved?
+    └─ needs_refactor? coder fix, retry (max 2)
+  COMMIT → log → NEXT TASK
+```
