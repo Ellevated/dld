@@ -1,0 +1,10 @@
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_ignores = true
+check_untyped_defs = true
+ignore_missing_imports = true
+
+# Gradual: don't require annotations yet
+disallow_untyped_defs = false
+disallow_incomplete_defs = false

@@ -72,7 +72,7 @@ def check_lint_warnings(file_path: str) -> list[str]:
         return []
 
 
-def main():
+def main() -> None:
     try:
         data = read_hook_input()
         tool_name = data.get("tool_name", "")

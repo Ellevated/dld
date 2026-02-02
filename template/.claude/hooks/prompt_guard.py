@@ -50,7 +50,7 @@ def _log_error(error: Exception) -> None:
         pass  # nosec B110 - intentional fail-safe
 
 
-def main():
+def main() -> None:
     try:
         data = read_hook_input()
         prompt = get_user_prompt(data)

@@ -98,7 +98,7 @@ def _log_error(error: Exception) -> None:
         pass  # nosec B110 - intentional fail-safe
 
 
-def main():
+def main() -> None:
     try:
         data = read_hook_input()
         command = get_tool_input(data, "command") or ""
