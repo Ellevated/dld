@@ -1,13 +1,18 @@
 {
   "name": "create-dld",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Create a new DLD project with Claude Code",
   "author": "DLD Contributors",
   "bin": {
     "create-dld": "./index.js"
   },
   "type": "module",
-  "keywords": ["dld", "claude", "ai", "scaffolding"],
+  "keywords": [
+    "dld",
+    "claude",
+    "ai",
+    "scaffolding"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/Ellevated/dld"
@@ -19,5 +24,8 @@
   "dependencies": {
     "prompts": "~2.4.2"
   },
-  "files": ["index.js", "README.md"]
+  "files": [
+    "index.js",
+    "README.md"
+  ]
 }
