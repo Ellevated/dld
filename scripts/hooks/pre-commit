@@ -1,0 +1,58 @@
+#!/bin/bash
+# Pre-commit hook: warn if .claude/ files diverge from template/.claude/
+# Only checks files that exist in BOTH places (shared files).
+# DLD-only customizations (listed in .claude/CUSTOMIZATIONS.md) are skipped.
+
+DIVERGED=()
+
+for staged in $(git diff --cached --name-only --diff-filter=ACM); do
+  # Only care about .claude/ files (not template/.claude/)
+  case "$staged" in
+    .claude/*)
+      # Strip prefix to get relative path
+      rel="${staged#.claude/}"
+      template_file="template/.claude/$rel"
+
+      # Skip if file doesn't exist in template (it's a customization)
+      [ ! -f "$template_file" ] && continue
+
+      # Compare staged content with template
+      if ! diff -q "$staged" "$template_file" > /dev/null 2>&1; then
+        DIVERGED+=("$rel")
+      fi
+      ;;
+    template/.claude/*)
+      rel="${staged#template/.claude/}"
+      root_file=".claude/$rel"
+
+      [ ! -f "$root_file" ] && continue
+
+      if ! diff -q "$staged" "$root_file" > /dev/null 2>&1; then
+        DIVERGED+=("$rel (template edited)")
+      fi
+      ;;
+  esac
+done
+
+if [ ${#DIVERGED[@]} -gt 0 ]; then
+  echo ""
+  echo "⚠️  Template sync warning — these files diverge:"
+  echo ""
+  for f in "${DIVERGED[@]}"; do
+    echo "   .claude/$f  ≠  template/.claude/$f"
+  done
+  echo ""
+  echo "   If this is a universal change → sync both copies."
+  echo "   If DLD-specific → add to .claude/CUSTOMIZATIONS.md"
+  echo ""
+  echo "   Continue anyway? Commit proceeds in 0s..."
+  echo "   (To block: set DLD_STRICT_SYNC=1)"
+  echo ""
+
+  if [ "$DLD_STRICT_SYNC" = "1" ]; then
+    echo "❌ Commit blocked (DLD_STRICT_SYNC=1). Sync files first."
+    exit 1
+  fi
+fi
+
+exit 0
