@@ -277,11 +277,9 @@ pip install -e ".[dev]"
 # Run all tests
 pytest tests/ -v
 
-# Run with coverage
-pytest tests/ -v --cov=.claude/hooks --cov-report=term-missing
-
-# Run specific test file
-pytest tests/test_pre_edit.py -v
+# Test hooks manually
+echo '{"tool_input":{"command":"git push origin main"}}' | node .claude/hooks/pre-bash.mjs
+echo '{"tool_input":{"file_path":"src/app.ts"}}' | node .claude/hooks/pre-edit.mjs
 ```
 
 ---

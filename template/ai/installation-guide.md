@@ -318,9 +318,8 @@ rm -rf /tmp/dld
 ### Add Hooks
 
 ```bash
-# Copy hook templates
+# Copy hook templates (Node.js — no Python required)
 cp -r /tmp/dld/template/.claude/hooks .claude/
-chmod +x .claude/hooks/*.py
 ```
 
 ### Add Localization (Native Language Triggers)

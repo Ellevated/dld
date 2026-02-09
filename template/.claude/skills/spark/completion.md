@@ -8,17 +8,20 @@
 
 Before creating spec — determine next ID:
 
-1. **Determine type:** FTR | BUG | SEC | REFACTOR | ARCH | TECH
+1. **Determine type:** FTR | BUG | TECH | ARCH
 2. **Scan backlog:** Open ai/backlog.md
-3. **Find all IDs of type:** Use pattern TYPE-\d+
-4. **Take maximum:** Sort numbers, take max
-5. **Add +1:** Next ID = max + 1
+3. **Find ALL IDs across ALL types:** Use pattern `(FTR|BUG|TECH|ARCH)-(\d+)`
+4. **Take global maximum:** Sort ALL numbers, take max across ALL types
+5. **Add +1:** Next ID = TYPE-{max+1}
+
+**Numbering is SEQUENTIAL ACROSS ALL TYPES** (see CLAUDE.md#Backlog-Rules).
 
 **Example:**
-- Backlog contains: FTR-179, FTR-180, FTR-181
-- Next ID: FTR-182
+- Backlog contains: TECH-079, TECH-080, TECH-081
+- New bug → Next ID: **BUG-082** (not BUG-001!)
+- New feature → Next ID: **FTR-082**
 
-**FORBIDDEN:** Guessing ID or using "approximately next".
+**FORBIDDEN:** Per-type numbering. Guessing ID. Using "approximately next".
 
 ---
 

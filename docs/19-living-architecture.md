@@ -512,7 +512,7 @@ Why: Integer arithmetic prevents floating-point errors.
 
 | Mechanism | What it does |
 |-----------|--------------|
-| `validate-spec-complete.sh` | Blocks commit if Impact Tree checkboxes empty |
+| `validate-spec-complete.mjs` | Blocks commit if Impact Tree checkboxes empty |
 | Spark Phase 0 | Mandatory context load before spec |
 | Coder Step 0 / Step 7 | Load + update context |
 | Review Check 0 | Verify context was updated |

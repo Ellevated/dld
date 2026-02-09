@@ -10,6 +10,8 @@ DLD uses Claude Code hooks to enforce project rules automatically:
 - Suggest proper workflows for complex tasks
 - Auto-format code after edits
 
+**All hooks are Node.js (`.mjs`)** — no Python or Bash dependencies required.
+
 ## Configuration
 
 Hooks are configured in `.claude/settings.json`:
@@ -25,9 +27,11 @@ Hooks are configured in `.claude/settings.json`:
 }
 ```
 
+All hook commands use the runner: `node .claude/hooks/run-hook.mjs <hook-name>`
+
 ## Available Hooks
 
-### pre_bash.py
+### pre-bash.mjs
 
 **Trigger:** Before any Bash command
 
@@ -44,7 +48,7 @@ Hooks are configured in `.claude/settings.json`:
 
 ---
 
-### pre_edit.py
+### pre-edit.mjs
 
 **Trigger:** Before Edit/Write operations
 
@@ -63,7 +67,7 @@ Hooks are configured in `.claude/settings.json`:
 
 ---
 
-### post_edit.py
+### post-edit.mjs
 
 **Trigger:** After Edit/Write on Python files
 
@@ -78,7 +82,7 @@ Hooks are configured in `.claude/settings.json`:
 
 ---
 
-### prompt_guard.py
+### prompt-guard.mjs
 
 **Trigger:** On user prompt submission
 
@@ -95,78 +99,91 @@ Hooks are configured in `.claude/settings.json`:
 
 ---
 
-### session-end.sh
+### session-end.mjs
 
 **Trigger:** When Claude Code session ends
 
-**Purpose:** Cleanup and logging
+**Purpose:** Soft reminder about pending diary entries
 
 ---
 
-### validate-spec-complete.sh
+### validate-spec-complete.mjs
 
 **Trigger:** Before bash commands (via PreToolUse)
 
-**Purpose:** Ensure spec files are complete before execution
+**Purpose:** Ensure Impact Tree checkboxes are filled before git commit
 
 ---
 
-### utils.py
+### run-hook.mjs
+
+**Purpose:** Cross-platform hook runner with git worktree support
+
+Resolves the main repo root (for worktree support) and dynamically
+imports the specified hook. Used as the entry point in settings.json.
+
+---
+
+### utils.mjs
 
 **Purpose:** Shared utilities for all hooks
 
 **Key functions:**
-- `allow_tool()` — Allow the operation
-- `deny_tool(reason)` — Block with message
-- `ask_tool(question)` — Ask user for confirmation
-- `get_tool_input()` — Get input parameters for current tool
-- `is_file_allowed(file_path)` — Check against spec allowlist
-- `infer_spec_from_branch()` — Get spec path from git branch
+- `allowTool()` — Allow the operation
+- `denyTool(reason)` — Block with message
+- `askTool(question)` — Ask user for confirmation
+- `getToolInput()` — Get input parameters for current tool
+- `isFileAllowed(filePath)` — Check against spec allowlist
+- `inferSpecFromBranch()` — Get spec path from git branch
 
 ## Hook Protocol
 
 Hooks communicate via JSON to stdout:
 
 ```json
-// Allow
-{"allow": true}
+// Allow (PreToolUse)
+// Silent exit (exit code 0, no output)
 
-// Deny
-{"allow": false, "reason": "Explanation"}
+// Deny (PreToolUse)
+{"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": "..."}}
 
-// Ask user
-{"allow": false, "ask": true, "question": "Continue?"}
+// Ask user (PreToolUse)
+{"hookSpecificOutput": {"permissionDecision": "ask", "permissionDecisionReason": "..."}}
+
+// Approve prompt (UserPromptSubmit)
+{"decision": "approve"}
+
+// Block prompt (UserPromptSubmit)
+{"decision": "block", "reason": "..."}
 ```
 
 ## Creating Custom Hooks
 
-1. Create new Python/Bash file in `.claude/hooks/`
-2. Import utilities: `from utils import allow_tool, deny_tool, ask_tool`
-3. Read input: `hook_input = read_hook_input()`
+1. Create new `.mjs` file in `.claude/hooks/`
+2. Import utilities: `import { allowTool, denyTool, askTool } from './utils.mjs';`
+3. Read input: `const data = readHookInput();`
 4. Process and output decision
-5. Add to `.claude/settings.json` hooks section
+5. Add to `.claude/settings.json`: `"command": "node .claude/hooks/run-hook.mjs your-hook"`
 
 **Example custom hook:**
 
-```python
-#!/usr/bin/env python3
-"""Custom hook: block edits on Fridays."""
+```javascript
+/**
+ * Custom hook: block edits on Fridays.
+ */
+import { allowTool, askTool, readHookInput } from './utils.mjs';
 
-import datetime
-import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from utils import allow_tool, ask_tool, read_hook_input
+function main() {
+  readHookInput(); // Required even if unused
 
-def main() -> None:
-    read_hook_input()  # Required even if unused
+  if (new Date().getDay() === 5) {
+    askTool("It's Friday! Are you sure you want to make changes?");
+  } else {
+    allowTool();
+  }
+}
 
-    if datetime.datetime.now().weekday() == 4:
-        ask_tool("It's Friday! Are you sure you want to make changes?")
-    else:
-        allow_tool()
-
-if __name__ == "__main__":
-    main()
+main();
 ```
 
 ## Debugging
@@ -176,7 +193,7 @@ Hook errors are logged to `~/.cache/dld/hook-errors.log`.
 To test a hook manually:
 
 ```bash
-echo '{"tool_input": {"command": "git push origin main"}}' | python3 .claude/hooks/pre_bash.py
+echo '{"tool_input": {"command": "git push origin main"}}' | node .claude/hooks/pre-bash.mjs
 ```
 
 ---

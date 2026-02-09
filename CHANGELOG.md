@@ -6,6 +6,53 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.6] - 2026-02-08
+
+### Changed
+- **Hooks rewritten from Python/Bash to Node.js** — zero Python dependency, cross-platform (macOS/Windows/Linux)
+- All `.py` hooks → `.mjs` (ESM): `pre-bash`, `pre-edit`, `post-edit`, `prompt-guard`, `utils`
+- All `.sh` hooks → `.mjs`: `session-end`, `validate-spec-complete`
+- New `run-hook.mjs` — universal hook runner with git worktree support
+- `settings.json` commands simplified: `node .claude/hooks/run-hook.mjs <hook-name>`
+
+### Removed
+- Python hook files (`.py`) — replaced by Node.js equivalents
+- Bash hook files (`.sh`) — replaced by Node.js equivalents
+- Python hook tests (`tests/test_*hook*.py`) — JS equivalents needed
+
+### Migration
+- **Existing users:** see `template/.claude/hooks/README.md` or run the upgrade prompt below
+- **New users:** no action needed, template includes Node.js hooks
+
+### Upgrade from 3.5
+
+Paste this prompt into Claude Code in your project:
+
+```
+Upgrade DLD hooks to v3.6 (Node.js). Steps:
+
+1. Download 8 files from DLD repo using gh CLI:
+   for f in run-hook.mjs utils.mjs pre-bash.mjs pre-edit.mjs post-edit.mjs prompt-guard.mjs session-end.mjs validate-spec-complete.mjs; do
+     gh api repos/Ellevated/dld/contents/template/.claude/hooks/$f --jq '.content' | base64 -d > .claude/hooks/$f
+   done
+
+2. Update .claude/settings.json — replace ALL hook commands with this format:
+   "command": "node .claude/hooks/run-hook.mjs <hook-name>"
+   Hook names: pre-bash, pre-edit, post-edit, prompt-guard, session-end, validate-spec-complete
+   Remove all bash -c wrappers and python3 calls. See template/.claude/settings.json in the DLD repo for reference.
+
+3. Delete old files: rm .claude/hooks/*.py .claude/hooks/*.sh
+
+4. Test: echo '{"tool_input":{"command":"git push origin main"}}' | node .claude/hooks/pre-bash.mjs
+   Expected: JSON with "permissionDecision": "deny"
+
+Python is no longer required for hooks.
+```
+
+Or manually: copy all `.mjs` files from `template/.claude/hooks/` and update `settings.json`.
+
+---
+
 ## [3.5] - 2026-02-08
 
 ### Added
@@ -99,6 +146,7 @@ Initial public release of DLD methodology.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 3.6 | 2026-02-08 | Hooks migrated to Node.js — zero Python dependency, cross-platform |
 | 3.5 | 2026-02-08 | Opus 4.6 support, effort routing, model capabilities rule |
 | 3.4 | 2026-01-26 | Bootstrap, Claude-md-writer, Council decomposition, English translation |
 | 3.2 | 2026-01-24 | GitHub community files, Hooks system |

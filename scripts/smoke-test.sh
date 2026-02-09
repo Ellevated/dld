@@ -91,7 +91,7 @@ if [ ! -f "$SETTINGS_FILE" ]; then
     log_fail "Missing .claude/settings.json"
 fi
 # Validate JSON
-if ! python3 -c "import json, sys; json.load(sys.stdin)" < "$SETTINGS_FILE" 2>/dev/null; then
+if ! node -e "JSON.parse(require('fs').readFileSync(0,'utf-8'))" < "$SETTINGS_FILE" 2>/dev/null; then
     log_fail ".claude/settings.json is not valid JSON"
 fi
 log_pass ".claude/settings.json is valid JSON"
@@ -104,11 +104,12 @@ if [ ! -f "$HOOKS_DIR/README.md" ]; then
 fi
 
 REQUIRED_HOOKS=(
-    "pre_bash.py"
-    "pre_edit.py"
-    "post_edit.py"
-    "prompt_guard.py"
-    "utils.py"
+    "pre-bash.mjs"
+    "pre-edit.mjs"
+    "post-edit.mjs"
+    "prompt-guard.mjs"
+    "utils.mjs"
+    "run-hook.mjs"
 )
 
 for hook in "${REQUIRED_HOOKS[@]}"; do

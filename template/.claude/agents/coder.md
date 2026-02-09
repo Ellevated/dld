@@ -54,7 +54,7 @@ acceptance: "what to verify"
 
 **Defense-in-depth:** This check runs at TWO layers:
 1. **Here (early stop)** — saves time, avoids wasted edits
-2. **pre_edit.py hook (hard block)** — deterministic fail-safe
+2. **pre-edit.mjs hook (hard block)** — deterministic fail-safe
 
 ```
 BEFORE modifying ANY file:
