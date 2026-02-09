@@ -57,6 +57,8 @@ Hooks must never crash — a crashing hook breaks Claude Code. See ADR-004.
 | ADR-002 | Result instead of exceptions | 2026-01 | Explicit error handling |
 | ADR-003 | Async everywhere | 2026-01 | Consistency, performance |
 | ADR-004 | Bare exceptions in hooks | 2026-02 | Hooks are fail-safe infrastructure — must never crash |
+| ADR-005 | Effort routing per agent | 2026-02 | Opus 4.6 effort parameter: max for planning/council, high for coding/review, medium for testing, low for logging |
+| ADR-006 | No assistant prefilling | 2026-02 | Opus 4.6 removed prefilling support — use structured outputs or system prompts |
 
 ---
 

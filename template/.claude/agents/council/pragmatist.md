@@ -2,6 +2,7 @@
 name: council-pragmatist
 description: Council expert - Amelia the Pragmatist. Analyzes complexity, YAGNI, feasibility.
 model: opus
+effort: max
 tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Grep, Glob
 ---
 

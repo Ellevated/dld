@@ -2,6 +2,7 @@
 name: council-architect
 description: Council expert - Winston the Architect. Analyzes architecture, DRY, SSOT, dependencies.
 model: opus
+effort: max
 tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Grep, Glob
 ---
 

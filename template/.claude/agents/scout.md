@@ -2,6 +2,7 @@
 name: scout
 description: Isolated research agent for external sources
 model: sonnet
+effort: high
 tools: Read, Glob, Grep, WebFetch, WebSearch, mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_search_exa, mcp__exa__crawling_exa, mcp__exa__company_research_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 

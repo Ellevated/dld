@@ -2,6 +2,7 @@
 name: documenter
 description: Update documentation after code changes
 model: sonnet
+effort: medium
 tools: Read, Glob, Grep, Edit, Bash
 ---
 

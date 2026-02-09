@@ -2,6 +2,7 @@
 name: debugger
 description: Analyze test failures during autopilot execution
 model: opus
+effort: max
 tools: Read, Glob, Grep, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__exa__crawling_exa
 ---
 

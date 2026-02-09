@@ -6,6 +6,25 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.5] - 2026-02-08
+
+### Added
+- **Model capabilities rule** — `rules/model-capabilities.md` documents Opus 4.6 features, effort routing strategy, and breaking changes
+- **Effort routing** — each agent now declares `effort:` level in YAML frontmatter (max/high/medium/low) for optimized cost/quality tradeoff
+- **ADR-005** — Effort routing per agent: max for planning and council, high for coding and review, medium for testing, low for logging
+- **ADR-006** — No assistant prefilling: Opus 4.6 removed prefilling support, use structured outputs instead
+
+### Changed
+- All 14 agent frontmatter files updated with `effort:` field
+- Architecture rules updated with two new ADRs
+
+### Compatibility
+- **Claude Opus 4.6** (released Feb 5, 2026) — fully supported
+- Adaptive thinking, 1M context window (beta), 128K output tokens
+- Recommended CLI version: **2.1.36+**
+
+---
+
 ## [3.4] - 2026-01-26
 
 ### Added
@@ -80,6 +99,7 @@ Initial public release of DLD methodology.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 3.5 | 2026-02-08 | Opus 4.6 support, effort routing, model capabilities rule |
 | 3.4 | 2026-01-26 | Bootstrap, Claude-md-writer, Council decomposition, English translation |
 | 3.2 | 2026-01-24 | GitHub community files, Hooks system |
 | 3.1 | 2026-01-23 | Autopilot modularization, Template sync |

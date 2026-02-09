@@ -2,6 +2,7 @@
 name: tester
 description: Run tests with Smart Testing and Scope Protection
 model: sonnet
+effort: medium
 tools: Read, Glob, Grep, Bash
 ---
 

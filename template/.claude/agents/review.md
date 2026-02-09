@@ -2,6 +2,7 @@
 name: review
 description: Code Quality Reviewer (Stage 2) - prevents tech debt and duplication
 model: opus
+effort: high
 tools: Read, Glob, Grep, Bash
 ---
 

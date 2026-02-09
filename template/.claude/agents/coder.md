@@ -2,6 +2,7 @@
 name: coder
 description: Write/modify code for autopilot tasks
 model: sonnet
+effort: high
 tools: Read, Glob, Grep, Edit, Write, Bash, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 

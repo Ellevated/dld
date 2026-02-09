@@ -2,6 +2,7 @@
 name: spec-reviewer
 description: Verify implementation matches spec exactly
 model: sonnet
+effort: medium
 tools: Read, Glob, Grep
 ---
 

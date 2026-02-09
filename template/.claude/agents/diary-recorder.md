@@ -2,6 +2,7 @@
 name: diary-recorder
 description: Records problems and learnings to diary for future reflection
 model: haiku
+effort: low
 tools: Read, Write, Edit
 ---
 
