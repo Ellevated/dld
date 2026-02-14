@@ -98,7 +98,12 @@ function main() {
           `${relPath}\n\n` +
           `Spec: ${specPath || '(not found)'}\n\n` +
           `Allowed files:\n${allowedList}\n\n` +
-          `Add file to spec's ## Allowed Files or change approach.`,
+          `To fix:\n` +
+          `1. Edit ${specPath || '(spec file)'}\n` +
+          `2. Find ## Allowed Files section\n` +
+          `3. Add: \`${relPath}\` — {description}\n` +
+          `4. Save and retry\n\n` +
+          `Or change approach to use only allowed files.`,
       );
       return;
     }
