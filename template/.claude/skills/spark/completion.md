@@ -23,6 +23,15 @@ Before creating spec — determine next ID:
 
 **FORBIDDEN:** Per-type numbering. Guessing ID. Using "approximately next".
 
+### Concurrency Warning
+
+Sequential ID assignment is NOT atomic. If two spark instances run concurrently:
+1. Both read the same max ID from backlog.md
+2. Both create specs with the same next ID
+3. Git merge conflict or duplicate IDs result
+
+**Prevention:** Run spark from ONE terminal at a time. Do not run spark while autopilot is executing.
+
 ---
 
 ## Pre-Completion Checklist (BLOCKING)
