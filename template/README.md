@@ -2,6 +2,11 @@
 
 Created with [DLD Framework](https://github.com/Ellevated/dld).
 
+## Prerequisites
+
+- Node.js 18+ (required for hooks)
+- Claude Code CLI
+
 ## Getting Started
 
 1. Run `claude` to start Claude Code

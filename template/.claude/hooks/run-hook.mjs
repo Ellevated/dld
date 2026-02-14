@@ -12,6 +12,7 @@ import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { pathToFileURL } from 'url';
+import { logHookError } from './utils.mjs';
 
 const hookName = process.argv[2];
 if (!hookName) {
@@ -39,8 +40,13 @@ try {
 const hookPath = join(root, '.claude', 'hooks', `${hookName}.mjs`);
 
 if (existsSync(hookPath)) {
-  // Dynamic import with file:// URL (required for Windows paths with drive letters)
-  await import(pathToFileURL(hookPath).href);
+  try {
+    // Dynamic import with file:// URL (required for Windows paths with drive letters)
+    await import(pathToFileURL(hookPath).href);
+  } catch (err) {
+    logHookError(hookName, err);
+    process.exit(0); // fail-safe: allow operation to proceed (ADR-004)
+  }
 } else {
   // Hook not found — silently allow (ADR-004: fail-safe)
   process.exit(0);

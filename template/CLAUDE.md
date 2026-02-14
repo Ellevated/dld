@@ -9,6 +9,8 @@
 - `./test fast` — lint + unit tests
 - `./test` — full tests
 
+> **Note:** Create `./test` script for your project's stack (e.g., `pytest`, `npm test`, `cargo test`). See examples in `/bootstrap` output.
+
 ---
 
 ## DLD Tier
@@ -24,6 +26,13 @@
 
 ---
 
+## Prerequisites
+
+- Node.js 18+ (required for hooks)
+- Claude Code CLI
+
+---
+
 ## Quick Start
 
 1. **Configure MCP servers** (recommended):
@@ -31,12 +40,20 @@
    claude mcp add context7 -- npx -y @context7/mcp-server
    claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
    ```
+
+   > **Alternative:** Copy `.mcp.json.example` to `~/.claude/.mcp.json` for pre-configured MCP setup.
+
 2. Run `/bootstrap` to unpack your idea
 3. Fill this file based on `ai/idea/*.md`
 4. Create domains structure
 5. Run `/spark` for first feature
 
 > MCP enables `/scout` research with Exa (web search, deep research) and Context7 (library docs).
+>
+> **Tiers:**
+> - **Standard** (default): Context7 + Exa — research and docs lookup
+> - **Power**: Adds Sequential Thinking — unlocks `/council` and `/autopilot`
+> For Power tier: `./scripts/setup-mcp.sh --tier 3`
 
 ---
 
@@ -62,7 +79,8 @@ See `ai/ARCHITECTURE.md` after bootstrap.
 |------|---------|----------|
 | {domain1} | `.claude/contexts/{domain1}.md` | `src/domains/{domain1}/**` |
 | DB, LLM, infra | `.claude/contexts/shared.md` | `src/infra/**`, `db/**` |
-| Testing | `.claude/rules/testing.md` | `tests/**`, `*_test.py` |
+
+> **Note:** `.claude/contexts/` and `.claude/rules/` domain files are created during `/bootstrap` when you define your project's domains. They don't exist in the template out of the box.
 
 ---
 

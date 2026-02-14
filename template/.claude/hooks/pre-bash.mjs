@@ -50,18 +50,9 @@ const BLOCKED_PATTERNS = [
   // Force push safety (allow feature branches only)
   // Note: --force-with-lease is ALLOWED (safe force push that checks remote state)
   // Only block -f and --force (without -with-lease suffix)
+  // Lookaheads match both conditions regardless of order
   [
-    /git\s+push\s+(-f|--force(?!-with-lease))[^|]*\b(develop|main)\b/i,
-    'Force push to protected branch blocked!\n\n' +
-      'Force push allowed only on feature branches.\n' +
-      'Protected: develop, main\n\n' +
-      'Safe alternatives:\n' +
-      '  git push --force-with-lease  # checks remote state first\n' +
-      '  git push -f origin feature/{ID}  # force push feature branch\n\n' +
-      'See: CLAUDE.md -> Git Autonomous Mode',
-  ],
-  [
-    /git\s+push[^|]*\b(develop|main)\b[^|]*(-f|--force(?!-with-lease))/i,
+    /git\s+push\b(?=.*\b(develop|main)\b)(?=.*(-f\b|--force\b(?!-with-lease)))/i,
     'Force push to protected branch blocked!\n\n' +
       'Force push allowed only on feature branches.\n' +
       'Protected: develop, main\n\n' +
