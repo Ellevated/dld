@@ -49,6 +49,11 @@
 5. Run `/spark` for first feature
 
 > MCP enables `/scout` research with Exa (web search, deep research) and Context7 (library docs).
+>
+> **Tiers:**
+> - **Standard** (default): Context7 + Exa — research and docs lookup
+> - **Power**: Adds Sequential Thinking — unlocks `/council` and `/autopilot`
+> For Power tier: `./scripts/setup-mcp.sh --tier 3`
 
 ---
 
