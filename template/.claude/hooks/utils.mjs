@@ -167,7 +167,7 @@ export function extractAllowedFiles(specPath) {
   try {
     const content = readFileSync(specPath, 'utf-8');
     const match = content.match(/## Allowed Files\s*\n([\s\S]*?)(?=\n##|\s*$)/i);
-    if (!match) return [];
+    if (!match) return { files: [], error: false };
 
     const section = match[1];
     const allowed = [];
@@ -186,9 +186,9 @@ export function extractAllowedFiles(specPath) {
         }
       }
     }
-    return allowed;
+    return { files: allowed, error: false };
   } catch {
-    return []; // fail-safe: missing spec = allow all
+    return { files: [], error: true }; // read error = deny all
   }
 }
 
@@ -264,30 +264,33 @@ export function isFileAllowed(filePath, specPath) {
   }
 
   // Get allowed files from spec
-  const allowedFiles = extractAllowedFiles(specPath);
-  if (allowedFiles.length === 0) {
+  const result = extractAllowedFiles(specPath);
+  if (result.error) {
+    return { allowed: false, allowedFiles: [], error: 'spec read failed' };
+  }
+  if (result.files.length === 0) {
     return { allowed: true, allowedFiles: [] }; // No Allowed Files section = allow all
   }
 
   // Check if file matches any allowed pattern
-  for (let allowed of allowedFiles) {
+  for (let allowed of result.files) {
     allowed = normalize(allowed).replace(/\\/g, '/');
     // Direct match
     if (filePath === allowed) {
-      return { allowed: true, allowedFiles };
+      return { allowed: true, allowedFiles: result.files };
     }
     // Glob pattern match
     if (minimatch(filePath, allowed)) {
-      return { allowed: true, allowedFiles };
+      return { allowed: true, allowedFiles: result.files };
     }
     // Prefix match (allow subdirs)
     const prefix = allowed.replace(/\/\*$/, '') + '/';
     if (filePath.startsWith(prefix)) {
-      return { allowed: true, allowedFiles };
+      return { allowed: true, allowedFiles: result.files };
     }
   }
 
-  return { allowed: false, allowedFiles };
+  return { allowed: false, allowedFiles: result.files };
 }
 
 // --- Path safety ---
