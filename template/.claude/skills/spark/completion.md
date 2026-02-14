@@ -182,8 +182,8 @@ Each sub-spec is an independent task. If one fails, others continue.
 After spec file is created and backlog updated — commit ALL changes locally:
 
 ```bash
-# 1. Stage spec-related changes only
-git add ai/
+# 1. Stage spec-related changes only (explicit paths, not entire ai/ directory)
+git add "ai/features/${TASK_ID}"* ai/backlog.md
 
 # 2. Commit locally (NO PUSH!)
 git commit -m "docs: create spec ${TASK_ID}"
