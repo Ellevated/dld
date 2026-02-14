@@ -42,6 +42,26 @@ If any item not done — **STOP and do it**.
 
 ---
 
+## Post-Write Verification (MANDATORY)
+
+After BOTH spec file and backlog entry are written, verify consistency:
+
+```bash
+# Verify backlog entry exists for this spec
+grep "{TASK_ID}" ai/backlog.md
+```
+
+**If NOT found (grep returns nothing):**
+1. STOP — do not proceed to auto-commit
+2. Add the backlog entry NOW (use the format from ## Backlog Entry below)
+3. Re-verify with grep
+4. Only then continue to auto-commit
+
+**Checklist addition:**
+- [ ] Post-write verification: grep confirmed TASK_ID in backlog
+
+---
+
 ## Backlog Entry Verification (BLOCKING — BUG-358)
 
 After creating spec file, **VERIFY** backlog entry exists:
