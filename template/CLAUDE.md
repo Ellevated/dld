@@ -69,7 +69,6 @@ See `ai/ARCHITECTURE.md` after bootstrap.
 |------|---------|----------|
 | {domain1} | `.claude/contexts/{domain1}.md` | `src/domains/{domain1}/**` |
 | DB, LLM, infra | `.claude/contexts/shared.md` | `src/infra/**`, `db/**` |
-| Testing | `.claude/rules/testing.md` | `tests/**`, `*_test.py` |
 
 ---
 
