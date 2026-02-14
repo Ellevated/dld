@@ -95,22 +95,17 @@ function main() {
       const allowedList = allowedFiles.slice(0, 10).map(f => `  - ${f}`).join('\n');
       denyTool(
         `File not in Allowed Files!\n\n` +
-          `File: ${relPath}\n` +
+          `${relPath}\n\n` +
           `Spec: ${specPath || '(not found)'}\n\n` +
           `Allowed files:\n${allowedList}\n\n` +
-          `To fix:\n` +
-          `1. Edit ${specPath || 'the spec'}\n` +
-          `2. Find ## Allowed Files section\n` +
-          `3. Add: \`${relPath}\` — {description}\n` +
-          `4. Save and retry\n\n` +
-          `Or change approach to use only allowed files.`,
+          `Add file to spec's ## Allowed Files or change approach.`,
       );
       return;
     }
 
     // Check protected paths (Hard Block)
     for (const protectedPath of PROTECTED_PATHS) {
-      if (relPath.startsWith(protectedPath)) {
+      if (relPath.includes(protectedPath)) {
         denyTool(
           `Protected test file!\n\n` +
             `${relPath}\n\n` +

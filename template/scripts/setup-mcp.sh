@@ -115,16 +115,6 @@ setup_tier() {
 
 # Interactive menu
 interactive_menu() {
-    # Check prerequisites
-    if ! command -v claude >/dev/null 2>&1; then
-        echo -e "${RED}Error: Claude Code CLI not found${NC}"
-        echo ""
-        echo "Install Claude Code first:"
-        echo "  https://claude.ai/code"
-        echo ""
-        exit 1
-    fi
-
     echo -e "${BLUE}"
     echo "  ____  _     ____    __  __  ____ ____   ____       _"
     echo " |  _ \| |   |  _ \  |  \/  |/ ___|  _ \ / ___|  ___| |_ _   _ _ __"

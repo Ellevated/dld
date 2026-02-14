@@ -56,9 +56,6 @@ TESTER result?
 
 Deterministic checks BEFORE AI review (saves tokens on obvious issues).
 
-**If `scripts/pre-review-check.py` exists** → run it
-**If not found** → skip to next step (pre-review check is optional, project-specific)
-
 ```bash
 python scripts/pre-review-check.py {files_changed}
 ```
@@ -142,14 +139,6 @@ git commit -m "{type}({scope}): {description}"
 - `feat(autopilot): add task-loop decision trees`
 - `fix(review): add TODO/FIXME check`
 - `docs(diary): create escaped-defects template`
-
-**If commit fails:**
-1. Check error message (pre-commit hook? disk space? locked repo?)
-2. Fix the issue if possible
-3. Retry commit ONCE
-4. If still fails → set spec status to `blocked`, add "ACTION REQUIRED: commit failure" to spec, STOP
-
-**NEVER increment task counter if commit failed.**
 
 **After commit:**
 1. Log to Autopilot Log in spec file

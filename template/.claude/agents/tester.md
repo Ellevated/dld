@@ -22,8 +22,6 @@ task_scope: "FTR-XXX: description"
 - `./test fast` — full lint + unit cycle (use for final verification)
 - `pytest ... -n auto` — targeted tests for specific domains (use for Smart Testing)
 
-> Note: `./test` is a project-specific script created during setup. If it doesn't exist, use your project's test command directly (e.g., `pytest`, `npm test`, `cargo test`).
-
 **Always use `-n auto`** for parallel execution (pytest-xdist).
 
 ### Domain Tests

@@ -175,16 +175,7 @@ Before taking a task:
 1. **Status:** Must be `queued` or `resumed`
 2. **Plan:** Must have `## Implementation Plan`
 
-Skip if either check fails, **with warning:**
-
-```
-SKIP: {TASK_ID}
-
-Status: {current_status} (expected: queued or resumed)
-Plan: {has_plan ? "present" : "MISSING"}
-
-Fix the issue and re-run autopilot.
-```
+Skip if either check fails.
 
 ---
 
@@ -235,6 +226,6 @@ See: `./scripts/autopilot-loop.sh`
 
 ## References
 
-- Agent roles: `.claude/agents/*.md`
+- Agent roles: `docs/foundation/02-agent-roles.md`
 - Creating skills: `/skill-writer create` skill
 - Smart Testing: `.claude/agents/tester.md`
