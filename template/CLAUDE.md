@@ -40,6 +40,9 @@
    claude mcp add context7 -- npx -y @context7/mcp-server
    claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
    ```
+
+   > **Alternative:** Copy `.mcp.json.example` to `~/.claude/.mcp.json` for pre-configured MCP setup.
+
 2. Run `/bootstrap` to unpack your idea
 3. Fill this file based on `ai/idea/*.md`
 4. Create domains structure
