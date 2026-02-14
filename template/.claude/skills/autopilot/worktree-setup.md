@@ -92,13 +92,22 @@ After successful merge to develop:
 # 1. Return to main repo
 cd "$MAIN_REPO"
 
-# 2. Remove worktree
+# 2. Safety check: verify no uncommitted changes before force-removal
+cd ".worktrees/{ID}"
+if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+  echo "ERROR: Worktree has uncommitted changes! Aborting cleanup."
+  git status --short
+  exit 1
+fi
+cd -
+
+# 3. Remove worktree
 git worktree remove ".worktrees/{ID}" --force
 
-# 3. Delete local branch (already merged)
+# 4. Delete local branch (already merged)
 git branch -d "{type}/{ID}"
 
-# 4. Prune stale worktree references
+# 5. Prune stale worktree references
 git worktree prune
 ```
 
