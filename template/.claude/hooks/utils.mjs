@@ -31,8 +31,14 @@ export function logHookError(hookName, error) {
   try {
     const ts = new Date().toISOString();
     writeFileSync(getErrorLogPath(), `${ts} [${hookName}]: ${error}\n`, { flag: 'a' });
-  } catch {
+  } catch (logErr) {
     // fail-safe: logging must never crash hook
+    // but at least try console before giving up
+    try {
+      console.error(`[hook-error] ${hookName}: ${error}`);
+    } catch {
+      // truly hopeless, give up silently
+    }
   }
 }
 
