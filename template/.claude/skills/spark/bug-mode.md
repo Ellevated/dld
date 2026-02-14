@@ -260,6 +260,11 @@ Task:
 **Update BUG-XXX.md** with only relevant findings.
 **Append out-of-scope ideas** to `ai/ideas.md`.
 
+**MANDATORY: Update Executive Summary** in BUG-XXX.md after validation:
+- Replace any TBD fields with actual counts from validator output
+- Fill in: relevant count, out-of-scope count, duplicates merged, sub-specs count
+- Do this BEFORE proceeding to Phase 3
+
 ## Phase 3: Solution Architecture (N × Opus, batched)
 
 For each relevant finding, launch a solution architect agent.
