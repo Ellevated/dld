@@ -19,6 +19,29 @@ ai/
 
 ---
 
+## Umbrella Specs (Bug Hunt)
+
+Complex bugs analyzed by Bug Hunt Mode create umbrella specs:
+
+```
+ai/features/
+├── FTR-001-*.md          # Regular feature spec
+├── BUG-002-*.md          # Simple bug spec
+└── BUG-003/              # Bug Hunt umbrella
+    ├── BUG-003.md        # Umbrella (summary + sub-spec table)
+    ├── BUG-003-01.md     # Sub-spec (queued)
+    ├── BUG-003-02.md     # Sub-spec (queued)
+    └── ...
+```
+
+### Rules
+- **ONE backlog entry** for the umbrella (not per sub-spec)
+- Sub-specs are tracked inside the umbrella's table
+- Autopilot processes sub-specs sequentially
+- Status of umbrella = aggregated status of sub-specs
+
+---
+
 ## Backlog Structure (STRICT)
 
 ```markdown

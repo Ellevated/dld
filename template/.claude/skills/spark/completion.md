@@ -119,6 +119,44 @@ When setting status in spec, **verbally confirm**:
 
 ---
 
+## Umbrella Specs (Bug Hunt Mode)
+
+Bug Hunt creates umbrella specs with sub-specs in a directory:
+
+```
+ai/features/BUG-XXX/
+├── BUG-XXX.md          ← umbrella (table of contents)
+├── BUG-XXX-01.md       ← sub-spec (queued)
+├── BUG-XXX-02.md       ← sub-spec (queued)
+└── ...
+```
+
+### Backlog Entry
+
+ONE entry for the umbrella. Sub-specs are tracked inside the umbrella.
+
+```
+| BUG-XXX | Bug Hunt: {title} | queued | P0 | [BUG-XXX](features/BUG-XXX/BUG-XXX.md) |
+```
+
+### ID Protocol for Sub-Specs
+
+Sub-specs use the umbrella ID + sequential number: BUG-XXX-01, BUG-XXX-02, etc.
+They do NOT get separate backlog entries.
+
+### Autopilot Handoff (Sequential)
+
+Autopilot processes sub-specs in order:
+```
+BUG-XXX-01 → Planner → Coder → Tester → done
+BUG-XXX-02 → Planner → Coder → Tester → done
+...
+```
+
+Each sub-spec is an independent task. If one fails, others continue.
+
+---
+
 ## Auto-Commit (MANDATORY before handoff!)
 
 After spec file is created and backlog updated — commit ALL changes locally:

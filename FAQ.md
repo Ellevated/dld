@@ -94,6 +94,47 @@ The Council (`/council`) is a multi-perspective review system. Five specialized 
 
 ---
 
+## Bug Hunt
+
+### What is Bug Hunt Mode?
+
+Bug Hunt Mode is an advanced feature within `/spark` that uses 8+ specialized AI agents to systematically find bugs in a codebase. Instead of one agent analyzing everything, six persona agents (code reviewer, security auditor, UX analyst, junior developer, software architect, QA engineer) analyze the code in parallel from different perspectives, followed by two framework agents (TOC and TRIZ) that identify systemic patterns and contradictions.
+
+### When should I use Bug Hunt vs regular Spark?
+
+| Situation | Use |
+|-----------|-----|
+| Simple bug, clear error message | Quick Bug Mode (5 Whys) |
+| Complex bug affecting many files | Bug Hunt Mode |
+| Pre-release quality audit | Bug Hunt Mode |
+| "Something feels wrong but I can't pinpoint it" | Bug Hunt Mode |
+| Typo or obvious fix | Fix directly (no spark needed) |
+
+### How much does Bug Hunt cost?
+
+A full Bug Hunt run costs approximately $40-70 in API usage:
+- 6 Sonnet persona agents: ~$18-30
+- 2 Opus framework agents: ~$10-15
+- 1 Opus validator: ~$3-5
+- N Opus solution architects: ~$10-20
+
+Compare this to the cost of manual debugging: a developer spending a full day tracking down bugs costs $300-500+.
+
+### What output does Bug Hunt produce?
+
+Bug Hunt creates an umbrella spec directory with individual sub-specs:
+```
+ai/features/BUG-XXX/
+├── BUG-XXX.md          ← Summary with all findings
+├── BUG-XXX-01.md       ← Fix spec for finding 1
+├── BUG-XXX-02.md       ← Fix spec for finding 2
+└── ...
+```
+
+Each sub-spec can be independently executed by Autopilot.
+
+---
+
 ## Comparison
 
 ### How is DLD different from Cursor/Superpowers?

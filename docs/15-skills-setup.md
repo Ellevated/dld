@@ -1,4 +1,4 @@
-# Skills Setup Guide v3.4
+# Skills Setup Guide v3.7
 
 How to deploy the LLM skills system in a new project.
 
@@ -21,6 +21,11 @@ spark → autopilot (plan is subagent inside autopilot)
 - **Bootstrap skill** — Day 0 discovery, unpack idea from founder
 - **Skill-writer** — CREATE agents/skills + UPDATE CLAUDE.md/rules (unified)
 
+**v3.7 Changes:**
+- **Bug Hunt Mode** — multi-agent bug analysis integrated into Spark
+- **6+4 bug-hunt agents** — personas (Sonnet) + framework analysts + validator + architect (Opus)
+- **Umbrella specs** — complex bugs get directory with sub-specs
+
 | Skill | Purpose | Model |
 |-------|---------|-------|
 | **spark** | Idea → Spec + auto-handoff | opus |
@@ -38,7 +43,7 @@ spark → autopilot (plan is subagent inside autopilot)
 
 ---
 
-## File Structure (v3.4)
+## File Structure (v3.7)
 
 ```
 .claude/
@@ -53,12 +58,23 @@ spark → autopilot (plan is subagent inside autopilot)
 │   ├── scout.md                ← sonnet (research)
 │   ├── documenter.md           ← sonnet (docs update)
 │   ├── diary-recorder.md       ← haiku (problem capture)
-│   └── council/                ← DECOMPOSED council experts
-│       ├── synthesizer.md      ← opus (chairman)
-│       ├── architect.md        ← opus (Winston)
-│       ├── product.md          ← opus (John)
-│       ├── pragmatist.md       ← opus (Amelia)
-│       └── security.md         ← opus (Viktor)
+│   ├── council/                ← DECOMPOSED council experts
+│   │   ├── synthesizer.md      ← opus (chairman)
+│   │   ├── architect.md        ← opus (Winston)
+│   │   ├── product.md          ← opus (John)
+│   │   ├── pragmatist.md       ← opus (Amelia)
+│   │   └── security.md         ← opus (Viktor)
+│   └── bug-hunt/               ← Bug Hunt agents
+│       ├── code-reviewer.md         ← sonnet (exceptions, types, resources)
+│       ├── security-auditor.md      ← sonnet (OWASP, injection, auth)
+│       ├── ux-analyst.md            ← sonnet (dead-ends, feedback)
+│       ├── junior-developer.md      ← sonnet (obvious bugs, copy-paste)
+│       ├── software-architect.md    ← sonnet (state, races, atomicity)
+│       ├── qa-engineer.md           ← sonnet (edge cases, boundaries)
+│       ├── toc-analyst.md           ← opus (constraints, CRT)
+│       ├── triz-analyst.md          ← opus (contradictions, IFR)
+│       ├── validator.md             ← opus (triage, dedup)
+│       └── solution-architect.md    ← opus (sub-specs, Impact Tree)
 │
 ├── skills/                     ← USER INTERFACE (wrappers + orchestrators)
 │   ├── spark/SKILL.md          ← Orchestrator
@@ -238,9 +254,13 @@ Task tool:
 
 ```
 1. User: "Bug in X"
-2. Diagnose (5 Whys)
-3. /spark (bug mode) → BUG-XXX spec
-4. Continue as Feature Flow
+2. Quick? → 5 Whys → /spark (Quick Bug Mode) → BUG-XXX spec
+3. Complex? → /spark (Bug Hunt Mode):
+   Phase 1a: 6 persona agents (parallel, Sonnet)
+   Phase 1b: TOC + TRIZ agents (parallel, Opus)
+   Phase 2: Validator (Opus)
+   Phase 3: Solution architects → sub-specs
+4. Continue as Feature Flow (autopilot sequential)
 ```
 
 ---

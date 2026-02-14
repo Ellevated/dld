@@ -126,7 +126,7 @@ Glossary: ai/glossary/{domain}.md
 | Skill | When |
 |-------|------|
 | **bootstrap** | Day 0 — unpack idea from your head |
-| **spark** | New feature, bug, architecture decision (auto-handoff to autopilot) |
+| **spark** | New feature, bug, architecture decision. Includes Bug Hunt Mode for deep multi-agent analysis (auto-handoff to autopilot) |
 | **autopilot** | Execute tasks (plan subagent + fresh coder/tester per task + worktree) |
 | **council** | Complex/controversial decisions (5 experts) |
 | **audit** | Code analysis, consistency check (READ-ONLY) |
@@ -236,6 +236,7 @@ If a tool returns "content filtering policy" error — retry with alternative to
 - **Prefixes:** BUG, FTR, TECH, ARCH only (4 types)
 - **Numbering:** Sequential across all types
 - **Archive:** Weekly check, if >50 → archive to 30
+- **Sub-specs:** Bug Hunt Mode creates umbrella specs (e.g., `BUG-090-bughunt.md`) containing sub-specs. Sub-specs share parent ID, not separate backlog entries.
 
 ---
 

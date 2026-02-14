@@ -36,25 +36,29 @@ Transforms raw ideas into specs via Exa research + structured dialogue.
 
 ## Mode Detection
 
-Spark operates in two modes:
+Spark operates in three modes:
 
 | Trigger | Mode | Read Next |
 |---------|------|-----------|
 | "new feature", "add", "want", "create feature", "create spec", "write specification", "make feature" | **Feature Mode** | `feature-mode.md` |
-| "bug", "error", "crashes", "doesn't work" | **Bug Mode** | `bug-mode.md` |
+| "bug", "error", "crashes", "doesn't work" (simple, <5 files) | **Quick Bug Mode** | `bug-mode.md` |
+| "bug hunt", "deep analysis", complex bug (>5 files), explicit request | **Bug Hunt Mode** | `bug-mode.md` |
+
+**Bug mode selection:** Start with Quick. Escalate to Bug Hunt if 5 Whys reveals systemic issues or >5 files affected.
 
 ## Modules
 
 | Module | When to Read | Content |
 |--------|--------------|---------|
 | `feature-mode.md` | Mode = Feature | Socratic Dialogue + research templates + spec template |
-| `bug-mode.md` | Mode = Bug | 5 Whys + research template + spec template |
+| `bug-mode.md` | Mode = Bug (Quick or Hunt) | Quick: 5 Whys. Hunt: multi-agent pipeline + sub-specs |
 | `completion.md` | After spec created | ID protocol, backlog, commit, handoff |
 
 **Flow:**
 ```
-Feature: SKILL.md → feature-mode.md → completion.md
-Bug:     SKILL.md → bug-mode.md → completion.md
+Feature:    SKILL.md → feature-mode.md → completion.md
+Quick Bug:  SKILL.md → bug-mode.md (Quick) → completion.md
+Bug Hunt:   SKILL.md → bug-mode.md (Hunt) → completion.md
 ```
 
 ---

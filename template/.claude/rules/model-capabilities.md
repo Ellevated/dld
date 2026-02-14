@@ -41,6 +41,10 @@ Agents should operate at different effort levels based on task complexity:
 | spec-reviewer | medium | Checklist verification, not creative work |
 | documenter | medium | Structured output, clear patterns |
 | diary-recorder | low | Simple capture, minimal reasoning |
+| bughunt personas (6) | high | Deep analysis from specialized perspectives (sonnet) |
+| bughunt TOC/TRIZ | max | Framework analysis requires deep reasoning (opus) |
+| bughunt validator | high | Triage requires good judgment (opus) |
+| bughunt solution-architect | high | Fix design needs careful analysis (opus) |
 
 ---
 

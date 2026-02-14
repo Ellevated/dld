@@ -6,6 +6,34 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.7] - 2026-02-14
+
+### Added
+- **Bug Hunt Mode in Spark** — multi-agent deep bug analysis integrated into `/spark` workflow
+- **TOC Analyst agent** — Theory of Constraints analysis (Current Reality Tree, constraint identification)
+- **TRIZ Analyst agent** — TRIZ analysis (contradictions, Ideal Final Result, inventive principles)
+- **Validator agent** — filters findings by relevance, deduplicates, triages
+- **Solution Architect agent** — creates atomic sub-specs per finding with Impact Tree
+- **Umbrella specs** — `ai/features/BUG-XXX/` directory with sub-specs for complex bugs
+
+### Changed
+- Bug Hunt persona agents upgraded from Haiku to **Sonnet** (6 agents: code-reviewer, security-auditor, ux-analyst, junior-developer, software-architect, qa-engineer)
+- Red Team agent replaced by **TOC Analyst** (theory-driven constraint analysis)
+- Systems Thinker agent replaced by **TRIZ Analyst** (contradiction-driven inventive solutions)
+- Bug mode now has two tracks: **Quick** (5 Whys, simple bugs) and **Bug Hunt** (multi-phase pipeline)
+- Spark mode detection expanded to three modes: Feature, Quick Bug, Bug Hunt
+
+### Removed
+- Standalone `/bug-hunt` skill — functionality absorbed into Spark's Bug Hunt Mode
+- Red Team agent (`bughunt-red-team`) — replaced by TOC Analyst
+- Systems Thinker agent (`bughunt-systems-thinker`) — replaced by TRIZ Analyst
+
+### Architecture
+- Bug Hunt pipeline: Phase 1a (6 Sonnet personas) → Phase 1b (2 Opus frameworks) → Phase 2 (Opus validator) → Phase 3 (Opus solution architects) → Autopilot
+- All bug-hunt agents moved to `template/.claude/agents/bug-hunt/` (universal, not DLD-specific)
+
+---
+
 ## [3.6] - 2026-02-08
 
 ### Changed
@@ -146,6 +174,7 @@ Initial public release of DLD methodology.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 3.7 | 2026-02-14 | Bug Hunt Mode in Spark, TOC+TRIZ agents, multi-phase pipeline |
 | 3.6 | 2026-02-08 | Hooks migrated to Node.js — zero Python dependency, cross-platform |
 | 3.5 | 2026-02-08 | Opus 4.6 support, effort routing, model capabilities rule |
 | 3.4 | 2026-01-26 | Bootstrap, Claude-md-writer, Council decomposition, English translation |

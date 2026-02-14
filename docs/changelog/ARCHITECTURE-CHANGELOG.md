@@ -4,6 +4,31 @@ Full history of architectural changes. Updated by `documenter` agent.
 
 ---
 
+## [2026-02-14] — v3.7
+
+### Added
+- `bug-hunt agents`: 10 specialized agents for multi-perspective bug analysis
+  - 6 persona agents (Sonnet): code-reviewer, security-auditor, ux-analyst, junior-developer, software-architect, qa-engineer
+  - 2 framework agents (Opus): toc-analyst, triz-analyst
+  - 1 validator (Opus): finding triage and deduplication
+  - 1 solution-architect (Opus): sub-spec creation with Impact Tree
+
+### Changed
+- Bug Hunt integrated into Spark as a mode (no longer standalone skill)
+- Umbrella specs: `ai/features/BUG-XXX/` directory pattern for complex bugs
+
+### Architecture Impact
+- New multi-phase pipeline: 6 Sonnet → 2 Opus → 1 Opus → N Opus
+- Sub-spec pattern enables independent parallel fixes
+- Backlog entry = 1 per umbrella (sub-specs tracked internally)
+
+### Decisions
+- Bug Hunt uses subagents (Task tool) instead of Agent Teams for reliability
+- TOC + TRIZ replace Red Team + Systems Thinker for deeper root cause analysis
+- Sonnet for personas (better analysis than Haiku), Opus for frameworks (deep reasoning)
+
+---
+
 ## [2026-01-05] — v1.4
 
 ### Added
