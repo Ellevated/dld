@@ -24,6 +24,13 @@
 
 ---
 
+## Prerequisites
+
+- Node.js 18+ (required for hooks)
+- Claude Code CLI
+
+---
+
 ## Quick Start
 
 1. **Configure MCP servers** (recommended):
