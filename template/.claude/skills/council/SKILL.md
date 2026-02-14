@@ -287,6 +287,17 @@ Task:
 
 **Synthesizer can override** if sees critical issue missed by others.
 
+### When decision = needs_human
+
+Council MUST notify user and halt execution:
+
+1. Set spec status to `blocked`
+2. Add `## ACTION REQUIRED` section to spec with:
+   - Clear explanation of what Council needs from human
+   - Specific questions or decisions required
+3. Output to user: "COUNCIL BLOCKED — Human decision required. See ACTION REQUIRED section in spec."
+4. Exit autopilot (do not continue to next task)
+
 ## Output Format
 
 ```yaml

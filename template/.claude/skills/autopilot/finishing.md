@@ -38,6 +38,15 @@ Final verification, status update, merge, and cleanup.
    git stash pop (if stashed)
 
 8. Cleanup:
+   # Safety check: verify no uncommitted changes before force-removal
+   cd ".worktrees/{ID}"
+   if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+     echo "ERROR: Worktree has uncommitted changes! Aborting cleanup."
+     git status --short
+     exit 1
+   fi
+   cd -
+
    git worktree remove ".worktrees/{ID}" --force
    git branch -d {type}/{ID}
 

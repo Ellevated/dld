@@ -11,7 +11,7 @@
  *   import { allowTool, denyTool, readHookInput } from './utils.mjs';
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, chmodSync } from 'fs';
 import { join, dirname, normalize, resolve } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
@@ -30,9 +30,17 @@ function getErrorLogPath() {
 export function logHookError(hookName, error) {
   try {
     const ts = new Date().toISOString();
-    writeFileSync(getErrorLogPath(), `${ts} [${hookName}]: ${error}\n`, { flag: 'a' });
-  } catch {
+    const logPath = getErrorLogPath();
+    writeFileSync(logPath, `${ts} [${hookName}]: ${error}\n`, { flag: 'a' });
+    try { chmodSync(logPath, 0o600); } catch { /* fail-safe */ }
+  } catch (logErr) {
     // fail-safe: logging must never crash hook
+    // but at least try console before giving up
+    try {
+      console.error(`[hook-error] ${hookName}: ${error}`);
+    } catch {
+      // truly hopeless, give up silently
+    }
   }
 }
 
@@ -161,7 +169,7 @@ export function extractAllowedFiles(specPath) {
   try {
     const content = readFileSync(specPath, 'utf-8');
     const match = content.match(/## Allowed Files\s*\n([\s\S]*?)(?=\n##|\s*$)/i);
-    if (!match) return [];
+    if (!match) return { files: [], error: false };
 
     const section = match[1];
     const allowed = [];
@@ -174,15 +182,17 @@ export function extractAllowedFiles(specPath) {
       const pathMatch = trimmed.match(/[`*\-]*\s*([a-zA-Z0-9_./@-]+\.[a-zA-Z0-9]+(?::\d+(?:-\d+)?)?)[`*]*/);
       if (pathMatch) {
         let p = pathMatch[1];
+        // NOTE: Line number ranges (e.g., :10-20) are informational only, not enforced.
+        // Full file is allowed when path matches, regardless of line range.
         p = p.replace(/:\d+(-\d+)?$/, ''); // Remove line number suffix
         if (p && !p.startsWith('|')) {
           allowed.push(p);
         }
       }
     }
-    return allowed;
+    return { files: allowed, error: false };
   } catch {
-    return []; // fail-safe: missing spec = allow all
+    return { files: [], error: true }; // fail-safe: read error = deny access
   }
 }
 
@@ -258,30 +268,33 @@ export function isFileAllowed(filePath, specPath) {
   }
 
   // Get allowed files from spec
-  const allowedFiles = extractAllowedFiles(specPath);
-  if (allowedFiles.length === 0) {
+  const result = extractAllowedFiles(specPath);
+  if (result.error) {
+    return { allowed: false, allowedFiles: [] }; // Read error = deny access
+  }
+  if (result.files.length === 0) {
     return { allowed: true, allowedFiles: [] }; // No Allowed Files section = allow all
   }
 
   // Check if file matches any allowed pattern
-  for (let allowed of allowedFiles) {
+  for (let allowed of result.files) {
     allowed = normalize(allowed).replace(/\\/g, '/');
     // Direct match
     if (filePath === allowed) {
-      return { allowed: true, allowedFiles };
+      return { allowed: true, allowedFiles: result.files };
     }
     // Glob pattern match
     if (minimatch(filePath, allowed)) {
-      return { allowed: true, allowedFiles };
+      return { allowed: true, allowedFiles: result.files };
     }
     // Prefix match (allow subdirs)
     const prefix = allowed.replace(/\/\*$/, '') + '/';
     if (filePath.startsWith(prefix)) {
-      return { allowed: true, allowedFiles };
+      return { allowed: true, allowedFiles: result.files };
     }
   }
 
-  return { allowed: false, allowedFiles };
+  return { allowed: false, allowedFiles: result.files };
 }
 
 // --- Path safety ---

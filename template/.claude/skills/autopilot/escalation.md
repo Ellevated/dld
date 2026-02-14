@@ -118,7 +118,7 @@ Skill tool:
 **Council returns:**
 - `solution_found` → apply fix, continue
 - `architecture_change` → update plan, restart task
-- `needs_human` → status: blocked
+- `needs_human` → status: blocked (see Council SKILL.md § 'When decision = needs_human' for notification protocol)
 
 ## Debug Loop
 

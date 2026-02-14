@@ -23,6 +23,15 @@ Before creating spec — determine next ID:
 
 **FORBIDDEN:** Per-type numbering. Guessing ID. Using "approximately next".
 
+### Concurrency Warning
+
+Sequential ID assignment is NOT atomic. If two spark instances run concurrently:
+1. Both read the same max ID from backlog.md
+2. Both create specs with the same next ID
+3. Git merge conflict or duplicate IDs result
+
+**Prevention:** Run spark from ONE terminal at a time. Do not run spark while autopilot is executing.
+
 ---
 
 ## Pre-Completion Checklist (BLOCKING)
@@ -39,6 +48,26 @@ Before creating spec — determine next ID:
 7. [ ] **Auto-commit done** — `git add ai/ && git commit` (no push!)
 
 If any item not done — **STOP and do it**.
+
+---
+
+## Post-Write Verification (MANDATORY)
+
+After BOTH spec file and backlog entry are written, verify consistency:
+
+```bash
+# Verify backlog entry exists for this spec
+grep "{TASK_ID}" ai/backlog.md
+```
+
+**If NOT found (grep returns nothing):**
+1. STOP — do not proceed to auto-commit
+2. Add the backlog entry NOW (use the format from ## Backlog Entry above)
+3. Re-verify with grep
+4. Only then continue to auto-commit
+
+**Checklist addition:**
+- [ ] Post-write verification: grep confirmed TASK_ID in backlog
 
 ---
 
@@ -162,8 +191,8 @@ Each sub-spec is an independent task. If one fails, others continue.
 After spec file is created and backlog updated — commit ALL changes locally:
 
 ```bash
-# 1. Stage spec-related changes only
-git add ai/
+# 1. Stage spec-related changes only (explicit paths, not entire ai/ directory)
+git add "ai/features/${TASK_ID}"* ai/backlog.md
 
 # 2. Commit locally (NO PUSH!)
 git commit -m "docs: create spec ${TASK_ID}"
