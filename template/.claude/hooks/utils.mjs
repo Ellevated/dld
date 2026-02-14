@@ -180,6 +180,8 @@ export function extractAllowedFiles(specPath) {
       const pathMatch = trimmed.match(/[`*\-]*\s*([a-zA-Z0-9_./@-]+\.[a-zA-Z0-9]+(?::\d+(?:-\d+)?)?)[`*]*/);
       if (pathMatch) {
         let p = pathMatch[1];
+        // NOTE: Line number ranges (e.g., :10-20) are informational only, not enforced.
+        // Full file is allowed when path matches, regardless of line range.
         p = p.replace(/:\d+(-\d+)?$/, ''); // Remove line number suffix
         if (p && !p.startsWith('|')) {
           allowed.push(p);
