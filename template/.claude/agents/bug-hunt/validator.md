@@ -19,8 +19,16 @@ You receive:
 
 ## Process
 
-1. **Understand scope** — What did the user ACTUALLY ask about? What area of the codebase?
-2. **For each finding, decide:**
+1. **Structural gate** — Check that the draft spec contains a `## Framework Analysis` section with both TOC and TRIZ subsections. If missing or empty, REJECT the spec immediately:
+   ```yaml
+   validator_result:
+     rejected: true
+     reason: "Framework Analysis section missing. Spark must run TOC + TRIZ agents (Step 3) before validation."
+   ```
+   Do NOT proceed with filtering if Framework Analysis is absent.
+
+2. **Understand scope** — What did the user ACTUALLY ask about? What area of the codebase?
+3. **For each finding, decide:**
 
    **RELEVANT** (stays in spec):
    - Directly related to user's question/area
@@ -34,9 +42,9 @@ You receive:
    - Theoretical concern without evidence in current context
    - Already known/documented issue (check TODOs, existing specs)
 
-3. **Deduplicate** — Merge findings that describe the same issue from different angles
-4. **Verify evidence** — Spot-check file:line references (are they accurate?)
-5. **Assign final priority** — Based on impact to the user's specific problem
+4. **Deduplicate** — Merge findings that describe the same issue from different angles
+5. **Verify evidence** — Spot-check file:line references (are they accurate?)
+6. **Assign final priority** — Based on impact to the user's specific problem
 
 ## Output Format
 

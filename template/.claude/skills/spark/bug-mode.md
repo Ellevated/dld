@@ -133,19 +133,29 @@ Only after root cause is found → create BUG-XXX spec:
 ## Overview
 
 ```
-Phase 1a: 6 Persona Agents (Sonnet, parallel) → raw findings
-Phase 1b: 2 Framework Agents (Opus, parallel) → systemic analysis
-Phase 2:  1 Validator Agent (Opus) → filter relevant vs out-of-scope
-Phase 3:  N Solution Architects (Opus) → sub-specs per finding
-Handoff:  Sequential autopilot for each sub-spec
+Step 1: Launch 6 Persona Agents (Sonnet, parallel)
+Step 2: Collect persona results → create findings summary
+Step 3: Launch TOC + TRIZ Agents (Opus, parallel) with findings summary
+Step 4: Collect ALL results → assemble umbrella spec (MUST include Framework Analysis)
+Step 5: Launch Validator Agent (Opus) → filter relevant vs out-of-scope
+Step 6: Update spec with validator results → update Executive Summary
+Step 7: Launch N Solution Architects (Opus) → sub-specs per finding
 ```
 
-## Phase 1a: Persona Discovery (6 × Sonnet, parallel)
+---
 
-Launch 6 persona agents simultaneously. Each gets a clean context with only the target scope.
+## ALGORITHM — Execute steps in exact order
+
+Each step's output feeds into the next step. You cannot proceed to step N+1
+without completing step N, because step N+1 requires step N's output as input.
+
+---
+
+### STEP 1: Launch 6 Persona Agents
+
+Launch ALL 6 in a SINGLE message (parallel Task calls). Each gets the target scope.
 
 ```yaml
-# Launch ALL 6 in a SINGLE message (parallel Task calls)
 Task:
   subagent_type: bughunt-code-reviewer
   model: sonnet
@@ -193,11 +203,19 @@ Task:
     [same structure, scope, target]
 ```
 
-**Collect results.** Create a Phase 1a summary with all findings.
+**Output of Step 1:** Raw findings from 6 perspectives.
 
-## Phase 1b: Framework Analysis (2 × Opus, parallel)
+### STEP 2: Create Findings Summary
 
-After Phase 1a completes, launch framework agents with the findings summary.
+Collect all persona results. For each finding, record: ID, severity, title, category.
+Save as PERSONA_FINDINGS (needed by Step 3).
+
+### STEP 3: Launch Framework Agents
+
+Personas find SYMPTOMS. Framework agents find CAUSES and PATTERNS among those symptoms.
+Step 5 (validator) requires Framework Analysis section — spec without it is rejected.
+
+Launch TOC + TRIZ with PERSONA_FINDINGS from Step 2:
 
 ```yaml
 Task:
@@ -205,8 +223,8 @@ Task:
   model: opus
   description: "Bug Hunt: TOC analysis"
   prompt: |
-    ## Phase 1a Findings Summary
-    {paste summary of all Phase 1a findings with IDs and titles}
+    ## Persona Findings Summary
+    {PERSONA_FINDINGS — all IDs, titles, severities from Step 2}
 
     TARGET: {target_path}
 
@@ -218,8 +236,8 @@ Task:
   model: opus
   description: "Bug Hunt: TRIZ analysis"
   prompt: |
-    ## Phase 1a Findings Summary
-    {paste summary of all Phase 1a findings with IDs and titles}
+    ## Persona Findings Summary
+    {PERSONA_FINDINGS — all IDs, titles, severities from Step 2}
 
     TARGET: {target_path}
 
@@ -227,19 +245,20 @@ Task:
     Apply inventive principles to find solutions.
 ```
 
-**Collect results.** Merge into Phase 1a findings.
+**Output of Step 3:** TOC constraints + TRIZ contradictions referencing persona findings.
 
-## Spark Assembles Draft Spec
+### STEP 4: Assemble Umbrella Spec
 
-Spark (Opus) combines all findings into a single umbrella document:
+Combine ALL results (personas from Step 1 + frameworks from Step 3) into:
 
 ```
 ai/features/BUG-XXX/BUG-XXX.md
 ```
 
-This is a draft with ALL raw findings (typically 60-100).
+The spec MUST contain a `## Framework Analysis` section with TOC and TRIZ subsections.
+This is verified by the validator in Step 5 — spec without it is rejected.
 
-## Phase 2: Validation & Filtering (1 × Opus)
+### STEP 5: Launch Validator
 
 ```yaml
 Task:
@@ -257,15 +276,18 @@ Task:
     Deduplicate. Verify file references.
 ```
 
-**Update BUG-XXX.md** with only relevant findings.
-**Append out-of-scope ideas** to `ai/ideas.md`.
+The validator will reject the spec if Framework Analysis is missing (see validator agent prompt).
 
-**MANDATORY: Update Executive Summary** in BUG-XXX.md after validation:
-- Replace any TBD fields with actual counts from validator output
-- Fill in: relevant count, out-of-scope count, duplicates merged, sub-specs count
-- Do this BEFORE proceeding to Phase 3
+### STEP 6: Update Spec
 
-## Phase 3: Solution Architecture (N × Opus, batched)
+After validator returns:
+1. Update BUG-XXX.md with only relevant findings
+2. Append out-of-scope ideas to `ai/ideas.md`
+3. Update Executive Summary with actual counts from validator output:
+   - Total findings analyzed, relevant count, out-of-scope count, duplicates merged
+4. Do NOT proceed to Step 7 until Executive Summary has real numbers (not TBD)
+
+### STEP 7: Launch Solution Architects
 
 For each relevant finding, launch a solution architect agent.
 
@@ -408,6 +430,11 @@ Task tool:
 - ALWAYS add regression test — in spec's DoD
 - ALWAYS use Impact Tree — find all affected files
 
+**Bug Hunt Pipeline Rules:**
+- Execute ALL 7 steps in order — each step's output is required by the next step
+- Validator (Step 5) rejects specs missing Framework Analysis — skipping Step 3 means restarting
+- If context is too large, SUMMARIZE findings before passing to next step — don't skip the step
+
 **Handoff Rules:**
 - Bugs go through: spark → plan → autopilot
 - No direct fixes during spark (READ-ONLY mode)
@@ -428,12 +455,14 @@ Task tool:
 6. [ ] Regression test in DoD
 
 ### Bug Hunt Mode Checklist
-1. [ ] All 6 persona agents completed
-2. [ ] TOC + TRIZ framework agents completed
-3. [ ] Validator filtered findings
-4. [ ] Sub-specs created for all relevant findings
-5. [ ] Umbrella spec has sub-spec table
-6. [ ] Out-of-scope ideas saved to ai/ideas.md
+1. [ ] All 6 persona agents completed (Step 1)
+2. [ ] TOC + TRIZ framework agents completed (Step 3)
+3. [ ] Umbrella spec has `## Framework Analysis` section (Step 4)
+4. [ ] Validator passed — spec not rejected (Step 5)
+5. [ ] Executive Summary has actual counts, not TBD (Step 6)
+6. [ ] Sub-specs created for all relevant findings (Step 7)
+7. [ ] Umbrella spec has sub-spec table
+8. [ ] Out-of-scope ideas saved to ai/ideas.md
 
 ### Both Modes (from completion.md)
 7. [ ] ID determined by protocol
