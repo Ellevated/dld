@@ -6,15 +6,15 @@ Model Context Protocol (MCP) servers extend Claude Code's capabilities with exte
 
 | Tier | Servers | Setup Time | API Keys | Best For |
 |------|---------|------------|----------|----------|
-| **Zero** | None | 0 min | None | Quick evaluation |
-| **Recommended** | Context7 + Exa | 2 min | None | Active development |
+| **Quick** | None | 0 min | None | Quick evaluation |
+| **Standard** | Context7 + Exa | 2 min | None | Active development |
 | **Power** | + Memory + Sequential | 5 min | Memory key | Teams, complex projects |
 
-**Recommendation:** Start with **Recommended** tier. All features work, no API keys needed.
+**Recommendation:** Start with **Standard** tier. All features work, no API keys needed.
 
 ---
 
-## Tier 1: Zero (No MCP)
+## Quick Tier (No MCP)
 
 DLD works without MCP servers. Skills like `/scout` and `/spark` will use built-in WebSearch and WebFetch tools instead.
 
@@ -27,7 +27,7 @@ DLD works without MCP servers. Skills like `/scout` and `/spark` will use built-
 
 ---
 
-## Tier 2: Recommended (Context7 + Exa)
+## Standard Tier (Context7 + Exa)
 
 **Setup time:** 2 minutes | **API keys:** None needed
 
@@ -48,11 +48,11 @@ claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa
 
 ---
 
-## Tier 3: Power (Teams & Complex Projects)
+## Power Tier (Teams & Complex Projects)
 
 **Setup time:** 5 minutes | **API keys:** Memory MCP key required
 
-Start with Tier 2, then add:
+Start with Standard tier, then add:
 
 ```bash
 # Memory MCP (requires API key from Anthropic)
@@ -62,7 +62,7 @@ claude mcp add memory -- npx -y @anthropic/memory-mcp
 claude mcp add sequential-thinking -- npx -y @anthropic/sequential-thinking-mcp
 ```
 
-**What you get (in addition to Tier 2):**
+**What you get (in addition to Standard):**
 - **Memory** - Cross-session memory, team knowledge sharing
 - **Sequential Thinking** - Enhanced reasoning for complex problems
 

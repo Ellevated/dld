@@ -18,6 +18,11 @@ if (!hookName) {
   process.exit(0); // No hook specified — silently allow
 }
 
+// Validate hookName — alphanumeric, hyphens, dots only (prevent path traversal)
+if (!/^[a-zA-Z0-9._-]+$/.test(hookName)) {
+  process.exit(0); // Silent fail-safe for invalid hook names
+}
+
 // Find main repo root (worktree support)
 let root;
 try {
@@ -37,7 +42,6 @@ if (existsSync(hookPath)) {
   // Dynamic import with file:// URL (required for Windows paths with drive letters)
   await import(pathToFileURL(hookPath).href);
 } else {
-  // Hook not found — silently allow
-  process.stderr.write(`\u2713 Allowed: hook ${hookName} not found\n`);
+  // Hook not found — silently allow (ADR-004: fail-safe)
   process.exit(0);
 }

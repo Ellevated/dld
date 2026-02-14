@@ -91,10 +91,9 @@ function main() {
     const command = getToolInput(data, 'command') || '';
 
     // Hard blocks (deny immediately)
+    // Note: --force-with-lease is handled by regex negative lookahead (?!-with-lease)
     for (const [pattern, message] of BLOCKED_PATTERNS) {
       if (pattern.test(command)) {
-        // Allow --force-with-lease (safe force push)
-        if (command.includes('--force-with-lease')) continue;
         denyTool(message);
         return;
       }

@@ -61,7 +61,7 @@ Install DLD from github.com/Ellevated/dld
 
 Claude will scan your project, show what will change, and ask for confirmation before installing.
 
-### Option B: CLI
+### Option B: CLI (New Project)
 
 ```bash
 # Create a new project
@@ -91,7 +91,7 @@ Or run the interactive setup:
 
 MCP enhances `/scout` and `/spark` with real-time docs and web research. See [MCP Setup Guide](docs/20-mcp-setup.md) for all tiers.
 
-That's it. Bootstrap will guide you through extracting your idea into structured specs.
+**Day 0:** Run `/bootstrap` in Claude -- it will guide you through extracting your idea into structured specs. This is the most important step.
 
 ---
 

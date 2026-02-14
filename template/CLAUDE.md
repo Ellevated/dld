@@ -20,7 +20,7 @@
 - Skills: spark, scout, audit, review
 - Hooks: Safety validation
 
-**Upgrade:** Run `./scripts/setup-mcp.sh --tier 3` for Power tier (council, autopilot, planner)
+**Upgrade:** Run `./scripts/setup-mcp.sh --power` for Power tier (council, autopilot, planner)
 
 ---
 
@@ -66,7 +66,7 @@ See `ai/ARCHITECTURE.md` after bootstrap.
 
 ---
 
-## Project Context System (v3.4)
+## Project Context System (v3.7)
 
 Three-tier knowledge system for preventing breakage during refactoring.
 
@@ -119,7 +119,7 @@ Glossary: ai/glossary/{domain}.md
 
 ---
 
-## Skills (v3.4)
+## Skills (v3.7)
 
 **Rule:** If skill applies — MUST use it.
 
@@ -165,7 +165,7 @@ Bug:         diagnose (5 Whys) → /spark → /autopilot
 Hotfix:      <5 LOC → fix directly with user approval
 ```
 
-**New in v3.4:**
+**New in v3.7:**
 - Spark auto-hands off to autopilot (no manual "plan" step)
 - Autopilot always uses worktree (isolation)
 - Fresh subagent per task (context stays clean)
@@ -257,7 +257,7 @@ src/
 
 ai/
 ├── idea/       # From /bootstrap
-├── diary/      # Session learnings (v3.4)
+├── diary/      # Session learnings (v3.7)
 ├── features/   # Task specs
 ├── ARCHITECTURE.md
 └── backlog.md

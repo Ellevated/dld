@@ -12,7 +12,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
-import { join, dirname, normalize } from 'path';
+import { join, dirname, normalize, resolve } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 
@@ -141,15 +141,18 @@ function matchesPattern(filePath, pattern) {
 
 /**
  * Simple fnmatch-style glob matching (no external deps).
- * Supports: *, ? and character classes [abc].
+ * Supports: *, **, ? and character classes [abc].
  * Does NOT match / with * (same as Python fnmatch).
  */
 function minimatch(str, pattern) {
   // Escape regex specials, then convert glob to regex
+  // Use placeholder for ** before converting single *
   let re = pattern
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '\x00GLOBSTAR\x00')
     .replace(/\*/g, '[^/]*')
-    .replace(/\?/g, '[^/]');
+    .replace(/\?/g, '[^/]')
+    .replace(/\x00GLOBSTAR\x00/g, '.*');
   re = `^${re}$`;
   return new RegExp(re).test(str);
 }
@@ -168,7 +171,7 @@ export function extractAllowedFiles(specPath) {
       if (!trimmed || trimmed.startsWith('#')) continue;
 
       // Extract path from markdown formats: `path`, **path**, or path - description
-      const pathMatch = trimmed.match(/[`*]*([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+(?::\d+(?:-\d+)?)?)[`*]*/);
+      const pathMatch = trimmed.match(/[`*\-]*\s*([a-zA-Z0-9_./@-]+\.[a-zA-Z0-9]+(?::\d+(?:-\d+)?)?)[`*]*/);
       if (pathMatch) {
         let p = pathMatch[1];
         p = p.replace(/:\d+(-\d+)?$/, ''); // Remove line number suffix
@@ -185,10 +188,33 @@ export function extractAllowedFiles(specPath) {
 
 export function inferSpecFromBranch() {
   try {
-    const branch = execFileSync('git', ['branch', '--show-current'], {
+    // 1. Try branch name first
+    let branch = execFileSync('git', ['branch', '--show-current'], {
       timeout: GIT_TIMEOUT_MS,
       encoding: 'utf-8',
     }).trim();
+
+    // 2. Fallback: detached HEAD — try symbolic-ref
+    if (!branch) {
+      try {
+        branch = execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], {
+          timeout: GIT_TIMEOUT_MS,
+          encoding: 'utf-8',
+        }).trim();
+      } catch {
+        // 3. Last resort: extract task ID from latest commit message
+        try {
+          const commitMsg = execFileSync('git', ['log', '-1', '--pretty=%s'], {
+            timeout: GIT_TIMEOUT_MS,
+            encoding: 'utf-8',
+          }).trim();
+          const msgMatch = commitMsg.match(/(FTR|BUG|TECH|ARCH|SEC)-\d+/i);
+          if (msgMatch) branch = msgMatch[0];
+        } catch {
+          return null; // fail-safe (ADR-004)
+        }
+      }
+    }
 
     if (!branch) return null;
 
@@ -196,9 +222,8 @@ export function inferSpecFromBranch() {
     if (!match) return null;
 
     const taskId = match[0].toUpperCase();
-    const pattern = `ai/features/${taskId}-`;
 
-    // Simple glob: list files in ai/features/ matching prefix
+    // Look for spec file in ai/features/ matching prefix
     try {
       const dir = 'ai/features';
       if (!existsSync(dir)) return null;
@@ -257,4 +282,20 @@ export function isFileAllowed(filePath, specPath) {
   }
 
   return { allowed: false, allowedFiles };
+}
+
+// --- Path safety ---
+
+/**
+ * Get project directory with path traversal protection.
+ * Falls back to cwd() if CLAUDE_PROJECT_DIR escapes home or /tmp.
+ */
+export function getProjectDir() {
+  const dir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const resolved = resolve(dir);
+  const home = homedir();
+  if (!resolved.startsWith(home) && !resolved.startsWith('/tmp')) {
+    return process.cwd();
+  }
+  return resolved;
 }
