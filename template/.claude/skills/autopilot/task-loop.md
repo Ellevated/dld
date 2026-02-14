@@ -56,6 +56,8 @@ TESTER result?
 
 Deterministic checks BEFORE AI review (saves tokens on obvious issues).
 
+**If `scripts/pre-review-check.py` exists** → run it:
+
 ```bash
 python scripts/pre-review-check.py {files_changed}
 ```
@@ -72,6 +74,8 @@ Exit code?
 - `# TODO` or `# FIXME` in code
 - Bare `except:` or `except Exception:` without re-raise
 - Files > 400 LOC (code) or > 600 LOC (tests)
+
+**If not found** → skip to next step (pre-review check is optional, project-specific)
 
 ---
 
