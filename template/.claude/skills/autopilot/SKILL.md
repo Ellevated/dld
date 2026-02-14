@@ -44,7 +44,7 @@ PHASE 2: Execute (per task)    → task-loop.md
   └─ COMMIT (no push)
 
 PHASE 3: Finish                → finishing.md
-  └─ Final test → Exa verification → status done → merge develop → cleanup
+  └─ Final test → Exa verification → status done → push feature → merge develop → push develop → cleanup
 ```
 
 **Limits & Escalation:** See `escalation.md`
@@ -86,6 +86,7 @@ PHASE 2: FOR EACH TASK (fresh subagent per task!)
   See: subagent-dispatch.md
 
 PHASE 3: FINISHING
+  Push feature branch → merge develop → push develop
   See: finishing.md
 ```
 
@@ -158,7 +159,7 @@ while (queued/resumed tasks in ai/backlog.md):
 1. Validate SPEC_ID exists in backlog
 2. Verify status is queued or resumed (not in_progress!)
 3. Set status → in_progress
-4. PHASE 0-3: Same as interactive
+4. PHASE 0-3: Same as interactive (including push in Phase 3!)
 5. EXIT (do NOT continue to next spec)
    └─ External orchestrator provides fresh context
 ```
