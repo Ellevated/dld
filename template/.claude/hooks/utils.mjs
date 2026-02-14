@@ -11,7 +11,7 @@
  *   import { allowTool, denyTool, readHookInput } from './utils.mjs';
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, chmodSync } from 'fs';
 import { join, dirname, normalize, resolve } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
@@ -30,7 +30,9 @@ function getErrorLogPath() {
 export function logHookError(hookName, error) {
   try {
     const ts = new Date().toISOString();
-    writeFileSync(getErrorLogPath(), `${ts} [${hookName}]: ${error}\n`, { flag: 'a' });
+    const logPath = getErrorLogPath();
+    writeFileSync(logPath, `${ts} [${hookName}]: ${error}\n`, { flag: 'a' });
+    try { chmodSync(logPath, 0o600); } catch { /* fail-safe */ }
   } catch (logErr) {
     // fail-safe: logging must never crash hook
     // but at least try console before giving up
