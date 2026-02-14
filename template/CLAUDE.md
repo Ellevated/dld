@@ -236,7 +236,7 @@ If a tool returns "content filtering policy" error — retry with alternative to
 - **Prefixes:** BUG, FTR, TECH, ARCH only (4 types)
 - **Numbering:** Sequential across all types
 - **Archive:** Weekly check, if >50 → archive to 30
-- **Sub-specs:** Bug Hunt Mode creates umbrella specs (e.g., `BUG-090-bughunt.md`) containing sub-specs. Sub-specs share parent ID, not separate backlog entries.
+- **Bug Hunt:** Creates a READ-ONLY report (`BUG-XXX-bughunt.md`, not in backlog) + standalone grouped specs (each with own sequential ID and own backlog entry).
 
 ---
 

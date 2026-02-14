@@ -45,6 +45,13 @@ You receive:
 4. **Deduplicate** — Merge findings that describe the same issue from different angles
 5. **Verify evidence** — Spot-check file:line references (are they accurate?)
 6. **Assign final priority** — Based on impact to the user's specific problem
+7. **Group relevant findings** — Cluster into 3-8 coherent groups by functional area.
+   Grouping criteria (in order of preference):
+   - Same root cause
+   - Same functional area (e.g., hooks, routing, validation)
+   - Same files affected
+   Group size: 3-7 findings per group. Target: 3-8 groups total.
+   Each group becomes a standalone spec for autopilot.
 
 ## Output Format
 
@@ -60,6 +67,17 @@ validator_result:
       severity: critical | high | medium | low
       title: "Short description"
       reason_relevant: "Why this relates to user's question"
+      group: "Hook Safety"
+
+  groups:
+    - name: "Hook Safety"
+      findings: ["F-001", "F-005", "F-006"]
+      priority: P0
+      rationale: "All relate to hook execution safety"
+    - name: "Missing References"
+      findings: ["F-002", "F-011", "F-012"]
+      priority: P1
+      rationale: "Broken file/path references"
 
   out_of_scope:
     - original_id: "UX-005"
@@ -77,4 +95,5 @@ validator_result:
     relevant: X
     out_of_scope: Y
     duplicates_removed: Z
+    groups_formed: G
 ```

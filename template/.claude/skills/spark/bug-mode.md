@@ -9,7 +9,7 @@
 | Signal | Mode | Description |
 |--------|------|-------------|
 | Simple bug, clear location, <5 files | **Quick Bug Mode** | 5 Whys → single spec |
-| Complex bug, unclear cause, >5 files, "bug hunt", "deep analysis" | **Bug Hunt Mode** | Multi-agent pipeline → umbrella spec + sub-specs |
+| Complex bug, unclear cause, >5 files, "bug hunt", "deep analysis" | **Bug Hunt Mode** | Multi-agent pipeline → report + grouped standalone specs |
 | User explicitly says "bug hunt", "баг-хант", "охота на баги" | **Bug Hunt Mode** | Forced |
 
 **Default:** Quick Bug Mode. Escalate to Bug Hunt if 5 Whys reveals complexity.
@@ -138,9 +138,9 @@ Step 1: Launch 6 Persona Agents PER ZONE (6×N Sonnet, parallel)
 Step 2: Collect all persona results → create findings summary
 Step 3: Launch TOC + TRIZ Agents (Opus, parallel) with findings summary
 Step 4: Collect ALL results → assemble umbrella spec (MUST include Framework Analysis)
-Step 5: Launch Validator Agent (Opus) → filter relevant vs out-of-scope
-Step 6: Update spec with validator results → update Executive Summary
-Step 7: Launch M Solution Architects (Opus) → sub-specs per finding
+Step 5: Launch Validator Agent (Opus) → filter, deduplicate, GROUP into 3-8 clusters
+Step 6: Update report with validator results → update Executive Summary
+Step 7: Launch M Solution Architects (Opus) → standalone spec per GROUP
 ```
 
 ---
@@ -310,60 +310,75 @@ Task:
 
     Filter: keep RELEVANT findings, move OUT OF SCOPE to ideas.
     Deduplicate. Verify file references.
+    Group relevant findings into 3-8 coherent groups by functional area.
 ```
 
 The validator will reject the spec if Framework Analysis is missing (see validator agent prompt).
+The validator also GROUPS findings — each group becomes a separate spec for autopilot.
 
-### STEP 6: Update Spec
+### STEP 6: Update Report
 
 After validator returns:
-1. Update BUG-XXX.md with only relevant findings
+1. Update BUG-XXX report with validator results (this is a REPORT, not an executable spec)
 2. Append out-of-scope ideas to `ai/ideas.md`
-3. Update Executive Summary with actual counts from validator output:
-   - Total findings analyzed, relevant count, out-of-scope count, duplicates merged
+3. Update Executive Summary with actual counts:
+   - Total findings, relevant count, out-of-scope count, duplicates merged, groups formed
 4. Do NOT proceed to Step 7 until Executive Summary has real numbers (not TBD)
 
-### STEP 7: Launch Solution Architects
+### STEP 7: Create Grouped Specs
 
-For each relevant finding, launch a solution architect agent.
+**Key principle:** Autopilot works best with focused, atomic specs. One spec = one coherent fix
+that goes through plan → code → test → review. Packing 29 sub-tasks degrades quality.
 
-**Batching:** Launch 5-10 at a time to avoid overwhelming the system.
+For each GROUP from the validator, allocate a separate sequential ID and create a standalone spec.
+
+**ID allocation:** Read ai/backlog.md, find global max ID. Allocate IDs sequentially:
+if max is BUG-084, groups get BUG-085, BUG-086, BUG-087, etc.
 
 ```yaml
-# For each relevant finding F-001, F-002, ... F-N:
+# For each GROUP from validator (e.g., "Hook Safety", "Missing References"):
 Task:
   subagent_type: bughunt-solution-architect
   model: opus
-  description: "Bug Hunt: spec F-001"
+  description: "Bug Hunt: spec BUG-085 (Hook Safety)"
   prompt: |
-    ## Finding
-    {finding F-001 details}
+    ## Group: Hook Safety
+    Findings in this group:
+    {list of findings F-001, F-005, F-006, F-017, F-018, F-027}
 
     ## Context
-    Umbrella: BUG-XXX
-    Sub-spec number: 01
+    Bug Hunt report: BUG-084
+    Spec ID for this group: BUG-085
     Target: {target_path}
 
-    Create sub-spec at: ai/features/BUG-XXX/BUG-XXX-01.md
-    Include Impact Tree, research, fix approach.
+    Create a STANDALONE spec at: ai/features/BUG-085.md
+    This spec must be independently executable by autopilot.
+    Include: Impact Tree, Allowed Files, Definition of Done.
     Status: queued
 ```
 
 **Result:** Directory structure:
 ```
-ai/features/BUG-XXX/
-├── BUG-XXX.md          ← umbrella (table of contents + summary)
-├── BUG-XXX-01.md       ← queued sub-spec
-├── BUG-XXX-02.md       ← queued sub-spec
+ai/features/
+├── BUG-084-bughunt.md  ← report (READ-ONLY index, not in backlog)
+├── BUG-085.md           ← standalone spec: Hook Safety (queued)
+├── BUG-086.md           ← standalone spec: Missing References (queued)
+├── BUG-087.md           ← standalone spec: Prompt Injection (queued)
 └── ...
 ```
 
-## Umbrella Spec Template
+**Each spec goes independently through autopilot:** plan → code → test → review.
+
+## Bug Hunt Report Template
+
+The report is a READ-ONLY index. It is NOT added to backlog.
+Each grouped spec gets its own backlog entry.
 
 ```markdown
-# Bug Hunt: [BUG-XXX] {Title}
+# Bug Hunt Report: {Title}
 
-**Status:** queued | **Priority:** P0 | **Date:** YYYY-MM-DD
+**ID:** BUG-XXX (report only, not in backlog)
+**Date:** YYYY-MM-DD
 **Mode:** Bug Hunt (multi-agent)
 **Cost:** ~${estimated_cost}
 
@@ -376,15 +391,15 @@ ai/features/BUG-XXX/
 - Relevant (in scope): {N_relevant}
 - Out of scope (→ ideas.md): {N_out}
 - Duplicates merged: {N_dupes}
-- Sub-specs created: {N_specs}
+- Groups formed: {N_groups}
+- Specs created: {N_specs}
 
-## Sub-Specs
+## Grouped Specs
 
-| # | ID | Title | Priority | Status |
-|---|-----|-------|----------|--------|
-| 1 | BUG-XXX-01 | {title} | P0 | queued |
-| 2 | BUG-XXX-02 | {title} | P1 | queued |
-| ... | ... | ... | ... | ... |
+| # | Spec ID | Group Title | Findings | Priority | Status |
+|---|---------|------------|----------|----------|--------|
+| 1 | BUG-YYY | Hook Safety | F-001, F-005, F-006 | P0 | queued |
+| 2 | BUG-ZZZ | Missing References | F-002, F-011, F-012 | P1 | queued |
 
 ## Framework Analysis
 
@@ -401,21 +416,16 @@ ai/features/BUG-XXX/
 | Finding | Zone | CR | SEC | UX | JR | ARCH | QA | TOC | TRIZ | Consensus |
 |---------|------|----|----|----|----|----|----|----|------|-----------|
 | F-001   | A    | x  |    |    |    | x  |    |    |      | 2/8       |
-| ...     |      |    |    |    |    |    |    |    |      |           |
-
-## Execution Plan
-Sub-specs will be executed sequentially by Autopilot:
-BUG-XXX-01 → BUG-XXX-02 → ... → BUG-XXX-NN
 ```
 
 ## Handoff
 
-After all sub-specs are created:
-1. Update umbrella BUG-XXX.md with sub-spec table
-2. Add ONE entry to backlog for the umbrella
+After all grouped specs are created:
+1. Save report as `ai/features/BUG-XXX-bughunt.md` (NOT in backlog)
+2. Add ONE backlog entry per grouped spec (each with its own sequential ID)
 3. Auto-commit: `git add ai/ && git commit`
-4. Ask user: "Bug Hunt complete. {N} sub-specs created. Run autopilot?"
-5. If user confirms → autopilot executes sub-specs sequentially
+4. Ask user: "Bug Hunt complete. {N} specs created ({IDs}). Run autopilot?"
+5. If user confirms → autopilot picks up specs from backlog independently
 
 → Go to `completion.md` for ID protocol and backlog entry.
 
@@ -496,11 +506,11 @@ Task tool:
 1. [ ] Scope decomposed into zones (Step 0) — or single zone if <30 files
 2. [ ] All 6 persona agents completed PER ZONE (Step 1)
 3. [ ] TOC + TRIZ framework agents completed (Step 3)
-4. [ ] Umbrella spec has `## Framework Analysis` section (Step 4)
+4. [ ] Draft spec has `## Framework Analysis` section (Step 4)
 5. [ ] Validator passed — spec not rejected (Step 5)
-6. [ ] Executive Summary has actual counts, not TBD (Step 6)
-7. [ ] Sub-specs created for all relevant findings (Step 7)
-8. [ ] Umbrella spec has sub-spec table
+6. [ ] Report has actual counts in Executive Summary, not TBD (Step 6)
+7. [ ] Grouped specs created — one standalone spec per group (Step 7)
+8. [ ] Report has Grouped Specs table with all spec IDs
 9. [ ] Out-of-scope ideas saved to ai/ideas.md
 
 ### Both Modes (from completion.md)
@@ -520,8 +530,10 @@ mode: quick | bug-hunt
 bug_id: BUG-XXX
 root_cause: "[1-line summary]"  # Quick mode
 findings_count: N                # Bug Hunt mode
-subspecs_count: N                # Bug Hunt mode
-spec_path: "ai/features/BUG-XXX.md"  # or "ai/features/BUG-XXX/BUG-XXX.md"
+groups_count: N                  # Bug Hunt mode
+spec_ids: [BUG-085, BUG-086, BUG-087]  # Bug Hunt mode — standalone specs
+report_path: "ai/features/BUG-XXX-bughunt.md"  # Bug Hunt mode — READ-ONLY report
+spec_path: "ai/features/BUG-XXX.md"  # Quick mode
 research_sources_used:
   - url: "..."
     used_for: "pattern X"

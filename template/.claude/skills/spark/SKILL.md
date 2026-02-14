@@ -51,7 +51,7 @@ Spark operates in three modes:
 | Module | When to Read | Content |
 |--------|--------------|---------|
 | `feature-mode.md` | Mode = Feature | Socratic Dialogue + research templates + spec template |
-| `bug-mode.md` | Mode = Bug (Quick or Hunt) | Quick: 5 Whys. Hunt: multi-agent pipeline + sub-specs |
+| `bug-mode.md` | Mode = Bug (Quick or Hunt) | Quick: 5 Whys. Hunt: multi-agent pipeline → report + grouped standalone specs |
 | `completion.md` | After spec created | ID protocol, backlog, commit, handoff |
 
 **Flow:**

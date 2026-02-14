@@ -119,41 +119,50 @@ When setting status in spec, **verbally confirm**:
 
 ---
 
-## Umbrella Specs (Bug Hunt Mode)
+## Bug Hunt Mode Output
 
-Bug Hunt creates umbrella specs with sub-specs in a directory:
+Bug Hunt creates a READ-ONLY report + standalone grouped specs:
 
 ```
-ai/features/BUG-XXX/
-├── BUG-XXX.md          ← umbrella (table of contents)
-├── BUG-XXX-01.md       ← sub-spec (queued)
-├── BUG-XXX-02.md       ← sub-spec (queued)
+ai/features/
+├── BUG-XXX-bughunt.md   ← report (READ-ONLY index, NOT in backlog)
+├── BUG-YYY.md            ← standalone spec: Group 1 (queued)
+├── BUG-ZZZ.md            ← standalone spec: Group 2 (queued)
 └── ...
 ```
 
-### Backlog Entry
+### Report (NOT in Backlog)
 
-ONE entry for the umbrella. Sub-specs are tracked inside the umbrella.
+The report is a READ-ONLY index of what was found. It does NOT go into backlog.
+File naming: `BUG-XXX-bughunt.md` (the XXX is the report ID, not a task ID).
+
+### Grouped Specs (IN Backlog)
+
+Each group gets its OWN sequential ID and its OWN backlog entry:
 
 ```
-| BUG-XXX | Bug Hunt: {title} | queued | P0 | [BUG-XXX](features/BUG-XXX/BUG-XXX.md) |
+| BUG-085 | Hook safety fixes | queued | P0 | [BUG-085](features/BUG-085.md) |
+| BUG-086 | Missing references | queued | P1 | [BUG-086](features/BUG-086.md) |
+| BUG-087 | Prompt injection | queued | P1 | [BUG-087](features/BUG-087.md) |
 ```
 
-### ID Protocol for Sub-Specs
+### ID Protocol for Grouped Specs
 
-Sub-specs use the umbrella ID + sequential number: BUG-XXX-01, BUG-XXX-02, etc.
-They do NOT get separate backlog entries.
+1. Report gets an ID (e.g., BUG-084) — used only for the report filename
+2. Find global max ID in backlog (e.g., max is BUG-084)
+3. Each group gets NEXT sequential ID: BUG-085, BUG-086, BUG-087, etc.
+4. Each grouped spec is a standalone, independently executable spec
 
-### Autopilot Handoff (Sequential)
+### Autopilot Handoff
 
-Autopilot processes sub-specs in order:
+Each grouped spec runs independently through autopilot:
 ```
-BUG-XXX-01 → Planner → Coder → Tester → done
-BUG-XXX-02 → Planner → Coder → Tester → done
+BUG-085 → Planner → Coder → Tester → done
+BUG-086 → Planner → Coder → Tester → done
 ...
 ```
 
-Each sub-spec is an independent task. If one fails, others continue.
+Each spec is fully independent. User can run autopilot on any single spec.
 
 ---
 
