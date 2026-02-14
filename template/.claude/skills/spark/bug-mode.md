@@ -128,18 +128,19 @@ Only after root cause is found → create BUG-XXX spec:
 
 **Multi-agent deep analysis pipeline.** Use when bug is complex, systemic, or affects many files.
 
-**Cost estimate:** ~$40-70 per full run (6 Sonnet + 2 Opus + 1 Opus validator + N Opus architects)
+**Cost estimate:** ~$50-100 per full run (6×N Sonnet personas + 2 Opus frameworks + 1 Opus validator + M Opus architects). N = number of zones (typically 2-4).
 
 ## Overview
 
 ```
-Step 1: Launch 6 Persona Agents (Sonnet, parallel)
-Step 2: Collect persona results → create findings summary
+Step 0: Scope Decomposition → split target into 2-4 focused zones
+Step 1: Launch 6 Persona Agents PER ZONE (6×N Sonnet, parallel)
+Step 2: Collect all persona results → create findings summary
 Step 3: Launch TOC + TRIZ Agents (Opus, parallel) with findings summary
 Step 4: Collect ALL results → assemble umbrella spec (MUST include Framework Analysis)
 Step 5: Launch Validator Agent (Opus) → filter relevant vs out-of-scope
 Step 6: Update spec with validator results → update Executive Summary
-Step 7: Launch N Solution Architects (Opus) → sub-specs per finding
+Step 7: Launch M Solution Architects (Opus) → sub-specs per finding
 ```
 
 ---
@@ -151,69 +152,104 @@ without completing step N, because step N+1 requires step N's output as input.
 
 ---
 
-### STEP 1: Launch 6 Persona Agents
+### STEP 0: Scope Decomposition
 
-Launch ALL 6 in a SINGLE message (parallel Task calls). Each gets the target scope.
+Wide scope = shallow findings. Narrow scope = deep findings. To get BOTH breadth AND depth
+in one run, split the target into focused zones BEFORE launching personas.
+
+**How to decompose:**
+1. List the target directory structure (tree, 2 levels deep)
+2. Group by functional area (e.g., hooks, skills, agents, scripts, docs, config)
+3. Each zone should have 10-30 files — enough for deep analysis, not too many to skim
+4. Zones can overlap slightly at boundaries (validator deduplicates later)
+
+**Example decomposition for `template/.claude/`:**
+```
+Zone A: hooks/ + settings.json       (runtime safety — 10 files)
+Zone B: skills/ + agents/            (prompt quality — 25 files)
+Zone C: rules/ + CLAUDE.md           (config consistency — 8 files)
+```
+
+**Example for full project audit:**
+```
+Zone A: template/.claude/hooks/ + template/.claude/settings.json
+Zone B: template/.claude/skills/ + template/.claude/agents/
+Zone C: scripts/ + packages/
+Zone D: docs/ + README.md + FAQ.md + COMPARISON.md
+```
+
+**Output of Step 0:** List of 2-4 zones, each with a path list and focus description.
+
+If the target is already narrow (<30 files), skip decomposition — use 1 zone.
+
+### STEP 1: Launch 6 Persona Agents PER ZONE
+
+For EACH zone from Step 0, launch ALL 6 personas. All zones run in parallel.
 
 ```yaml
+# Zone A: hooks + config (6 agents)
 Task:
   subagent_type: bughunt-code-reviewer
   model: sonnet
-  description: "Bug Hunt: code review"
+  description: "Bug Hunt: code review [Zone A: hooks]"
   prompt: |
     Analyze the following codebase area for bugs from your perspective.
-    SCOPE: {user's bug description + affected area}
-    TARGET: {target_path}
+    SCOPE: {user's bug description}
+    ZONE: hooks and runtime safety
+    TARGET FILES: {zone A file list}
 
     Read the code systematically. Return findings in your YAML format.
 
 Task:
   subagent_type: bughunt-security-auditor
-  model: sonnet
-  description: "Bug Hunt: security audit"
-  prompt: |
-    [same structure, scope, target]
+  ...same zone A...
 
 Task:
   subagent_type: bughunt-ux-analyst
-  model: sonnet
-  description: "Bug Hunt: UX analysis"
-  prompt: |
-    [same structure, scope, target]
+  ...same zone A...
 
 Task:
   subagent_type: bughunt-junior-developer
-  model: sonnet
-  description: "Bug Hunt: junior review"
-  prompt: |
-    [same structure, scope, target]
+  ...same zone A...
 
 Task:
   subagent_type: bughunt-software-architect
-  model: sonnet
-  description: "Bug Hunt: architecture analysis"
-  prompt: |
-    [same structure, scope, target]
+  ...same zone A...
 
 Task:
   subagent_type: bughunt-qa-engineer
+  ...same zone A...
+
+# Zone B: skills + agents (6 agents)
+Task:
+  subagent_type: bughunt-code-reviewer
   model: sonnet
-  description: "Bug Hunt: QA analysis"
+  description: "Bug Hunt: code review [Zone B: skills]"
   prompt: |
-    [same structure, scope, target]
+    ...same structure, zone B files...
+
+# ... repeat for each zone
 ```
 
-**Output of Step 1:** Raw findings from 6 perspectives.
+Launch ALL agents (6 × N zones) in a SINGLE message for maximum parallelism.
+
+**Output of Step 1:** Raw findings from 6 perspectives × N zones.
 
 ### STEP 2: Create Findings Summary
 
-Collect all persona results. For each finding, record: ID, severity, title, category.
+Collect all persona results from ALL zones. For each finding, record:
+ID (prefixed by zone: A-CR-001, B-SEC-003), severity, title, category, zone.
 Save as PERSONA_FINDINGS (needed by Step 3).
+
+Note: some findings may appear in multiple zones (boundary overlap). That's OK —
+the validator deduplicates in Step 5.
 
 ### STEP 3: Launch Framework Agents
 
 Personas find SYMPTOMS. Framework agents find CAUSES and PATTERNS among those symptoms.
 Step 5 (validator) requires Framework Analysis section — spec without it is rejected.
+
+Framework agents receive findings from ALL zones — they analyze cross-zone patterns.
 
 Launch TOC + TRIZ with PERSONA_FINDINGS from Step 2:
 
@@ -335,6 +371,7 @@ ai/features/BUG-XXX/
 {User's description}
 
 ## Executive Summary
+- Zones analyzed: {N_zones} ({zone_names})
 - Total findings analyzed: {N_total}
 - Relevant (in scope): {N_relevant}
 - Out of scope (→ ideas.md): {N_out}
@@ -361,10 +398,10 @@ ai/features/BUG-XXX/
 
 ## Consensus Matrix
 
-| Finding | CR | SEC | UX | JR | ARCH | QA | TOC | TRIZ | Consensus |
-|---------|----|----|----|----|------|----|-----|------|-----------|
-| F-001   | x  |    |    |    |  x   |    |     |      | 2/8       |
-| ...     |    |    |    |    |      |    |     |      |           |
+| Finding | Zone | CR | SEC | UX | JR | ARCH | QA | TOC | TRIZ | Consensus |
+|---------|------|----|----|----|----|----|----|----|------|-----------|
+| F-001   | A    | x  |    |    |    | x  |    |    |      | 2/8       |
+| ...     |      |    |    |    |    |    |    |    |      |           |
 
 ## Execution Plan
 Sub-specs will be executed sequentially by Autopilot:
@@ -431,7 +468,8 @@ Task tool:
 - ALWAYS use Impact Tree — find all affected files
 
 **Bug Hunt Pipeline Rules:**
-- Execute ALL 7 steps in order — each step's output is required by the next step
+- Execute ALL 8 steps (0-7) in order — each step's output is required by the next step
+- Step 0 (decomposition) enables depth — wide scope without zones = shallow findings only
 - Validator (Step 5) rejects specs missing Framework Analysis — skipping Step 3 means restarting
 - If context is too large, SUMMARIZE findings before passing to next step — don't skip the step
 
@@ -455,14 +493,15 @@ Task tool:
 6. [ ] Regression test in DoD
 
 ### Bug Hunt Mode Checklist
-1. [ ] All 6 persona agents completed (Step 1)
-2. [ ] TOC + TRIZ framework agents completed (Step 3)
-3. [ ] Umbrella spec has `## Framework Analysis` section (Step 4)
-4. [ ] Validator passed — spec not rejected (Step 5)
-5. [ ] Executive Summary has actual counts, not TBD (Step 6)
-6. [ ] Sub-specs created for all relevant findings (Step 7)
-7. [ ] Umbrella spec has sub-spec table
-8. [ ] Out-of-scope ideas saved to ai/ideas.md
+1. [ ] Scope decomposed into zones (Step 0) — or single zone if <30 files
+2. [ ] All 6 persona agents completed PER ZONE (Step 1)
+3. [ ] TOC + TRIZ framework agents completed (Step 3)
+4. [ ] Umbrella spec has `## Framework Analysis` section (Step 4)
+5. [ ] Validator passed — spec not rejected (Step 5)
+6. [ ] Executive Summary has actual counts, not TBD (Step 6)
+7. [ ] Sub-specs created for all relevant findings (Step 7)
+8. [ ] Umbrella spec has sub-spec table
+9. [ ] Out-of-scope ideas saved to ai/ideas.md
 
 ### Both Modes (from completion.md)
 7. [ ] ID determined by protocol
