@@ -144,6 +144,13 @@ Compare entries with CLAUDE.md:
 - [ ] Diary entries marked as done in index.md
 
 ## Integration
+
+**What `/skill-writer` does with reflect output:**
+1. Reads the reflect spec (proposed changes)
+2. Applies changes to CLAUDE.md and .claude/rules/
+3. Validates CLAUDE.md stays under 200 lines
+4. Creates a commit with the integrated changes
+
 **Next step:** Run `/skill-writer` with this spec as input.
 
 ## After Integration
@@ -161,7 +168,7 @@ patterns_found:
   - "Pattern 1"
   - "Pattern 2"
 spec_created: ai/features/TECH-NNN-....md
-next_action: "Run /skill-writer to integrate"
+next_action: "Run /skill-writer — it will apply proposed changes to CLAUDE.md and rules"
 ```
 
 ---
