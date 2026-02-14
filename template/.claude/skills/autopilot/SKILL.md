@@ -226,6 +226,6 @@ See: `./scripts/autopilot-loop.sh`
 
 ## References
 
-- Agent roles: `docs/foundation/02-agent-roles.md`
+- Agent roles: `.claude/agents/*.md`
 - Creating skills: `/skill-writer create` skill
 - Smart Testing: `.claude/agents/tester.md`
