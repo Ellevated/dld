@@ -145,6 +145,41 @@ Step 7: Launch M Solution Architects (Opus) → sub-specs per finding
 
 ---
 
+## Pre-Flight Cost Confirmation
+
+Before launching Bug Hunt agents (Step 1), confirm cost with user:
+
+**Cost Estimate Calculation:**
+- 6 persona agents per zone × N zones (typically 2-4 zones)
+- 2 framework agents (TOC + TRIZ)
+- 1 validator agent
+- M solution architects (1 per finding)
+
+**Typical budget:** ~$6-10 per persona agent × 6 personas + frameworks + validator = **~$45-70 total**
+
+**Pre-Launch Checklist:**
+1. [ ] Scope decomposed into N zones (from Step 0)
+2. [ ] User notified: "Bug Hunt estimated cost: ~$45-70. Proceed? (yes/no)"
+3. [ ] User confirms OR chooses alternative:
+   - **YES** → Proceed to Step 1
+   - **NO** → Offer single-agent Quick Bug Mode (cheaper, shallower analysis)
+
+**User Response Handling:**
+```
+If "yes" / "proceed" / "understood":
+  → Continue to Step 1: Launch 6 Persona Agents
+
+If "no" / "cancel" / "too expensive":
+  → Suggest: "Would you like Quick Bug Mode instead?
+     - Lower cost: ~$10-20 (1 agent)
+     - Faster: 5 Whys root cause in 1-2 minutes
+     - Trade-off: Single perspective, may miss systemic issues"
+  → If user agrees → switch to Quick Bug Mode flow (from beginning)
+  → If user declines → end conversation, offer to save current context for later
+```
+
+---
+
 ## ALGORITHM — Execute steps in exact order
 
 Each step's output feeds into the next step. You cannot proceed to step N+1
