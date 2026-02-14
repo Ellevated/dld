@@ -70,6 +70,8 @@ See `ai/ARCHITECTURE.md` after bootstrap.
 | {domain1} | `.claude/contexts/{domain1}.md` | `src/domains/{domain1}/**` |
 | DB, LLM, infra | `.claude/contexts/shared.md` | `src/infra/**`, `db/**` |
 
+> **Note:** `.claude/contexts/` and `.claude/rules/` domain files are created during `/bootstrap` when you define your project's domains. They don't exist in the template out of the box.
+
 ---
 
 ## Project Context System (v3.7)
