@@ -175,7 +175,14 @@ Before taking a task:
 1. **Status:** Must be `queued` or `resumed`
 2. **Plan:** Must have `## Implementation Plan`
 
-Skip if either check fails.
+Skip if either check fails, **with warning to user:**
+
+```
+SKIP: {TASK_ID}
+Status: {current_status} (expected: queued or resumed)
+Plan: {has_plan ? "present" : "MISSING"}
+Fix the issue and re-run autopilot.
+```
 
 ---
 
