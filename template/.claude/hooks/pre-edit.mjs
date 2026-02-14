@@ -105,7 +105,7 @@ function main() {
 
     // Check protected paths (Hard Block)
     for (const protectedPath of PROTECTED_PATHS) {
-      if (relPath.includes(protectedPath)) {
+      if (relPath.startsWith(protectedPath)) {
         denyTool(
           `Protected test file!\n\n` +
             `${relPath}\n\n` +
