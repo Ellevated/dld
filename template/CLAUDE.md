@@ -9,6 +9,8 @@
 - `./test fast` — lint + unit tests
 - `./test` — full tests
 
+> **Note:** Create `./test` script for your project's stack (e.g., `pytest`, `npm test`, `cargo test`). See examples in `/bootstrap` output.
+
 ---
 
 ## DLD Tier
