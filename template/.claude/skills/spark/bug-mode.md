@@ -137,7 +137,7 @@ This prevents step-skipping (BUG-084): the orchestrator physically cannot do wor
 ## Overview
 
 ```
-Spark: Pre-flight → cost confirmation → launch orchestrator
+Spark: Pre-flight → cost estimate (non-blocking) → launch orchestrator
   ↓
 Orchestrator (tools: Task only):
   Step 0: bughunt-scope-decomposer → zones

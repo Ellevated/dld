@@ -26,7 +26,7 @@ Read the validator output from VALIDATOR_FILE using Read tool.
    - relevant_findings (kept in spec)
    - out_of_scope (moved to ideas.md)
    - duplicates_merged (removed from spec)
-   - groups (clusters for Step 7)
+   - groups (clusters for Step 6)
 3. Update the spec:
    - Add `## Grouped Specs` table (placeholder for Step 7 to fill)
    - Update `## Executive Summary` with ACTUAL counts (replace TBD values)

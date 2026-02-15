@@ -21,7 +21,7 @@ You receive:
 
 ## Process
 
-1. Create session directory structure: `mkdir -p {OUTPUT_FILE parent}/step{0,1,2,3,5}` using Bash
+1. Create session directory structure: `mkdir -p {SESSION_DIR}/step{0,1,2,4}` using Bash (derive SESSION_DIR from OUTPUT_FILE — it's two levels up)
 2. List the target directory structure using Glob (2 levels deep)
 3. Count total files
 3. Group files by functional area (handlers, services, models, config, tests, etc.)
@@ -61,7 +61,7 @@ decomposition:
       file_count: N
 
   total_zones: N
-  estimated_agents: "{6 * N} persona agents + 2 framework + 1 validator"
+  estimated_agents: "{6 * N} persona agents + 1 validator + M architects"
 ```
 
 ## File Output
