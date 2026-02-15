@@ -20,7 +20,7 @@ You receive via prompt:
 - **TRIZ_FILE** — path to Phase 3 TRIZ analysis YAML
 - **OUTPUT_FILE** — path to write final markdown report
 
-Read ALL three input files using Read tool.
+Read ALL available input files using Read tool. If some files are unavailable (degraded mode), synthesize from what's available — partial report is better than no report.
 
 ## Process
 

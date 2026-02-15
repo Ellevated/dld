@@ -46,6 +46,24 @@ You receive via prompt:
    Group size: 3-7 findings per group. Target: 3-8 groups total.
    Each group becomes a standalone spec for autopilot.
 
+## Rejection Criteria
+
+Return `status: rejected` when the pipeline output is NOT actionable:
+
+- **< 3 relevant findings** after filtering and dedup — insufficient signal for grouped specs
+- **No coherent groups** can be formed — all findings are isolated, no shared root cause or area
+- **All findings are out of scope** — none relate to user's original question
+
+When rejecting, include reason:
+```yaml
+status: rejected
+reason: "Only 2 relevant findings after dedup — insufficient for grouped specs"
+```
+
+The orchestrator will retry with a reinforced prompt, then degrade if rejection persists.
+
+---
+
 ## Output Format
 
 Return as YAML:

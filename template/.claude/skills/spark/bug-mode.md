@@ -128,9 +128,10 @@ Only after root cause is found → create BUG-XXX spec:
 
 **Multi-agent deep analysis pipeline.** Use when bug is complex, systemic, or affects many files.
 
-**Architecture:** A thin orchestrator agent (`tools: Task` only) manages the 7-step pipeline.
+**Architecture:** A thin orchestrator agent (`tools: Task` only) manages Steps 0-5 of the pipeline.
 The orchestrator CANNOT read, write, or analyze code — it can ONLY delegate to specialized agents.
 This prevents step-skipping (BUG-084): the orchestrator physically cannot do work itself.
+Step 6 (solution-architects) is launched by Spark directly to avoid nested Task depth issues.
 
 **Cost estimate:** ~$30-70 per full run (6×N Sonnet personas + 1 Opus validator + M Opus architects). N = number of zones (typically 2-4).
 
@@ -139,14 +140,16 @@ This prevents step-skipping (BUG-084): the orchestrator physically cannot do wor
 ```
 Spark: Pre-flight → cost estimate (non-blocking) → launch orchestrator
   ↓
-Orchestrator (tools: Task only):
+Orchestrator (tools: Task only, Steps 0-5):
   Step 0: bughunt-scope-decomposer → zones
   Step 1: 6 persona agents × N zones (parallel)
   Step 2: bughunt-findings-collector → normalized summary
   Step 3: bughunt-spec-assembler → umbrella spec
   Step 4: bughunt-validator → filter, dedup, GROUP into 3-8 clusters
   Step 5: bughunt-report-updater → executive summary + ideas.md
-  Step 6: bughunt-solution-architect × M groups (parallel) → standalone specs
+  ↓
+Spark (Step 6 — direct launch, Level 1 nesting):
+  bughunt-solution-architect × M groups (parallel) → standalone specs
   ↓
 Spark: Handoff results → backlog → autopilot
 ```
@@ -178,41 +181,43 @@ Task:
     TARGET_PATH: {target codebase path}
 ```
 
-**That's it.** The orchestrator handles Steps 0-6 internally.
-You do NOT execute any pipeline steps yourself.
+**The orchestrator handles Steps 0-5.** After it returns, YOU launch Step 6 directly.
 
-### Pipeline Steps (handled by orchestrator)
+### Pipeline Steps
 
-| Step | Agent | What | Model |
-|------|-------|------|-------|
-| 0 | bughunt-scope-decomposer | Split target into 2-4 zones | sonnet |
-| 1 | 6 persona agents × N zones | Parallel deep analysis | sonnet |
-| 2 | bughunt-findings-collector | Normalize & collect all findings | sonnet |
-| 3 | bughunt-spec-assembler | Write umbrella spec | sonnet |
-| 4 | bughunt-validator | Filter, dedup, group into 3-8 clusters | opus |
-| 5 | bughunt-report-updater | Update report, executive summary, ideas.md | sonnet |
-| 6 | bughunt-solution-architect × M groups | Standalone spec per group (parallel) | opus |
+| Step | Agent | What | Model | Managed by |
+|------|-------|------|-------|------------|
+| 0 | bughunt-scope-decomposer | Split target into 2-4 zones | sonnet | orchestrator |
+| 1 | 6 persona agents × N zones | Parallel deep analysis | sonnet | orchestrator |
+| 2 | bughunt-findings-collector | Normalize & collect all findings | sonnet | orchestrator |
+| 3 | bughunt-spec-assembler | Write umbrella spec | sonnet | orchestrator |
+| 4 | bughunt-validator | Filter, dedup, group into 3-8 clusters | opus | orchestrator |
+| 5 | bughunt-report-updater | Update report, executive summary, ideas.md | sonnet | orchestrator |
+| 6 | bughunt-solution-architect × M groups | Standalone spec per group (parallel) | opus | **Spark** |
 
 ### Orchestrator Returns
 
 ```yaml
-# Success:
+# Success (groups, NOT specs — Step 6 is Spark's job):
 status: completed
 session_dir: "ai/.bughunt/YYYYMMDD-target/"
 report_path: "ai/features/BUG-XXX-bughunt.md"
-specs:
-  - id: "BUG-YYY"
-    name: "{group name}"
+spec_id: "BUG-XXX"
+groups:
+  - name: "{group name}"
     priority: "P0"
-    path: "ai/features/BUG-YYY.md"
-  - id: "BUG-ZZZ"
-    name: "{group name}"
+    findings: ["F-001", "F-005"]
+    findings_count: N
+  - name: "{group name}"
     priority: "P1"
-    path: "ai/features/BUG-ZZZ.md"
+    findings: ["F-002", "F-011"]
+    findings_count: N
 total_findings: N
 relevant_findings: N
 groups_formed: M
 zones_analyzed: N
+validator_file: "ai/.bughunt/YYYYMMDD-target/step4/validator-output.yaml"
+target_path: "{TARGET_PATH}"
 degraded_steps: []
 warnings: []
 
@@ -227,6 +232,48 @@ partial_results: "{what was produced}"
 **Note:** All intermediate data is stored in `session_dir` (file-based IPC). The orchestrator's context stays small — it tracks only file paths and counts, never raw findings.
 
 **If error:** Report partial results to user. Offer to retry failed step or switch to Quick mode.
+
+---
+
+## Step 6: Create Grouped Specs (Spark-managed)
+
+**Why Spark manages Step 6:** Solution architects need many turns (read code, grep impacts, write specs). Running them at Task nesting level 2 (Spark → orchestrator → architect) causes turn exhaustion — specs never get written to disk. Running at level 1 (Spark → architect) is reliable.
+
+After orchestrator returns `status: completed` or `status: degraded`:
+
+**ID allocation:**
+- Report spec_id from orchestrator (e.g., "BUG-094")
+- Group 1 → BUG-095, Group 2 → BUG-096, etc.
+- Parse number from spec_id, increment by group index (starting from 1)
+
+```
+For each group (index i starting from 1):
+  group_spec_id = "BUG-{report_number + i}"
+
+  Task:
+    subagent_type: bughunt-solution-architect
+    description: "Bug Hunt: spec {group_spec_id} ({group_name})"
+    prompt: |
+      GROUP_NAME: {group_name}
+      VALIDATOR_FILE: {validator_file from orchestrator}
+      BUG_HUNT_REPORT: {spec_id from orchestrator}
+      SPEC_ID: {group_spec_id}
+      TARGET: {target_path from orchestrator}
+      Create standalone spec at ai/features/{group_spec_id}.md
+```
+
+Launch ALL groups in PARALLEL (single message with multiple Task calls).
+
+Each agent writes spec to disk and returns:
+```yaml
+status: completed
+spec_id: "{SPEC_ID}"
+spec_path: "ai/features/{SPEC_ID}.md"
+group_name: "{GROUP_NAME}"
+findings_count: N
+```
+
+Collect all results as SPEC_RESULTS. If some agents fail, report successful specs and list failed groups.
 
 ---
 
@@ -268,24 +315,26 @@ Each grouped spec gets its own backlog entry.
 
 ## Handoff
 
-After orchestrator returns `status: completed` or `status: degraded`:
+After Step 6 completes (all solution-architects returned):
 
-1. **Update report with actual Spec IDs** — The report's Grouped Specs table has TBD IDs. Use Edit tool to replace TBD with actual IDs from the orchestrator's `specs` array.
-2. **Add backlog entries** — For each item in `specs` array: add backlog entry using {id, name, priority, path}
-   - Example: `| BUG-087 | Hook Safety | queued | P0 | [BUG-087](features/BUG-087.md) |`
-3. **Auto-commit** — Stage only spec-related files:
+1. **Update report with actual Spec IDs** — The report's Grouped Specs table has TBD IDs. Use Edit tool to replace TBD with actual IDs from SPEC_RESULTS.
+2. **Add backlog entries** — For each spec in SPEC_RESULTS: add backlog entry using {spec_id, group_name, priority, spec_path}
+   - Example: `| BUG-095 | Hook Safety | queued | P0 | [BUG-095](features/BUG-095.md) |`
+3. **Verify spec files exist** — For each spec_path in SPEC_RESULTS, confirm the file was written to disk. If any file is missing, report to user.
+4. **Auto-commit** — Stage only spec-related files (resilient to gitignored ai/):
    ```bash
-   git add ai/features/BUG-* ai/backlog.md ai/ideas.md
-   git commit -m "docs: Bug Hunt — {N} grouped specs created"
+   git add ai/features/BUG-* ai/backlog.md ai/ideas.md 2>/dev/null
+   git diff --cached --quiet || git commit -m "docs: Bug Hunt — {N} grouped specs created"
    ```
-4. **Cleanup session** — Remove intermediate data:
+   Note: If `ai/` is in `.gitignore`, `git add` is a no-op and no commit is created — this is correct.
+5. **Cleanup session** — Remove intermediate data:
    ```bash
    rm -rf {session_dir}
    ```
-5. **Report to user:**
-   - If `completed`: "Bug Hunt complete. {N} specs created ({IDs}). Run autopilot?"
-   - If `degraded`: "Bug Hunt complete with warnings: {degraded_steps}. {N} specs created ({IDs}). Review before autopilot?"
-6. If user confirms → autopilot picks up specs from backlog independently
+6. **Report to user:**
+   - If all specs written: "Bug Hunt complete. {N} specs created ({IDs}). Run autopilot?"
+   - If some specs failed: "Bug Hunt complete. {N}/{M} specs created. Failed: {list}. Review?"
+7. If user confirms → autopilot picks up specs from backlog independently
 
 → Go to `completion.md` for ID protocol and backlog entry.
 
@@ -338,9 +387,9 @@ Task tool:
 - ALWAYS use Impact Tree — find all affected files
 
 **Bug Hunt Pipeline Rules:**
-- Bug Hunt pipeline is managed by bughunt-orchestrator (`tools: Task` only)
-- Spark ONLY launches the orchestrator — does NOT execute pipeline steps itself
-- Orchestrator delegates ALL work to specialized agents
+- Steps 0-5 managed by bughunt-orchestrator (`tools: Task` only)
+- Step 6 (solution-architects) launched by Spark directly (avoids nested Task depth issues)
+- Orchestrator delegates ALL analysis work to specialized agents
 - Orchestrator cannot skip steps — it has no tools to do work itself (Layer 1 defense)
 - Validator (Step 4) filters, deduplicates, and groups findings into actionable clusters
 
@@ -366,12 +415,13 @@ Task tool:
 ### Bug Hunt Mode Checklist
 1. [ ] Cost estimate printed (non-blocking)
 2. [ ] Orchestrator launched (bughunt-orchestrator)
-3. [ ] Orchestrator returned `status: completed`
+3. [ ] Orchestrator returned `status: completed` with groups
 4. [ ] Report file exists at returned `report_path`
-5. [ ] All grouped specs listed in `specs` array exist on disk
-6. [ ] Grouped specs have correct sequential IDs
-7. [ ] Out-of-scope ideas saved to ai/ideas.md
-8. [ ] Backlog entries added for each grouped spec
+5. [ ] Step 6: solution-architects launched by Spark (NOT orchestrator)
+6. [ ] All grouped spec FILES exist on disk (verify with Glob)
+7. [ ] Grouped specs have correct sequential IDs
+8. [ ] Out-of-scope ideas saved to ai/ideas.md
+9. [ ] Backlog entries added for each grouped spec
 
 ### Both Modes (from completion.md)
 7. [ ] ID determined by protocol
@@ -391,9 +441,9 @@ bug_id: BUG-XXX
 root_cause: "[1-line summary]"  # Quick mode
 findings_count: N                # Bug Hunt mode
 groups_count: N                  # Bug Hunt mode
-specs:                                   # Bug Hunt mode — standalone specs
-  - {id: BUG-085, name: "Hook Safety", priority: P0, path: "ai/features/BUG-085.md"}
-  - {id: BUG-086, name: "Missing Refs", priority: P1, path: "ai/features/BUG-086.md"}
+specs:                                   # Bug Hunt mode — from Step 6 (Spark-managed)
+  - {id: BUG-095, name: "Hook Safety", priority: P0, path: "ai/features/BUG-095.md"}
+  - {id: BUG-096, name: "Missing Refs", priority: P1, path: "ai/features/BUG-096.md"}
 report_path: "ai/features/BUG-XXX-bughunt.md"  # Bug Hunt mode — READ-ONLY report
 spec_path: "ai/features/BUG-XXX.md"  # Quick mode
 research_sources_used:

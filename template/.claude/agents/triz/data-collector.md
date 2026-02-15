@@ -22,8 +22,10 @@ You receive via prompt:
 ### 1. File Churn (git log)
 
 ```bash
-git log --since="6 months ago" --pretty=format: --name-only | sort | uniq -c | sort -rn | head -50
+git log --since="6 months ago" --pretty=format: --name-only -- {TARGET} | sort | uniq -c | sort -rn | head -50
 ```
+
+**Important:** Always scope git commands to TARGET path using `-- {TARGET}` suffix. Without it, churn shows the entire repo instead of the analyzed area.
 
 Group by directory/module. Calculate:
 - Total changes per module
@@ -33,7 +35,7 @@ Group by directory/module. Calculate:
 ### 2. Co-Change Analysis
 
 ```bash
-git log --since="6 months ago" --pretty=format:"---" --name-only
+git log --since="6 months ago" --pretty=format:"---" --name-only -- {TARGET}
 ```
 
 Parse commits to find files that change together in >3 commits.

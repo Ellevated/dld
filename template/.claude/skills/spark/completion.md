@@ -183,10 +183,11 @@ After spec file is created and backlog updated — commit ALL changes locally:
 
 ```bash
 # 1. Stage spec-related changes only (explicit paths, not entire ai/ directory)
-git add "ai/features/${TASK_ID}"* ai/backlog.md
+git add "ai/features/${TASK_ID}"* ai/backlog.md 2>/dev/null
 
-# 2. Commit locally (NO PUSH!)
-git commit -m "docs: create spec ${TASK_ID}"
+# 2. Commit locally only if something was staged (NO PUSH!)
+# Note: If ai/ is in .gitignore, git add is a no-op — no commit is created (correct behavior)
+git diff --cached --quiet || git commit -m "docs: create spec ${TASK_ID}"
 ```
 
 **Why `git add ai/` (not `-A`):**

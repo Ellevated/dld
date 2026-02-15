@@ -23,6 +23,8 @@ You receive via prompt:
 
 Read BOTH METRICS_FILE and TOC_FILE using Read tool. TOC analysis informs your contradictions.
 
+**Degraded mode:** If TOC_FILE is `UNAVAILABLE` or cannot be read, analyze contradictions from METRICS_FILE alone. Note in output: `informed_by_toc: "UNAVAILABLE — degraded mode"`. Analysis will be less focused but still useful.
+
 ## Analysis Process
 
 ### Step 1: Define Ideal Final Result (IFR)

@@ -87,6 +87,14 @@ Example: TARGET `/Users/foo/dev/myapp/src` → SESSION_DIR `ai/.triz/20260215-sr
 
 All file paths below use SESSION_DIR. Compute it ONCE, substitute into every prompt.
 
+### Cost Estimate
+
+Before launching Phase 1, inform user (non-blocking):
+
+```
+"TRIZ diagnostics: {TARGET} — 4 agents (1 sonnet + 3 opus), est. ~$5-15. Running..."
+```
+
 ### Phase 1: Data Collection
 
 ```yaml
@@ -114,7 +122,7 @@ Task:
     OUTPUT_FILE: {SESSION_DIR}/toc-analysis.yaml
 ```
 
-Check return `status: completed` before proceeding.
+Check return `status: completed` before proceeding. If failed, retry once. If still failed, skip TOC and launch Phase 3 with `TOC_FILE: UNAVAILABLE` (degraded mode).
 
 ### Phase 3: TRIZ Analysis (AFTER Phase 2)
 
@@ -130,7 +138,7 @@ Task:
     OUTPUT_FILE: {SESSION_DIR}/triz-analysis.yaml
 ```
 
-Check return `status: completed` before proceeding.
+Check return `status: completed` before proceeding. If failed, retry once. If still failed, launch Phase 4 with only available inputs (degraded mode).
 
 ### Phase 4: Synthesis
 
@@ -149,7 +157,8 @@ Task:
 
 ### Present Results
 
-After Phase 4, read the report at `{SESSION_DIR}/report.md` and present to user.
+After Phase 4, verify report exists with Glob `{SESSION_DIR}/report.md`, then read and present to user.
+If report file is missing, present available partial results from earlier phases.
 
 Suggest next steps:
 - `/spark` spec for top recommendation
