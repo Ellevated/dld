@@ -138,6 +138,12 @@ triz_analysis:
       how_to_use: "Route X's external calls through shared/ adapters"
 ```
 
+## Error Handling
+
+- If METRICS_FILE or TOC_FILE not found: list `ai/.triz/` directory to find actual session path, then retry
+- If input files are empty or malformed YAML: extract what you can, note issues in output
+- A partial analysis is better than no analysis — always write OUTPUT_FILE
+
 ## Return to Caller
 
 ```yaml

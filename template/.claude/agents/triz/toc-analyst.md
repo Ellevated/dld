@@ -133,6 +133,12 @@ toc_analysis:
     - "Split X into core (stable) and extension (evolving)"
 ```
 
+## Error Handling
+
+- If METRICS_FILE not found: list `ai/.triz/` directory to find actual session path, then retry
+- If METRICS_FILE is empty or malformed YAML: extract what you can, note issues in output
+- A partial analysis is better than no analysis — always write OUTPUT_FILE
+
 ## Return to Caller
 
 ```yaml

@@ -121,6 +121,13 @@ system_metrics:
     modules_untested: ["src/infra/legacy"]
 ```
 
+## Error Handling
+
+- Create the session directory using Bash `mkdir -p` before writing OUTPUT_FILE
+- If git commands fail (e.g., not a git repo), skip git metrics and note in output
+- If architecture files don't exist, note "not found" and continue with available data
+- A partial collection is better than no collection
+
 ## Return to Caller
 
 ```yaml

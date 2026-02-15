@@ -69,6 +69,24 @@ System health analysis using Theory of Constraints + TRIZ at the architecture le
 /triz src/ "why do deploys?"   → TARGET = src/, QUESTION = "why do deploys break?"
 ```
 
+TARGET_PATH must be ABSOLUTE (e.g., `/Users/foo/dev/myapp/src/`). If user gives relative path, resolve it from project root.
+
+### Compute Session Directory
+
+Before launching any phase, compute SESSION_DIR once:
+
+```
+SESSION_DIR = ai/.triz/{YYYYMMDD}-{target_basename}
+```
+
+Where:
+- `{YYYYMMDD}` = current date (e.g., `20260215`)
+- `{target_basename}` = last path component of TARGET_PATH (e.g., `src`)
+
+Example: TARGET `/Users/foo/dev/myapp/src` → SESSION_DIR `ai/.triz/20260215-src`
+
+All file paths below use SESSION_DIR. Compute it ONCE, substitute into every prompt.
+
 ### Phase 1: Data Collection
 
 ```yaml
@@ -78,8 +96,10 @@ Task:
   prompt: |
     TARGET: {TARGET_PATH}
     QUESTION: {QUESTION}
-    OUTPUT_FILE: ai/.triz/{YYYYMMDD}-{target_basename}/metrics.yaml
+    OUTPUT_FILE: {SESSION_DIR}/metrics.yaml
 ```
+
+Check return `status: completed` before proceeding. If failed, retry once, then abort.
 
 ### Phase 2: TOC Analysis
 
@@ -90,9 +110,11 @@ Task:
   prompt: |
     TARGET: {TARGET_PATH}
     QUESTION: {QUESTION}
-    METRICS_FILE: ai/.triz/{session}/metrics.yaml
-    OUTPUT_FILE: ai/.triz/{session}/toc-analysis.yaml
+    METRICS_FILE: {SESSION_DIR}/metrics.yaml
+    OUTPUT_FILE: {SESSION_DIR}/toc-analysis.yaml
 ```
+
+Check return `status: completed` before proceeding.
 
 ### Phase 3: TRIZ Analysis (AFTER Phase 2)
 
@@ -103,10 +125,12 @@ Task:
   prompt: |
     TARGET: {TARGET_PATH}
     QUESTION: {QUESTION}
-    METRICS_FILE: ai/.triz/{session}/metrics.yaml
-    TOC_FILE: ai/.triz/{session}/toc-analysis.yaml
-    OUTPUT_FILE: ai/.triz/{session}/triz-analysis.yaml
+    METRICS_FILE: {SESSION_DIR}/metrics.yaml
+    TOC_FILE: {SESSION_DIR}/toc-analysis.yaml
+    OUTPUT_FILE: {SESSION_DIR}/triz-analysis.yaml
 ```
+
+Check return `status: completed` before proceeding.
 
 ### Phase 4: Synthesis
 
@@ -117,15 +141,15 @@ Task:
   prompt: |
     TARGET: {TARGET_PATH}
     QUESTION: {QUESTION}
-    METRICS_FILE: ai/.triz/{session}/metrics.yaml
-    TOC_FILE: ai/.triz/{session}/toc-analysis.yaml
-    TRIZ_FILE: ai/.triz/{session}/triz-analysis.yaml
-    OUTPUT_FILE: ai/.triz/{session}/report.md
+    METRICS_FILE: {SESSION_DIR}/metrics.yaml
+    TOC_FILE: {SESSION_DIR}/toc-analysis.yaml
+    TRIZ_FILE: {SESSION_DIR}/triz-analysis.yaml
+    OUTPUT_FILE: {SESSION_DIR}/report.md
 ```
 
 ### Present Results
 
-After Phase 4, read the report at OUTPUT_FILE and present to user.
+After Phase 4, read the report at `{SESSION_DIR}/report.md` and present to user.
 
 Suggest next steps:
 - `/spark` spec for top recommendation
@@ -142,4 +166,4 @@ The synthesizer writes a markdown report. See `synthesizer.md` for format.
 - **No backlog entries** — report is informational, user decides what to do
 - **No commits** — report stays in ai/.triz/ (gitignored)
 - **Fully automatic** — no AskUserQuestion, no confirmation prompts
-- Session data: `ai/.triz/{YYYYMMDD}-{target_basename}/`
+- Session data: `{SESSION_DIR}/` (computed once before Phase 1, see "Compute Session Directory")

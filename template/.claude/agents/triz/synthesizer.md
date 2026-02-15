@@ -130,6 +130,12 @@ Write markdown report to OUTPUT_FILE:
 - [ ] `/spark bug-hunt {constrained module}` for tactical fixes
 ```
 
+## Error Handling
+
+- If any input file not found: list `ai/.triz/` directory to find actual session path, then retry
+- If input files are empty or malformed YAML: extract what you can, note issues in output
+- A partial report is better than no report — always write OUTPUT_FILE
+
 ## Rules
 
 - Recommendations MUST be concrete and actionable ("extract X behind API" not "improve architecture")
