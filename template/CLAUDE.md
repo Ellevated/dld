@@ -152,6 +152,7 @@ Glossary: ai/glossary/{domain}.md
 | **scout** | Isolated research via Exa + Context7 |
 | **release** | Update CHANGELOG, README, docs after changes (fully automatic) |
 | **skill-writer** | Create agents/skills or optimize CLAUDE.md, rules, prompts |
+| **diagram** | Generate professional Excalidraw diagrams from description or code analysis |
 
 ### Skill Auto-Selection
 
@@ -175,6 +176,7 @@ Claude auto-selects skills based on user intent. Each skill has semantic trigger
 | "find all", "analyze code", "check for" | audit |
 | "reflect", "what did we learn" | reflect |
 | "new project", "day 0" | bootstrap |
+| "diagram", "draw", "visualize architecture" | diagram |
 
 **Flows:**
 ```
