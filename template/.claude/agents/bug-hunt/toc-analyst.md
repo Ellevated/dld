@@ -44,6 +44,13 @@ Read the findings summary from SUMMARY_FILE before starting analysis.
    - Identify subordination strategy (align everything to constraint)
 5. **Map to code** — every finding must reference specific files/lines
 
+## YAML Resilience
+
+When reading SUMMARY_FILE:
+- If YAML cannot be parsed, treat it as plain text and extract findings as best you can
+- Log which sections had parsing issues but do NOT fail the entire analysis
+- A partial analysis is better than no analysis
+
 ## Constraints
 
 - **READ-ONLY on target codebase** — never modify source files being analyzed. Only write to OUTPUT_FILE.

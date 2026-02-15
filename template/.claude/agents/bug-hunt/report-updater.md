@@ -35,6 +35,12 @@ Read the validator output from VALIDATOR_FILE using Read tool.
 4. Append out-of-scope items to `ai/ideas.md`
 5. Verify Executive Summary has real numbers — NO TBD values remaining
 
+## YAML Resilience
+
+When reading VALIDATOR_FILE:
+- If YAML cannot be parsed, treat it as plain text and extract groups/counts as best you can
+- Log parsing issues but do NOT fail — update what you can
+
 ## Rules
 
 - Do NOT change finding content — only move/annotate per validator decision

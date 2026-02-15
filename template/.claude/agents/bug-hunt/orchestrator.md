@@ -251,10 +251,20 @@ Returns groups with priorities for Step 7.
 
 ### Step 7: Create Grouped Specs
 
-For EACH GROUP from Step 6 output, launch a solution architect. All groups in PARALLEL:
+For EACH GROUP from Step 6 output, launch a solution architect. All groups in PARALLEL.
+
+**ID allocation:** You CANNOT read the backlog (you have no Read tool). Instead, derive group IDs from the report ID returned by Step 4:
+- If report spec_id = "BUG-086", then:
+  - Group 1 → BUG-087
+  - Group 2 → BUG-088
+  - Group 3 → BUG-089
+  - etc.
+- Parse the number from spec_id, increment by group index (starting from 1).
 
 ```
-For each group:
+For each group (index i starting from 1):
+  group_spec_id = "BUG-{report_number + i}"
+
   Task:
     subagent_type: bughunt-solution-architect
     description: "Bug Hunt: spec {group_spec_id} ({group_name})"
@@ -262,7 +272,7 @@ For each group:
       GROUP_NAME: {group_name}
       VALIDATOR_FILE: {SESSION_DIR}/step5/validator-output.yaml
       BUG_HUNT_REPORT: {spec_id from Step 4}
-      SPEC_ID: {group_spec_id — sequential from backlog}
+      SPEC_ID: {group_spec_id}
       TARGET: {TARGET_PATH}
       Create standalone spec at ai/features/{group_spec_id}.md
 ```
@@ -280,7 +290,15 @@ status: completed | degraded
 mode: bug-hunt
 session_dir: "{SESSION_DIR}"
 report_path: "{spec_path from Step 4}"
-spec_ids: [list of all group spec IDs from Step 7]
+specs:
+  - id: "BUG-087"
+    name: "{group_name from Step 6}"
+    priority: "{P0-P3 from Step 6}"
+    path: "ai/features/BUG-087.md"
+  - id: "BUG-088"
+    name: "{group_name}"
+    priority: "{P0-P3}"
+    path: "ai/features/BUG-088.md"
 total_findings: {from Step 2 return}
 relevant_findings: {from Step 5 return}
 groups_formed: {from Step 5 return}
@@ -321,7 +339,7 @@ status: completed | degraded
 degraded_steps: []  # empty if all steps succeeded
 warnings: []        # any recovery actions taken
 report_path: "..."
-spec_ids: [...]
+specs: [{id, name, priority, path}, ...]
 ```
 
 **STOP is allowed ONLY when:** Step 0 fails AND retry fails AND single-zone fallback fails (= cannot even read the target directory). This is an infrastructure failure, not a pipeline failure.

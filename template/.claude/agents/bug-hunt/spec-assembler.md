@@ -26,9 +26,8 @@ Read all three files using Read tool before assembling the spec.
 1. Read `ai/backlog.md` to determine next sequential ID
    - Grep for pattern `(FTR|BUG|TECH|ARCH)-(\d+)`, find global max, increment by 1
    - Numbering is SEQUENTIAL ACROSS ALL TYPES
-2. Create directory `ai/features/BUG-{ID}/`
-3. Write umbrella spec to `ai/features/BUG-{ID}/BUG-{ID}.md`
-4. Spec MUST contain `## Framework Analysis` section with TOC and TRIZ subsections
+2. Write umbrella spec to `ai/features/BUG-{ID}-bughunt.md` (flat file, NO subdirectory)
+3. Spec MUST contain `## Framework Analysis` section with TOC and TRIZ subsections
 
 ## CRITICAL: Framework Analysis Section
 
@@ -90,12 +89,14 @@ Even if framework agents returned minimal results, the section MUST exist:
 ### TRIZ
 {TRIZ_ANALYSIS content}
 
-## Consensus Matrix
-
-| Finding | Zone | CR | SEC | UX | JR | ARCH | QA | TOC | TRIZ | Consensus |
-|---------|------|----|-----|----|----|----|----|----|------|-----------|
-{For each finding, mark which personas/frameworks flagged it}
 ```
+
+## YAML Resilience
+
+When reading input YAML files (FINDINGS_FILE, TOC_FILE, TRIZ_FILE):
+- If a YAML file cannot be parsed, treat it as plain text and extract what you can
+- Log which file had parsing issues but do NOT fail
+- Include whatever data you managed to extract
 
 ## Output
 
@@ -104,8 +105,7 @@ Return:
 ```yaml
 spec_assembled:
   spec_id: "BUG-{ID}"
-  spec_path: "ai/features/BUG-{ID}/BUG-{ID}.md"
+  spec_path: "ai/features/BUG-{ID}-bughunt.md"
   findings_included: N
   framework_analysis: present
-  consensus_matrix: present
 ```

@@ -3,7 +3,7 @@ name: bughunt-scope-decomposer
 description: Bug Hunt Step 0 - Decomposes target into 2-4 focused zones for parallel deep analysis.
 model: sonnet
 effort: medium
-tools: Read, Glob, Write
+tools: Read, Glob, Write, Bash
 ---
 
 # Scope Decomposer (Step 0)
@@ -21,8 +21,9 @@ You receive:
 
 ## Process
 
-1. List the target directory structure using Glob (2 levels deep)
-2. Count total files
+1. Create session directory structure: `mkdir -p {OUTPUT_FILE parent}/step{0,1,2,3,5}` using Bash
+2. List the target directory structure using Glob (2 levels deep)
+3. Count total files
 3. Group files by functional area (handlers, services, models, config, tests, etc.)
 4. Create 2-4 zones, each with 10-30 files and a clear focus
 5. Zones may overlap slightly at boundaries — the validator deduplicates later

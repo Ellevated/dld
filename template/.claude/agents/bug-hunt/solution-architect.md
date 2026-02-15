@@ -95,6 +95,12 @@ Write the spec to `ai/features/{SPEC_ID}.md`:
 - [ ] Impact tree verified (grep = 0 stale refs)
 ```
 
+## YAML Resilience
+
+When reading VALIDATOR_FILE:
+- If YAML cannot be parsed, treat it as plain text and extract your group's findings as best you can
+- Log parsing issues but do NOT fail — a partial spec is better than no spec
+
 ## Constraints
 
 - **DO NOT WRITE CODE** — design the fix, don't implement it

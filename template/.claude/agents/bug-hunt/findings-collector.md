@@ -28,6 +28,13 @@ Read ALL `.yaml` files from PERSONA_DIR using Glob + Read tools. Each file conta
 4. Count totals by severity, persona, and zone
 5. Create unified findings list
 
+## YAML Resilience
+
+When reading persona YAML files from PERSONA_DIR:
+- Parse YAML gracefully — if a file cannot be parsed, treat it as plain text and extract findings as best you can
+- Log which files had parsing issues in the output (under `parse_warnings`)
+- A partial collection is better than no collection — never fail because one persona wrote bad YAML
+
 ## Rules
 
 - Do NOT filter or judge quality — that's the validator's job (Step 5)

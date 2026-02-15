@@ -201,8 +201,16 @@ You do NOT execute any pipeline steps yourself.
 # Success:
 status: completed
 session_dir: "ai/.bughunt/YYYYMMDD-target/"
-report_path: "ai/features/BUG-XXX/BUG-XXX.md"
-spec_ids: [BUG-YYY, BUG-ZZZ, ...]
+report_path: "ai/features/BUG-XXX-bughunt.md"
+specs:
+  - id: "BUG-YYY"
+    name: "{group name}"
+    priority: "P0"
+    path: "ai/features/BUG-YYY.md"
+  - id: "BUG-ZZZ"
+    name: "{group name}"
+    priority: "P1"
+    path: "ai/features/BUG-ZZZ.md"
 total_findings: N
 relevant_findings: N
 groups_formed: M
@@ -268,18 +276,14 @@ Each grouped spec gets its own backlog entry.
 {Key contradictions}
 {Suggested inventive principles}
 
-## Consensus Matrix
-
-| Finding | Zone | CR | SEC | UX | JR | ARCH | QA | TOC | TRIZ | Consensus |
-|---------|------|----|----|----|----|----|----|----|------|-----------|
-| F-001   | A    | x  |    |    |    | x  |    |    |      | 2/8       |
 ```
 
 ## Handoff
 
 After orchestrator returns `status: completed`:
 1. All specs are already written by the orchestrator pipeline
-2. Add ONE backlog entry per grouped spec (each with its own sequential ID)
+2. For each item in `specs` array: add backlog entry using {id, name, priority, path}
+   - Example: `| BUG-087 | Hook Safety | queued | P0 | [BUG-087](features/BUG-087.md) |`
 3. Auto-commit: `git add ai/ && git commit`
 4. Ask user: "Bug Hunt complete. {N} specs created ({IDs}). Run autopilot?"
 5. If user confirms → autopilot picks up specs from backlog independently
@@ -365,7 +369,7 @@ Task tool:
 2. [ ] Orchestrator launched (bughunt-orchestrator)
 3. [ ] Orchestrator returned `status: completed`
 4. [ ] Report file exists at returned `report_path`
-5. [ ] All grouped specs listed in `spec_ids` exist
+5. [ ] All grouped specs listed in `specs` array exist on disk
 6. [ ] Grouped specs have correct sequential IDs
 7. [ ] Out-of-scope ideas saved to ai/ideas.md
 8. [ ] Backlog entries added for each grouped spec
@@ -388,7 +392,9 @@ bug_id: BUG-XXX
 root_cause: "[1-line summary]"  # Quick mode
 findings_count: N                # Bug Hunt mode
 groups_count: N                  # Bug Hunt mode
-spec_ids: [BUG-085, BUG-086, BUG-087]  # Bug Hunt mode — standalone specs
+specs:                                   # Bug Hunt mode — standalone specs
+  - {id: BUG-085, name: "Hook Safety", priority: P0, path: "ai/features/BUG-085.md"}
+  - {id: BUG-086, name: "Missing Refs", priority: P1, path: "ai/features/BUG-086.md"}
 report_path: "ai/features/BUG-XXX-bughunt.md"  # Bug Hunt mode — READ-ONLY report
 spec_path: "ai/features/BUG-XXX.md"  # Quick mode
 research_sources_used:

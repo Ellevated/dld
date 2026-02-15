@@ -54,6 +54,13 @@ You receive via prompt:
    Group size: 3-7 findings per group. Target: 3-8 groups total.
    Each group becomes a standalone spec for autopilot.
 
+## YAML Resilience
+
+When reading the draft spec at SPEC_PATH:
+- If sections cannot be parsed cleanly, extract findings from whatever structure exists
+- Log parsing issues but do NOT reject the spec solely because of formatting
+- The structural gate (Framework Analysis) checks for section PRESENCE, not YAML validity
+
 ## Output Format
 
 Return as YAML:
