@@ -150,6 +150,7 @@ Glossary: ai/glossary/{domain}.md
 | **audit** | Code analysis, consistency check (READ-ONLY) |
 | **reflect** | Synthesize diary entries into CLAUDE.md rules |
 | **scout** | Isolated research via Exa + Context7 |
+| **release** | Update CHANGELOG, README, docs after changes (fully automatic) |
 | **skill-writer** | Create agents/skills or optimize CLAUDE.md, rules, prompts |
 
 ### Skill Auto-Selection

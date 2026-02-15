@@ -25,6 +25,7 @@ HOW TO USE:
 | "codificador" | `/coder` |
 | "planificador" | `/planner` |
 | "revisión" | `/review` |
+| "lanzamiento", "preparar lanzamiento", "actualizar docs" | `/release` |
 
 ## Action
 
