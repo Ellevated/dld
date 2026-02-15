@@ -51,42 +51,22 @@ If any item not done — **STOP and do it**.
 
 ---
 
-## Post-Write Verification (MANDATORY)
+## Post-Write Verification (MANDATORY — BUG-358)
 
 After BOTH spec file and backlog entry are written, verify consistency:
 
 ```bash
-# Verify backlog entry exists for this spec
-grep "{TASK_ID}" ai/backlog.md
-```
-
-**If NOT found (grep returns nothing):**
-1. STOP — do not proceed to auto-commit
-2. Add the backlog entry NOW (use the format from ## Backlog Entry below)
-3. Re-verify with grep
-4. Only then continue to auto-commit
-
-**Checklist addition:**
-- [ ] Post-write verification: grep confirmed TASK_ID in backlog
-
----
-
-## Backlog Entry Verification (BLOCKING — BUG-358)
-
-After creating spec file, **VERIFY** backlog entry exists:
-
-```bash
-# 1. Run verification
+# 1. Verify backlog entry exists
 grep "{TASK_ID}" ai/backlog.md
 
 # 2. If NOT found → ADD NOW (don't proceed!)
-# Edit ai/backlog.md → add entry to ## Queue table
+# Edit ai/backlog.md → add entry to active tasks table
 
 # 3. Re-verify
 grep "{TASK_ID}" ai/backlog.md
 # Must show the entry!
 
-# 4. Only then → complete spark
+# 4. Only then → continue to auto-commit
 ```
 
 ⛔ **Spark without backlog entry = DATA LOSS!**
@@ -134,6 +114,19 @@ When setting status in spec, **verbally confirm**:
 - Creating new sections/tables
 - Grouping tasks by categories
 - Adding headers like "## Tests" or "## Legacy"
+
+---
+
+## File Naming Conventions
+
+| Mode | Pattern | Example |
+|------|---------|---------|
+| Feature | `FTR-XXX-YYYY-MM-DD-name.md` | `FTR-089-2026-02-15-diagram-skill.md` |
+| Quick Bug | `BUG-XXX-YYYY-MM-DD-name.md` | `BUG-082-2026-02-08-push-ambiguity.md` |
+| Bug Hunt report | `BUG-XXX-bughunt.md` | `BUG-084-bughunt.md` |
+| Bug Hunt grouped | `BUG-XXX.md` | `BUG-087.md` |
+
+Bug Hunt grouped specs omit date/name for brevity (auto-generated, many at once).
 
 ---
 
@@ -200,6 +193,8 @@ git commit -m "docs: create spec ${TASK_ID}"
 - Only commits spec, backlog, diary — controlled files
 - Protects from accidental credential commits
 - .gitignore is defense-in-depth, not primary protection
+
+**Bug Hunt mode:** Uses its own commit pattern from `bug-mode.md` (explicit file list instead of `ai/`).
 
 **Why NO push:**
 - CI doesn't trigger (saves money)

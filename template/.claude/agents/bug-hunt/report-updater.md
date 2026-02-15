@@ -28,7 +28,7 @@ Read the validator output from VALIDATOR_FILE using Read tool.
    - duplicates_merged (removed from spec)
    - groups (clusters for Step 6)
 3. Update the spec:
-   - Add `## Grouped Specs` table (placeholder for Step 7 to fill)
+   - Add `## Grouped Specs` table (Spec IDs are TBD — Spark fills them after Step 6)
    - Update `## Executive Summary` with ACTUAL counts (replace TBD values)
    - Mark out-of-scope findings as such
    - Note merged duplicates
@@ -60,7 +60,7 @@ Add after Executive Summary:
 | 2 | TBD     | {group_name} | {finding_ids} | {priority} | pending |
 ```
 
-Note: Spec IDs are filled by the orchestrator after Step 6 allocates IDs.
+Note: Spec IDs are TBD here. Spark fills them after orchestrator returns with actual IDs from Step 6.
 
 ## ideas.md Append Format
 

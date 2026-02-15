@@ -2,7 +2,7 @@
 name: bughunt-orchestrator
 description: Bug Hunt thin orchestrator with file-based IPC. Manages 7-step pipeline. Can ONLY delegate to subagents.
 model: opus
-effort: high
+effort: medium
 tools: Task
 ---
 

@@ -268,13 +268,24 @@ Each grouped spec gets its own backlog entry.
 
 ## Handoff
 
-After orchestrator returns `status: completed`:
-1. All specs are already written by the orchestrator pipeline
-2. For each item in `specs` array: add backlog entry using {id, name, priority, path}
+After orchestrator returns `status: completed` or `status: degraded`:
+
+1. **Update report with actual Spec IDs** — The report's Grouped Specs table has TBD IDs. Use Edit tool to replace TBD with actual IDs from the orchestrator's `specs` array.
+2. **Add backlog entries** — For each item in `specs` array: add backlog entry using {id, name, priority, path}
    - Example: `| BUG-087 | Hook Safety | queued | P0 | [BUG-087](features/BUG-087.md) |`
-3. Auto-commit: `git add ai/ && git commit`
-4. Ask user: "Bug Hunt complete. {N} specs created ({IDs}). Run autopilot?"
-5. If user confirms → autopilot picks up specs from backlog independently
+3. **Auto-commit** — Stage only spec-related files:
+   ```bash
+   git add ai/features/BUG-* ai/backlog.md ai/ideas.md
+   git commit -m "docs: Bug Hunt — {N} grouped specs created"
+   ```
+4. **Cleanup session** — Remove intermediate data:
+   ```bash
+   rm -rf {session_dir}
+   ```
+5. **Report to user:**
+   - If `completed`: "Bug Hunt complete. {N} specs created ({IDs}). Run autopilot?"
+   - If `degraded`: "Bug Hunt complete with warnings: {degraded_steps}. {N} specs created ({IDs}). Review before autopilot?"
+6. If user confirms → autopilot picks up specs from backlog independently
 
 → Go to `completion.md` for ID protocol and backlog entry.
 
@@ -374,7 +385,7 @@ Task tool:
 ## Output Format
 
 ```yaml
-status: completed | blocked
+status: completed | degraded | blocked
 mode: quick | bug-hunt
 bug_id: BUG-XXX
 root_cause: "[1-line summary]"  # Quick mode
