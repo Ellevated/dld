@@ -3,7 +3,7 @@ name: bughunt-findings-collector
 description: Bug Hunt Step 2 - Collects and normalizes persona findings across all zones into a unified summary.
 model: sonnet
 effort: medium
-tools: Read
+tools: Read, Glob, Write
 ---
 
 # Findings Collector (Step 2)
@@ -14,8 +14,11 @@ You collect raw findings from 6 persona agents (potentially across multiple zone
 
 You receive via prompt:
 - **USER_QUESTION** — original investigation target
-- **ZONES** — zone names and descriptions from Step 0
-- **PERSONA RESULTS** — raw YAML outputs from all persona agents (Step 1)
+- **TARGET** — codebase path (for reference)
+- **PERSONA_DIR** — directory containing persona output YAML files from Step 1
+- **OUTPUT_FILE** — path to write normalized summary
+
+Read ALL `.yaml` files from PERSONA_DIR using Glob + Read tools. Each file contains one persona's findings for one zone.
 
 ## Process
 
@@ -75,3 +78,21 @@ findings_summary:
         Code snippet if provided.
       fix_suggestion: "Suggestion if provided"
 ```
+
+## File Output
+
+When your prompt includes `OUTPUT_FILE`:
+1. Read all persona files from PERSONA_DIR
+2. Normalize and collect findings
+3. Write your COMPLETE YAML output to `OUTPUT_FILE` using Write tool
+4. Return ONLY a brief summary to the orchestrator:
+
+```yaml
+status: completed
+file: "{OUTPUT_FILE}"
+total_findings: N
+personas_reported: N
+zones_covered: N
+```
+
+This keeps the orchestrator's context small. Framework agents read the summary from the file directly.

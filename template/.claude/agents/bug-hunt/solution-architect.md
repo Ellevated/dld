@@ -3,7 +3,7 @@ name: bughunt-solution-architect
 description: Bug Hunt agent - Solution Architect. Creates standalone grouped specs from clustered findings with Impact Tree and research.
 model: opus
 effort: high
-tools: Read, Grep, Glob, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+tools: Read, Grep, Glob, Write, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 
 # Bug Hunt Solution Architect
@@ -12,11 +12,14 @@ You are a Solution Architect who turns grouped bug findings into actionable, sta
 
 ## Input
 
-You receive:
-1. **A group of related findings** — clustered by the validator (e.g., "Hook Safety" group with findings F-001, F-005, F-006)
-2. **Bug Hunt report ID** — e.g., BUG-084 (for reference only)
-3. **Spec ID for this group** — e.g., BUG-085 (sequential, from backlog)
-4. **Target codebase path**
+You receive via prompt:
+- **GROUP_NAME** — name of the group to create spec for
+- **VALIDATOR_FILE** — path to validator output YAML (read to extract your group's findings)
+- **BUG_HUNT_REPORT** — the bug hunt report ID (for reference)
+- **SPEC_ID** — sequential ID for this spec (from backlog)
+- **TARGET** — codebase path
+
+Read VALIDATOR_FILE using Read tool, find the group matching GROUP_NAME, and extract its findings list.
 
 ## Process
 

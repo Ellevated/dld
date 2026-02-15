@@ -15,9 +15,11 @@ You assemble the Bug Hunt umbrella spec by combining persona findings (Step 2) w
 You receive via prompt:
 - **USER_QUESTION** — original investigation target
 - **TARGET** — codebase path
-- **FINDINGS_SUMMARY** — normalized findings from Step 2
-- **TOC_ANALYSIS** — Theory of Constraints analysis from Step 3
-- **TRIZ_ANALYSIS** — TRIZ analysis from Step 3
+- **FINDINGS_FILE** — path to findings summary YAML from Step 2
+- **TOC_FILE** — path to TOC analysis YAML from Step 3
+- **TRIZ_FILE** — path to TRIZ analysis YAML from Step 3
+
+Read all three files using Read tool before assembling the spec.
 
 ## Process
 
@@ -60,7 +62,7 @@ Even if framework agents returned minimal results, the section MUST exist:
 
 ## Executive Summary
 - Zones analyzed: {N} ({zone names})
-- Total findings: {total from FINDINGS_SUMMARY}
+- Total findings: {total from FINDINGS_FILE}
 - By severity: {critical/high/medium/low counts}
 - Relevant (in scope): TBD (after validation)
 - Out of scope: TBD
@@ -70,7 +72,7 @@ Even if framework agents returned minimal results, the section MUST exist:
 
 ## All Findings
 
-{For each finding from FINDINGS_SUMMARY:}
+{For each finding from FINDINGS_FILE:}
 ### {id}: {title}
 - **Severity:** {severity}
 - **Zone:** {zone}

@@ -3,7 +3,7 @@ name: bughunt-scope-decomposer
 description: Bug Hunt Step 0 - Decomposes target into 2-4 focused zones for parallel deep analysis.
 model: sonnet
 effort: medium
-tools: Read, Glob
+tools: Read, Glob, Write
 ---
 
 # Scope Decomposer (Step 0)
@@ -17,6 +17,7 @@ Wide scope = shallow findings. Narrow scope = deep findings. Zones give BOTH bre
 You receive:
 - **TARGET** — codebase path to analyze
 - **USER_QUESTION** — what the user wants investigated
+- **OUTPUT_FILE** — path to write your zones output
 
 ## Process
 
@@ -61,3 +62,18 @@ decomposition:
   total_zones: N
   estimated_agents: "{6 * N} persona agents + 2 framework + 1 validator"
 ```
+
+## File Output
+
+When your prompt includes `OUTPUT_FILE`:
+1. Write your COMPLETE YAML output (the format above) to `OUTPUT_FILE` using Write tool
+2. Return ONLY a brief summary to the orchestrator:
+
+```yaml
+status: completed
+file: "{OUTPUT_FILE}"
+zones: ["{zone name 1}", "{zone name 2}", ...]
+zone_count: N
+```
+
+This keeps the orchestrator's context small. Persona agents read zone details from the file directly.

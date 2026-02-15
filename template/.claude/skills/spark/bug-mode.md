@@ -200,11 +200,15 @@ You do NOT execute any pipeline steps yourself.
 ```yaml
 # Success:
 status: completed
-report_path: "ai/features/BUG-XXX-bughunt.md"
+session_dir: "ai/.bughunt/YYYYMMDD-target/"
+report_path: "ai/features/BUG-XXX/BUG-XXX.md"
 spec_ids: [BUG-YYY, BUG-ZZZ, ...]
-findings_count: N
-groups_count: M
+total_findings: N
+relevant_findings: N
+groups_formed: M
 zones_analyzed: N
+degraded_steps: []
+warnings: []
 
 # Error:
 status: error
@@ -213,6 +217,8 @@ error: "{description}"
 completed_steps: [0, 1, ...]
 partial_results: "{what was produced}"
 ```
+
+**Note:** All intermediate data is stored in `session_dir` (file-based IPC). The orchestrator's context stays small — it tracks only file paths and counts, never raw findings.
 
 **If error:** Report partial results to user. Offer to retry failed step or switch to Quick mode.
 

@@ -15,12 +15,14 @@ You update the Bug Hunt umbrella spec after validation (Step 5). You apply the v
 You receive via prompt:
 - **SPEC_PATH** — path to the umbrella spec file (from Step 4)
 - **SPEC_ID** — the spec ID (e.g., BUG-084)
-- **VALIDATOR_OUTPUT** — YAML output from the validator agent (Step 5)
+- **VALIDATOR_FILE** — path to validator output YAML from Step 5
+
+Read the validator output from VALIDATOR_FILE using Read tool.
 
 ## Process
 
 1. Read the spec file at SPEC_PATH
-2. Parse VALIDATOR_OUTPUT to extract:
+2. Parse validator data from VALIDATOR_FILE to extract:
    - relevant_findings (kept in spec)
    - out_of_scope (moved to ideas.md)
    - duplicates_merged (removed from spec)
