@@ -33,12 +33,12 @@ You receive:
 - If target has <30 files → return 1 zone with all files (no decomposition needed)
 - Maximum 4 zones — more zones = more cost, diminishing returns
 - Each zone must have a clear NAME, DESCRIPTION, and FOCUS
-- List EXACT file paths for each zone (no glob patterns)
+- List ABSOLUTE file paths for each zone (no glob patterns, no relative paths)
 - Consider the USER_QUESTION when choosing zone boundaries — put the most relevant area in its own zone
 
 ## Output Format
 
-Return YAML:
+Return YAML with **ABSOLUTE file paths** (personas use Read tool which requires absolute paths):
 
 ```yaml
 decomposition:
@@ -49,15 +49,15 @@ decomposition:
       description: "{what this zone covers}"
       focus: "{what persona agents should look for here}"
       files:
-        - "exact/path/to/file1.py"
-        - "exact/path/to/file2.py"
+        - "/Users/foo/dev/myapp/src/handlers/auth.py"
+        - "/Users/foo/dev/myapp/src/handlers/billing.py"
       file_count: N
 
     - name: "Zone B: {area_name}"
       description: "{what this zone covers}"
       focus: "{what persona agents should look for here}"
       files:
-        - "exact/path/to/file3.py"
+        - "/Users/foo/dev/myapp/src/models/user.py"
       file_count: N
 
   total_zones: N

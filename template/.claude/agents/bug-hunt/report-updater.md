@@ -32,7 +32,7 @@ Read the validator output from VALIDATOR_FILE using Read tool.
    - Update `## Executive Summary` with ACTUAL counts (replace TBD values)
    - Mark out-of-scope findings as such
    - Note merged duplicates
-4. Append out-of-scope items to `ai/ideas.md`
+4. Append out-of-scope items to `ai/ideas.md` (if file doesn't exist, create it with `# Ideas\n\n` header first using Write, then Edit to append)
 5. Verify Executive Summary has real numbers — NO TBD values remaining
 
 ## YAML Resilience

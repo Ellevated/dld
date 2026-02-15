@@ -88,7 +88,16 @@ summary:
 ## File Output
 
 When your prompt includes `OUTPUT_FILE` and `ZONES_FILE`:
-1. Read `ZONES_FILE` to find your zone's file list
+1. Read `ZONES_FILE` (YAML format) to find your zone's file list:
+   ```yaml
+   decomposition:
+     zones:
+       - name: "Zone A: Hooks"
+         files:
+           - "/absolute/path/to/file1.py"
+           - "/absolute/path/to/file2.py"
+   ```
+   Match your ZONE name to find your files. Paths are absolute — use them directly with Read tool.
 2. Analyze those files using your expertise
 3. Write your COMPLETE YAML output (the format above) to `OUTPUT_FILE` using Write tool
 4. Return ONLY a brief summary to the orchestrator:

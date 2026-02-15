@@ -110,6 +110,14 @@ When reading VALIDATOR_FILE:
 - Research sources must be included if external patterns used
 - One group = one coherent fix that goes through plan → code → test → review
 
-## Output
+## File Output
 
-Return path to the created spec file.
+Write the spec to `ai/features/{SPEC_ID}.md` using Write tool. Then return ONLY a brief summary to the orchestrator:
+
+```yaml
+status: completed
+spec_id: "{SPEC_ID}"
+spec_path: "ai/features/{SPEC_ID}.md"
+group_name: "{GROUP_NAME}"
+findings_count: N
+```
