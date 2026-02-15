@@ -41,7 +41,7 @@ Sequential ID assignment is NOT atomic. If two spark instances run concurrently:
 1. [ ] **ID determined by protocol** — not guessed!
 2. [ ] **Uniqueness check** — grep backlog didn't find this ID
 3. [ ] **Spec file created** — ai/features/TYPE-XXX-YYYY-MM-DD-name.md
-4. [ ] **Entry added to backlog** — in `## Queue` section
+4. [ ] **Entry added to backlog** — in active tasks table
 5. [ ] **Status = queued** — spec ready for autopilot!
 6. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
@@ -124,27 +124,16 @@ When setting status in spec, **verbally confirm**:
 
 ## Backlog Format (STRICT)
 
-**Structure of ai/backlog.md — immutable:**
-
-```
-## Queue          ← single task table
-## Statuses       ← status reference
-## Archive        ← link to archive
-## Ideas          ← link to ideas.md
-```
+**When adding entry:**
+1. Open `ai/backlog.md`
+2. Find the ACTIVE tasks table (above the `## DONE` section)
+3. Add row to **end** of active table (last row before `---` or `## DONE`)
+4. DO NOT create new sections or tables
 
 **FORBIDDEN:**
 - Creating new sections/tables
 - Grouping tasks by categories
 - Adding headers like "## Tests" or "## Legacy"
-
-**When adding entry:**
-1. Open `ai/backlog.md`
-2. Find `## Queue` section
-3. Add row to **end** of table (before `---`)
-4. DO NOT create new sections
-
-**Why:** LLM gets confused with multiple tables and doesn't know where to add new entries. One table = one place = no confusion.
 
 ---
 
@@ -227,7 +216,7 @@ git commit -m "docs: create spec ${TASK_ID}"
 After Spec is complete — auto-handoff to Autopilot. No manual "plan" step!
 
 **Flow:**
-1. Spec saved to `ai/features/TYPE-XXX.md`
+1. Spec saved to `ai/features/TYPE-XXX-YYYY-MM-DD-name.md`
 2. Ask user: "Spec ready. Run autopilot?"
 3. If user confirms → invoke Skill tool with `skill: "autopilot"`
 4. If user declines → stop and let user decide
@@ -273,6 +262,6 @@ Write spec file when spec is complete, then ask about autopilot handoff.
 ### Return format:
 ```yaml
 status: complete | needs_discussion | blocked
-spec_path: ai/features/TYPE-XXX.md  # file MUST exist
+spec_path: ai/features/TYPE-XXX-YYYY-MM-DD-name.md  # file MUST exist
 handoff: autopilot | council | blocked
 ```

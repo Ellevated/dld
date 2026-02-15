@@ -96,13 +96,13 @@ All 4 experts (except Synthesizer) run **in parallel** as subagents:
 
 ### Phase 2: CROSS-CRITIQUE (Peer Review)
 
-Each expert sees **anonymized** responses from others:
+Each expert sees **labeled** responses from others (Analysis A/B/C — no role names):
 
 ```
-Expert A sees:
-- "Analysis 1: [content]"
-- "Analysis 2: [content]"
-- "Analysis 3: [content]"
+Expert receives:
+- "Analysis A: [content]"
+- "Analysis B: [content]"
+- "Analysis C: [content]"
 
 And responds:
 - Agree/disagree with each
@@ -110,7 +110,7 @@ And responds:
 - Ranking: best → worst
 ```
 
-**Important:** Anonymization prevents bias ("Architect said it, so it's correct")
+**Important:** Labels reduce anchoring bias ("Architect said it, so it's correct")
 
 ### Phase 3: SYNTHESIS (Chairman)
 
@@ -137,11 +137,18 @@ Each expert — separate subagent with isolated context.
 ### Phase 1: PARALLEL ANALYSIS
 
 ```yaml
+# Before launching: read .claude/rules/dependencies.md and .claude/rules/architecture.md
+# Include summaries in CONTEXT block below
+
 # Launch experts (parallel)
 Task:
   subagent_type: council-architect  # → agents/council/architect.md
   prompt: |
     PHASE: 1
+    CONTEXT:
+      dependencies: [summary from dependencies.md]
+      patterns: [key patterns from architecture.md]
+      anti_patterns: [anti-patterns from architecture.md]
     Analyze this spec/problem:
     [spec_content]
 
@@ -149,6 +156,10 @@ Task:
   subagent_type: council-product
   prompt: |
     PHASE: 1
+    CONTEXT:
+      dependencies: [summary from dependencies.md]
+      patterns: [key patterns from architecture.md]
+      anti_patterns: [anti-patterns from architecture.md]
     Analyze this spec/problem:
     [spec_content]
 
@@ -156,6 +167,10 @@ Task:
   subagent_type: council-pragmatist
   prompt: |
     PHASE: 1
+    CONTEXT:
+      dependencies: [summary from dependencies.md]
+      patterns: [key patterns from architecture.md]
+      anti_patterns: [anti-patterns from architecture.md]
     Analyze this spec/problem:
     [spec_content]
 
@@ -163,6 +178,10 @@ Task:
   subagent_type: council-security
   prompt: |
     PHASE: 1
+    CONTEXT:
+      dependencies: [summary from dependencies.md]
+      patterns: [key patterns from architecture.md]
+      anti_patterns: [anti-patterns from architecture.md]
     Analyze this spec/problem:
     [spec_content]
 ```
@@ -172,7 +191,7 @@ Store results in variables: `architect_analysis`, `product_analysis`, `pragmatis
 
 ### Phase 2: CROSS-CRITIQUE
 
-After receiving 4 analyses — each expert sees **anonymized** responses from others:
+After receiving 4 analyses — each expert sees **labeled** responses from others (Analysis A/B/C):
 
 ```yaml
 # Launch cross-critique (parallel)

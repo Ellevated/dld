@@ -72,7 +72,7 @@ ROOT CAUSE: Migration XXX doesn't have DEFAULT for new column.
 Only after root cause is found → create BUG-XXX spec:
 
 ```markdown
-# Bug: [BUG-XXX] Title
+# Bug Fix: [BUG-XXX] Title
 
 **Status:** queued | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
 

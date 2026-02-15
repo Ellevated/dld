@@ -78,12 +78,11 @@ PHASE 1: PLAN (if no detailed plan exists)
 PHASE 2: FOR EACH TASK (fresh subagent per task!)
   [CODER] → code → files_changed
   [TESTER] → Smart Testing
-  [DEPLOY CHECK] → migrations? serverless?
-  [DOCUMENTER] → inline
+  PRE-CHECK → deterministic validation
   [SPEC REVIEWER] → Stage 1
   [CODE QUALITY] → Stage 2
   COMMIT (NO PUSH yet!)
-  See: subagent-dispatch.md
+  See: task-loop.md (SSOT for execution flow)
 
 PHASE 3: FINISHING
   Push feature branch → merge develop → push develop
@@ -111,14 +110,15 @@ For EACH task from plan:
 ```
 ┌─────────────────────────────────────────────────────┐
 │ 1. CODER → files_changed                            │
-│ 2. MIGRATION VALIDATION (if *.sql)                  │
-│ 3. TESTER → Smart Testing                           │
-│ 4. DOCUMENTER → update docs                         │
-│ 5. SPEC REVIEWER (Stage 1) → matches spec?          │
-│ 6. CODE QUALITY (Stage 2) → architecture ok?        │
-│ 7. COMMIT (NO PUSH yet!)                            │
+│ 2. TESTER → Smart Testing                           │
+│ 3. PRE-CHECK → deterministic validation             │
+│ 4. SPEC REVIEWER (Stage 1) → matches spec?          │
+│ 5. CODE QUALITY (Stage 2) → architecture ok?        │
+│ 6. COMMIT (NO PUSH yet!)                            │
 └─────────────────────────────────────────────────────┘
 ```
+
+**SSOT:** See `task-loop.md` for detailed decision trees after each step.
 
 ⛔ **Skipping any step = VIOLATION**
 
@@ -139,13 +139,13 @@ while (queued/resumed tasks in ai/backlog.md):
      Check for "## Implementation Plan"
      Missing? → dispatch Plan Subagent
 
-  5. PHASE 2: Execute
+  5. PHASE 2: Execute (see task-loop.md for SSOT)
      FOR EACH TASK:
        a. CODER → files_changed
        b. TESTER → pass? (debug loop if fail)
-       c. DEPLOY CHECK
-       d. DOCUMENTER
-       e. TWO-STAGE REVIEW
+       c. PRE-CHECK → deterministic validation
+       d. SPEC REVIEWER → matches spec?
+       e. CODE QUALITY → architecture ok?
        f. COMMIT (no push)
 
   6. PHASE 3: Finishing
