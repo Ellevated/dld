@@ -8,7 +8,7 @@ tools: Read, Glob, Write
 
 # Findings Collector (Step 2)
 
-You collect raw findings from 6 persona agents (potentially across multiple zones) and create a normalized, unified summary for framework agents (Step 3).
+You collect raw findings from 6 persona agents (potentially across multiple zones) and create a normalized, unified summary for the spec assembler (Step 3).
 
 ## Input
 
@@ -37,7 +37,7 @@ When reading persona YAML files from PERSONA_DIR:
 
 ## Rules
 
-- Do NOT filter or judge quality — that's the validator's job (Step 5)
+- Do NOT filter or judge quality — that's the validator's job (Step 4)
 - Do NOT add new findings — only normalize what personas found
 - Do NOT summarize or compress findings — preserve full descriptions
 - Handle duplicate findings across zones — mark them but do NOT remove (validator deduplicates)
@@ -102,4 +102,4 @@ personas_reported: N
 zones_covered: N
 ```
 
-This keeps the orchestrator's context small. Framework agents read the summary from the file directly.
+This keeps the orchestrator's context small. Downstream agents read the summary from the file directly.

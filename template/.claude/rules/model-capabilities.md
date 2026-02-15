@@ -42,9 +42,12 @@ Agents should operate at different effort levels based on task complexity:
 | documenter | medium | Structured output, clear patterns |
 | diary-recorder | low | Simple capture, minimal reasoning |
 | bughunt personas (6) | high | Deep analysis from specialized perspectives (sonnet) |
-| bughunt TOC/TRIZ | max | Framework analysis requires deep reasoning (opus) |
 | bughunt validator | high | Triage requires good judgment (opus) |
 | bughunt solution-architect | high | Fix design needs careful analysis (opus) |
+| triz data-collector | medium | Pure data extraction, no reasoning (sonnet) |
+| triz toc-analyst | max | System-level constraint analysis (opus) |
+| triz triz-analyst | max | System-level contradiction resolution (opus) |
+| triz synthesizer | high | Merge and prioritize recommendations (opus) |
 
 ---
 

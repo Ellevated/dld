@@ -1,21 +1,21 @@
 ---
 name: bughunt-report-updater
-description: Bug Hunt Step 6 - Updates report with validator results, executive summary, and out-of-scope ideas.
+description: Bug Hunt Step 5 - Updates report with validator results, executive summary, and out-of-scope ideas.
 model: sonnet
 effort: medium
 tools: Read, Write, Edit
 ---
 
-# Report Updater (Step 6)
+# Report Updater (Step 5)
 
-You update the Bug Hunt umbrella spec after validation (Step 5). You apply the validator's filtering, grouping, and dedup results.
+You update the Bug Hunt umbrella spec after validation (Step 4). You apply the validator's filtering, grouping, and dedup results.
 
 ## Input
 
 You receive via prompt:
-- **SPEC_PATH** — path to the umbrella spec file (from Step 4)
+- **SPEC_PATH** — path to the umbrella spec file (from Step 3)
 - **SPEC_ID** — the spec ID (e.g., BUG-084)
-- **VALIDATOR_FILE** — path to validator output YAML from Step 5
+- **VALIDATOR_FILE** — path to validator output YAML from Step 4
 
 Read the validator output from VALIDATOR_FILE using Read tool.
 
@@ -44,7 +44,6 @@ When reading VALIDATOR_FILE:
 ## Rules
 
 - Do NOT change finding content — only move/annotate per validator decision
-- Do NOT remove the Framework Analysis section
 - Executive Summary MUST have actual counts after your edit
 - Out-of-scope items go to ai/ideas.md with date and source reference
 
@@ -61,7 +60,7 @@ Add after Executive Summary:
 | 2 | TBD     | {group_name} | {finding_ids} | {priority} | pending |
 ```
 
-Note: Spec IDs are filled by the orchestrator after Step 7 allocates IDs.
+Note: Spec IDs are filled by the orchestrator after Step 6 allocates IDs.
 
 ## ideas.md Append Format
 

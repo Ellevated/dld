@@ -26,6 +26,7 @@ HOW TO USE:
 | "planificador" | `/planner` |
 | "revisión" | `/review` |
 | "lanzamiento", "preparar lanzamiento", "actualizar docs" | `/release` |
+| "diagnóstico del sistema", "restricción", "salud del sistema" | `/triz` |
 
 ## Action
 

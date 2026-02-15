@@ -128,11 +128,11 @@ Only after root cause is found → create BUG-XXX spec:
 
 **Multi-agent deep analysis pipeline.** Use when bug is complex, systemic, or affects many files.
 
-**Architecture:** A thin orchestrator agent (`tools: Task` only) manages the 8-step pipeline.
+**Architecture:** A thin orchestrator agent (`tools: Task` only) manages the 7-step pipeline.
 The orchestrator CANNOT read, write, or analyze code — it can ONLY delegate to specialized agents.
 This prevents step-skipping (BUG-084): the orchestrator physically cannot do work itself.
 
-**Cost estimate:** ~$50-100 per full run (6×N Sonnet personas + 2 Opus frameworks + 1 Opus validator + M Opus architects). N = number of zones (typically 2-4).
+**Cost estimate:** ~$30-70 per full run (6×N Sonnet personas + 1 Opus validator + M Opus architects). N = number of zones (typically 2-4).
 
 ## Overview
 
@@ -143,11 +143,10 @@ Orchestrator (tools: Task only):
   Step 0: bughunt-scope-decomposer → zones
   Step 1: 6 persona agents × N zones (parallel)
   Step 2: bughunt-findings-collector → normalized summary
-  Step 3: bughunt-toc-analyst + bughunt-triz-analyst (parallel)
-  Step 4: bughunt-spec-assembler → umbrella spec with Framework Analysis
-  Step 5: bughunt-validator → filter, dedup, GROUP into 3-8 clusters
-  Step 6: bughunt-report-updater → executive summary + ideas.md
-  Step 7: bughunt-solution-architect × M groups (parallel) → standalone specs
+  Step 3: bughunt-spec-assembler → umbrella spec
+  Step 4: bughunt-validator → filter, dedup, GROUP into 3-8 clusters
+  Step 5: bughunt-report-updater → executive summary + ideas.md
+  Step 6: bughunt-solution-architect × M groups (parallel) → standalone specs
   ↓
 Spark: Handoff results → backlog → autopilot
 ```
@@ -162,7 +161,7 @@ Quick estimate before launch — inform user, do NOT wait for confirmation:
 2. Print: `"Bug Hunt: {target} — {N} zones, ~{6*N} persona agents, est. ~${N*15+20}. Launching..."`
 3. Immediately launch orchestrator — no confirmation needed
 
-**Cost reference:** ~$15/zone (6 Sonnet personas) + ~$20 fixed (2 Opus frameworks + validator + architects) = **~$45-70 typical**
+**Cost reference:** ~$15/zone (6 Sonnet personas) + ~$10 fixed (validator + architects) = **~$30-50 typical**
 
 ---
 
@@ -179,7 +178,7 @@ Task:
     TARGET_PATH: {target codebase path}
 ```
 
-**That's it.** The orchestrator handles Steps 0-7 internally.
+**That's it.** The orchestrator handles Steps 0-6 internally.
 You do NOT execute any pipeline steps yourself.
 
 ### Pipeline Steps (handled by orchestrator)
@@ -189,11 +188,10 @@ You do NOT execute any pipeline steps yourself.
 | 0 | bughunt-scope-decomposer | Split target into 2-4 zones | sonnet |
 | 1 | 6 persona agents × N zones | Parallel deep analysis | sonnet |
 | 2 | bughunt-findings-collector | Normalize & collect all findings | sonnet |
-| 3 | bughunt-toc-analyst + bughunt-triz-analyst | Framework analysis (parallel) | opus |
-| 4 | bughunt-spec-assembler | Write umbrella spec | sonnet |
-| 5 | bughunt-validator | Filter, dedup, group into 3-8 clusters | opus |
-| 6 | bughunt-report-updater | Update report, executive summary, ideas.md | sonnet |
-| 7 | bughunt-solution-architect × M groups | Standalone spec per group (parallel) | opus |
+| 3 | bughunt-spec-assembler | Write umbrella spec | sonnet |
+| 4 | bughunt-validator | Filter, dedup, group into 3-8 clusters | opus |
+| 5 | bughunt-report-updater | Update report, executive summary, ideas.md | sonnet |
+| 6 | bughunt-solution-architect × M groups | Standalone spec per group (parallel) | opus |
 
 ### Orchestrator Returns
 
@@ -266,16 +264,6 @@ Each grouped spec gets its own backlog entry.
 | 1 | BUG-YYY | Hook Safety | F-001, F-005, F-006 | P0 | queued |
 | 2 | BUG-ZZZ | Missing References | F-002, F-011, F-012 | P1 | queued |
 
-## Framework Analysis
-
-### TOC (Theory of Constraints)
-{Core constraint identified}
-{Causal chain summary}
-
-### TRIZ
-{Key contradictions}
-{Suggested inventive principles}
-
 ```
 
 ## Handoff
@@ -343,7 +331,7 @@ Task tool:
 - Spark ONLY launches the orchestrator — does NOT execute pipeline steps itself
 - Orchestrator delegates ALL work to specialized agents
 - Orchestrator cannot skip steps — it has no tools to do work itself (Layer 1 defense)
-- Validator (Step 5) rejects specs missing Framework Analysis — skipping Step 3 means restarting
+- Validator (Step 4) filters, deduplicates, and groups findings into actionable clusters
 
 **Handoff Rules:**
 - Bugs go through: spark → plan → autopilot

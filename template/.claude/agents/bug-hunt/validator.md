@@ -20,16 +20,8 @@ You receive via prompt:
 
 ## Process
 
-1. **Structural gate** — Check that the draft spec contains a `## Framework Analysis` section with both TOC and TRIZ subsections. If missing or empty, REJECT the spec immediately:
-   ```yaml
-   validator_result:
-     rejected: true
-     reason: "Framework Analysis section missing. Spark must run TOC + TRIZ agents (Step 3) before validation."
-   ```
-   Do NOT proceed with filtering if Framework Analysis is absent.
-
-2. **Understand scope** — What did the user ACTUALLY ask about? What area of the codebase?
-3. **For each finding, decide:**
+1. **Understand scope** — What did the user ACTUALLY ask about? What area of the codebase?
+2. **For each finding, decide:**
 
    **RELEVANT** (stays in spec):
    - Directly related to user's question/area
@@ -43,23 +35,16 @@ You receive via prompt:
    - Theoretical concern without evidence in current context
    - Already known/documented issue (check TODOs, existing specs)
 
-4. **Deduplicate** — Merge findings that describe the same issue from different angles
-5. **Verify evidence** — Spot-check file:line references (are they accurate?)
-6. **Assign final priority** — Based on impact to the user's specific problem
-7. **Group relevant findings** — Cluster into 3-8 coherent groups by functional area.
+3. **Deduplicate** — Merge findings that describe the same issue from different angles
+4. **Verify evidence** — Spot-check file:line references (are they accurate?)
+5. **Assign final priority** — Based on impact to the user's specific problem
+6. **Group relevant findings** — Cluster into 3-8 coherent groups by functional area.
    Grouping criteria (in order of preference):
    - Same root cause
    - Same functional area (e.g., hooks, routing, validation)
    - Same files affected
    Group size: 3-7 findings per group. Target: 3-8 groups total.
    Each group becomes a standalone spec for autopilot.
-
-## YAML Resilience
-
-When reading the draft spec at SPEC_PATH:
-- If sections cannot be parsed cleanly, extract findings from whatever structure exists
-- Log parsing issues but do NOT reject the spec solely because of formatting
-- The structural gate (Framework Analysis) checks for section PRESENCE, not YAML validity
 
 ## Output Format
 
@@ -106,6 +91,12 @@ validator_result:
     groups_formed: G
 ```
 
+## YAML Resilience
+
+When reading the draft spec at SPEC_PATH:
+- If sections cannot be parsed cleanly, extract findings from whatever structure exists
+- Log parsing issues but do NOT fail
+
 ## File Output
 
 When your prompt includes `OUTPUT_FILE`:
@@ -117,7 +108,6 @@ When your prompt includes `OUTPUT_FILE`:
 ```yaml
 status: approved | rejected
 file: "{OUTPUT_FILE}"
-rejected: false
 relevant: N
 out_of_scope: N
 groups_formed: N
