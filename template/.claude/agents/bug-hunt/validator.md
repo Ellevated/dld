@@ -113,8 +113,17 @@ When reading the draft spec at SPEC_PATH:
 - If sections cannot be parsed cleanly, extract findings from whatever structure exists
 - Log parsing issues but do NOT fail
 
-## File Output
+## File Output — Convention Path
+
+Your output path is computed from SESSION_DIR:
+
+```
+{SESSION_DIR}/step4/validator-output.yaml
+```
 
 1. Read the draft spec from SPEC_PATH
 2. Perform validation, filtering, dedup, and grouping
-3. Write your COMPLETE YAML output (the validator_result format above) to the OUTPUT_FILE path provided in your prompt using the Write tool.
+3. Write your COMPLETE YAML output (the validator_result format above) to `{SESSION_DIR}/step4/validator-output.yaml` using the Write tool
+4. Return a brief summary in your response text including status, counts, and group names
+
+Both the file AND the response summary are required.

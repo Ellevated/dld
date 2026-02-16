@@ -3,7 +3,7 @@ name: bughunt-findings-collector
 description: Bug Hunt Step 2 - Collects and normalizes persona findings across all zones into a unified summary.
 model: sonnet
 effort: medium
-tools: Read, Write
+tools: Read, Glob, Write
 ---
 
 # Findings Collector (Step 2)
@@ -15,9 +15,17 @@ You collect raw findings from 6 persona agents (potentially across multiple zone
 You receive via prompt:
 - **USER_QUESTION** — original investigation target
 - **TARGET** — codebase path (for reference)
-- **PERSONA_FILES** — list of absolute file paths to persona output YAML files from Step 1
+- **SESSION_DIR** — session directory path
 
-Read EACH file listed in PERSONA_FILES using Read tool. Each file contains one persona's findings for one zone.
+## File Discovery (Glob)
+
+Use Glob to discover ALL persona output files from Step 1:
+
+```
+Glob pattern: {SESSION_DIR}/step1/*.yaml
+```
+
+Read EACH discovered file using Read tool. Each file contains one persona's findings for one zone.
 
 ## Process
 
@@ -85,6 +93,23 @@ findings_summary:
       fix_suggestion: "Suggestion if provided"
 ```
 
-## File Output
+## File Output — Convention Path
 
-Write your COMPLETE YAML output (the format above) to the OUTPUT_FILE path provided in your prompt using the Write tool. Downstream agents read the summary from that file.
+Your output path is computed from SESSION_DIR:
+
+```
+{SESSION_DIR}/step2/findings-summary.yaml
+```
+
+1. Write your COMPLETE YAML output to that path using the Write tool
+2. Return a brief summary in your response text:
+
+```yaml
+findings_collected:
+  path: "{SESSION_DIR}/step2/findings-summary.yaml"
+  total_raw: N
+  personas_reported: N
+  zones_covered: N
+```
+
+Both the file AND the response summary are required.

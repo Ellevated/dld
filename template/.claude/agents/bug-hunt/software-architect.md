@@ -88,19 +88,26 @@ summary:
 
 ## Zone Files
 
-When your prompt includes `ZONES_FILE`:
-1. Read `ZONES_FILE` (YAML format) to find your zone's file list:
-   ```yaml
-   decomposition:
-     zones:
-       - name: "Zone A: Hooks"
-         files:
-           - "/absolute/path/to/file1.py"
-           - "/absolute/path/to/file2.py"
-   ```
-   Match your ZONE name to find your files. Paths are absolute — use them directly with Read tool.
-2. Analyze those files using your expertise
+Read zones from `{SESSION_DIR}/step0/zones.yaml`:
+```yaml
+decomposition:
+  zones:
+    - name: "Zone A: Hooks"
+      files:
+        - "/absolute/path/to/file1.py"
+        - "/absolute/path/to/file2.py"
+```
+Match your ZONE name to find your files. Paths are absolute — use them directly with Read tool.
 
-## File Output
+## File Output — Convention Path
 
-Write your COMPLETE YAML output (the findings format above) to the OUTPUT_FILE path provided in your prompt using the Write tool.
+Your output path is computed from SESSION_DIR, ZONE_KEY, and your persona type:
+
+```
+{SESSION_DIR}/step1/{ZONE_KEY}-software-architect.yaml
+```
+
+1. Write your COMPLETE YAML output to that path using the Write tool
+2. Return a brief summary: `"Wrote N findings to {path}"`
+
+Both the file AND the response summary are required.

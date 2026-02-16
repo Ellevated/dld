@@ -62,6 +62,23 @@ decomposition:
   estimated_agents: "{6 * N} persona agents + 1 validator + M architects"
 ```
 
-## File Output
+## File Output — Convention Path
 
-Write your COMPLETE YAML output (the format above) to the OUTPUT_FILE path provided in your prompt using the Write tool. Downstream agents read zone data from that file.
+Your output path is computed from SESSION_DIR:
+
+```
+{SESSION_DIR}/step0/zones.yaml
+```
+
+1. Write your COMPLETE YAML output to `{SESSION_DIR}/step0/zones.yaml` using the Write tool
+2. Return a brief summary in your response text:
+
+```yaml
+zones_written:
+  path: "{SESSION_DIR}/step0/zones.yaml"
+  total_zones: N
+  zone_names: ["Zone A: ...", "Zone B: ..."]
+  total_files: N
+```
+
+Both the file AND the response summary are required. The file is the primary artifact; the summary helps the orchestrator route the next step.
