@@ -7,7 +7,7 @@
 
 import { readFileSync, existsSync } from 'fs';
 import { execFileSync } from 'child_process';
-import { readHookInput, getToolInput } from './utils.mjs';
+import { denyTool, readHookInput, getToolInput } from './utils.mjs';
 
 function main() {
   try {
@@ -39,21 +39,14 @@ function main() {
       const impactSection = content.match(/## Impact Tree Analysis[\s\S]*?(?=\n##|\s*$)/);
 
       if (impactSection && impactSection[0].includes('- [ ]')) {
-        process.stdout.write(
-          JSON.stringify({
-            hookSpecificOutput: {
-              permissionDecision: 'deny',
-              permissionDecisionReason:
-                'Spec has unfilled Impact Tree checkboxes!\n\n' +
-                'Complete the Impact Tree Analysis before committing:\n' +
-                '1. Fill all checkboxes in Impact Tree section\n' +
-                '2. Ensure grep results are recorded\n' +
-                '3. Verify all found files are in Allowed Files\n\n' +
-                'See: CLAUDE.md -> Impact Tree Analysis',
-            },
-          }) + '\n',
+        denyTool(
+          'Spec has unfilled Impact Tree checkboxes!\n\n' +
+            'Complete the Impact Tree Analysis before committing:\n' +
+            '1. Fill all checkboxes in Impact Tree section\n' +
+            '2. Ensure grep results are recorded\n' +
+            '3. Verify all found files are in Allowed Files\n\n' +
+            'See: CLAUDE.md -> Impact Tree Analysis',
         );
-        process.exit(0);
       }
     }
 
