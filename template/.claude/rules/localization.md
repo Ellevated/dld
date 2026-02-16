@@ -29,6 +29,9 @@ HOW TO USE:
 | "revisión" | `/review` |
 | "lanzamiento", "preparar lanzamiento", "actualizar docs" | `/release` |
 | "diagnóstico del sistema", "restricción", "salud del sistema" | `/triz` |
+| "diagrama", "dibujar esquema" | `/diagram` |
+| "retrofit", "brownfield", "reevaluar proyecto" | `/retrofit` |
+| "auditoría profunda", "auditoría completa" | `/audit deep` |
 
 ## Action
 

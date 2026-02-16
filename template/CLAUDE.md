@@ -154,6 +154,7 @@ Glossary: ai/glossary/{domain}.md
 | **scout** | Isolated research via Exa + Context7 |
 | **release** | Update CHANGELOG, README, docs after changes (fully automatic) |
 | **skill-writer** | Create agents/skills or optimize CLAUDE.md, rules, prompts |
+| **retrofit** | Brownfield lifecycle — reassess existing projects (audit -> architect -> board -> stabilize) |
 | **diagram** | Generate professional Excalidraw diagrams from description or code analysis |
 
 ### Skill Auto-Selection
@@ -181,14 +182,16 @@ Claude auto-selects skills based on user intent. Each skill has semantic trigger
 | "find all", "analyze code", "check for" | audit |
 | "reflect", "what did we learn" | reflect |
 | "diagram", "draw", "visualize architecture" | diagram |
+| "retrofit", "brownfield", "reassess project" | retrofit |
 
 **Flows:**
 ```
-New project: /bootstrap → /board → /architect → /spark → /autopilot
-Feature:     /spark → /autopilot (within blueprint constraints)
-Bug:         diagnose (5 Whys) → /spark → /autopilot
-Hotfix:      <5 LOC → fix directly with user approval
-Escalation:  Autopilot → Spark → Architect → Board → Founder
+New project:  /bootstrap → /board → /architect → /spark → /autopilot
+Feature:      /spark → /autopilot (within blueprint constraints)
+Bug:          diagnose (5 Whys) → /spark → /autopilot
+Hotfix:       <5 LOC → fix directly with user approval
+Escalation:   Autopilot → Spark → Architect → Board → Founder
+Brownfield:   /retrofit → /audit deep → /architect → /board → stabilize → normal
 ```
 
 **New in v3.7:**
