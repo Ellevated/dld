@@ -41,7 +41,6 @@ Agents should operate at different effort levels based on task complexity:
 | spec-reviewer | medium | Checklist verification, not creative work |
 | documenter | medium | Structured output, clear patterns |
 | diary-recorder | low | Simple capture, minimal reasoning |
-| bughunt orchestrator | medium | Thin delegation only, no analysis (opus) |
 | bughunt scope-decomposer | medium | File listing and grouping (sonnet) |
 | bughunt personas (6) | high | Deep analysis from specialized perspectives (sonnet) |
 | bughunt findings-collector | medium | Normalization, no reasoning (sonnet) |
