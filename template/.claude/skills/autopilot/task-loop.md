@@ -56,18 +56,12 @@ TESTER result?
 
 Deterministic checks BEFORE AI review (saves tokens on obvious issues).
 
+### Step 3a: Code Quality Pre-Check
+
 **If `scripts/pre-review-check.py` exists** → run it:
 
 ```bash
 python scripts/pre-review-check.py {files_changed}
-```
-
-**Decision Tree:**
-```
-Exit code?
-├─ 0 (PASS) → Step 4 (SPEC REVIEWER)
-└─ 1 (FAIL) → Back to CODER with issues list
-    └─ CODER fixes issues → re-run PRE-CHECK (Step 3)
 ```
 
 **What PRE-CHECK catches:**
@@ -75,7 +69,34 @@ Exit code?
 - Bare `except:` or `except Exception:` without re-raise
 - Files > 400 LOC (code) or > 600 LOC (tests)
 
-**If not found** → skip to next step (pre-review check is optional, project-specific)
+**If not found** → skip to Step 3b
+
+### Step 3b: Blueprint Compliance (v2, NEW)
+
+**If `ai/blueprint/system-blueprint/` exists** → check:
+
+```bash
+node .claude/scripts/validate-blueprint-compliance.mjs ai/features/{TASK_ID}*.md ai/blueprint/system-blueprint
+```
+
+**What BLUEPRINT CHECK catches:**
+- Types not matching cross-cutting.md (e.g., float for money)
+- Import direction violations
+- Domain placement outside domain-map.md
+- Missing Blueprint Reference in spec
+
+**If blueprint doesn't exist** → skip (backwards compatible with legacy projects)
+
+### Pre-Check Decision Tree
+```
+Step 3a result?
+├─ PASS (or skipped) → Step 3b
+└─ FAIL → CODER fixes → re-run Step 3a
+
+Step 3b result?
+├─ PASS (or skipped) → Step 4 (SPEC REVIEWER)
+└─ FAIL → CODER fixes → re-run Step 3b
+```
 
 ---
 

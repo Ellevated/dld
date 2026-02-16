@@ -137,18 +137,20 @@ Glossary: ai/glossary/{domain}.md
 
 ---
 
-## Skills (v3.7)
+## Skills (v4.0)
 
 **Rule:** If skill applies — MUST use it.
 
 | Skill | When |
 |-------|------|
-| **bootstrap** | Day 0 — unpack idea from your head |
-| **spark** | New feature, bug, architecture decision. Includes Bug Hunt Mode for deep multi-agent analysis (auto-handoff to autopilot) |
-| **autopilot** | Execute tasks (plan subagent + fresh coder/tester per task + worktree) |
-| **council** | Complex/controversial decisions (5 experts) |
+| **bootstrap** | Day 0 — extract idea from founder's head (interviewer, not decider) |
+| **board** | Business architecture — revenue, channels, org model (after bootstrap) |
+| **architect** | System architecture — domains, data, APIs, cross-cutting (after board) |
+| **spark** | Feature spec — multi-agent with 4 scouts + tests mandatory (within blueprint) |
+| **autopilot** | Execute tasks (plan + coder/tester per task + reflect upstream) |
+| **council** | Complex/controversial decisions (5 experts + cross-critique) |
 | **audit** | Code analysis, consistency check (READ-ONLY) |
-| **reflect** | Synthesize diary entries into CLAUDE.md rules |
+| **reflect** | Synthesize diary + upstream signals into rules |
 | **scout** | Isolated research via Exa + Context7 |
 | **release** | Update CHANGELOG, README, docs after changes (fully automatic) |
 | **skill-writer** | Create agents/skills or optimize CLAUDE.md, rules, prompts |
@@ -169,21 +171,24 @@ Claude auto-selects skills based on user intent. Each skill has semantic trigger
 
 | User says | Skill activated |
 |-----------|-----------------|
+| "new project", "day 0" | bootstrap |
+| "business strategy", "revenue model" | board |
+| "system design", "architecture" | architect |
 | "add feature", "create spec", "bug" | spark |
 | "implement", "execute", "build this" | autopilot |
 | "should we", "which approach", "debate" | council |
 | "research", "find docs", "how does X work" | scout |
 | "find all", "analyze code", "check for" | audit |
 | "reflect", "what did we learn" | reflect |
-| "new project", "day 0" | bootstrap |
 | "diagram", "draw", "visualize architecture" | diagram |
 
 **Flows:**
 ```
-New project: /bootstrap → Day 1 → /spark first feature
-Feature:     /spark → /autopilot (plan is subagent inside autopilot)
+New project: /bootstrap → /board → /architect → /spark → /autopilot
+Feature:     /spark → /autopilot (within blueprint constraints)
 Bug:         diagnose (5 Whys) → /spark → /autopilot
 Hotfix:      <5 LOC → fix directly with user approval
+Escalation:  Autopilot → Spark → Architect → Board → Founder
 ```
 
 **New in v3.7:**
@@ -277,9 +282,14 @@ src/
 └── skills/     # spark, autopilot, council, etc.
 
 ai/
-├── idea/       # From /bootstrap
-├── diary/      # Session learnings (v3.7)
-├── features/   # Task specs
-├── ARCHITECTURE.md
+├── idea/       # From /bootstrap (raw founder input)
+├── board/      # From /board (director research, strategies)
+├── architect/  # From /architect (persona research, architectures)
+├── blueprint/  # Business Blueprint + System Blueprint
+│   ├── business-blueprint.md
+│   └── system-blueprint/
+├── reflect/    # Upstream signals between levels
+├── diary/      # Session learnings
+├── features/   # Task specs from /spark
 └── backlog.md
 ```

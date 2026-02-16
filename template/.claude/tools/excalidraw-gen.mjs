@@ -247,6 +247,16 @@ function renderArrow(edge, fromPos, toPos) {
     endX = goingRight ? toPos.x : toPos.x + toPos.width;
     endY = toPos.y + toPos.height / 2;
     points = [[0, 0], [0, endY - startY], [endX - startX, endY - startY]];
+  } else if (elbow === 'loop-right' || elbow === 'loop-left') {
+    // U-shape: exit side → vertical → enter side of target (for feedback loops)
+    const pad = 120;
+    const goRight = elbow === 'loop-right';
+    startX = goRight ? fromPos.x + fromPos.width : fromPos.x;
+    startY = fromPos.y + fromPos.height / 2;
+    endX = goRight ? toPos.x + toPos.width : toPos.x;
+    endY = toPos.y + toPos.height / 2;
+    const farX = (goRight ? Math.max(startX, endX) : Math.min(startX, endX)) + (goRight ? pad : -pad);
+    points = [[0, 0], [farX - startX, 0], [farX - startX, endY - startY], [endX - startX, endY - startY]];
   } else {
     // Straight line (default)
     const vertical = dy > dx * 0.3;
@@ -281,15 +291,52 @@ function renderArrow(edge, fromPos, toPos) {
   })];
 
   if (edge.label) {
-    // Place label at the middle waypoint of the path
-    const midIdx = Math.floor(points.length / 2);
-    const midPt = points[midIdx];
-    const lx = startX + midPt[0];
-    const ly = startY + midPt[1];
     const lw = textWidth(edge.label, FONT.edge);
-    elements.push(el(uid(), 'text', lx - lw / 2, ly - FONT.edge, {
+    const lh = FONT.edge * 1.5;
+    let lx, ly;
+
+    if ((elbow === 'loop-right' || elbow === 'loop-left') && points.length === 4) {
+      // Loop: label on the vertical segment (2nd segment)
+      const mx = (points[1][0] + points[2][0]) / 2;
+      const my = (points[1][1] + points[2][1]) / 2;
+      lx = startX + mx + (elbow === 'loop-right' ? 8 : -lw - 8);
+      ly = startY + my - lh / 2;
+    } else if (elbow && points.length === 3) {
+      // Elbowed: label at midpoint of first segment, offset away from line
+      const mx = (points[0][0] + points[1][0]) / 2;
+      const my = (points[0][1] + points[1][1]) / 2;
+      lx = startX + mx;
+      ly = startY + my;
+      if (elbow === 'h') {
+        // Horizontal first segment → place label above the line
+        lx -= lw / 2;
+        ly -= lh + 4;
+      } else {
+        // Vertical first segment → place label to the right
+        lx += 8;
+        ly -= lh / 2;
+      }
+    } else {
+      // Straight: true midpoint (average of start and end)
+      const lastPt = points[points.length - 1];
+      lx = startX + lastPt[0] / 2;
+      ly = startY + lastPt[1] / 2;
+      const adx = Math.abs(lastPt[0]);
+      const ady = Math.abs(lastPt[1]);
+      if (ady > adx * 2) {
+        // Mostly vertical → offset right of the line
+        lx += 8;
+        ly -= lh / 2;
+      } else {
+        // Mostly horizontal or diagonal → center above the line
+        lx -= lw / 2;
+        ly -= lh + 4;
+      }
+    }
+
+    elements.push(el(uid(), 'text', lx, ly, {
       width: lw,
-      height: FONT.edge * 1.5,
+      height: lh,
       strokeWidth: 0,
       fontSize: FONT.edge,
       text: edge.label,

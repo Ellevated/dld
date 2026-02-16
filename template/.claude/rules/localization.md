@@ -17,6 +17,8 @@ HOW TO USE:
 |---------|-------|
 | "chispa", "crear especificación" | `/spark` |
 | "piloto automático", "ejecutar" | `/autopilot` |
+| "junta directiva", "estrategia de negocio" | `/board` |
+| "arquitecto", "diseñar sistema" | `/architect` |
 | "consejo", "debate" | `/council` |
 | "auditoría", "revisar código" | `/audit` |
 | "explorador", "investigar" | `/scout` |

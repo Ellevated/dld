@@ -14,21 +14,25 @@ Final verification, status update, merge, and cleanup.
 2. Exa Verification (see below)
    └─ warnings only, never block
 
-3. Pre-Done Checklist (see below)
+3. REFLECT (v2, NEW — see below)
+   └─ Write upstream signals if issues found
+   └─ Informational only, never blocks
+
+4. Pre-Done Checklist (see below)
    └─ ALL items must be checked
 
-4. Update status → done
+5. Update status → done
    └─ Spec file: **Status:** done
    └─ Backlog: done
    └─ VERIFY both match!
 
-5. Commit status change:
+6. Commit status change:
    git commit -m "docs: mark {TYPE}-XXX as done"
 
-6. Push feature branch (backup):
+7. Push feature branch (backup):
    git push -u origin {type}/{ID}
 
-7. Merge to develop:
+8. Merge to develop:
    cd "$MAIN_REPO"
    git checkout develop
    git stash push -m "autopilot-temp" (if uncommitted)
@@ -37,7 +41,7 @@ Final verification, status update, merge, and cleanup.
    git push origin develop
    git stash pop (if stashed)
 
-8. Cleanup:
+9. Cleanup:
    **Safety check:** Verify no uncommitted changes before force-removal
    ```bash
    cd ".worktrees/{ID}"
@@ -52,17 +56,57 @@ Final verification, status update, merge, and cleanup.
    git worktree remove ".worktrees/{ID}" --force
    git branch -d {type}/{ID}
 
-9. Loop Mode Exit Check:
-   If SPEC_ID was provided (loop mode):
-   - Do NOT continue to next spec
-   - Do NOT call /compact
-   - EXIT cleanly — external orchestrator handles next
-   - Fresh context will be provided for next spec
+10. Loop Mode Exit Check:
+    If SPEC_ID was provided (loop mode):
+    - Do NOT continue to next spec
+    - Do NOT call /compact
+    - EXIT cleanly — external orchestrator handles next
+    - Fresh context will be provided for next spec
 
-   If interactive mode (no SPEC_ID):
-   - Continue to next queued spec
-   - Context already managed by orchestrator
+    If interactive mode (no SPEC_ID):
+    - Continue to next queued spec
+    - Context already managed by orchestrator
 ```
+
+## Reflect (v2, NEW)
+
+After tests pass, before Pre-Done Checklist:
+
+**Step 1:** Compare spec (what was planned) vs git diff (what was done)
+
+**Step 2:** Check for issues:
+- Were there debug retries? (check debug log)
+- Were there escalations? (check escalation log)
+- Did coder find spec gaps during implementation?
+- Did blueprint compliance check fail and need fixes?
+
+**Step 3:** If issues found, write upstream signals:
+
+```yaml
+Task tool:
+  subagent_type: "diary-recorder"
+  model: haiku
+  prompt: |
+    spec_id: "{TASK_ID}"
+    spec_path: "ai/features/{TASK_ID}*.md"
+    git_diff_summary: "{summary of changes}"
+    issues_found:
+      - type: gap | contradiction | missing_rule
+        message: "{what was missing or wrong}"
+        evidence: "{file:line — specific evidence}"
+
+    TASK: Write upstream signal to ai/reflect/upstream-signals.md
+    Format: SIGNAL-{timestamp} with source=autopilot, target=spark|architect
+
+    If no issues → write nothing (no empty signals!)
+```
+
+**Rules:**
+- Reflect is INFORMATIONAL — never blocks finishing
+- Only write signals for REAL issues, not cosmetic differences
+- If spec was perfect → skip reflect (no signal needed)
+
+---
 
 ## Exa Verification
 

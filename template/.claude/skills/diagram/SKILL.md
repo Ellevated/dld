@@ -163,11 +163,26 @@ For side-connections (error paths, secondary outputs), use elbowed routing to av
 | _(none)_ | Straight line (default) | Main flow, fan-out |
 | `"h"` | Horizontal first, then vertical | Side exit → turn down/up |
 | `"v"` | Vertical first, then horizontal | Up/down exit → turn sideways |
+| `"loop-right"` | U-shape via right side (3 segments) | Feedback loop going right |
+| `"loop-left"` | U-shape via left side (3 segments) | Feedback loop going left |
 
+**L-shape (h/v):**
 ```json
 {"from": "ok", "to": "retry", "label": "rejected", "style": "dashed", "elbow": "h"},
 {"from": "retry", "to": "step3", "label": "re-run", "style": "dashed", "elbow": "v"}
 ```
+
+**U-shape (loop) — for back-edges / feedback:**
+```json
+{"from": "users", "to": "backlog", "label": "feedback", "style": "dashed", "elbow": "loop-left"}
+```
+
+### Routing Gotchas
+
+1. **Same-Y nodes** — don't use elbow, use straight (horizontal line is correct)
+2. **loop-right** — check that no side nodes (Scout, etc.) sit in the path. If right side is occupied, use `loop-left`
+3. **Labels on elbows** — placed on first segment midpoint, offset away from line
+4. **Labels on straight vertical arrows** — offset right (+8px) to avoid overlapping the line
 
 ### Multi-line Labels
 

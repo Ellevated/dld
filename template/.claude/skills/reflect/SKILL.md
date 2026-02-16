@@ -4,9 +4,9 @@ description: Analyze diary entries → propose improvements to rules, agents, sk
 model: opus
 ---
 
-# Reflect — Synthesize Diary into Rules
+# Reflect — Synthesize Diary + Upstream Signals into Rules
 
-Analyzes diary entries and creates spec with proposals for CLAUDE.md.
+Analyzes diary entries AND upstream signals, creates spec with proposals for CLAUDE.md.
 
 **Activation:** `/reflect`, "reflection", "let's analyze the diary"
 
@@ -24,9 +24,11 @@ Analyzes diary entries and creates spec with proposals for CLAUDE.md.
 ## When to Use
 
 - After 5+ pending entries in diary
+- After 5+ upstream signals in `ai/reflect/upstream-signals.md`
 - Weekly maintenance
 - After a series of similar bugs
 - Before major work (refresh memory)
+- After completing a project phase (Board → Architect → Spark cycles)
 
 ---
 
@@ -39,6 +41,16 @@ cat ai/diary/index.md
 ```
 
 Find all entries with `pending` status.
+
+### Step 1.5: Read Upstream Signals (v2, NEW)
+
+If `ai/reflect/upstream-signals.md` exists, read it.
+If `ai/reflect/cross-level-patterns.md` exists, read it.
+
+Upstream signals are feedback from lower levels (Autopilot → Spark → Architect → Board).
+Cross-level patterns are recurring issues detected by the reflect-aggregator.
+
+These provide ADDITIONAL input alongside diary entries.
 
 ### Step 2: Read Pending Entries
 
