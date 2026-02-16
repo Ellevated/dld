@@ -1,4 +1,4 @@
-# Feature Mode — Spark
+# Feature Mode — Spark (8-Phase Protocol)
 
 Self-contained protocol for Feature Mode execution. Extract from SKILL.md.
 
@@ -6,10 +6,11 @@ Self-contained protocol for Feature Mode execution. Extract from SKILL.md.
 
 ## Purpose
 
-Transform raw feature ideas into executable specs through:
-1. Socratic Dialogue (5-7 deep questions)
-2. Research (Exa + Context7)
-3. Structured specification
+Transform raw feature ideas into executable specs through 8 phases:
+
+```
+Collect → Research → Synthesize → Decide → Write → Validate → Reflect → Completion
+```
 
 **When to use:** New features, user flows, architecture decisions.
 
@@ -17,9 +18,13 @@ Transform raw feature ideas into executable specs through:
 
 ---
 
-## Socratic Dialogue
+## Phase 1: COLLECT (Socratic Dialogue)
 
-For NEW features — ask 5-7 deep questions. One at a time!
+Two modes depending on feature origin:
+
+### Mode A: Human-Initiated
+
+User started the feature — ask 5-7 deep questions. ONE at a time!
 
 **Question Bank (pick 5-7 relevant):**
 
@@ -32,102 +37,146 @@ For NEW features — ask 5-7 deep questions. One at a time!
 7. **Existing:** "Is there an existing solution we can adapt?"
 8. **Priority:** "How urgent is this? P0/P1/P2?"
 9. **Dependencies:** "What does it depend on? What's blocking?"
+10. **Past Behavior:** "Have users tried to solve this themselves? How?"
+11. **Kill Question:** "If we do nothing — what happens in 3 months?"
 
 **Rules:**
 - Ask ONE question at a time — wait for answer
 - Don't move to design until key questions are answered
 - If user says "just do it" — ask 2-3 minimum clarifying questions anyway
-- Capture insights for spec
+- Capture insights for scout context
+
+### Mode B: Blueprint-Initiated
+
+Architect/Board assigned this task — read from blueprint, do NOT ask user.
+
+1. Read task description from `ai/blueprint/system-blueprint/`
+2. If clarifications needed → dispatch `architect-facilitator` as subagent
+   - Architect answers with full system-blueprint context
+   - Spark gets clarifications WITHOUT bothering the user
+3. Human = 0% involvement (per design doc)
+
+**Output for both modes:** Problem statement captured, ready for scouts.
 
 ---
 
-## Research Templates
+## Phase 2: RESEARCH (4 Parallel Scouts)
 
-Use these templates when invoking scout research.
-
-### Feature / New Functionality
+Dispatch 4 isolated scouts in parallel. Each scout gets a frozen snapshot — they do NOT see each other's work.
 
 ```yaml
+# Scout 1: External (best practices, libraries)
 Task tool:
-  description: "Scout: {feature_name} best practices"
-  subagent_type: "scout"
-  max_turns: 8
+  description: "Spark scout: external research"
+  subagent_type: spark-external       # → agents/spark/external.md
   prompt: |
-    MODE: quick
-    QUERY: "Best practices for {feature_essence} in {tech_stack}. How to implement {pattern}? Common pitfalls, recommended approach, production-ready patterns."
-    TYPE: pattern
-    DATE: {current date}
+    FEATURE: {feature description}
+    BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
+    SOCRATIC INSIGHTS: {key insights from Phase 1}
+    Output: research-external.md
+
+# Scout 2: Codebase (existing code, dependencies)
+Task tool:
+  description: "Spark scout: codebase analysis"
+  subagent_type: spark-codebase       # → agents/spark/codebase.md
+  prompt: |
+    FEATURE: {feature description}
+    BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
+    SOCRATIC INSIGHTS: {key insights from Phase 1}
+    Output: research-codebase.md
+
+# Scout 3: Patterns (alternatives, trade-offs)
+Task tool:
+  description: "Spark scout: alternative patterns"
+  subagent_type: spark-patterns       # → agents/spark/patterns.md
+  prompt: |
+    FEATURE: {feature description}
+    BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
+    SOCRATIC INSIGHTS: {key insights from Phase 1}
+    Output: research-patterns.md
+
+# Scout 4: Devil's Advocate
+Task tool:
+  description: "Spark scout: devil's advocate"
+  subagent_type: spark-devil          # → agents/spark/devil.md
+  prompt: |
+    FEATURE: {feature description}
+    BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
+    SOCRATIC INSIGHTS: {key insights from Phase 1}
+    Output: research-devil.md
 ```
 
-### Prompt / Agent Change
+**All 4 scouts run in PARALLEL and do NOT see each other's work.**
 
-```yaml
-Task tool:
-  description: "Scout: {prompt_aspect} patterns"
-  subagent_type: "scout"
-  max_turns: 8
-  prompt: |
-    MODE: quick
-    QUERY: "Best practices for {prompt_aspect} in LLM agent systems. How to structure {specific_element}. Production patterns 2024-2026."
-    TYPE: pattern
-    DATE: {current date}
-```
+If `ai/blueprint/system-blueprint/` exists, ALL scouts receive it as CONSTRAINT.
 
-### Architecture Decision
-
-```yaml
-Task tool:
-  description: "Scout: {decision} research"
-  subagent_type: "scout"
-  max_turns: 12
-  prompt: |
-    MODE: deep
-    QUERY: "{option_A} vs {option_B} for {use_case} in {tech_stack}. Production experience, trade-offs, performance benchmarks."
-    TYPE: architecture
-    DATE: {current date}
-```
-
-**How to fill `{placeholders}`:**
-- `{feature_essence}` — core of what we're building (e.g., "retry queue", "rate limiting", "webhook handler")
-- `{tech_stack}` — our stack (e.g., "Python aiogram 3", "PostgreSQL", "FastAPI")
-- `{pattern}` — specific pattern if known (e.g., "exponential backoff", "circuit breaker")
-- `{prompt_aspect}` — what aspect of prompt (e.g., "output format enforcement", "agent reliability", "tool selection")
+**Wait for all 4 scouts to complete before Phase 3.**
 
 ---
 
-## Deep Research
+## Phase 3: SYNTHESIZE
 
-**Trigger:** After Socratic Dialogue, when approach is narrowed. MANDATORY for deep mode.
+Read all inputs:
+- Problem statement from Phase 1
+- 4 research files from Phase 2
+- `ai/blueprint/system-blueprint/` (as constraint)
 
-```yaml
-Task tool:
-  description: "Scout deep: {refined_topic}"
-  subagent_type: "scout"
-  max_turns: 15
-  prompt: |
-    MODE: deep
-    QUERY: "{confirmed_approach} implementation in {tech_stack}. Step-by-step pattern, code structure, edge cases. {specific_context_from_dialogue}."
-    TYPE: pattern
-    DATE: {current date}
-```
+### Build 2-3 Approaches WITHIN Blueprint
 
-**How to fill from dialogue context:**
-- Use the approach user confirmed in Socratic Dialogue
-- Include specific terms from discussion
-- Narrow to the exact pattern/library chosen
+For each approach:
 
----
+| Field | Source |
+|-------|--------|
+| Summary | Pattern scout + External scout recommendations |
+| Affected files | Codebase scout Impact Tree |
+| Risks | Devil scout edge cases |
+| Test strategy | Devil scout + External scout |
+| Blueprint compliance | ✓ or ⚠️ with explanation |
 
-## Scout Results Integration
+### Rules
 
-- **Socratic Dialogue** MUST reference Scout findings: "Found [X] in [source]. Fits us?"
-- **Approaches section** MUST cite Scout sources: "Approach 1: [Name] (based on [Scout source])"
-- **Implementation Plan** MUST include Scout URLs in Research Sources section
-- If Scout found nothing useful — note it and proceed with own analysis
+- **NO INVENTION** — if scouts didn't find it, it's a gap (note for Phase 7 reflect)
+- **Cite sources** — every claim must reference a scout file
+- **Conflicts** → apply Evaporating Cloud (what's the underlying assumption?)
+- **All approaches must respect blueprint** — if none fit, escalate to ARCHITECT in Phase 4
+
+**Output:** 2-3 approaches ready for Phase 4 decision.
 
 ---
 
-## Feature Spec Template
+## Phase 4: DECIDE
+
+Route based on feature scope, clarity, and risk:
+
+### AUTO (you decide)
+- Feature is within blueprint constraints
+- Scope is clear from dialogue
+- No controversial trade-offs
+- Devil scout's verdict is "Proceed"
+→ Select best approach, move to Phase 5
+
+### HUMAN (ask user)
+- Multiple approaches with no clear winner
+- Scope unclear after dialogue
+- Devil scout suggests simpler alternative
+→ Present 2-3 approaches, user chooses
+
+### COUNCIL (escalate)
+- Controversial (Devil scout says "Proceed with caution")
+- Cross-domain impact (affects 3+ domains)
+- Major architectural decision
+→ `/council` (5 experts + cross-critique)
+
+### ARCHITECT (escalate)
+- Blueprint gap (domain missing, rule missing)
+- Blueprint contradiction (research conflicts with blueprint)
+→ Architect updates blueprint → retry from Phase 3
+
+---
+
+## Phase 5: WRITE (Feature Spec Template)
+
+Write spec using selected approach from Phase 4:
 
 ```markdown
 # Feature: [FTR-XXX] Title
@@ -194,6 +243,15 @@ Task tool:
 nodejs: false
 docker: false
 database: false
+
+---
+
+## Blueprint Reference
+
+<!-- If ai/blueprint/system-blueprint/ exists, fill this section -->
+**Domain:** {which domain from domain-map.md}
+**Cross-cutting:** {Money? Auth? Errors? — from cross-cutting.md}
+**Data model:** {which entities from data-architecture.md are affected}
 
 ---
 
@@ -290,11 +348,32 @@ Map every User Flow step to Implementation Task:
 
 ---
 
+## Tests (MANDATORY)
+
+### What to test
+- [ ] {test case 1 — concrete scenario}
+- [ ] {test case 2}
+- [ ] {edge case from devil's advocate}
+
+### How to test
+- Unit: {what to cover with unit tests}
+- Integration: {what needs integration tests}
+- E2E: {if needed — which user flow}
+
+### TDD Order
+1. Write test → FAIL → Implement → PASS
+
+---
+
 ## Definition of Done
 
 ### Functional
 - [ ] Feature works as specified
 - [ ] All tasks from Implementation Plan completed
+
+### Tests
+- [ ] All test cases from ## Tests section pass
+- [ ] Coverage not decreased
 
 ### E2E User Journey (REQUIRED for UI features)
 - [ ] Every UI element is interactive (buttons respond to clicks)
@@ -314,10 +393,105 @@ Map every User Flow step to Implementation Task:
 
 ---
 
-## Next Steps
+## Phase 6: VALIDATE
 
-After spec is created → read `completion.md` for:
-- ID determination protocol
+Before marking spec `queued`, run 5 structural validation gates.
+
+### Gate 1: Spec Completeness
+```
+□ Enough information for implementation?
+□ No contradictions with system blueprint?
+□ Allowed Files cover all tasks?
+□ Edge cases covered?
+□ DoD is measurable?
+```
+
+### Gate 2: Tests Gate
+```
+□ Tests section filled?
+□ Minimum 3 test cases?
+□ Has edge case from devil's advocate?
+□ TDD Order defined?
+□ DoD includes tests?
+```
+
+### Gate 3: Blueprint Compliance
+```
+□ Blueprint Reference filled?
+□ Cross-cutting rules applied (Money, Auth, Errors)?
+□ Data model matches data-architecture.md?
+□ Feature respects domain boundaries from domain-map.md?
+```
+
+### Gate 4: UI Event Completeness (if UI feature)
+```
+□ Every callback_data has handler in Allowed Files?
+□ No orphan callbacks?
+```
+
+### Gate 5: Flow Coverage
+```
+□ Every User Flow step covered by Implementation Task or marked "existing"?
+□ No gaps in flow?
+```
+
+**GATE RESULT:** pass / reject with reasons
+
+**If any gate fails →** spec stays `draft`, return to Phase 3 (re-synthesize with feedback).
+
+---
+
+## Phase 7: REFLECT
+
+After spec passes all validation gates, before completion:
+
+### LOCAL Signal
+Improvement for next Spark iteration:
+- What scouts missed, what worked well
+- Which question bank items were most useful
+
+### UPSTREAM Signal
+If issues were found during research/synthesis that affect upstream levels:
+- Blueprint gap → write upstream signal with target=architect
+- Missing cross-cutting rule → write upstream signal with target=architect
+- Business question unanswered → write upstream signal with target=board
+
+### PROCESS Signal
+Meta-observation about the process itself:
+- Did auto-decide work correctly for this feature?
+- Was council escalation needed but not triggered (or vice versa)?
+- Scout coverage: did any scout find nothing useful?
+
+```yaml
+# Only if issues found — don't write empty signals!
+Append to ai/reflect/upstream-signals.md:
+
+## SIGNAL-{timestamp}
+
+| Field | Value |
+|-------|-------|
+| Source | spark |
+| Spec ID | {TASK_ID} |
+| Target | architect / board |
+| Type | gap / contradiction / missing_rule |
+| Severity | info / warning / critical |
+
+### Message
+{What's missing or wrong in the blueprint}
+
+### Evidence
+{Specific finding from scout research}
+
+### Suggested Action
+{What Architect/Board should do}
+```
+
+---
+
+## Phase 8: COMPLETION
+
+After spec is created and validated → read `completion.md` for:
+- ID determination protocol (sequential across ALL types)
 - Backlog entry format
 - Auto-commit rules
-- Output format
+- Handoff to autopilot
