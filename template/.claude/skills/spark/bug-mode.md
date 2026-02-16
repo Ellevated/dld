@@ -200,7 +200,6 @@ Task:
 ```yaml
 # Success (groups, NOT specs — Step 6 is Spark's job):
 status: completed
-session_dir: "ai/.bughunt/YYYYMMDD-target/"
 report_path: "ai/features/BUG-XXX-bughunt.md"
 spec_id: "BUG-XXX"
 groups:
@@ -216,7 +215,6 @@ total_findings: N
 relevant_findings: N
 groups_formed: M
 zones_analyzed: N
-validator_file: "ai/.bughunt/YYYYMMDD-target/step4/validator-output.yaml"
 target_path: "{TARGET_PATH}"
 degraded_steps: []
 warnings: []
@@ -229,7 +227,7 @@ completed_steps: [0, 1, ...]
 partial_results: "{what was produced}"
 ```
 
-**Note:** All intermediate data is stored in `session_dir` (file-based IPC). The orchestrator's context stays small — it tracks only file paths and counts, never raw findings.
+**Note:** All intermediate data flows through agent responses (response-based IPC). The orchestrator captures each agent's full response and forwards it inline to downstream agents.
 
 **If error:** Report partial results to user. Offer to retry failed step or switch to Quick mode.
 
@@ -255,23 +253,22 @@ For each group (index i starting from 1):
     description: "Bug Hunt: spec {group_spec_id} ({group_name})"
     prompt: |
       GROUP_NAME: {group_name}
-      VALIDATOR_FILE: {validator_file from orchestrator}
       BUG_HUNT_REPORT: {spec_id from orchestrator}
       SPEC_ID: {group_spec_id}
       TARGET: {target_path from orchestrator}
-      Create standalone spec at ai/features/{group_spec_id}.md
+
+      GROUP_DATA:
+      {paste this group's findings, priority, and rationale from orchestrator's groups output}
 ```
 
 Launch ALL groups in PARALLEL (single message with multiple Task calls).
 
-Each agent writes spec to disk and returns:
-```yaml
-status: completed
-spec_id: "{SPEC_ID}"
-spec_path: "ai/features/{SPEC_ID}.md"
-group_name: "{GROUP_NAME}"
-findings_count: N
-```
+Each agent returns the COMPLETE spec content in its response (wrapped in a ```spec``` fenced block) plus a summary.
+
+After collecting all responses:
+1. For each successful response, extract the spec content from the ```spec``` block
+2. Write the spec to `ai/features/{SPEC_ID}.md` using Write tool
+3. Verify the file was written
 
 Collect all results as SPEC_RESULTS. If some agents fail, report successful specs and list failed groups.
 
@@ -327,14 +324,10 @@ After Step 6 completes (all solution-architects returned):
    git diff --cached --quiet || git commit -m "docs: Bug Hunt — {N} grouped specs created"
    ```
    Note: If `ai/` is in `.gitignore`, `git add` is a no-op and no commit is created — this is correct.
-5. **Cleanup session** — Remove intermediate data:
-   ```bash
-   rm -rf {session_dir}
-   ```
-6. **Report to user:**
+5. **Report to user:**
    - If all specs written: "Bug Hunt complete. {N} specs created ({IDs}). Run autopilot?"
    - If some specs failed: "Bug Hunt complete. {N}/{M} specs created. Failed: {list}. Review?"
-7. If user confirms → autopilot picks up specs from backlog independently
+6. If user confirms → autopilot picks up specs from backlog independently
 
 → Go to `completion.md` for ID protocol and backlog entry.
 
