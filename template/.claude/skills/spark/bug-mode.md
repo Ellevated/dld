@@ -229,9 +229,26 @@ completed_steps: [0, 1, ...]
 partial_results: "{what was produced}"
 ```
 
-**Note:** All intermediate data is stored in `session_dir` (file-based IPC). The orchestrator's context stays small — it tracks only file paths and counts, never raw findings.
+**Note:** Response is the PRIMARY IPC channel for subagents. Files are SECONDARY (durable artifacts). The orchestrator returns all data in its response — Spark writes files if agents didn't.
 
 **If error:** Report partial results to user. Offer to retry failed step or switch to Quick mode.
+
+---
+
+## Post-Orchestrator: File Verification & Fallback
+
+**Why this exists:** LLMs are response-first optimized. Agents may return data in their response without writing files to disk. The orchestrator's response contains all pipeline data. Spark ensures files exist.
+
+After orchestrator returns `status: completed` or `status: degraded`:
+
+1. **Check report file:** `Glob ai/features/{spec_id}*bughunt*.md`
+   - If EXISTS → proceed
+   - If MISSING → **Write the report yourself** from orchestrator response data (use Bug Hunt Report Template below)
+2. **Check session dir:** `Glob ai/.bughunt/*/step4/validator-output.yaml`
+   - If EXISTS → use for Step 6
+   - If MISSING → **extract groups from orchestrator response** (groups field in YAML output)
+
+**Rule:** After this phase, the report file MUST exist on disk. Groups data MUST be available (from file or response).
 
 ---
 
@@ -264,13 +281,22 @@ For each group (index i starting from 1):
 
 Launch ALL groups in PARALLEL (single message with multiple Task calls).
 
-Each agent writes the spec directly to `ai/features/{SPEC_ID}.md` using its Write tool and returns a short summary.
+Each agent writes the spec directly to `ai/features/{SPEC_ID}.md` using its Write tool and returns spec content in response.
 
-After collecting all responses:
-1. Verify each spec file was written to disk (use Glob for `ai/features/BUG-*.md`)
-2. If any file is missing, report to user
+### File Fallback (MANDATORY after each agent returns)
 
-Collect all results as SPEC_RESULTS. If some agents fail, report successful specs and list failed groups.
+After collecting all responses, for EACH group:
+
+1. **Check file:** `Glob ai/features/{group_spec_id}.md`
+2. **If EXISTS** → agent wrote it, proceed
+3. **If MISSING** → **Write the spec yourself** from agent's response content
+   - Extract the spec markdown from the agent's response
+   - Write to `ai/features/{group_spec_id}.md` using Write tool
+   - This is NOT a failure — it's the expected fallback path
+
+After all files verified/written:
+- Collect results as SPEC_RESULTS
+- If some agents fail entirely (no response), report failed groups
 
 ---
 
