@@ -1,6 +1,6 @@
 ---
 name: audit
-description: Systematic code analysis (READ-ONLY). Finds patterns and issues in codebase.
+description: Systematic code analysis (READ-ONLY). Light mode for focused checks, Deep mode for full forensics with 6 parallel personas.
 model: opus
 ---
 
@@ -8,7 +8,9 @@ model: opus
 
 READ-ONLY systematic analysis for finding patterns, inconsistencies, and issues.
 
-**Activation:** `audit`, `audit {zone}`
+**Activation:** `/audit`, `/audit {zone}`, `/audit deep`, "deep audit", "full audit"
+**Output (Light):** `ai/audit/YYYY-MM-DD-{zone}.md`
+**Output (Deep):** `ai/audit/deep-audit-report.md` (consolidated from 6 persona reports)
 
 ## When to Use
 
@@ -17,16 +19,45 @@ READ-ONLY systematic analysis for finding patterns, inconsistencies, and issues.
 - Refactor-scan: "where else to update after Z"
 - Security scan: "check for vulnerabilities"
 - Coverage check: "what's not covered by tests"
+- **Full forensics for retrofit:** "deep audit", from `/retrofit`
 
 **Don't use:** Features → `/spark`, Bug fixes → `/spark`
 
 ## Principles
 
-1. **READ-ONLY** — Never modify files (except report in `ai/audit/`)
+1. **READ-ONLY** — Never modify files (except reports in `ai/audit/`)
 2. **Systematic** — ALL relevant files, not just obvious
-3. **Zone-Aware** — Use zone prompt for focused analysis
+3. **Zone-Aware** — Use zone prompt for focused analysis (Light mode)
+4. **Inventory-First** — Deep mode starts with deterministic codebase scan (Phase 0)
 
-## Zone Prompts
+---
+
+## Mode Detection
+
+Audit operates in two modes:
+
+| Trigger | Mode | Description | Read Next |
+|---------|------|-------------|-----------|
+| `/audit`, `/audit {zone}`, "quick audit", "check code" | **Light** | Fast scan, single agent, zone-based | Continue below |
+| From `/retrofit`, `/audit deep`, "deep audit", "full audit" | **Deep** | Full forensics, 6 parallel personas + synthesizer | `deep-mode.md` |
+
+**Default:** Light (if unclear, ask user)
+
+## Modules
+
+| Module | When | Content |
+|--------|------|---------|
+| `deep-mode.md` | Mode = Deep | Phase 0 inventory + 6 personas + synthesis + gates |
+
+**Flow:**
+```
+Light: SKILL.md (zones below)
+Deep:  SKILL.md → deep-mode.md
+```
+
+---
+
+## Light Mode — Zone Prompts
 
 Quick-start templates for common audit scenarios. Copy, adapt, run.
 
@@ -255,9 +286,16 @@ recommendations: [actionable items]
 
 ## Integration
 
+### Light Mode
 | After Audit | Next Step |
 |-------------|-----------|
 | Found bugs | `/spark` per bug |
 | Need refactoring | Create TECH spec |
 | Security issue | Create SEC spec, escalate |
 | Just reporting | Done |
+
+### Deep Mode
+| After Deep Audit | Next Step |
+|-----------------|-----------|
+| From `/retrofit` | `/architect` (retrofit mode — uses audit report as primary input) |
+| Standalone | Create TECH/BUG specs for critical findings |
