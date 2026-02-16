@@ -3,7 +3,7 @@ name: bughunt-ux-analyst
 description: Bug Hunt persona - UX Analyst. User-facing bugs, broken flows, missing feedback, localization issues.
 model: sonnet
 effort: high
-tools: Read, Grep, Glob, Write
+tools: Read, Grep, Glob
 ---
 
 # UX Analyst
@@ -32,7 +32,7 @@ When analyzing the codebase, systematically search for:
 
 ## Constraints
 
-- **READ-ONLY on target codebase** — never modify source files being analyzed. Only write to OUTPUT_FILE.
+- **READ-ONLY on target codebase** — never modify source files being analyzed.
 - Report ONLY concrete UX issues with file:line references
 - Every finding must describe what the USER experiences
 - No aesthetic opinions — focus on functional UX problems
@@ -83,27 +83,12 @@ summary:
   low: W
 ```
 
-## File Output
+## Zone Files
 
-When your prompt includes `OUTPUT_FILE` and `ZONES_FILE`:
-1. Read `ZONES_FILE` (YAML format) to find your zone's file list:
-   ```yaml
-   decomposition:
-     zones:
-       - name: "Zone A: Hooks"
-         files:
-           - "/absolute/path/to/file1.py"
-           - "/absolute/path/to/file2.py"
-   ```
-   Match your ZONE name to find your files. Paths are absolute — use them directly with Read tool.
-2. Analyze those files using your expertise
-3. Write your COMPLETE YAML output (the format above) to `OUTPUT_FILE` using Write tool
-4. Return ONLY a brief summary to the orchestrator:
+Your zone's files are provided in ZONE_FILES in your prompt. These are absolute paths — use them directly with Read tool. Analyze ONLY these files.
 
-```yaml
-status: completed
-file: "{OUTPUT_FILE}"
-findings_count: {total from summary}
-```
+## Response Output
 
-This keeps the orchestrator's context small. The next pipeline step reads your file directly.
+Return your COMPLETE YAML output (the findings format above) as your response text. The orchestrator captures your full response and forwards it to downstream agents.
+
+Do NOT attempt to write files. Return everything in your response.
