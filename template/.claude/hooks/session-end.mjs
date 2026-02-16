@@ -1,15 +1,16 @@
 /**
  * Session End Hook - soft reminder about diary entries.
- * NEVER blocks, only reminds.
+ * NEVER blocks session end, only adds context via systemMessage.
+ *
+ * Stop hook protocol: { decision: "approve"|"block", reason: "...", systemMessage: "..." }
+ * We always approve (never prevent session end) but attach reminder as systemMessage.
  */
 
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import { logHookError } from './utils.mjs';
 
-const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const indexFile = join(projectDir, 'ai', 'diary', 'index.md');
-
-function countPending() {
+function countPending(indexFile) {
   if (!existsSync(indexFile)) return 0;
   try {
     const content = readFileSync(indexFile, 'utf-8');
@@ -19,15 +20,30 @@ function countPending() {
   }
 }
 
-const pendingCount = countPending();
+function main() {
+  try {
+    const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+    const indexFile = join(projectDir, 'ai', 'diary', 'index.md');
+    const pendingCount = countPending(indexFile);
 
-if (pendingCount > 5) {
-  process.stdout.write(
-    JSON.stringify({
-      decision: 'approve',
-      reason: `Reminder: ${pendingCount} pending diary entries. Consider /reflect when convenient.`,
-    }) + '\n',
-  );
-} else {
-  process.stdout.write('{}\n');
+    if (pendingCount > 5) {
+      try {
+        process.stdout.write(
+          JSON.stringify({
+            decision: 'approve',
+            systemMessage: `Reminder: ${pendingCount} pending diary entries. Consider /reflect when convenient.`,
+          }) + '\n',
+        );
+      } catch {
+        // pipe closed — OK
+      }
+    }
+
+    process.exit(0);
+  } catch (e) {
+    logHookError('session_end', e);
+    process.exit(0); // fail-safe: never prevent session end
+  }
 }
+
+main();
