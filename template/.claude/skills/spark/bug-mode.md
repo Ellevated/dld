@@ -264,12 +264,11 @@ For each group (index i starting from 1):
 
 Launch ALL groups in PARALLEL (single message with multiple Task calls).
 
-Each agent returns the COMPLETE spec content in its response (wrapped in a ```spec``` fenced block) plus a summary.
+Each agent writes the spec directly to `ai/features/{SPEC_ID}.md` using its Write tool and returns a short summary.
 
 After collecting all responses:
-1. For each successful response, extract the spec content from the ```spec``` block
-2. Write the spec to `ai/features/{SPEC_ID}.md` using Write tool
-3. Verify the file was written
+1. Verify each spec file was written to disk (use Glob for `ai/features/BUG-*.md`)
+2. If any file is missing, report to user
 
 Collect all results as SPEC_RESULTS. If some agents fail, report successful specs and list failed groups.
 

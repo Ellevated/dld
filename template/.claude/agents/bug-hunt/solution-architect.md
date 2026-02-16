@@ -3,7 +3,7 @@ name: bughunt-solution-architect
 description: Bug Hunt agent - Solution Architect. Creates standalone grouped specs from clustered findings with Impact Tree and research.
 model: opus
 effort: high
-tools: Read, Grep, Glob, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+tools: Read, Grep, Glob, Write, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 
 # Bug Hunt Solution Architect
@@ -110,20 +110,10 @@ When reading VALIDATOR_FILE:
 - Research sources must be included if external patterns used
 - One group = one coherent fix that goes through plan → code → test → review
 
-## Response Output
+## File Output
 
-Return your response in TWO parts:
-
-**Part 1: Spec content** — Return the COMPLETE spec markdown content (using the template above) wrapped in a fenced block:
-
-~~~
-```spec
-# Bug Fix: [{SPEC_ID}] {Group Title}
-...full spec content...
-```
-~~~
-
-**Part 2: Summary** — After the spec content, return:
+1. Write the COMPLETE spec (using the template above) to `ai/features/{SPEC_ID}.md` using the Write tool.
+2. Return a short summary in your response:
 
 ```yaml
 status: completed
@@ -132,5 +122,3 @@ spec_path: "ai/features/{SPEC_ID}.md"
 group_name: "{GROUP_NAME}"
 findings_count: N
 ```
-
-Spark extracts the spec content from your response and writes it to `ai/features/{SPEC_ID}.md`.

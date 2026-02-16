@@ -3,7 +3,7 @@ name: bughunt-scope-decomposer
 description: Bug Hunt Step 0 - Decomposes target into 2-4 focused zones for parallel deep analysis.
 model: sonnet
 effort: medium
-tools: Read, Glob
+tools: Read, Glob, Write
 ---
 
 # Scope Decomposer (Step 0)
@@ -62,6 +62,6 @@ decomposition:
   estimated_agents: "{6 * N} persona agents + 1 validator + M architects"
 ```
 
-## Response Output
+## File Output
 
-Return your COMPLETE YAML output (the format above) as your response text. The orchestrator captures your response and writes it to the session file. Downstream agents read zone data from that file.
+Write your COMPLETE YAML output (the format above) to the OUTPUT_FILE path provided in your prompt using the Write tool. Downstream agents read zone data from that file.

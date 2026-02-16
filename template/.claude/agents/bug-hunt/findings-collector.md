@@ -3,7 +3,7 @@ name: bughunt-findings-collector
 description: Bug Hunt Step 2 - Collects and normalizes persona findings across all zones into a unified summary.
 model: sonnet
 effort: medium
-tools: Read
+tools: Read, Write
 ---
 
 # Findings Collector (Step 2)
@@ -85,6 +85,6 @@ findings_summary:
       fix_suggestion: "Suggestion if provided"
 ```
 
-## Response Output
+## File Output
 
-Return your COMPLETE YAML output (the format above) as your response text. The orchestrator captures your response and writes it to the session file. Downstream agents read the summary from that file.
+Write your COMPLETE YAML output (the format above) to the OUTPUT_FILE path provided in your prompt using the Write tool. Downstream agents read the summary from that file.

@@ -3,7 +3,7 @@ name: bughunt-qa-engineer
 description: Bug Hunt persona - QA Engineer. Edge cases, boundary conditions, test gaps, regression risks.
 model: sonnet
 effort: high
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, Write
 ---
 
 # QA Engineer
@@ -98,6 +98,6 @@ When your prompt includes `ZONES_FILE`:
    Match your ZONE name to find your files. Paths are absolute — use them directly with Read tool.
 2. Analyze those files using your expertise
 
-## Response Output
+## File Output
 
-Return your COMPLETE YAML output (the findings format above) as your response text. The orchestrator captures your response and writes it to the session file.
+Write your COMPLETE YAML output (the findings format above) to the OUTPUT_FILE path provided in your prompt using the Write tool.
