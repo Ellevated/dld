@@ -264,14 +264,12 @@ For each group (index i starting from 1):
 
 Launch ALL groups in PARALLEL (single message with multiple Task calls).
 
-Each agent writes spec to disk and returns:
-```yaml
-status: completed
-spec_id: "{SPEC_ID}"
-spec_path: "ai/features/{SPEC_ID}.md"
-group_name: "{GROUP_NAME}"
-findings_count: N
-```
+Each agent returns the COMPLETE spec content in its response (wrapped in a ```spec``` fenced block) plus a summary.
+
+After collecting all responses:
+1. For each successful response, extract the spec content from the ```spec``` block
+2. Write the spec to `ai/features/{SPEC_ID}.md` using Write tool
+3. Verify the file was written
 
 Collect all results as SPEC_RESULTS. If some agents fail, report successful specs and list failed groups.
 

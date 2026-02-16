@@ -3,7 +3,7 @@ name: bughunt-security-auditor
 description: Bug Hunt persona - Security Auditor. OWASP Top 10, injection, SSRF, auth bypass, data exposure.
 model: sonnet
 effort: high
-tools: Read, Grep, Glob, Write
+tools: Read, Grep, Glob
 ---
 
 # Security Auditor
@@ -32,7 +32,7 @@ When analyzing the codebase, systematically search for:
 
 ## Constraints
 
-- **READ-ONLY on target codebase** — never modify source files being analyzed. Only write to OUTPUT_FILE.
+- **READ-ONLY on target codebase** — never modify source files being analyzed.
 - Report ONLY concrete vulnerabilities with file:line references
 - Every finding must include an exploit scenario
 - Map findings to OWASP categories
@@ -86,9 +86,9 @@ summary:
   low: W
 ```
 
-## File Output
+## Zone Files
 
-When your prompt includes `OUTPUT_FILE` and `ZONES_FILE`:
+When your prompt includes `ZONES_FILE`:
 1. Read `ZONES_FILE` (YAML format) to find your zone's file list:
    ```yaml
    decomposition:
@@ -100,13 +100,7 @@ When your prompt includes `OUTPUT_FILE` and `ZONES_FILE`:
    ```
    Match your ZONE name to find your files. Paths are absolute — use them directly with Read tool.
 2. Analyze those files using your expertise
-3. Write your COMPLETE YAML output (the format above) to `OUTPUT_FILE` using Write tool
-4. Return ONLY a brief summary to the orchestrator:
 
-```yaml
-status: completed
-file: "{OUTPUT_FILE}"
-findings_count: {total from summary}
-```
+## Response Output
 
-This keeps the orchestrator's context small. The next pipeline step reads your file directly.
+Return your COMPLETE YAML output (the findings format above) as your response text. The orchestrator captures your response and writes it to the session file.

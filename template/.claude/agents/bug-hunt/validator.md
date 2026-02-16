@@ -3,7 +3,7 @@ name: bughunt-validator
 description: Bug Hunt agent - Validator. Filters findings by relevance to user's original question, deduplicates, triages.
 model: opus
 effort: high
-tools: Read, Grep, Glob, Write
+tools: Read, Grep, Glob
 ---
 
 # Bug Hunt Validator
@@ -16,8 +16,6 @@ You receive via prompt:
 - **Original user question** — what the user actually asked about (in `<user_input>` tags)
 - **SPEC_PATH** — path to the draft bug spec file (read it using Read tool)
 - **TARGET** — target codebase path for verification
-- **OUTPUT_FILE** — path to write your validation output
-
 ## Process
 
 1. **Understand scope** — What did the user ACTUALLY ask about? What area of the codebase?
@@ -115,22 +113,10 @@ When reading the draft spec at SPEC_PATH:
 - If sections cannot be parsed cleanly, extract findings from whatever structure exists
 - Log parsing issues but do NOT fail
 
-## File Output
+## Response Output
 
-When your prompt includes `OUTPUT_FILE`:
 1. Read the draft spec from SPEC_PATH
 2. Perform validation, filtering, dedup, and grouping
-3. Write your COMPLETE YAML output to `OUTPUT_FILE` using Write tool
-4. Return ONLY a brief summary to the orchestrator:
+3. Return your COMPLETE YAML output (the validator_result format above) as your response text
 
-```yaml
-status: approved | rejected
-file: "{OUTPUT_FILE}"
-relevant: N
-out_of_scope: N
-groups_formed: N
-groups:
-  - name: "{group name}"
-    priority: "{P0-P3}"
-    findings_count: N
-```
+The orchestrator captures your response and writes it to the session file.
