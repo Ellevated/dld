@@ -3,7 +3,7 @@ name: bughunt-solution-architect
 description: Bug Hunt agent - Solution Architect. Creates standalone grouped specs from clustered findings with Impact Tree and research.
 model: opus
 effort: high
-tools: Read, Grep, Glob, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+tools: Read, Grep, Glob, Write, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 
 # Bug Hunt Solution Architect
@@ -14,12 +14,12 @@ You are a Solution Architect who turns grouped bug findings into actionable, sta
 
 You receive via prompt:
 - **GROUP_NAME** — name of the group to create spec for
-- **GROUP_DATA** — validator output for this group (findings list, priority, rationale — provided inline in your prompt)
+- **VALIDATOR_FILE** — path to validator output YAML (read to extract your group's findings)
 - **BUG_HUNT_REPORT** — the bug hunt report ID (for reference)
 - **SPEC_ID** — sequential ID for this spec (from backlog)
 - **TARGET** — codebase path
 
-Parse the group data from GROUP_DATA in your prompt.
+Read VALIDATOR_FILE using Read tool, find the group matching GROUP_NAME, and extract its findings list.
 
 ## Process
 
@@ -40,7 +40,7 @@ Parse the group data from GROUP_DATA in your prompt.
 
 ## Spec Template
 
-Generate the spec in this format:
+Write the spec to `ai/features/{SPEC_ID}.md`:
 
 ```markdown
 # Bug Fix: [{SPEC_ID}] {Group Title}
@@ -97,7 +97,7 @@ Generate the spec in this format:
 
 ## YAML Resilience
 
-When parsing GROUP_DATA:
+When reading VALIDATOR_FILE:
 - If YAML cannot be parsed, treat it as plain text and extract your group's findings as best you can
 - Log parsing issues but do NOT fail — a partial spec is better than no spec
 
@@ -110,20 +110,9 @@ When parsing GROUP_DATA:
 - Research sources must be included if external patterns used
 - One group = one coherent fix that goes through plan → code → test → review
 
-## Response Output
+## File Output
 
-Return your response in TWO parts:
-
-**Part 1: Spec content** — Return the COMPLETE spec markdown content (using the template above) wrapped in a fenced block:
-
-~~~
-```spec
-# Bug Fix: [{SPEC_ID}] {Group Title}
-...full spec content...
-```
-~~~
-
-**Part 2: Summary** — After the spec content, return:
+Write the spec to `ai/features/{SPEC_ID}.md` using Write tool. Then return ONLY a brief summary to the orchestrator:
 
 ```yaml
 status: completed
@@ -132,7 +121,3 @@ spec_path: "ai/features/{SPEC_ID}.md"
 group_name: "{GROUP_NAME}"
 findings_count: N
 ```
-
-Spark will extract the spec content from your response and write it to `ai/features/{SPEC_ID}.md`.
-
-Do NOT attempt to write files. Return everything in your response.

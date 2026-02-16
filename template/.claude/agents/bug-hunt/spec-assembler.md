@@ -15,9 +15,9 @@ You assemble the Bug Hunt umbrella spec from persona findings (Step 2). You writ
 You receive via prompt:
 - **USER_QUESTION** — original investigation target
 - **TARGET** — codebase path
-- **FINDINGS_DATA** — findings summary YAML from Step 2 (provided inline in your prompt)
+- **FINDINGS_FILE** — path to findings summary YAML from Step 2
 
-Parse the findings data from FINDINGS_DATA in your prompt.
+Read the findings file using Read tool before assembling the spec.
 
 ## Process
 
@@ -43,7 +43,7 @@ Parse the findings data from FINDINGS_DATA in your prompt.
 
 ## Executive Summary
 - Zones analyzed: {N} ({zone names})
-- Total findings: {total from FINDINGS_DATA}
+- Total findings: {total from FINDINGS_FILE}
 - By severity: {critical/high/medium/low counts}
 - Relevant (in scope): TBD (after validation)
 - Out of scope: TBD
@@ -53,7 +53,7 @@ Parse the findings data from FINDINGS_DATA in your prompt.
 
 ## All Findings
 
-{For each finding from FINDINGS_DATA:}
+{For each finding from FINDINGS_FILE:}
 ### {id}: {title}
 - **Severity:** {severity}
 - **Zone:** {zone}
@@ -67,7 +67,7 @@ Parse the findings data from FINDINGS_DATA in your prompt.
 
 ## YAML Resilience
 
-When parsing FINDINGS_DATA:
+When reading FINDINGS_FILE:
 - If YAML cannot be parsed, treat it as plain text and extract what you can
 - Log parsing issues but do NOT fail
 - Include whatever data you managed to extract

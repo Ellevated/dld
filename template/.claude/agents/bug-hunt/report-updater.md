@@ -15,14 +15,14 @@ You update the Bug Hunt umbrella spec after validation (Step 4). You apply the v
 You receive via prompt:
 - **SPEC_PATH** — path to the umbrella spec file (from Step 3)
 - **SPEC_ID** — the spec ID (e.g., BUG-084)
-- **VALIDATOR_DATA** — validator output YAML from Step 4 (provided inline in your prompt)
+- **VALIDATOR_FILE** — path to validator output YAML from Step 4
 
-Parse the validator data from VALIDATOR_DATA in your prompt.
+Read the validator output from VALIDATOR_FILE using Read tool.
 
 ## Process
 
 1. Read the spec file at SPEC_PATH
-2. Parse validator data from VALIDATOR_DATA to extract:
+2. Parse validator data from VALIDATOR_FILE to extract:
    - relevant_findings (kept in spec)
    - out_of_scope (moved to ideas.md)
    - duplicates_merged (removed from spec)
@@ -37,7 +37,7 @@ Parse the validator data from VALIDATOR_DATA in your prompt.
 
 ## YAML Resilience
 
-When parsing VALIDATOR_DATA:
+When reading VALIDATOR_FILE:
 - If YAML cannot be parsed, treat it as plain text and extract groups/counts as best you can
 - Log parsing issues but do NOT fail — update what you can
 

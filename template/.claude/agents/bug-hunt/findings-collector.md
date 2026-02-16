@@ -3,7 +3,7 @@ name: bughunt-findings-collector
 description: Bug Hunt Step 2 - Collects and normalizes persona findings across all zones into a unified summary.
 model: sonnet
 effort: medium
-tools: Read
+tools: Read, Glob, Write
 ---
 
 # Findings Collector (Step 2)
@@ -15,11 +15,14 @@ You collect raw findings from 6 persona agents (potentially across multiple zone
 You receive via prompt:
 - **USER_QUESTION** — original investigation target
 - **TARGET** — codebase path (for reference)
-- **PERSONA_DATA** — all persona agent outputs provided inline below, separated by `---` markers
+- **PERSONA_DIR** — directory containing persona output YAML files from Step 1
+- **OUTPUT_FILE** — path to write normalized summary
+
+Read ALL `.yaml` files from PERSONA_DIR using Glob + Read tools. Each file contains one persona's findings for one zone.
 
 ## Process
 
-1. Parse all persona YAML outputs from PERSONA_DATA (handle malformed YAML gracefully — best-effort)
+1. Parse all persona YAML outputs (handle malformed YAML gracefully — best-effort)
 2. Normalize IDs with zone prefix: `{ZoneLetter}-{PersonaPrefix}-{Number}` (e.g., A-CR-001, B-SEC-003)
 3. Preserve exact file:line references from persona outputs
 4. Count totals by severity, persona, and zone
@@ -27,9 +30,9 @@ You receive via prompt:
 
 ## YAML Resilience
 
-When parsing persona outputs from PERSONA_DATA:
-- Parse YAML gracefully — if an output cannot be parsed, treat it as plain text and extract findings as best you can
-- Log which outputs had parsing issues in the output (under `parse_warnings`)
+When reading persona YAML files from PERSONA_DIR:
+- Parse YAML gracefully — if a file cannot be parsed, treat it as plain text and extract findings as best you can
+- Log which files had parsing issues in the output (under `parse_warnings`)
 - A partial collection is better than no collection — never fail because one persona wrote bad YAML
 
 ## Rules
@@ -40,9 +43,9 @@ When parsing persona outputs from PERSONA_DATA:
 - Handle duplicate findings across zones — mark them but do NOT remove (validator deduplicates)
 - If a persona returned no findings, record that fact (not an error)
 
-## Output
+## Output Format
 
-Return your COMPLETE YAML output as your response:
+Return YAML:
 
 ```yaml
 findings_summary:
@@ -83,4 +86,20 @@ findings_summary:
       fix_suggestion: "Suggestion if provided"
 ```
 
-Return the FULL YAML above as your response text. The orchestrator captures your response and forwards it to the spec assembler.
+## File Output
+
+When your prompt includes `OUTPUT_FILE`:
+1. Read all persona files from PERSONA_DIR
+2. Normalize and collect findings
+3. Write your COMPLETE YAML output to `OUTPUT_FILE` using Write tool
+4. Return ONLY a brief summary to the orchestrator:
+
+```yaml
+status: completed
+file: "{OUTPUT_FILE}"
+total_findings: N
+personas_reported: N
+zones_covered: N
+```
+
+This keeps the orchestrator's context small. Downstream agents read the summary from the file directly.
