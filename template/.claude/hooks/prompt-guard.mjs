@@ -9,7 +9,7 @@
  * - "add endpoint", "write function"
  */
 
-import { approvePrompt, askTool, getUserPrompt, logHookError, readHookInput } from './utils.mjs';
+import { approvePrompt, blockPrompt, getUserPrompt, logHookError, readHookInput } from './utils.mjs';
 
 // Max chars between keyword and target in complexity patterns
 const KEYWORD_TARGET_GAP = 30;
@@ -54,7 +54,7 @@ function main() {
     // Check for complexity patterns
     for (const pattern of COMPLEXITY_PATTERNS) {
       if (pattern.test(promptLower)) {
-        askTool(
+        blockPrompt(
           'Complex task detected!\n\n' +
             'Consider using /spark for proper planning:\n' +
             '  /spark <task description>\n\n' +
@@ -63,7 +63,7 @@ function main() {
             '  - Explicit file allowlist\n' +
             '  - Auto-handoff to autopilot\n' +
             '  - Deterministic workflow\n\n' +
-            'Proceed without spark?',
+            'Retype with /spark or rephrase to proceed.',
         );
         return;
       }
