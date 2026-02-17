@@ -177,6 +177,14 @@ For side-connections (error paths, secondary outputs), use elbowed routing to av
 {"from": "users", "to": "backlog", "label": "feedback", "style": "dashed", "elbow": "loop-left"}
 ```
 
+**Multiple loops — use `pad` to avoid overlap:**
+```json
+{"from": "review", "to": "step2", "label": "rejected", "style": "dashed", "elbow": "loop-left", "pad": 70},
+{"from": "step4", "to": "step2", "label": "retry", "style": "dashed", "elbow": "loop-left", "pad": 130},
+{"from": "step5", "to": "step1", "label": "reset", "style": "dashed", "elbow": "loop-left", "pad": 190}
+```
+`pad` controls how far the U-shape extends from the nodes (default: 120). Use incrementing values (e.g., 70/130/190) to create separate "lanes" for multiple loop arrows on the same side.
+
 ### Routing Gotchas
 
 1. **Same-Y nodes** — don't use elbow, use straight (horizontal line is correct)

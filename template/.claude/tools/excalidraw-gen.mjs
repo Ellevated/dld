@@ -249,7 +249,7 @@ function renderArrow(edge, fromPos, toPos) {
     points = [[0, 0], [0, endY - startY], [endX - startX, endY - startY]];
   } else if (elbow === 'loop-right' || elbow === 'loop-left') {
     // U-shape: exit side → vertical → enter side of target (for feedback loops)
-    const pad = 120;
+    const pad = edge.pad || 120;
     const goRight = elbow === 'loop-right';
     startX = goRight ? fromPos.x + fromPos.width : fromPos.x;
     startY = fromPos.y + fromPos.height / 2;
