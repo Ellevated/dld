@@ -45,14 +45,22 @@ const EXCLUDE_FROM_SYNC = [
 
 function countLines(filePath) {
   try {
-    return readFileSync(filePath, 'utf-8').split('\n').length;
+    const content = readFileSync(filePath, 'utf-8');
+    if (!content) return 0;
+    return content.split('\n').length - (content.endsWith('\n') ? 1 : 0);
   } catch {
     return 0;
   }
 }
 
+const TEST_FILE_PATTERNS = [
+  /_test\./, /\.test\./, /\.spec\./,
+  /\/tests?\//, /__tests__\//,
+  /\/test_[^/]+\.py$/,
+];
+
 function isTestFile(filePath) {
-  return filePath.includes('_test.') || filePath.includes('/tests/');
+  return TEST_FILE_PATTERNS.some(pattern => pattern.test(filePath));
 }
 
 function normalizePath(filePath) {
