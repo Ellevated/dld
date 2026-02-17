@@ -152,7 +152,7 @@ function minimatch(str, pattern) {
   // Escape regex specials, then convert glob to regex
   // Use placeholder for ** before converting single *
   let re = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/[.+^${}()|\\]/g, '\\$&')
     .replace(/\*\*/g, '\x00GLOBSTAR\x00')
     .replace(/\*/g, '[^/]*')
     .replace(/\?/g, '[^/]')
@@ -175,7 +175,7 @@ export function extractAllowedFiles(specPath) {
       if (!trimmed || trimmed.startsWith('#')) continue;
 
       // Extract path from markdown formats: `path`, **path**, or path - description
-      const pathMatch = trimmed.match(/[`*\-]*\s*([a-zA-Z0-9_./@-]+\.[a-zA-Z0-9]+(?::\d+(?:-\d+)?)?)[`*]*/);
+      const pathMatch = trimmed.match(/[`*\-]*\s*([a-zA-Z0-9_./@*-]+(?:\.[a-zA-Z0-9*]+)?(?::\d+(?:-\d+)?)?)[`*]*/);
       if (pathMatch) {
         let p = pathMatch[1];
         // NOTE: Line number ranges (e.g., :10-20) are informational only, not enforced.

@@ -15,6 +15,7 @@ import {
   allowTool,
   askTool,
   denyTool,
+  getProjectDir,
   getToolInput,
   inferSpecFromBranch,
   isFileAllowed,
@@ -56,7 +57,7 @@ function isTestFile(filePath) {
 
 function normalizePath(filePath) {
   if (!filePath) return '';
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const projectDir = getProjectDir();
   if (filePath.startsWith(projectDir)) {
     return filePath.slice(projectDir.length).replace(/^[/\\]/, '');
   }
@@ -70,7 +71,7 @@ function checkSyncZone(relPath) {
   if (!inSyncZone) return null;
   if (EXCLUDE_FROM_SYNC.includes(relPath)) return null;
 
-  const templatePath = `template/${relPath}`;
+  const templatePath = join(getProjectDir(), 'template', relPath);
   if (existsSync(templatePath)) {
     return (
       `SYNC ZONE: ${relPath}\n\n` +

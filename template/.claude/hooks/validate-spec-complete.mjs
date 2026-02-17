@@ -20,6 +20,8 @@ function main() {
     }
 
     // Find spec in current staged changes
+    // Note: If ai/ is in .gitignore, spec files will never be staged and this hook is a no-op.
+    // This is correct — the hook is for projects that track specs in git.
     let stagedFiles;
     try {
       stagedFiles = execFileSync('git', ['diff', '--cached', '--name-only'], {
