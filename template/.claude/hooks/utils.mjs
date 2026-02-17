@@ -133,17 +133,13 @@ export function getUserPrompt(data) {
 const ALWAYS_ALLOWED_PATTERNS = [
   'ai/features/*.md',
   'ai/backlog.md',
-  'ai/diary/*',
+  'ai/diary/**',
   '.gitignore',
   'pyproject.toml',
-  '.claude/*',
+  '.claude/**',
 ];
 
 function matchesPattern(filePath, pattern) {
-  if (pattern.endsWith('/*')) {
-    const dirPrefix = pattern.slice(0, -1); // "ai/diary/*" -> "ai/diary/"
-    return filePath.startsWith(dirPrefix);
-  }
   return minimatch(filePath, pattern);
 }
 
@@ -285,11 +281,6 @@ export function isFileAllowed(filePath, specPath) {
     }
     // Glob pattern match
     if (minimatch(filePath, allowed)) {
-      return { allowed: true, allowedFiles: result.files };
-    }
-    // Prefix match (allow subdirs)
-    const prefix = allowed.replace(/\/\*$/, '') + '/';
-    if (filePath.startsWith(prefix)) {
       return { allowed: true, allowedFiles: result.files };
     }
   }

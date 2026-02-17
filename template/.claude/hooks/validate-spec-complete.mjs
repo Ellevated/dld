@@ -14,8 +14,8 @@ function main() {
     const data = readHookInput();
     const command = getToolInput(data, 'command') || '';
 
-    // Only check for git commit
-    if (!command.includes('git commit')) {
+    // Only check for git commit (excludes git commit-graph, git commit-tree, etc.)
+    if (!/\bgit\s+commit\b(?!-)/i.test(command)) {
       process.exit(0);
     }
 
