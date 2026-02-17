@@ -43,16 +43,25 @@ for (const section of requiredSections) {
   }
 }
 
-// Check for empty/placeholder content
-const placeholders = ['TBD', 'TODO', 'FIXME', '{fill', '{placeholder'];
+// Check for placeholder-only lines (lines that ARE placeholders, not mentions of them)
+// "TBD" alone = placeholder. "TODO count: 7" or "found 3 TODO markers" = legitimate finding.
+const placeholderPatterns = [
+  /^\s*TBD\.?\s*$/i,           // Line is just "TBD" or "TBD."
+  /^\s*TODO\.?\s*$/i,          // Line is just "TODO" or "TODO."
+  /^\s*FIXME\.?\s*$/i,         // Line is just "FIXME"
+  /\{fill[^}]*\}/,             // Template placeholder {fill...}
+  /\{placeholder[^}]*\}/,      // Template placeholder {placeholder...}
+  /\{[A-Z_]+\}/,               // Template placeholder {SOMETHING}
+];
 const lines = content.split('\n');
 for (let i = 0; i < lines.length; i++) {
   const line = lines[i].trim();
-  // Only flag placeholders in non-code sections
-  if (line.startsWith('```') || line.startsWith('|')) continue;
-  for (const ph of placeholders) {
-    if (line.includes(ph) && !line.startsWith('- `') && !line.startsWith('#')) {
-      errors.push(`Placeholder found on line ${i + 1}: "${line.substring(0, 60)}..."`);
+  // Skip code blocks, tables, headers, inline code
+  if (line.startsWith('```') || line.startsWith('|') || line.startsWith('#') || line.startsWith('- `')) continue;
+  for (const ph of placeholderPatterns) {
+    if (ph.test(line)) {
+      errors.push(`Placeholder found on line ${i + 1}: "${line.substring(0, 60)}"`);
+      break;
     }
   }
 }
