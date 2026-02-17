@@ -14,22 +14,34 @@
 
 import { allowTool, askTool, denyTool, getToolInput, logHookError, readHookInput } from './utils.mjs';
 
+// F-011: Detect destructive git clean — handles separated flags and --force
+function isDestructiveClean(cmd) {
+  if (!/git\s+clean\b/i.test(cmd)) return false;
+  // Dry-run is always safe
+  if (/(?:^|\s)-\w*n/i.test(cmd) || /--dry-run/i.test(cmd)) return false;
+  const hasForce = /(?:^|\s)--force\b/i.test(cmd) || /(?:^|\s)-[a-z]*f/i.test(cmd);
+  const hasDir = /(?:^|\s)-[a-z]*d/i.test(cmd);
+  return hasForce && hasDir;
+}
+
 // Blocked patterns - hard deny (no confirmation)
 // Note: git push -f to feature branches is ALLOWED (rebase workflow)
 // Only develop/main are protected from force push
+// Entries: [pattern_or_function, message]
 const BLOCKED_PATTERNS = [
   // Push to main (Hard Block)
+  // F-014: Use lookaround to avoid false positives on branch names containing "main"
   [
-    /git\s+push[^|]*\bmain\b/i,
+    /git\s+push\b.*(?<![a-zA-Z0-9_-])main(?![a-zA-Z0-9_-])/i,
     'Push to main blocked!\n\n' +
       'Use PR workflow: develop -> PR -> main\n' +
       'Direct push to main is forbidden.\n\n' +
       'See: CLAUDE.md -> Git Autonomous Mode',
   ],
-  // Destructive git operations (Multi-Agent Safety)
-  // Negative lookahead (?!-\w*n) excludes dry-run variants (-fdn, -dfn)
+  // Destructive git clean (Multi-Agent Safety)
+  // F-011: Function-based check handles --force, -f -d, -fd, etc.
   [
-    /git\s+clean\s+(?!-\w*n)-[a-z]*f[a-z]*d|git\s+clean\s+(?!-\w*n)-[a-z]*d[a-z]*f/i,
+    isDestructiveClean,
     'git clean -fd blocked!\n\n' +
       'Destroys untracked files from other agents.\n' +
       'Safe alternatives:\n' +
@@ -65,8 +77,9 @@ const BLOCKED_PATTERNS = [
 
 // Merge without rebase verification (Parallel Safety)
 const MERGE_PATTERNS = [
+  // F-013: Word boundary + negative lookahead excludes merge-base, mergetool
   [
-    /git\s+merge/i,
+    /git\s+merge\b(?![-a-z])/i,
     'Use --ff-only for merges!\n\n' +
       'Rebase-first workflow required:\n' +
       '  1. git rebase origin/develop  # in worktree\n' +
@@ -82,9 +95,10 @@ function main() {
     const command = getToolInput(data, 'command') || '';
 
     // Hard blocks (deny immediately)
-    // Note: --force-with-lease is handled by regex negative lookahead (?!-with-lease)
-    for (const [pattern, message] of BLOCKED_PATTERNS) {
-      if (pattern.test(command)) {
+    // Supports both RegExp and function matchers
+    for (const [matcher, message] of BLOCKED_PATTERNS) {
+      const blocked = typeof matcher === 'function' ? matcher(command) : matcher.test(command);
+      if (blocked) {
         denyTool(message);
         return;
       }
