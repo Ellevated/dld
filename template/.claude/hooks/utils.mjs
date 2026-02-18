@@ -44,6 +44,41 @@ export function logHookError(hookName, error) {
   }
 }
 
+// --- Debug Logging ---
+
+const DEBUG = process.env.DLD_HOOK_DEBUG === '1';
+const LOG_FILE = process.env.DLD_HOOK_LOG_FILE || null;
+
+export function debugLog(hookName, event, data = {}) {
+  if (!DEBUG) return;
+  const entry = {
+    ts: new Date().toISOString(),
+    hook: hookName,
+    event,
+    ...data,
+  };
+  const line = JSON.stringify(entry);
+  try {
+    process.stderr.write(line + '\n');
+    if (LOG_FILE) {
+      writeFileSync(LOG_FILE, line + '\n', { flag: 'a' });
+    }
+  } catch {
+    // fail-safe: debug logging must never crash hook (ADR-004)
+  }
+}
+
+export function debugTiming(hookName) {
+  if (!DEBUG) return { end: () => {} };
+  const start = performance.now();
+  return {
+    end: (decision) => {
+      const ms = (performance.now() - start).toFixed(1);
+      debugLog(hookName, 'complete', { decision, ms });
+    },
+  };
+}
+
 // --- Hook Input/Output ---
 
 export function readHookInput() {

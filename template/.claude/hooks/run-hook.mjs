@@ -12,7 +12,7 @@ import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { pathToFileURL } from 'url';
-import { logHookError } from './utils.mjs';
+import { debugLog, debugTiming, logHookError } from './utils.mjs';
 
 const hookName = process.argv[2];
 if (!hookName) {
@@ -23,6 +23,9 @@ if (!hookName) {
 if (!/^[a-zA-Z0-9._-]+$/.test(hookName)) {
   process.exit(0); // Silent fail-safe for invalid hook names
 }
+
+debugLog('run-hook', 'start', { hookName });
+const timer = debugTiming('run-hook');
 
 // Find main repo root (worktree support)
 let root;
@@ -40,14 +43,20 @@ try {
 const hookPath = join(root, '.claude', 'hooks', `${hookName}.mjs`);
 
 if (existsSync(hookPath)) {
+  debugLog('run-hook', 'loading', { hookPath });
   try {
     // Dynamic import with file:// URL (required for Windows paths with drive letters)
     await import(pathToFileURL(hookPath).href);
+    timer.end('success');
   } catch (err) {
+    debugLog('run-hook', 'error', { hookName, error: String(err) });
+    timer.end('error');
     logHookError(hookName, err);
     process.exit(0); // fail-safe: allow operation to proceed (ADR-004)
   }
 } else {
+  debugLog('run-hook', 'not_found', { hookPath });
+  timer.end('not_found');
   // Hook not found — silently allow (ADR-004: fail-safe)
   process.exit(0);
 }

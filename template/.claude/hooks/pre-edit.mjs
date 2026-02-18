@@ -14,6 +14,8 @@ import { join, normalize } from 'path';
 import {
   allowTool,
   askTool,
+  debugLog,
+  debugTiming,
   denyTool,
   getProjectDir,
   getToolInput,
@@ -92,16 +94,20 @@ function checkSyncZone(relPath) {
 }
 
 function main() {
+  const timer = debugTiming('pre-edit');
   try {
     const data = readHookInput();
     const filePath = getToolInput(data, 'file_path') || '';
     const relPath = normalizePath(filePath);
+    debugLog('pre-edit', 'input', { file: relPath });
 
     // Check Allowed Files (Hard Block) - only when spec exists
     const specPath = process.env.CLAUDE_CURRENT_SPEC_PATH || inferSpecFromBranch();
     const { allowed, allowedFiles } = isFileAllowed(relPath, specPath);
     if (!allowed) {
       const allowedList = allowedFiles.slice(0, 10).map(f => `  - ${f}`).join('\n');
+      debugLog('pre-edit', 'deny', { reason: 'not_in_allowed_files', file: relPath });
+      timer.end('deny');
       denyTool(
         `File not in Allowed Files!\n\n` +
           `${relPath}\n\n` +
@@ -120,6 +126,8 @@ function main() {
     // Check protected paths (Hard Block)
     for (const protectedPath of PROTECTED_PATHS) {
       if (relPath.startsWith(protectedPath)) {
+        debugLog('pre-edit', 'deny', { reason: 'protected_path', file: relPath });
+        timer.end('deny');
         denyTool(
           `Protected test file!\n\n` +
             `${relPath}\n\n` +
@@ -140,6 +148,8 @@ function main() {
       const warnLoc = Math.floor(maxLoc * WARN_THRESHOLD);
 
       if (loc >= maxLoc) {
+        debugLog('pre-edit', 'ask', { reason: 'loc_limit', file: relPath, loc, maxLoc });
+        timer.end('ask');
         askTool(
           `File exceeds LOC limit!\n\n` +
             `${relPath}: ${loc} lines (limit: ${maxLoc})\n\n` +
@@ -149,6 +159,8 @@ function main() {
         );
         return;
       } else if (loc >= warnLoc) {
+        debugLog('pre-edit', 'ask', { reason: 'loc_warning', file: relPath, loc, maxLoc });
+        timer.end('ask');
         askTool(
           `File approaching LOC limit\n\n` +
             `${relPath}: ${loc} lines (limit: ${maxLoc})\n\n` +
@@ -161,12 +173,18 @@ function main() {
     // Check sync zone (Soft reminder)
     const syncReminder = checkSyncZone(relPath);
     if (syncReminder) {
+      debugLog('pre-edit', 'ask', { reason: 'sync_zone', file: relPath });
+      timer.end('ask');
       askTool(syncReminder);
       return;
     }
 
+    debugLog('pre-edit', 'allow', { file: relPath });
+    timer.end('allow');
     allowTool();
   } catch (e) {
+    debugLog('pre-edit', 'error', { error: String(e) });
+    timer.end('error');
     logHookError('pre_edit', e);
     allowTool();
   }

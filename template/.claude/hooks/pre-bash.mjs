@@ -12,7 +12,7 @@
  * Customize BLOCKED_PATTERNS for project-specific rules.
  */
 
-import { allowTool, askTool, denyTool, getToolInput, logHookError, readHookInput } from './utils.mjs';
+import { allowTool, askTool, debugLog, debugTiming, denyTool, getToolInput, logHookError, readHookInput } from './utils.mjs';
 
 // F-011: Detect destructive git clean — handles separated flags and --force
 function isDestructiveClean(cmd) {
@@ -90,15 +90,19 @@ const MERGE_PATTERNS = [
 ];
 
 function main() {
+  const timer = debugTiming('pre-bash');
   try {
     const data = readHookInput();
     const command = getToolInput(data, 'command') || '';
+    debugLog('pre-bash', 'input', { command: command.slice(0, 100) });
 
     // Hard blocks (deny immediately)
     // Supports both RegExp and function matchers
     for (const [matcher, message] of BLOCKED_PATTERNS) {
       const blocked = typeof matcher === 'function' ? matcher(command) : matcher.test(command);
       if (blocked) {
+        debugLog('pre-bash', 'deny', { reason: 'blocked_pattern', command: command.slice(0, 100) });
+        timer.end('deny');
         denyTool(message);
         return;
       }
@@ -109,13 +113,19 @@ function main() {
       if (pattern.test(command)) {
         // Allow --ff-only explicitly (per spec)
         if (command.includes('--ff-only')) continue;
+        debugLog('pre-bash', 'ask', { reason: 'merge_pattern', command: command.slice(0, 100) });
+        timer.end('ask');
         askTool(message);
         return;
       }
     }
 
+    debugLog('pre-bash', 'allow');
+    timer.end('allow');
     allowTool();
   } catch (e) {
+    debugLog('pre-bash', 'error', { error: String(e) });
+    timer.end('error');
     logHookError('pre_bash', e);
     allowTool();
   }

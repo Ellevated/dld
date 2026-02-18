@@ -12,7 +12,7 @@
 import { existsSync } from 'fs';
 import { basename, resolve } from 'path';
 import { execFileSync } from 'child_process';
-import { getProjectDir, getToolInput, logHookError, postContinue, readHookInput } from './utils.mjs';
+import { debugLog, debugTiming, getProjectDir, getToolInput, logHookError, postContinue, readHookInput } from './utils.mjs';
 
 // Ruff configuration
 const RUFF_TIMEOUT_MS = 10000;
@@ -49,23 +49,31 @@ function checkLintWarnings(filePath) {
 }
 
 function main() {
+  const timer = debugTiming('post-edit');
   try {
     const data = readHookInput();
     const toolName = data.tool_name || '';
 
     if (!FILE_WRITE_TOOLS.includes(toolName)) {
+      debugLog('post-edit', 'skip', { reason: 'not_write_tool', tool: toolName });
+      timer.end('skip');
       postContinue();
       return;
     }
 
     const filePath = getToolInput(data, 'file_path') || '';
+    debugLog('post-edit', 'input', { tool: toolName, file: filePath });
 
     if (!filePath.endsWith('.py')) {
+      debugLog('post-edit', 'skip', { reason: 'not_python' });
+      timer.end('skip');
       postContinue();
       return;
     }
 
     if (!existsSync(filePath)) {
+      debugLog('post-edit', 'skip', { reason: 'file_not_found' });
+      timer.end('skip');
       postContinue();
       return;
     }
@@ -74,6 +82,8 @@ function main() {
     const projectDir = getProjectDir();
     const absPath = resolve(filePath);
     if (!absPath.startsWith(projectDir)) {
+      debugLog('post-edit', 'skip', { reason: 'outside_project' });
+      timer.end('skip');
       postContinue();
       return;
     }
@@ -91,12 +101,17 @@ function main() {
       messages.push(...warnings.map(w => `  ${w}`));
     }
 
+    debugLog('post-edit', 'continue', { formatted: success });
+    timer.end('continue');
+
     if (messages.length > 0) {
       postContinue(messages.join('\n'));
     } else {
       postContinue();
     }
   } catch (e) {
+    debugLog('post-edit', 'error', { error: String(e) });
+    timer.end('error');
     logHookError('post_edit', e);
     postContinue(); // Fail-safe: don't block on errors
   }
