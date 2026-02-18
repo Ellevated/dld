@@ -56,7 +56,7 @@ function countLines(filePath) {
 const TEST_FILE_PATTERNS = [
   /_test\./, /\.test\./, /\.spec\./,
   /\/tests?\//, /__tests__\//,
-  /\/test_[^/]+\.py$/,
+  /(^|\/)test_[^/]+\.py$/,
 ];
 
 function isTestFile(filePath) {
