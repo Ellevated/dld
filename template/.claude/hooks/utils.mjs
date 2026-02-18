@@ -13,6 +13,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, chmodSync } from 'fs';
 import { join, dirname, normalize, resolve } from 'path';
+import { pathToFileURL } from 'url';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 
@@ -163,6 +164,63 @@ export function getUserPrompt(data) {
   return data.user_prompt || '';
 }
 
+// --- Configuration Loading ---
+
+/**
+ * Deep merge two objects. Arrays are replaced (not concatenated).
+ * Only plain objects are recursively merged.
+ */
+export function deepMerge(target, source) {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    const tVal = target[key];
+    const sVal = source[key];
+    if (
+      sVal && typeof sVal === 'object' && !Array.isArray(sVal) &&
+      tVal && typeof tVal === 'object' && !Array.isArray(tVal) &&
+      !(sVal instanceof RegExp) && !(tVal instanceof RegExp)
+    ) {
+      result[key] = deepMerge(tVal, sVal);
+    } else {
+      result[key] = sVal;
+    }
+  }
+  return result;
+}
+
+let _config = null;
+
+/**
+ * Load hook configuration with optional user overrides.
+ * Caches after first load. Fail-safe: returns {} on error.
+ */
+export async function loadConfig() {
+  if (_config) return _config;
+  try {
+    const { default: defaults } = await import('./hooks.config.mjs');
+    try {
+      const localPath = join(getProjectDir(), '.claude', 'hooks', 'hooks.config.local.mjs');
+      if (existsSync(localPath)) {
+        const { default: local } = await import(pathToFileURL(localPath).href);
+        _config = deepMerge(defaults, local);
+        return _config;
+      }
+    } catch { /* no local config = use defaults */ }
+    _config = defaults;
+    return _config;
+  } catch {
+    _config = {};
+    return _config; // fail-safe: no config = hardcoded defaults remain
+  }
+}
+
+/**
+ * Reset config cache (for testing).
+ */
+export function resetConfigCache() {
+  _config = null;
+}
+
 // --- Allowed Files enforcement ---
 
 const ALWAYS_ALLOWED_PATTERNS = [
@@ -279,15 +337,16 @@ export function inferSpecFromBranch() {
   }
 }
 
-export function isFileAllowed(filePath, specPath) {
+export function isFileAllowed(filePath, specPath, configPatterns) {
   // Normalize path
   filePath = normalize(filePath).replace(/^\.\//, '');
   if (process.platform === 'win32') {
     filePath = filePath.replace(/\\/g, '/');
   }
 
-  // Always-allowed files
-  for (const pattern of ALWAYS_ALLOWED_PATTERNS) {
+  // Always-allowed files (use config patterns if provided, else hardcoded defaults)
+  const patterns = configPatterns || ALWAYS_ALLOWED_PATTERNS;
+  for (const pattern of patterns) {
     if (matchesPattern(filePath, pattern)) {
       return { allowed: true, allowedFiles: [] };
     }

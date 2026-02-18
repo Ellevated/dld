@@ -7,6 +7,8 @@
  *
  * Soft blocks:
  * - Files exceeding LOC limits (400 code, 600 tests)
+ *
+ * Configurable via hooks.config.mjs / hooks.config.local.mjs
  */
 
 import { readFileSync, existsSync } from 'fs';
@@ -21,23 +23,18 @@ import {
   getToolInput,
   inferSpecFromBranch,
   isFileAllowed,
+  loadConfig,
   logHookError,
   readHookInput,
 } from './utils.mjs';
 
-// Protected paths (Hard Block)
-const PROTECTED_PATHS = ['tests/contracts/', 'tests/regression/'];
-
-// LOC limits (Soft Block)
-const MAX_LOC_CODE = 400;
-const MAX_LOC_TEST = 600;
-const WARN_THRESHOLD = 7 / 8; // 87.5%
-
-// Sync zones (files that should stay in sync with template/)
-const SYNC_ZONES = ['.claude/', 'scripts/'];
-
-// Excluded from sync reminders (DLD-specific customizations)
-const EXCLUDE_FROM_SYNC = [
+// Hardcoded fallbacks (used when config is unavailable)
+const FALLBACK_PROTECTED = ['tests/contracts/', 'tests/regression/'];
+const FALLBACK_MAX_LOC_CODE = 400;
+const FALLBACK_MAX_LOC_TEST = 600;
+const FALLBACK_WARN_THRESHOLD = 7 / 8;
+const FALLBACK_SYNC_ZONES = ['.claude/', 'scripts/'];
+const FALLBACK_EXCLUDE_SYNC = [
   '.claude/rules/localization.md',
   '.claude/rules/template-sync.md',
   '.claude/rules/git-local-folders.md',
@@ -74,12 +71,12 @@ function normalizePath(filePath) {
   return filePath;
 }
 
-function checkSyncZone(relPath) {
+function checkSyncZone(relPath, syncZones, excludeFromSync) {
   if (!relPath) return null;
 
-  const inSyncZone = SYNC_ZONES.some(zone => relPath.startsWith(zone));
+  const inSyncZone = syncZones.some(zone => relPath.startsWith(zone));
   if (!inSyncZone) return null;
-  if (EXCLUDE_FROM_SYNC.includes(relPath)) return null;
+  if (excludeFromSync.includes(relPath)) return null;
 
   const templatePath = join(getProjectDir(), 'template', relPath);
   if (existsSync(templatePath)) {
@@ -93,7 +90,7 @@ function checkSyncZone(relPath) {
   return null;
 }
 
-function main() {
+async function main() {
   const timer = debugTiming('pre-edit');
   try {
     const data = readHookInput();
@@ -101,9 +98,18 @@ function main() {
     const relPath = normalizePath(filePath);
     debugLog('pre-edit', 'input', { file: relPath });
 
+    const config = await loadConfig();
+    const protectedPaths = config?.preEdit?.protectedPaths || FALLBACK_PROTECTED;
+    const maxLocCode = config?.preEdit?.maxLocCode ?? FALLBACK_MAX_LOC_CODE;
+    const maxLocTest = config?.preEdit?.maxLocTest ?? FALLBACK_MAX_LOC_TEST;
+    const warnThreshold = config?.preEdit?.warnThreshold ?? FALLBACK_WARN_THRESHOLD;
+    const syncZones = config?.preEdit?.syncZones || FALLBACK_SYNC_ZONES;
+    const excludeFromSync = config?.preEdit?.excludeFromSync || FALLBACK_EXCLUDE_SYNC;
+    const alwaysAllowed = config?.utils?.alwaysAllowedPatterns || undefined;
+
     // Check Allowed Files (Hard Block) - only when spec exists
     const specPath = process.env.CLAUDE_CURRENT_SPEC_PATH || inferSpecFromBranch();
-    const { allowed, allowedFiles } = isFileAllowed(relPath, specPath);
+    const { allowed, allowedFiles } = isFileAllowed(relPath, specPath, alwaysAllowed);
     if (!allowed) {
       const allowedList = allowedFiles.slice(0, 10).map(f => `  - ${f}`).join('\n');
       debugLog('pre-edit', 'deny', { reason: 'not_in_allowed_files', file: relPath });
@@ -124,7 +130,7 @@ function main() {
     }
 
     // Check protected paths (Hard Block)
-    for (const protectedPath of PROTECTED_PATHS) {
+    for (const protectedPath of protectedPaths) {
       if (relPath.startsWith(protectedPath)) {
         debugLog('pre-edit', 'deny', { reason: 'protected_path', file: relPath });
         timer.end('deny');
@@ -144,8 +150,8 @@ function main() {
 
     if (existsSync(absPath)) {
       const loc = countLines(absPath);
-      const maxLoc = isTestFile(relPath) ? MAX_LOC_TEST : MAX_LOC_CODE;
-      const warnLoc = Math.floor(maxLoc * WARN_THRESHOLD);
+      const maxLoc = isTestFile(relPath) ? maxLocTest : maxLocCode;
+      const warnLoc = Math.floor(maxLoc * warnThreshold);
 
       if (loc >= maxLoc) {
         debugLog('pre-edit', 'ask', { reason: 'loc_limit', file: relPath, loc, maxLoc });
@@ -171,7 +177,7 @@ function main() {
     }
 
     // Check sync zone (Soft reminder)
-    const syncReminder = checkSyncZone(relPath);
+    const syncReminder = checkSyncZone(relPath, syncZones, excludeFromSync);
     if (syncReminder) {
       debugLog('pre-edit', 'ask', { reason: 'sync_zone', file: relPath });
       timer.end('ask');

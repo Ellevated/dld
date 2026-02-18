@@ -157,6 +157,67 @@ Hooks communicate via JSON to stdout:
 {"decision": "block", "reason": "..."}
 ```
 
+## Customizing Hooks
+
+Hook behavior is configured in `hooks.config.mjs` (shipped defaults). To override
+values for your project, create `hooks.config.local.mjs` in the same directory.
+Local overrides survive template syncs.
+
+### How it works
+
+1. `hooks.config.mjs` — default rules shipped with the template
+2. `hooks.config.local.mjs` — your project-specific overrides (gitignored)
+3. Hooks load config at startup; missing config falls back to hardcoded defaults
+
+### Common overrides
+
+**Change LOC limits:**
+
+```javascript
+// .claude/hooks/hooks.config.local.mjs
+export default {
+  preEdit: {
+    maxLocCode: 500,  // default: 400
+    maxLocTest: 800,  // default: 600
+  },
+};
+```
+
+**Add protected paths:**
+
+```javascript
+export default {
+  preEdit: {
+    protectedPaths: [
+      'tests/contracts/',
+      'tests/regression/',
+      'src/core/critical.py',  // project-specific
+    ],
+  },
+};
+```
+
+**Add blocked commands:**
+
+```javascript
+export default {
+  preBash: {
+    blockedPatterns: [
+      [/rm\s+-rf\s+\//i, 'Blocked: rm -rf / is not allowed'],
+      // Include defaults you want to keep — arrays are replaced, not merged
+    ],
+  },
+};
+```
+
+### Merge behavior
+
+- **Objects** are recursively merged (your keys override matching defaults)
+- **Arrays** are replaced entirely (not concatenated)
+- Keys you don't override keep their default values
+
+---
+
 ## Creating Custom Hooks
 
 1. Create new `.mjs` file in `.claude/hooks/`
