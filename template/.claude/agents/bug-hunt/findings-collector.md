@@ -16,16 +16,23 @@ You receive via prompt:
 - **USER_QUESTION** — original investigation target
 - **TARGET** — codebase path (for reference)
 - **SESSION_DIR** — session directory path
+- **ZONE_FILTER** (optional) — zone key to filter by (e.g., "zone-a")
+- **MERGE_MODE** (optional) — if "true", read zone summaries instead of raw persona files
+
+## Mode Selection
+
+- **Default mode (no ZONE_FILTER, no MERGE_MODE):** Read ALL step1/*.yaml files (original behavior)
+- **Zone mode (ZONE_FILTER provided):** Read ONLY step1/{ZONE_FILTER}-*.yaml files. Write to step2/zone-{ZONE_FILTER}.yaml
+- **Merge mode (MERGE_MODE: true):** Read ONLY step2/zone-*.yaml summaries (NOT raw persona files). Write to step2/findings-summary.yaml
 
 ## File Discovery (Glob)
 
-Use Glob to discover ALL persona output files from Step 1:
+Pattern depends on mode:
+- Default: `{SESSION_DIR}/step1/*.yaml`
+- Zone: `{SESSION_DIR}/step1/{ZONE_FILTER}-*.yaml`
+- Merge: `{SESSION_DIR}/step2/zone-*.yaml`
 
-```
-Glob pattern: {SESSION_DIR}/step1/*.yaml
-```
-
-Read EACH discovered file using Read tool. Each file contains one persona's findings for one zone.
+Read EACH discovered file using Read tool. Each file contains one persona's findings for one zone (or one zone summary in merge mode).
 
 ## Process
 
@@ -95,18 +102,17 @@ findings_summary:
 
 ## File Output — Convention Path
 
-Your output path is computed from SESSION_DIR:
+Output path depends on mode:
+- **Default/Merge:** `{SESSION_DIR}/step2/findings-summary.yaml`
+- **Zone:** `{SESSION_DIR}/step2/zone-{ZONE_FILTER}.yaml`
 
-```
-{SESSION_DIR}/step2/findings-summary.yaml
-```
-
-1. Write your COMPLETE YAML output to that path using the Write tool
+1. Write your COMPLETE YAML output to the appropriate path using the Write tool
 2. Return a brief summary in your response text:
 
 ```yaml
 findings_collected:
-  path: "{SESSION_DIR}/step2/findings-summary.yaml"
+  path: "{output_path}"
+  mode: "default|zone|merge"
   total_raw: N
   personas_reported: N
   zones_covered: N

@@ -134,6 +134,20 @@ Context flooding is prevented by **background ALL steps** (ADR-009) — ALL agen
 
 **Cost estimate:** ~$30-70 per full run (6×N Sonnet personas + 1 Opus validator + M Opus architects). N = number of zones (typically 2-4).
 
+## FORBIDDEN ACTIONS (ADR-010)
+
+The orchestrator (Spark) must NEVER:
+- ❌ Call `TaskOutput` for ANY background agent (floods context with full JSONL, ~70K+ per agent)
+- ❌ Poll with `sleep` + `ls` + `Bash` (accumulates tool-call turns)
+- ❌ Read output_file paths directly via `Read` tool (still large, 10-30K per agent)
+
+The orchestrator MUST:
+- ✅ Launch agents with `run_in_background: true`
+- ✅ Wait for completion notifications (system auto-delivers, ~20 tokens each)
+- ✅ Count completions until expected count reached
+- ✅ Use ONLY Glob file gates to check convention paths
+- ✅ Delegate ALL output reading to collector subagents
+
 ## Overview
 
 ```
@@ -203,20 +217,23 @@ Example: TARGET_PATH `src/hooks` → SESSION_DIR `ai/.bughunt/20260216-hooks/`
 
 Spark manages ALL steps directly. **ALL steps use `run_in_background: true` (ADR-009).**
 
-### Background Step Pattern (ALL steps)
+### Background Step Pattern (ALL steps — ADR-009 + ADR-010)
 
 Every step uses `run_in_background: true`. After launch:
 
 ```
 1. Launch: Task(run_in_background: true, subagent_type: X, prompt: ...)
 2. Receive: {task_id, output_file} (~50 tokens in Spark context)
-3. Poll loop (max 15 attempts, 3 sec between):
-   a. Glob("{convention_path}") → file exists?
-   b. If exists → step complete, proceed to next step
-   c. If not → TaskOutput(task_id, block: false) → check if agent finished
-   d. If agent done but no file → ADR-007 fallback: Read(output_file), extract data, Write to convention path
-   e. Continue polling
+3. Wait: Do NOTHING. Completion notifications arrive automatically.
+4. File gate: Glob("{convention_path}") → file exists?
+   a. If YES → step complete, proceed
+   b. If NO → agent completed but didn't write (ADR-007):
+      Launch a SINGLE "extractor" subagent in background:
+      - Reads output_file → extracts data → writes to convention path
+      Wait for extractor completion → re-check file gate
 ```
+
+FORBIDDEN: Never call TaskOutput. Never poll with sleep/ls. Never Read output_file directly.
 
 **Context impact:** ~50 tokens per step (output_file path) instead of ~5-30K (foreground response).
 **Total for Steps 0-5:** ~300 tokens instead of ~50-90K.
@@ -268,22 +285,59 @@ Launch ALL in a SINGLE message. Each returns `{task_id, output_file}` (~50 token
 Persona types: code-reviewer, security-auditor, ux-analyst, junior-developer, software-architect, qa-engineer
 Zone key: lowercase slug (e.g., "Zone A: Hooks" → "zone-a")
 
-**Wait for completion (convention path polling):**
-```
-expected_count = {N_zones} × 6
-Poll loop (max 20 attempts, ~5 sec between each):
-  1. Glob("{SESSION_DIR}/step1/*.yaml") → count files
-  2. If count >= expected_count → ALL DONE, break
-  3. If count unchanged 3× → check missing files' output_files
-  4. Continue polling
-```
+**Wait for all persona completions:**
+1. Count completion notifications until count = N_zones × 6
+2. File gate: Glob("{SESSION_DIR}/step1/*.yaml") → count >= expected
+3. If file count < expected after all completions → some agents didn't write.
+   For missing files: launch extractor subagent (background) per missing file.
+4. Proceed when file gate passes (≥3 per zone minimum).
 
 **File gate:** `Glob("{SESSION_DIR}/step1/*.yaml")` → ≥3 files per zone? → proceed.
 **Rule:** Never block on missing personas. Proceed with ≥3 of 6 per zone.
 
 ---
 
-### Step 2: Collect & Normalize Findings
+### Step 2: Collect & Normalize Findings (Hierarchical Pattern)
+
+When persona count is high (N_zones × 6 > 12), a single collector overflows.
+Use hierarchical collection: zone-level collectors → merge.
+
+**Step 2a: Zone-Level Collection** (parallel, background)
+
+```
+For each zone Z:
+  Task:
+    subagent_type: bughunt-findings-collector
+    run_in_background: true
+    description: "Bug Hunt: {zone_name} findings"
+    prompt: |
+      USER_QUESTION: {USER_QUESTION}
+      TARGET: {TARGET_PATH}
+      SESSION_DIR: {SESSION_DIR}
+      ZONE_FILTER: {zone_key}
+```
+
+Each zone collector reads only ~6 files → writes zone summary.
+Wait for all zone completions. File gate: Glob("{SESSION_DIR}/step2/zone-*.yaml") count >= N_zones.
+
+**Step 2b: Merge** (single agent, background)
+
+```
+Task:
+  subagent_type: bughunt-findings-collector
+  run_in_background: true
+  description: "Bug Hunt: merge findings"
+  prompt: |
+    USER_QUESTION: {USER_QUESTION}
+    TARGET: {TARGET_PATH}
+    SESSION_DIR: {SESSION_DIR}
+    MERGE_MODE: true
+```
+
+Reads zone-*.yaml summaries (NOT raw persona files). Writes merged summary.
+File gate: Glob("{SESSION_DIR}/step2/findings-summary.yaml")
+
+**Small target shortcut:** If N_zones ≤ 2 (≤12 persona files), use single collector directly:
 
 ```
 Task:
@@ -296,10 +350,7 @@ Task:
     SESSION_DIR: {SESSION_DIR}
 ```
 
-Agent discovers `{SESSION_DIR}/step1/*.yaml` via Glob, normalizes findings, writes summary.
-
-**After launch:** Poll `{SESSION_DIR}/step2/findings-summary.yaml` using Background Step Pattern.
-**Fallback:** If missing after polling, pass raw `{SESSION_DIR}/step1/` path to Step 3.
+**Fallback:** If missing after completion, pass raw `{SESSION_DIR}/step1/` path to Step 3.
 
 ---
 
@@ -416,32 +467,21 @@ Launch ALL groups in PARALLEL with `run_in_background: true`. Each returns immed
 
 Collect all `{task_id, output_file, group_spec_id}` pairs.
 
-### Wait & Verify (Background Fan-Out Pattern)
+### Wait & Verify (Zero-Read Pattern — ADR-010)
 
 After launching all background architects:
 
-```
-Poll loop (max 30 attempts, ~5 sec between each):
-  1. Glob("ai/features/BUG-{report_number + 1}*.md", ...) → check each spec file
-  2. If ALL spec files exist → ALL DONE, break
-  3. If some missing → check output_files:
-     Read(output_file, limit: 3) → if file has content, agent is done but didn't write
-  4. Continue polling
-```
+1. Wait for completion notifications until count = number of groups
+2. File gate: Glob("ai/features/BUG-{report_number + *}*.md") → check each spec file
+3. If ALL spec files exist → ALL DONE, proceed to handoff
+4. If some missing → agents completed but didn't write (ADR-007):
+   Launch extractor subagent (background) per missing file:
+   - Reads output_file → extracts spec markdown → writes to convention path
+   Wait for extractors → re-check file gate
 
-### File Extraction (Caller-Writes Pattern — ADR-007)
+FORBIDDEN: Never call TaskOutput. Never Read output_file directly from orchestrator.
 
-After all agents complete, for EACH group:
-
-1. **Check file:** `Glob ai/features/{group_spec_id}.md`
-2. **If EXISTS** → agent wrote it (bonus path), proceed
-3. **If MISSING** → **Read agent's output_file**, extract spec markdown, **Write to convention path yourself**
-   - `Read(output_file)` — full agent response with spec content
-   - Extract markdown between spec headers
-   - `Write("ai/features/{group_spec_id}.md", extracted_content)`
-   - This is the PRIMARY path (ADR-007: caller writes)
-
-**Context impact:** ~50 tokens per agent (output_file path) instead of ~10K per agent (full spec in context). Only Read output_file for agents that didn't write to convention path.
+**Context impact:** ~50 tokens per agent (output_file path). Extractors handle missing files without flooding orchestrator context.
 
 After all files verified/written:
 - Collect results as SPEC_RESULTS
