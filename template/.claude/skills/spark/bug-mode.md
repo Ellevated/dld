@@ -350,7 +350,10 @@ Task:
     SESSION_DIR: {SESSION_DIR}
 ```
 
-**Fallback:** If missing after completion, pass raw `{SESSION_DIR}/step1/` path to Step 3.
+**Fallback (caller-writes):** If collector doesn't write after completion, orchestrator reads
+collector's output_file (summary ~5K, NOT raw persona outputs ~70K×6) and writes findings-summary.yaml.
+This is the ONLY acceptable orchestrator Read — a small summary, not raw agent output.
+If collector AND fallback fail, pass raw `{SESSION_DIR}/step1/` path to Step 3.
 
 ---
 
