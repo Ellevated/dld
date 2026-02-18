@@ -15,6 +15,21 @@ Full forensic analysis of codebase by 6 specialized personas. Produces consolida
 
 ---
 
+## FORBIDDEN ACTIONS (ADR-007/008/009/010)
+
+```
+⛔ NEVER store agent responses in orchestrator variables
+⛔ NEVER pass full agent output in another agent's prompt
+⛔ NEVER use TaskOutput to read agent results
+
+✅ ALL Task calls use run_in_background: true
+✅ Agents WRITE their output to ai/audit/ files
+✅ File gates (Glob) verify completion between phases
+✅ Orchestrator reads ONLY deep-audit-report.md at the end
+```
+
+---
+
 ## Phase 0: Codebase Inventory (Deterministic)
 
 **Before ANY persona runs, generate deterministic inventory.**
@@ -119,7 +134,11 @@ DO NOT start synthesis after first 2-3 agents — wait for ALL.
 Violation of this rule invalidates the entire audit output.
 ```
 
-**Check:** Use `run_in_background: true` and poll output files until all 6 exist.
+**⏳ FILE GATE:** Wait for ALL 6 completion notifications, then verify:
+```
+Glob("ai/audit/report-*.md") → must find 6 files
+If < 6: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
+```
 
 ---
 
@@ -145,6 +164,7 @@ Dispatch synthesizer to read all 6 reports + inventory and produce consolidated 
 Task tool:
   description: "Audit: Synthesizer"
   subagent_type: audit-synthesizer
+  run_in_background: true
   prompt: |
     Read ALL of these files:
     - ai/audit/codebase-inventory.json
@@ -158,6 +178,9 @@ Task tool:
     Synthesize into: ai/audit/deep-audit-report.md
     Follow the template in your agent prompt EXACTLY.
 ```
+
+**⏳ FILE GATE:** Verify `ai/audit/deep-audit-report.md` exists.
+**Orchestrator reads ONLY `deep-audit-report.md`** for the final result.
 
 ---
 

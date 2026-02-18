@@ -18,6 +18,30 @@ Collect → Research → Synthesize → Decide → Write → Validate → Reflec
 
 ---
 
+## Session Directory
+
+Compute before Phase 2:
+
+```
+SESSION_DIR = ai/.spark/{YYYYMMDD}-{spec_id}/
+```
+
+---
+
+## FORBIDDEN ACTIONS (ADR-007/008/009/010)
+
+```
+⛔ NEVER store scout responses in orchestrator variables
+⛔ NEVER pass full scout output in another scout's prompt
+
+✅ ALL scout Task calls use run_in_background: true
+✅ Scouts WRITE output to SESSION_DIR files
+✅ File gates (Glob) verify scout completion
+✅ Orchestrator reads scout files for synthesis (~20K acceptable)
+```
+
+---
+
 ## Phase 1: COLLECT (Socratic Dialogue)
 
 Two modes depending on feature origin:
@@ -69,6 +93,7 @@ Dispatch 4 isolated scouts in parallel. Each scout gets a frozen snapshot — th
 Task tool:
   description: "Spark scout: external research"
   subagent_type: spark-external       # → agents/spark/external.md
+  run_in_background: true
   prompt: |
     FEATURE: {feature description}
     BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
@@ -79,6 +104,7 @@ Task tool:
 Task tool:
   description: "Spark scout: codebase analysis"
   subagent_type: spark-codebase       # → agents/spark/codebase.md
+  run_in_background: true
   prompt: |
     FEATURE: {feature description}
     BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
@@ -89,6 +115,7 @@ Task tool:
 Task tool:
   description: "Spark scout: alternative patterns"
   subagent_type: spark-patterns       # → agents/spark/patterns.md
+  run_in_background: true
   prompt: |
     FEATURE: {feature description}
     BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
@@ -99,6 +126,7 @@ Task tool:
 Task tool:
   description: "Spark scout: devil's advocate"
   subagent_type: spark-devil          # → agents/spark/devil.md
+  run_in_background: true
   prompt: |
     FEATURE: {feature description}
     BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
@@ -106,11 +134,15 @@ Task tool:
     Output: research-devil.md
 ```
 
-**All 4 scouts run in PARALLEL and do NOT see each other's work.**
+**All 4 scouts run in PARALLEL, ALL background, and do NOT see each other's work.**
 
 If `ai/blueprint/system-blueprint/` exists, ALL scouts receive it as CONSTRAINT.
 
-**Wait for all 4 scouts to complete before Phase 3.**
+**⏳ FILE GATE:** Wait for ALL 4 completion notifications, then verify:
+```
+Glob("{SESSION_DIR}/research-*.md") → must find 4 files
+If < 4: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
+```
 
 ---
 

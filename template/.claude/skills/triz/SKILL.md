@@ -87,6 +87,23 @@ Example: TARGET `/Users/foo/dev/myapp/src` → SESSION_DIR `ai/.triz/20260215-sr
 
 All file paths below use SESSION_DIR. Compute it ONCE, substitute into every prompt.
 
+---
+
+## FORBIDDEN ACTIONS (ADR-007/008/009/010)
+
+```
+⛔ NEVER store agent responses in orchestrator variables
+⛔ NEVER pass full agent output in another agent's prompt
+⛔ NEVER use TaskOutput to read agent results
+
+✅ ALL Task calls use run_in_background: true
+✅ Agents WRITE output to SESSION_DIR files
+✅ File gates (Glob) verify completion between phases
+✅ Orchestrator reads ONLY final report.md at the end
+```
+
+---
+
 ### Cost Estimate
 
 Before launching Phase 1, inform user (non-blocking):
@@ -100,6 +117,7 @@ Before launching Phase 1, inform user (non-blocking):
 ```yaml
 Task:
   subagent_type: triz-data-collector
+  run_in_background: true
   description: "/triz: collect system metrics"
   prompt: |
     TARGET: {TARGET_PATH}
@@ -107,13 +125,18 @@ Task:
     OUTPUT_FILE: {SESSION_DIR}/metrics.yaml
 ```
 
-Check return `status: completed` before proceeding. If failed, retry once, then abort.
+**⏳ FILE GATE:** Wait for completion notification, then verify:
+```
+Glob("{SESSION_DIR}/metrics.yaml") → must exist
+If missing: retry once, then abort.
+```
 
 ### Phase 2: TOC Analysis
 
 ```yaml
 Task:
   subagent_type: triz-toc-analyst
+  run_in_background: true
   description: "/triz: TOC constraint analysis"
   prompt: |
     TARGET: {TARGET_PATH}
@@ -122,13 +145,18 @@ Task:
     OUTPUT_FILE: {SESSION_DIR}/toc-analysis.yaml
 ```
 
-Check return `status: completed` before proceeding. If failed, retry once. If still failed, skip TOC and launch Phase 3 with `TOC_FILE: UNAVAILABLE` (degraded mode).
+**⏳ FILE GATE:** Wait for completion notification, then verify:
+```
+Glob("{SESSION_DIR}/toc-analysis.yaml") → must exist
+If missing: retry once. If still failed, skip TOC — launch Phase 3 with TOC_FILE: UNAVAILABLE (degraded mode).
+```
 
 ### Phase 3: TRIZ Analysis (AFTER Phase 2)
 
 ```yaml
 Task:
   subagent_type: triz-triz-analyst
+  run_in_background: true
   description: "/triz: TRIZ contradiction analysis"
   prompt: |
     TARGET: {TARGET_PATH}
@@ -138,13 +166,18 @@ Task:
     OUTPUT_FILE: {SESSION_DIR}/triz-analysis.yaml
 ```
 
-Check return `status: completed` before proceeding. If failed, retry once. If still failed, launch Phase 4 with only available inputs (degraded mode).
+**⏳ FILE GATE:** Wait for completion notification, then verify:
+```
+Glob("{SESSION_DIR}/triz-analysis.yaml") → must exist
+If missing: retry once. If still failed, launch Phase 4 with only available inputs (degraded mode).
+```
 
 ### Phase 4: Synthesis
 
 ```yaml
 Task:
   subagent_type: triz-synthesizer
+  run_in_background: true
   description: "/triz: synthesize recommendations"
   prompt: |
     TARGET: {TARGET_PATH}

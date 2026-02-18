@@ -15,6 +15,22 @@ Design system architecture from scratch based on business decisions.
 
 ---
 
+## FORBIDDEN ACTIONS (ADR-007/008/009/010)
+
+```
+⛔ NEVER store agent responses in orchestrator variables
+⛔ NEVER pass full agent output in another agent's prompt
+⛔ NEVER use TaskOutput to read agent results
+⛔ NEVER read output_file paths from background agents
+
+✅ ALL Task calls use run_in_background: true
+✅ Agents WRITE their output to ai/architect/ files
+✅ Agents READ peer files themselves (via Read tool)
+✅ File gates (Glob) verify completion between phases
+```
+
+---
+
 ## Phase 1: BRIEF (Facilitator)
 
 Read Business Blueprint. Extract:
@@ -30,7 +46,7 @@ Assign each persona their focus.
 Output: ai/architect/architecture-agenda.md
 ```
 
-### Phase 2: RESEARCH (7 personas, parallel, isolated)
+### Phase 2: RESEARCH (7 personas + devil, parallel, isolated, background)
 
 Each receives:
 - Business Blueprint (context)
@@ -39,80 +55,102 @@ Each receives:
 
 **Do NOT see each other's conclusions.**
 
-Dispatch 7 parallel agents + devil (each has its own persona file in `agents/architect/`):
+Dispatch 8 parallel background agents (each has its own persona file in `agents/architect/`):
 ```yaml
-# All 8 in parallel — each persona is a dedicated agent with full identity
+# All 8 in parallel, ALL background — each persona is a dedicated agent
 Task tool:
   description: "Architect: domain research"
   subagent_type: architect-domain      # → agents/architect/domain.md
+  run_in_background: true
   prompt: |
     PHASE: 1
     BUSINESS BLUEPRINT: [contents of ai/blueprint/business-blueprint.md]
     AGENDA: [Domain section from architecture-agenda.md]
-    Output: ai/architect/research-domain.md
+    OUTPUT: Write your research to ai/architect/research-domain.md
 
 Task tool:
   description: "Architect: data research"
   subagent_type: architect-data        # → agents/architect/data.md
+  run_in_background: true
   prompt: |
     PHASE: 1
     BUSINESS BLUEPRINT: [contents]
     AGENDA: [Data section from architecture-agenda.md]
-    Output: ai/architect/research-data.md
+    OUTPUT: Write your research to ai/architect/research-data.md
 
 Task tool:
   description: "Architect: ops research"
   subagent_type: architect-ops         # → agents/architect/ops.md
+  run_in_background: true
   prompt: |
     PHASE: 1
     BUSINESS BLUEPRINT: [contents]
     AGENDA: [Ops section from architecture-agenda.md]
-    Output: ai/architect/research-ops.md
+    OUTPUT: Write your research to ai/architect/research-ops.md
 
 Task tool:
   description: "Architect: security research"
   subagent_type: architect-security    # → agents/architect/security.md
+  run_in_background: true
   prompt: |
     PHASE: 1
     BUSINESS BLUEPRINT: [contents]
     AGENDA: [Security section from architecture-agenda.md]
-    Output: ai/architect/research-security.md
+    OUTPUT: Write your research to ai/architect/research-security.md
 
 Task tool:
   description: "Architect: evolutionary research"
   subagent_type: architect-evolutionary # → agents/architect/evolutionary.md
+  run_in_background: true
   prompt: |
     PHASE: 1
     BUSINESS BLUEPRINT: [contents]
     AGENDA: [Evolutionary section from architecture-agenda.md]
-    Output: ai/architect/research-evolutionary.md
+    OUTPUT: Write your research to ai/architect/research-evolutionary.md
 
 Task tool:
   description: "Architect: DX research"
   subagent_type: architect-dx          # → agents/architect/dx.md
+  run_in_background: true
   prompt: |
     PHASE: 1
     BUSINESS BLUEPRINT: [contents]
     AGENDA: [DX section from architecture-agenda.md]
-    Output: ai/architect/research-dx.md
+    OUTPUT: Write your research to ai/architect/research-dx.md
 
 Task tool:
   description: "Architect: LLM research"
   subagent_type: architect-llm         # → agents/architect/llm.md
+  run_in_background: true
   prompt: |
     PHASE: 1
     BUSINESS BLUEPRINT: [contents]
     AGENDA: [LLM section from architecture-agenda.md]
-    Output: ai/architect/research-llm.md
+    OUTPUT: Write your research to ai/architect/research-llm.md
 
 Task tool:
   description: "Architect: Devil research"
   subagent_type: architect-devil       # → agents/architect/devil.md
+  run_in_background: true
   prompt: |
     PHASE: 1
     BUSINESS BLUEPRINT: [contents]
     AGENDA: [Devil section from architecture-agenda.md]
-    Output: ai/architect/research-devil.md
+    OUTPUT: Write your research to ai/architect/research-devil.md
+```
+
+**⏳ FILE GATE:** Wait for ALL 8 completion notifications, then verify:
+```
+Glob("ai/architect/research-*.md") → must find 8 files
+If < 8: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
+```
+
+**Anonymous label shuffling (between Phase 2 and Phase 3):**
+```
+Create ai/architect/anonymous/
+Copy research files with shuffled random labels: peer-A.md through peer-H.md
+Mapping is random each run to prevent anchoring bias
+Each persona knows which label is theirs (to exclude from review)
 ```
 
 ```
@@ -121,45 +159,59 @@ Output: ai/architect/research-{role}.md × 8
 
 ### Phase 3: CROSS-CRITIQUE (Karpathy Protocol)
 
-Each persona sees ANONYMOUS research from others (labeled A-G, not by name).
-Each responds: agree/disagree + gaps + ranking.
+Each persona reads ANONYMOUS research via Read tool (NOT passed in prompt):
+Labels A-H instead of names → reduces anchoring bias.
 
-Dispatch 8 parallel agents (same personas, Phase 2):
+Dispatch 8 parallel background agents (same personas, Phase 2):
 ```yaml
-# All 8 in parallel — same personas, now with anonymous peer research
+# All 8 in parallel, ALL background — same personas, now reading anonymous peer research
 Task tool:
   description: "Architect: domain critique"
   subagent_type: architect-domain      # → agents/architect/domain.md
+  run_in_background: true
   prompt: |
-    PHASE: 2
-    ANONYMOUS RESEARCH:
-    - Research A: [content of one peer's research]
-    - Research B: [content of another peer's research]
-    ... (7 anonymous peer reports, all except their own)
-    Output: ai/architect/critique-domain.md
+    PHASE: 2 (Cross-Critique)
+    Read your initial research: ai/architect/research-domain.md
+    Read anonymous peer files from ai/architect/anonymous/:
+    - peer-A.md through peer-G.md (7 files — your own is excluded, you are label {X})
+    For each peer: agree/disagree, gaps, ranking.
+    OUTPUT: Write critique to ai/architect/critique-domain.md
 
 # ... same pattern for data, ops, security, evolutionary, dx, llm, devil
 # Each receives 7 ANONYMOUS peer reports (all except their own)
-# Labels A-G are randomized, NOT in role order
+# Labels A-H are randomized, NOT in role order
+```
+
+**⏳ FILE GATE:** Wait for ALL 8 completion notifications, then verify:
+```
+Glob("ai/architect/critique-*.md") → must find 8 files
+If < 8: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
 ```
 
 ```
 Output: ai/architect/critique-{role}.md × 8
 ```
 
-### Phase 4: SYNTHESIS (Synthesizer, opus)
+### Phase 4: SYNTHESIS (Synthesizer, opus, background)
+
+Synthesizer reads all 16 files via Read tool (NOT passed in prompt):
 
 ```yaml
 Task tool:
   description: "Architect: synthesis"
   subagent_type: architect-synthesizer  # → agents/architect/synthesizer.md
+  run_in_background: true
   prompt: |
-    Read: ai/architect/research-*.md, ai/architect/critique-*.md, architecture-agenda.md
+    Read all files:
+    - ai/architect/research-*.md (8 research files)
+    - ai/architect/critique-*.md (8 critique files)
+    - ai/architect/architecture-agenda.md
     Build 2-3 architecture alternatives. For each: ...
-    Output: ai/architect/architectures.md
+    OUTPUT: Write architectures to ai/architect/architectures.md
 ```
 
-Read 16 files (8 research + 8 critique). Build 2-3 architecture alternatives.
+**⏳ FILE GATE:** Verify `ai/architect/architectures.md` exists.
+**Orchestrator reads ONLY `architectures.md`** for presenting to founder.
 
 For each architecture:
 - Domain Map + interfaces
@@ -191,8 +243,10 @@ Output: ai/architect/founder-feedback-R{N}.md
 
 ### Phase 6: ITERATE (round 2-3)
 
-ALL 7 personas go again with previous research + critique + feedback.
-Full Phase 2-3-4-5 cycle.
+ALL 8 personas go again using same ADR-compliant pattern:
+- ALL Task calls use `run_in_background: true`
+- Personas READ previous research + critique + feedback via Read tool
+- Full Phase 2-3-4-5 cycle with file gates between each phase
 
 Contradiction log: each conflict recorded, next round MUST address.
 
