@@ -57,11 +57,11 @@ export function readHookInput() {
 
 function outputJson(data) {
   try {
-    process.stdout.write(JSON.stringify(data) + '\n');
+    process.stdout.write(JSON.stringify(data) + '\n', () => process.exit(0));
   } catch {
-    // pipe closed early — OK
+    process.exit(0); // pipe closed early — exit anyway
   }
-  process.exit(0);
+  setTimeout(() => process.exit(0), 500); // safety net
 }
 
 // --- PreToolUse hook helpers ---
@@ -135,7 +135,7 @@ const ALWAYS_ALLOWED_PATTERNS = [
   'ai/backlog.md',
   'ai/diary/**',
   '.gitignore',
-  'pyproject.toml',
+  'pyproject.toml', // root-only; monorepos customize locally
   '.claude/**',
 ];
 

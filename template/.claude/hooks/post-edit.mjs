@@ -10,9 +10,9 @@
  */
 
 import { existsSync } from 'fs';
-import { basename } from 'path';
+import { basename, resolve } from 'path';
 import { execFileSync } from 'child_process';
-import { getToolInput, logHookError, postContinue, readHookInput } from './utils.mjs';
+import { getProjectDir, getToolInput, logHookError, postContinue, readHookInput } from './utils.mjs';
 
 // Ruff configuration
 const RUFF_TIMEOUT_MS = 10000;
@@ -66,6 +66,14 @@ function main() {
     }
 
     if (!existsSync(filePath)) {
+      postContinue();
+      return;
+    }
+
+    // Project boundary check (F-018)
+    const projectDir = getProjectDir();
+    const absPath = resolve(filePath);
+    if (!absPath.startsWith(projectDir)) {
       postContinue();
       return;
     }

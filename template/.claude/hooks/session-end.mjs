@@ -33,9 +33,12 @@ function main() {
             decision: 'approve',
             systemMessage: `Reminder: ${pendingCount} pending diary entries. Consider /reflect when convenient.`,
           }) + '\n',
+          () => process.exit(0),
         );
+        setTimeout(() => process.exit(0), 500); // safety net
+        return;
       } catch {
-        // pipe closed — OK
+        // pipe closed — exit anyway
       }
     }
 

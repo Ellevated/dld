@@ -9,6 +9,10 @@ import { readFileSync, existsSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { denyTool, readHookInput, getToolInput } from './utils.mjs';
 
+function stripCodeBlocks(text) {
+  return text.replace(/```[\s\S]*?```/g, '');
+}
+
 function main() {
   try {
     const data = readHookInput();
@@ -40,15 +44,19 @@ function main() {
       const content = readFileSync(specFile, 'utf-8');
       const impactSection = content.match(/## Impact Tree Analysis[\s\S]*?(?=\n##|\s*$)/);
 
-      if (impactSection && impactSection[0].includes('- [ ]')) {
-        denyTool(
-          'Spec has unfilled Impact Tree checkboxes!\n\n' +
-            'Complete the Impact Tree Analysis before committing:\n' +
-            '1. Fill all checkboxes in Impact Tree section\n' +
-            '2. Ensure grep results are recorded\n' +
-            '3. Verify all found files are in Allowed Files\n\n' +
-            'See: CLAUDE.md -> Impact Tree Analysis',
-        );
+      if (impactSection) {
+        const stripped = stripCodeBlocks(impactSection[0]);
+        if (stripped.includes('- [ ]')) {
+          denyTool(
+            'Spec has unfilled Impact Tree checkboxes!\n\n' +
+              'Complete the Impact Tree Analysis before committing:\n' +
+              '1. Fill all checkboxes in Impact Tree section\n' +
+              '2. Ensure grep results are recorded\n' +
+              '3. Verify all found files are in Allowed Files\n\n' +
+              'See: CLAUDE.md -> Impact Tree Analysis',
+          );
+          return;
+        }
       }
     }
 
