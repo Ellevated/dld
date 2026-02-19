@@ -53,6 +53,12 @@ Plan validates spec, creates/updates `## Detailed Implementation Plan`, does NOT
 No feature spec found. Run `spark` first.
 ```
 
+**Plan already exists in spec:**
+Planner ALWAYS runs — re-reads codebase and overwrites old plan.
+Old plan may have stale line numbers/imports after prior specs executed.
+This is by design, not an error.
+
+
 **Complex feature (>10 tasks):**
 Split into phases in plan.
 

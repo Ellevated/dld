@@ -31,8 +31,8 @@ This enables `autopilot-loop.sh` to run overnight with fresh context per spec.
 PHASE 0: Worktree Setup        → worktree-setup.md
   └─ CI check → worktree → env copy → baseline
 
-PHASE 1: Plan                  → subagent-dispatch.md
-  └─ [Plan Agent] opus → tasks in spec
+PHASE 1: Plan (ALWAYS)         → subagent-dispatch.md
+  └─ [Plan Agent] opus → re-reads codebase → tasks in spec
 
 PHASE 2: Execute (per task)    → task-loop.md
   └─ [Coder] sonnet → files
@@ -71,8 +71,9 @@ PHASE 3: Finish                → finishing.md
 PHASE 0: WORKTREE SETUP
   See: worktree-setup.md
 
-PHASE 1: PLAN (if no detailed plan exists)
-  [Plan Subagent] → detailed tasks in spec
+PHASE 1: PLAN (ALWAYS — even if spec has plan)
+  [Plan Subagent] → re-reads codebase → writes/overwrites plan
+  WHY: specs queued earlier have stale line numbers after prior specs execute
   See: subagent-dispatch.md#plan-subagent
 
 PHASE 2: FOR EACH TASK (fresh subagent per task!)
@@ -135,9 +136,11 @@ while (queued/resumed tasks in ai/backlog.md):
   3. PHASE 0: Worktree Setup
      See: worktree-setup.md
 
-  4. PHASE 1: Plan (if needed)
-     Check for "## Implementation Plan"
-     Missing? → dispatch Plan Subagent
+  4. PHASE 1: Plan (ALWAYS runs)
+     ALWAYS dispatch Plan Subagent — even if spec has plan
+     Planner re-reads codebase, validates/regenerates plan
+     WHY: prior specs changed code → old plans have stale refs
+     After PHASE 1: plan MUST exist → else blocked
 
   5. PHASE 2: Execute (see task-loop.md for SSOT)
      FOR EACH TASK:
@@ -170,19 +173,24 @@ while (queued/resumed tasks in ai/backlog.md):
 
 ## Pre-flight Check
 
-Before taking a task:
+Before taking a spec from backlog:
 
-1. **Status:** Must be `queued` or `resumed`
+1. **Status:** Must be `queued` or `resumed` → skip otherwise
+
+After PHASE 1 (planner always runs):
+
 2. **Plan:** Must have `## Implementation Plan`
+3. If plan missing after PHASE 1 → set `blocked`, skip spec
 
-Skip if either check fails, **with warning to user:**
+Skip if status check fails, **with warning to user:**
 
 ```
 SKIP: {TASK_ID}
 Status: {current_status} (expected: queued or resumed)
-Plan: {has_plan ? "present" : "MISSING"}
 Fix the issue and re-run autopilot.
 ```
+
+⛔ **Skipping planner = VIOLATION.** Planner runs before EVERY spec, no exceptions.
 
 ---
 

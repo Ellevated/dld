@@ -10,7 +10,7 @@ How to spawn and manage subagents in autopilot workflow.
 
 | Agent | subagent_type | Model | When |
 |-------|---------------|-------|------|
-| Plan | `planner` | opus | PHASE 1 (ALWAYS) |
+| Plan | `planner` | opus | PHASE 1 (**ALWAYS** — even if spec has plan) |
 | Coder | `coder` | sonnet | PHASE 2 per task |
 | Tester | `tester` | sonnet | PHASE 2 per task |
 | Debugger | `debugger` | opus | If Tester fails (max 3) |
@@ -29,6 +29,12 @@ How to spawn and manage subagents in autopilot workflow.
 ## Dispatch Templates
 
 ### Plan Subagent (ALWAYS runs — even if spec has plan)
+
+**WHY always:** Autopilot processes specs sequentially. By the time spec #8 runs,
+specs #1-7 already changed the codebase. Plan written yesterday has stale line numbers,
+stale imports, stale patterns. Planner MUST re-read the codebase right before execution.
+
+⛔ **Skipping planner = VIOLATION.** No exceptions, no "plan is good enough".
 
 ```yaml
 Task tool:

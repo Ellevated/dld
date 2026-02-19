@@ -6,6 +6,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.8] - 2026-02-19
+
+### Fixed
+- **Planner ALWAYS runs — hardened** — added WHY explanation and VIOLATION markers across all autopilot files. Planner re-reads codebase before every spec because prior specs make old plans stale
+
+### Changed
+- `skills/autopilot/subagent-dispatch.md` — WHY always block + ⛔ VIOLATION marker
+- `skills/autopilot/SKILL.md` — Pre-flight Check: ⛔ skipping planner = VIOLATION
+- `agents/planner.md` — Critical Context #5 expanded: re-read ALL Allowed Files
+
+---
+
 ## [3.7] - 2026-02-14
 
 ### Added
@@ -174,6 +186,7 @@ Initial public release of DLD methodology.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 3.8 | 2026-02-19 | Planner ALWAYS runs — hardened with WHY + VIOLATION markers |
 | 3.7 | 2026-02-14 | Bug Hunt Mode in Spark, TOC+TRIZ agents, multi-phase pipeline |
 | 3.6 | 2026-02-08 | Hooks migrated to Node.js — zero Python dependency, cross-platform |
 | 3.5 | 2026-02-08 | Opus 4.6 support, effort routing, model capabilities rule |
