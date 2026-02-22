@@ -122,18 +122,48 @@ function checkResearch(specFile, minFiles) {
   }
 }
 
-// --- Check 4: Tests section ---
+// --- Check 4: Eval Criteria / Tests section (dual-detection) ---
+
+function checkEvalCriteria(content, minCriteria) {
+  const evalSection = content.match(/## Eval Criteria[\s\S]*?(?=\n## |\s*$)/);
+  if (!evalSection) return null; // not found — caller should try legacy
+
+  const stripped = stripCodeBlocks(evalSection[0]);
+  const ecRows = (stripped.match(/\|\s*EC-\d+/g) || []).length;
+  if (ecRows < minCriteria) {
+    return (
+      `Eval Criteria has only ${ecRows} criteria (minimum: ${minCriteria})!\n\n` +
+      'Add more eval criteria including edge cases from devil\'s advocate.\n\n' +
+      'See: feature-mode.md -> Phase 5: WRITE -> Eval Criteria (MANDATORY)'
+    );
+  }
+
+  if (!/### Coverage Summary/i.test(stripped)) {
+    return (
+      'Eval Criteria missing ### Coverage Summary!\n\n' +
+      'Add coverage summary with counts per type.\n\n' +
+      'See: feature-mode.md -> Phase 6: VALIDATE -> Gate 2'
+    );
+  }
+
+  return null;
+}
 
 function checkTests(content, minTestCases) {
+  // Priority 1: Check Eval Criteria (new format)
+  if (/^## Eval Criteria/m.test(content)) {
+    const minCriteria = minTestCases; // reuse same minimum
+    return checkEvalCriteria(content, minCriteria);
+  }
+
+  // Priority 2: Legacy Tests section (backward compat)
   const testsSection = content.match(/## Tests[\s\S]*?(?=\n## |\s*$)/);
   if (!testsSection) {
     return (
-      'Spec missing Tests section!\n\n' +
-      `Add ## Tests with at least ${minTestCases} test cases:\n` +
-      '- [ ] Test case 1\n' +
-      '- [ ] Test case 2\n' +
-      '- [ ] Edge case\n\n' +
-      'See: feature-mode.md -> Phase 5: WRITE -> Tests (MANDATORY)'
+      'Spec missing Eval Criteria or Tests section!\n\n' +
+      `Add ## Eval Criteria with at least ${minTestCases} criteria (preferred)\n` +
+      `or ## Tests with at least ${minTestCases} test cases (legacy).\n\n` +
+      'See: feature-mode.md -> Phase 5: WRITE -> Eval Criteria (MANDATORY)'
     );
   }
 

@@ -435,20 +435,34 @@ Map every User Flow step to Implementation Task:
 
 ---
 
-## Tests (MANDATORY)
+## Eval Criteria (MANDATORY)
 
-### What to test
-- [ ] {test case 1 — concrete scenario}
-- [ ] {test case 2}
-- [ ] {edge case from devil's advocate}
+### Deterministic Assertions
 
-### How to test
-- Unit: {what to cover with unit tests}
-- Integration: {what needs integration tests}
-- E2E: {if needed — which user flow}
+| ID | Scenario | Input | Expected | Type | Source | Priority |
+|----|----------|-------|----------|------|--------|----------|
+| EC-1 | {scenario} | {input} | {expected behavior} | deterministic | {devil/user/blueprint} | P0 |
+| EC-2 | {edge case} | {input} | {expected} | deterministic | {devil scout} | P0 |
+| EC-3 | {boundary} | {input} | {expected} | deterministic | {user requirement} | P1 |
+
+### Integration Assertions (if applicable)
+
+| ID | Setup | Action | Expected | Type | Source | Priority |
+|----|-------|--------|----------|------|--------|----------|
+| EC-N | {preconditions} | {action} | {result} | integration | {source} | P1 |
+
+### LLM-Judge Assertions (if LLM-involved feature)
+
+| ID | Input | Rubric | Threshold | Source | Priority |
+|----|-------|--------|-----------|--------|----------|
+| EC-N | {prompt/input} | {good output criteria} | 0.8 | {source} | P1 |
+
+### Coverage Summary
+- Deterministic: {N} | Integration: {N} | LLM-Judge: {N} | Total: {N} (min 3)
 
 ### TDD Order
-1. Write test → FAIL → Implement → PASS
+1. Write test from EC-1 -> FAIL -> Implement -> PASS
+2. Continue by priority (P0 first)
 
 ---
 
@@ -459,7 +473,7 @@ Map every User Flow step to Implementation Task:
 - [ ] All tasks from Implementation Plan completed
 
 ### Tests
-- [ ] All test cases from ## Tests section pass
+- [ ] All eval criteria from ## Eval Criteria section pass
 - [ ] Coverage not decreased
 
 ### E2E User Journey (REQUIRED for UI features)
@@ -502,13 +516,14 @@ Before marking spec `queued`, run 5 structural validation gates.
 □ DoD is measurable?
 ```
 
-### Gate 2: Tests Gate
+### Gate 2: Eval Criteria Gate
 ```
-□ Tests section filled?
-□ Minimum 3 test cases?
+□ Eval Criteria section filled? (or Tests section for legacy specs)
+□ Minimum 3 eval criteria (EC-N rows)?
 □ Has edge case from devil's advocate?
+□ Coverage Summary present?
 □ TDD Order defined?
-□ DoD includes tests?
+□ DoD includes tests/eval?
 ```
 
 ### Gate 3: Blueprint Compliance

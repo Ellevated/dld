@@ -107,7 +107,9 @@ export default {
     requireResearchForSpec: true,
     requirePlanBeforeCode: true,
     requireTestsInSpec: true,
+    requireEvalCriteria: true,
     minTestCases: 3,
+    minEvalCriteria: 3,
     minResearchFiles: 2,
   },
 
