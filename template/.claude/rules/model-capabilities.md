@@ -99,27 +99,32 @@ MCP servers (fal-ai, Notion, etc.) register tools as "deferred". If you check yo
 
 ### The Rule
 
-**NEVER assume an MCP tool is unavailable without running `ToolSearch` first.**
+**NEVER assume an MCP tool is unavailable. NEVER silently fall back to degraded mode.**
 
 ```
 Step 1: ToolSearch(query: "{mcp-server-name}")     → loads matching tools
 Step 2: Tools returned?  → available, proceed
-Step 3: Nothing returned? → truly not connected
+Step 3: Nothing returned? → try alternative queries (tool name, alias)
+Step 4: Still nothing?   → ASK THE USER with AskUserQuestion
+                           Do NOT silently fall back!
 ```
+
+**Why ask?** MCP servers can be configured but need session restart, or user may want to add one now. Silent fallback = user gets degraded output without knowing why.
 
 ### Common MCP Servers and Search Queries
 
-| Server | ToolSearch Query | What Loads |
-|--------|-----------------|------------|
-| fal-ai | `"fal-ai generate"` | Image/video generation, upscale, remove bg |
-| Notion | `"notion"` | Search, fetch, create/update pages |
-| Exa | `"exa web search"` | Web search, deep research, crawling |
-| Context7 | `"context7"` | Library docs lookup |
-| Sequential Thinking | `"sequential"` | Step-by-step reasoning |
+| Server | Primary Query | Fallback Queries |
+|--------|--------------|-----------------|
+| fal-ai | `"fal-ai"` | `"generate_image"`, `"fal"` |
+| Notion | `"notion"` | `"notion-search"` |
+| Exa | `"exa"` | `"web_search_exa"` |
+| Context7 | `"context7"` | `"resolve-library"` |
+| Sequential Thinking | `"sequential"` | `"sequentialthinking"` |
 
 ### For Skill Authors
 
 When writing skills that depend on MCP tools:
 1. In Pre-flight section, use `ToolSearch` — not "check available tools"
-2. Provide the exact query string (e.g., `ToolSearch(query: "fal-ai generate")`)
-3. Define fallback behavior when tools are genuinely not connected
+2. Provide primary + fallback query strings
+3. If all queries fail → use `AskUserQuestion` to confirm with user
+4. **Never silently degrade** — user must know and approve fallback mode
