@@ -119,17 +119,25 @@ SKILL.md → foundation.md → design.md → launch.md → completion.md
 ### MCP Detection
 
 ```
-Check available tools for fal-ai MCP server (raveenb/fal-mcp-server):
+Step 1: ToolSearch(query: "fal-ai")
+Step 2: Tools found?  → IMAGE_GEN_MODE = true
+Step 3: Not found?    → Ask user (AskUserQuestion), do NOT silently fall back
+```
 
+**If not found — ask, don't assume:**
+- fal-ai может быть не установлен, или установлен с project scope вместо user scope
+- Спроси пользователя: "fal-ai не найден. Работаем без генерации или хотите настроить?"
+- Для установки: `claude mcp add fal-ai -s user -- uvx --from fal-mcp-server fal-mcp`
+
+Available fal-ai tools (when MCP connected):
+
+```
 IMAGE: generate_image, generate_image_structured, generate_image_from_image,
        edit_image, remove_background, upscale_image, inpaint_image,
        resize_image, compose_images
 VIDEO: generate_video, generate_video_from_image, generate_video_from_video
 AUDIO: generate_music
 UTIL:  list_models, recommend_model, get_pricing, get_usage, upload_file
-
-Found fal-ai tools? → IMAGE_GEN_MODE = true
-Not found?          → IMAGE_GEN_MODE = false (prompts only in prompts.md)
 ```
 
 ### Recommended Models (via FAL.AI)
