@@ -118,38 +118,15 @@ SKILL.md → foundation.md → design.md → launch.md → completion.md
 
 ### MCP Detection
 
-**IMPORTANT:** fal-ai tools are DEFERRED — they won't appear in your tool list until you explicitly load them.
+**IMPORTANT:** fal-ai tools are DEFERRED — they won't appear in your tool list until you explicitly load them. You MUST use `ToolSearch` to detect and load them.
 
 ```
-Step 1: Run ToolSearch with query: "fal-ai"
-Step 2: If tools found → IMAGE_GEN_MODE = true
-Step 3: If nothing found → try also: ToolSearch("generate_image"), ToolSearch("fal")
-Step 4: Still nothing → ASK THE USER (do NOT silently fall back!):
+Step 1: Run ToolSearch with query: "fal-ai generate"
+Step 2: If ToolSearch returns fal-ai tools → IMAGE_GEN_MODE = true
+Step 3: If ToolSearch returns nothing   → IMAGE_GEN_MODE = false (prompts only)
 ```
 
-**If ToolSearch finds nothing, use AskUserQuestion:**
-
-```
-AskUserQuestion:
-  question: "fal-ai MCP tools не найдены в текущей сессии. У вас настроен fal-ai?"
-  header: "fal-ai"
-  options:
-    - label: "Да, перезапущу сессию"
-      description: "fal-ai настроен, но сессию нужно перезапустить для подключения"
-    - label: "Нет, работаем без генерации"
-      description: "Все промпты будут в prompts.md для ручного использования"
-    - label: "Настрою сейчас"
-      description: "Покажи команду установки, я добавлю и перезапущу"
-```
-
-**If user picks "Настрою сейчас"**, show:
-```bash
-claude mcp add fal-ai -- uvx --from fal-mcp-server fal-mcp
-# Requires: export FAL_KEY=your-key (get at fal.ai/dashboard/keys)
-# Then restart Claude Code session
-```
-
-**NEVER silently fall back to prompts-only. Always ask the user first.**
+**Do NOT skip this step. Do NOT assume tools are unavailable without running ToolSearch first.**
 
 Available fal-ai tools (when MCP connected):
 
