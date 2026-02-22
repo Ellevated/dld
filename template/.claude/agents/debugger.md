@@ -92,6 +92,13 @@ fix:
   file: src/...
   change: "What Coder should do"
   verify: "How Tester should verify"
+regression:
+  test_name: "test_regression_{spec_id}_{short_description}"
+  test_file: "tests/regression/test_{domain}.py"
+  test_code: |
+    def test_regression_{spec_id}_{short_description}():
+        """Regression: {root_cause}. Source: {TASK_ID}."""
+        # Arrange / Act / Assert
 ```
 
 ### Out-of-scope:

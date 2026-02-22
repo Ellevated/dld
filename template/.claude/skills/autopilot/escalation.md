@@ -170,6 +170,7 @@ CODE QUALITY REVIEWER returns needs_refactor:
 - `bash_instead_of_tools` — used bash when tool exists
 - `test_retry > 1` — needed multiple debug attempts
 - `escalation_used` — escalated to Spark/Council
+- `regression_captured` — debug fix became permanent regression test
 
 **When:** After DEBUG LOOP (if retry > 1) or after escalation.
 
