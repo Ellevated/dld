@@ -118,18 +118,25 @@ SKILL.md → foundation.md → design.md → launch.md → completion.md
 
 ### MCP Detection
 
-```
-Check available tools for fal-ai MCP server (raveenb/fal-mcp-server):
+**IMPORTANT:** fal-ai tools are DEFERRED — they won't appear in your tool list until you explicitly load them. You MUST use `ToolSearch` to detect and load them.
 
+```
+Step 1: Run ToolSearch with query: "fal-ai generate"
+Step 2: If ToolSearch returns fal-ai tools → IMAGE_GEN_MODE = true
+Step 3: If ToolSearch returns nothing   → IMAGE_GEN_MODE = false (prompts only)
+```
+
+**Do NOT skip this step. Do NOT assume tools are unavailable without running ToolSearch first.**
+
+Available fal-ai tools (when MCP connected):
+
+```
 IMAGE: generate_image, generate_image_structured, generate_image_from_image,
        edit_image, remove_background, upscale_image, inpaint_image,
        resize_image, compose_images
 VIDEO: generate_video, generate_video_from_image, generate_video_from_video
 AUDIO: generate_music
 UTIL:  list_models, recommend_model, get_pricing, get_usage, upload_file
-
-Found fal-ai tools? → IMAGE_GEN_MODE = true
-Not found?          → IMAGE_GEN_MODE = false (prompts only in prompts.md)
 ```
 
 ### Recommended Models (via FAL.AI)

@@ -85,3 +85,40 @@ Agents should operate at different effort levels based on task complexity:
 
 **Rule:** Model is defined ONCE in agent frontmatter `model:` field.
 Never hardcode model in skill dispatch — use `subagent_type` only.
+
+---
+
+## MCP Tools: Deferred Loading
+
+**CRITICAL:** Most MCP tools are **deferred** — they are NOT in your tool list until explicitly loaded via `ToolSearch`.
+
+### The Problem
+
+MCP servers (fal-ai, Notion, etc.) register tools as "deferred". If you check your available tools directly, deferred tools appear absent. This leads to false conclusions like "MCP not connected" or "tools unavailable".
+
+### The Rule
+
+**NEVER assume an MCP tool is unavailable without running `ToolSearch` first.**
+
+```
+Step 1: ToolSearch(query: "{mcp-server-name}")     → loads matching tools
+Step 2: Tools returned?  → available, proceed
+Step 3: Nothing returned? → truly not connected
+```
+
+### Common MCP Servers and Search Queries
+
+| Server | ToolSearch Query | What Loads |
+|--------|-----------------|------------|
+| fal-ai | `"fal-ai generate"` | Image/video generation, upscale, remove bg |
+| Notion | `"notion"` | Search, fetch, create/update pages |
+| Exa | `"exa web search"` | Web search, deep research, crawling |
+| Context7 | `"context7"` | Library docs lookup |
+| Sequential Thinking | `"sequential"` | Step-by-step reasoning |
+
+### For Skill Authors
+
+When writing skills that depend on MCP tools:
+1. In Pre-flight section, use `ToolSearch` — not "check available tools"
+2. Provide the exact query string (e.g., `ToolSearch(query: "fal-ai generate")`)
+3. Define fallback behavior when tools are genuinely not connected
