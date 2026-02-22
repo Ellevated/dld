@@ -93,6 +93,35 @@ Common rationalization to REJECT: "tests are simple, I'll write them later"
 
 ---
 
+## Step 2.5: REGRESSION CAPTURE (conditional)
+
+**Trigger:** `debug_attempts > 0 AND tester == "pass"`
+
+When debug loop succeeded (bug was found and fixed):
+
+1. Extract `regression` field from debugger's last fix output
+2. Dispatch coder to create regression test file:
+   ```yaml
+   Task tool:
+     subagent_type: "coder"
+     prompt: |
+       Create regression test from debugger output.
+       File: {regression.test_file}
+       Test: {regression.test_code}
+       Do NOT modify any other file.
+   ```
+3. Quick verify: `pytest {test_file}::{test_name} -v` (or equivalent)
+
+**Rules:**
+- ONLY fires after successful debug loop (debug_attempts > 0)
+- Does NOT go through full review cycle (test-only, minimal change)
+- File goes to `tests/regression/` (immutable after creation)
+- If regression field is missing from debugger output → skip (no error)
+
+**After:** Continue to Step 3 (PRE-REVIEW CHECK)
+
+---
+
 ## Step 3: PRE-REVIEW CHECK
 
 Deterministic checks BEFORE AI review (saves tokens on obvious issues).
