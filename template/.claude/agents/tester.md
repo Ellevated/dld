@@ -148,6 +148,51 @@ Before reporting test failure:
    - Is immutable? (yes/no)
    - Recommendation: fix code / ask user
 
+## Eval Criteria Testing (LLM-as-Judge)
+
+When spec has `## Eval Criteria` with `llm-judge` type entries:
+
+### Step 1: Parse eval criteria
+
+```bash
+node .claude/scripts/eval-judge.mjs {spec_path} --type llm-judge
+```
+
+Returns JSON array of criteria with `type: "llm-judge"`.
+
+### Step 2: For each llm-judge criterion
+
+1. Run the feature input through the implementation
+2. Capture actual output
+3. Dispatch eval-judge agent:
+
+```yaml
+Task tool:
+  subagent_type: "eval-judge"
+  prompt: |
+    criterion_id: "{id}"
+    input: "{input from criterion}"
+    actual_output: "{captured output}"
+    rubric: "{rubric from criterion}"
+    threshold: {threshold from criterion}
+```
+
+### Step 3: Include results in tester output
+
+```yaml
+eval_criteria_results:
+  - criterion_id: "EC-4"
+    score: 0.82
+    pass: true
+  - criterion_id: "EC-5"
+    score: 0.45
+    pass: false
+```
+
+If any llm-judge criterion fails → report as `failed_in_scope`.
+
+**When to skip:** If `eval-judge.mjs` returns empty array (no llm-judge criteria), skip this section entirely.
+
 ## Limits
 - `./test fast`: max 5 fails
 - `./test llm`: max 2 fails

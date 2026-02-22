@@ -16,6 +16,7 @@ How to spawn and manage subagents in autopilot workflow.
 | Debugger | `debugger` | opus | If Tester fails (max 3) |
 | Spec Reviewer | `spec-reviewer` | sonnet | PHASE 2 per task |
 | Diary Recorder | `diary-recorder` | haiku | On problems detected |
+| Eval Judge | `eval-judge` | sonnet | LLM-as-Judge eval criteria |
 
 ### External Agents (user OR Autopilot)
 
