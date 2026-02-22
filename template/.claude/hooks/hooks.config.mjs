@@ -103,6 +103,14 @@ export default {
     ],
   },
 
+  enforcement: {
+    requireResearchForSpec: true,
+    requirePlanBeforeCode: true,
+    requireTestsInSpec: true,
+    minTestCases: 3,
+    minResearchFiles: 2,
+  },
+
   promptGuard: {
     keywordTargetGap: 30,
     complexityPatterns: [

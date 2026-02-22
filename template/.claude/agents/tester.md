@@ -16,6 +16,20 @@ files_changed: [...]
 task_scope: "FTR-XXX: description"
 ```
 
+## Test Output Wrapper
+
+For LLM-optimized output, use the test-wrapper:
+
+```bash
+node .claude/scripts/test-wrapper.mjs ./test fast
+```
+
+- **Pass:** Single summary line (e.g., `PASS: 15 tests passed (2.3s)`)
+- **Fail:** Compact failure summary + path to full output file
+- Reduces context noise significantly vs raw test output
+
+**When to use:** Always prefer test-wrapper in autopilot task loop. Use raw commands only for debugging.
+
 ## Smart Testing
 
 **Two approaches:**

@@ -28,6 +28,25 @@ SESSION_DIR = ai/.spark/{YYYYMMDD}-{spec_id}/
 
 ---
 
+## State Tracking (Enforcement as Code)
+
+After EACH phase, update the session state file:
+
+```
+Write tool → {SESSION_DIR}/state.json
+```
+
+**Format:** See `.claude/scripts/spark-state.mjs` for utilities.
+
+**After each phase completes:**
+1. Update state.json with phase status = "done" and timestamp
+2. For research phase: include `files` array with research file names
+3. For decide phase: include `approach` number selected
+
+**This is NOT optional.** Hooks read state.json to validate spec completeness.
+
+---
+
 ## FORBIDDEN ACTIONS (ADR-007/008/009/010)
 
 ```
@@ -81,6 +100,15 @@ Architect/Board assigned this task — read from blueprint, do NOT ask user.
 3. Human = 0% involvement (per design doc)
 
 **Output for both modes:** Problem statement captured, ready for scouts.
+
+<HARD-GATE>
+DO NOT proceed to Phase 2 until:
+- [ ] state.json initialized with initState()
+- [ ] state.json updated: collect = done
+- [ ] Problem statement clearly captured
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "the feature is obvious, no need for questions"
+</HARD-GATE>
 
 ---
 
@@ -144,6 +172,15 @@ Glob("{SESSION_DIR}/research-*.md") → must find 4 files
 If < 4: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
 ```
 
+<HARD-GATE>
+DO NOT proceed to Phase 3 until:
+- [ ] ALL 4 scout completion notifications received
+- [ ] Glob confirms 4 research files exist in SESSION_DIR
+- [ ] state.json updated: research = done, files = [list of 4 files]
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "this is simple enough to skip research"
+</HARD-GATE>
+
 ---
 
 ## Phase 3: SYNTHESIZE
@@ -174,6 +211,15 @@ For each approach:
 
 **Output:** 2-3 approaches ready for Phase 4 decision.
 
+<HARD-GATE>
+DO NOT proceed to Phase 4 until:
+- [ ] 2-3 approaches documented with pros/cons
+- [ ] Every claim cites a scout research file
+- [ ] state.json updated: synthesize = done
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "there's only one obvious approach"
+</HARD-GATE>
+
 ---
 
 ## Phase 4: DECIDE
@@ -203,6 +249,15 @@ Route based on feature scope, clarity, and risk:
 - Blueprint gap (domain missing, rule missing)
 - Blueprint contradiction (research conflicts with blueprint)
 → Architect updates blueprint → retry from Phase 3
+
+<HARD-GATE>
+DO NOT proceed to Phase 5 until:
+- [ ] Decision route selected (AUTO/HUMAN/COUNCIL/ARCHITECT)
+- [ ] If HUMAN: user has explicitly chosen an approach
+- [ ] state.json updated: decide = done, approach = N
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "I already know what the user wants"
+</HARD-GATE>
 
 ---
 
@@ -423,6 +478,15 @@ Map every User Flow step to Implementation Task:
 [Auto-populated by autopilot during execution]
 ```
 
+<HARD-GATE>
+DO NOT proceed to Phase 6 until:
+- [ ] Full spec written to ai/features/{TASK_ID}-*.md
+- [ ] All template sections filled (no {placeholders} remain)
+- [ ] state.json updated: write = done
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "I'll fill the remaining sections later"
+</HARD-GATE>
+
 ---
 
 ## Phase 6: VALIDATE
@@ -471,6 +535,14 @@ Before marking spec `queued`, run 5 structural validation gates.
 
 **If any gate fails →** spec stays `draft`, return to Phase 3 (re-synthesize with feedback).
 
+<HARD-GATE>
+DO NOT proceed to Phase 7 until:
+- [ ] All 5 validation gates pass
+- [ ] state.json updated: validate = done
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "gates are just a formality, spec looks good"
+</HARD-GATE>
+
 ---
 
 ## Phase 7: REFLECT
@@ -518,6 +590,14 @@ Append to ai/reflect/upstream-signals.md:
 {What Architect/Board should do}
 ```
 
+<HARD-GATE>
+DO NOT proceed to Phase 8 until:
+- [ ] Reflect signals written (if any issues found)
+- [ ] state.json updated: reflect = done
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "nothing to reflect on"
+</HARD-GATE>
+
 ---
 
 ## Phase 8: COMPLETION
@@ -527,3 +607,22 @@ After spec is created and validated → read `completion.md` for:
 - Backlog entry format
 - Auto-commit rules
 - Handoff to autopilot
+
+After completion: state.json updated: completion = done
+
+---
+
+## Rationalization Pre-emption Table
+
+When you feel tempted to skip a phase, consult this table:
+
+| LLM thinks | Correct action |
+|---|---|
+| "This is too simple for research" | Research can be short, but must happen. Update state.json. |
+| "I already know how to do this" | Knowledge ≠ research. Scout may find a better pattern. |
+| "Tests can be written later" | TDD: test BEFORE code. No test = no commit. |
+| "This file isn't in Allowed Files, but it's needed" | Add it to the spec. Hook will block otherwise. |
+| "There's only one obvious approach" | Document it anyway. Devil's advocate may disagree. |
+| "The user said 'just do it'" | Ask 2-3 minimum clarifying questions anyway. |
+| "Validation gates are a formality" | Gates catch real issues. Run them honestly. |
+| "Nothing to reflect on" | There's always a process signal. Did auto-decide work? |

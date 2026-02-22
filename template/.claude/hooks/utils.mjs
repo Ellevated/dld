@@ -257,7 +257,7 @@ function minimatch(str, pattern) {
 export function extractAllowedFiles(specPath) {
   try {
     const content = readFileSync(specPath, 'utf-8');
-    const match = content.match(/## Allowed Files\s*\n([\s\S]*?)(?=\n##|\s*$)/i);
+    const match = content.match(/## Allowed Files\s*\n([\s\S]*?)(?=\n## (?!#)|\s*$)/i);
     if (!match) return { files: [], error: false };
 
     const section = match[1];
@@ -396,4 +396,19 @@ export function getProjectDir() {
     return process.cwd();
   }
   return resolved;
+}
+
+/**
+ * Get git worktree root (covers worktree vs main repo mismatch).
+ * @returns {string|null} Worktree root path or null on error
+ */
+export function getWorktreeRoot() {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      encoding: 'utf-8',
+      timeout: GIT_TIMEOUT_MS,
+    }).trim();
+  } catch {
+    return null; // fail-safe (ADR-004)
+  }
 }
