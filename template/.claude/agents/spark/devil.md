@@ -101,15 +101,24 @@ Write to: `ai/features/research-devil.md`
 
 ---
 
-## Edge Cases
+## Eval Assertions (Structured from Risk Analysis)
 
-| # | Scenario | Current Behavior | Proposed Behavior | Risk | Test Priority |
-|---|----------|------------------|-------------------|------|---------------|
-| 1 | {edge case} | {what happens now} | {what will happen} | High/Med/Low | P0/P1/P2 |
-| 2 | {edge case} | {what happens now} | {what will happen} | High/Med/Low | P0/P1/P2 |
-| 3 | {edge case} | {what happens now} | {what will happen} | High/Med/Low | P0/P1/P2 |
+### Deterministic Assertions
 
-**Critical cases:** {List high-risk scenarios that MUST be handled}
+| ID | Scenario | Input | Expected Behavior | Risk | Priority | Type |
+|----|----------|-------|-------------------|------|----------|------|
+| DA-1 | {edge case} | {concrete input} | {expected} | High | P0 | deterministic |
+| DA-2 | {edge case} | {concrete input} | {expected} | Med | P1 | deterministic |
+| DA-3 | {edge case} | {concrete input} | {expected} | Low | P2 | deterministic |
+
+### Side-Effect Assertions
+
+| ID | Affected Component | File:line | Regression Check | Priority |
+|----|-------------------|-----------|------------------|----------|
+| SA-1 | {component} | {file}:{line} | {what to verify} | P0 |
+
+### Assertion Summary
+- Deterministic: {N} | Side-effect: {N} | Total: {N}
 
 ---
 
@@ -129,19 +138,10 @@ Write to: `ai/features/research-devil.md`
 
 ---
 
-## Tests Needed (Derived from Risk Analysis)
+## Test Derivation
 
-### P0 (Must Have)
-- [ ] {Test case for critical edge case 1}
-- [ ] {Test case for critical edge case 2}
-- [ ] {Test for side effect on component X}
-
-### P1 (Should Have)
-- [ ] {Test case for medium-risk scenario}
-- [ ] {Test for dependency Y behavior}
-
-### P2 (Nice to Have)
-- [ ] {Test case for low-risk edge case}
+All test cases are captured in `## Eval Assertions` above as DA-IDs and SA-IDs.
+Facilitator maps these to EC-IDs in the spec's `## Eval Criteria` section.
 
 ---
 
@@ -208,17 +208,27 @@ Write to: `ai/features/research-devil.md`
 
 ---
 
-## Edge Cases
+## Eval Assertions (Structured from Risk Analysis)
 
-| # | Scenario | Current Behavior | Proposed Behavior | Risk | Test Priority |
-|---|----------|------------------|-------------------|------|---------------|
-| 1 | Budget set to 0 | Not applicable | Block all campaigns? | High | P0 |
-| 2 | Concurrent spend | Race condition exists | Still has race | High | P0 |
-| 3 | Budget in one currency, spend in another | Not handled | Conversion needed | Medium | P1 |
-| 4 | Campaign paused mid-execution | Spend stops | Does budget refund? | Medium | P1 |
-| 5 | Admin changes budget during campaign | Not applicable | What happens? | Low | P2 |
+### Deterministic Assertions
 
-**Critical cases:** #1 (budget=0), #2 (race condition) must be handled or feature is broken.
+| ID | Scenario | Input | Expected Behavior | Risk | Priority | Type |
+|----|----------|-------|-------------------|------|----------|------|
+| DA-1 | Budget set to 0 | budget_limit=0, create campaign | Block campaign creation | High | P0 | deterministic |
+| DA-2 | Concurrent spend | 2 threads check budget simultaneously | Only one succeeds, no overspend | High | P0 | deterministic |
+| DA-3 | Cross-currency budget | budget=USD, spend=EUR | Conversion applied before check | Med | P1 | deterministic |
+| DA-4 | Campaign paused mid-run | pause while 50% spent | Budget reflects actual spend only | Med | P1 | deterministic |
+| DA-5 | Admin changes budget during campaign | reduce budget below current spend | Campaign blocked, notification sent | Low | P2 | deterministic |
+
+### Side-Effect Assertions
+
+| ID | Affected Component | File:line | Regression Check | Priority |
+|----|-------------------|-----------|------------------|----------|
+| SA-1 | Campaign creation flow | api/telegram/handlers.py:78 | Campaign still creates when budget allows | P0 |
+| SA-2 | Billing deduction | domains/billing/service.py:102 | Balance deduction unaffected | P0 |
+
+### Assertion Summary
+- Deterministic: 5 | Side-effect: 2 | Total: 7
 
 ---
 
@@ -240,21 +250,10 @@ Write to: `ai/features/research-devil.md`
 
 ---
 
-## Tests Needed (Derived from Risk Analysis)
+## Test Derivation
 
-### P0 (Must Have)
-- [ ] Test budget=0 blocks campaign creation
-- [ ] Test concurrent spend doesn't exceed budget (integration test with threads)
-- [ ] Test budget and balance sync after spending
-
-### P1 (Should Have)
-- [ ] Test currency conversion if budget in USD, spend in EUR
-- [ ] Test budget refund if campaign paused
-- [ ] Test admin changing budget doesn't corrupt in-progress campaigns
-
-### P2 (Nice to Have)
-- [ ] Test budget limit warnings in UI
-- [ ] Test budget reporting accuracy
+All test cases are captured in `## Eval Assertions` above as DA-IDs and SA-IDs.
+Facilitator maps these to EC-IDs in the spec's `## Eval Criteria` section.
 
 ---
 

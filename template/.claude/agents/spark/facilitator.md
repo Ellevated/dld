@@ -196,7 +196,7 @@ Write spec using selected approach and Feature Spec Template from `feature-mode.
 
 1. **Approaches section** — Pattern scout's 2-3 approaches + External scout's recommendations
 2. **Implementation Plan** — Codebase scout's affected files + External scout's libraries
-3. **Tests section** — Devil scout's edge cases + risk analysis
+3. **Eval Criteria section** — Devil scout's `## Eval Assertions` (DA/SA IDs) → renumber as EC-IDs with `Source: devil scout DA-N`
 4. **Allowed Files** — Codebase scout's Impact Tree results
 5. **Blueprint Reference** — from system-blueprint/
 6. **Definition of Done** — include Devil scout's conditions for success
@@ -209,9 +209,9 @@ Before marking spec `queued`, run validation checks:
 - Every file in Impact Tree → in Allowed Files
 - Enough info for implementation? DoD measurable?
 
-### Gate 2: Tests Gate
-- Tests section filled? Min 3 test cases?
-- Has edge case from devil's advocate? TDD Order defined?
+### Gate 2: Eval Criteria Gate
+- Eval Criteria section filled? Min 3 criteria (EC-IDs)?
+- Has edge cases from devil's advocate (DA → EC mapping)? TDD Order defined?
 
 ### Gate 3: Blueprint Compliance
 - Blueprint Reference filled?
