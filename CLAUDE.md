@@ -157,6 +157,7 @@ Glossary: ai/glossary/{domain}.md
 | **retrofit** | Brownfield lifecycle — reassess existing projects (audit -> architect -> board -> stabilize) |
 | **brandbook** | Brand identity system — anti-convergence, design tokens, coder handoff |
 | **diagram** | Generate professional Excalidraw diagrams from description or code analysis |
+| **eval** | Agent prompt eval suite — golden datasets + LLM-as-Judge scoring |
 
 ### Skill Auto-Selection
 
