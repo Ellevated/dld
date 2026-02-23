@@ -109,7 +109,7 @@ All file paths below use SESSION_DIR. Compute it ONCE, substitute into every pro
 Before launching Phase 1, inform user (non-blocking):
 
 ```
-"TRIZ diagnostics: {TARGET} — 4 agents (1 sonnet + 3 opus), est. ~$5-15. Running..."
+"TRIZ diagnostics: {TARGET} — 4 agents (1 sonnet + 3 opus), est. ~$1-3. Running..."
 ```
 
 ### Phase 1: Data Collection
@@ -188,10 +188,23 @@ Task:
     OUTPUT_FILE: {SESSION_DIR}/report.md
 ```
 
+### Degraded Mode
+
+If intermediate phases fail, continue with available data:
+
+| Failed Phase | Action | Report Impact |
+|-------------|--------|---------------|
+| Phase 2 (TOC) | Launch Phase 3 with `TOC_FILE: UNAVAILABLE` | Report omits TOC section, notes "TOC analysis unavailable" |
+| Phase 3 (TRIZ) | Launch Phase 4 with `TRIZ_FILE: UNAVAILABLE` | Report omits TRIZ section, recommendations from TOC only |
+| Phase 2 + 3 | Launch Phase 4 with only metrics | Report = metrics summary + "Manual analysis recommended" |
+| Phase 4 (Synth) | Read toc/triz YAML directly, present raw findings | No formatted report, show available analysis |
+
+Synthesizer handles missing inputs: reads what exists, marks missing sections as `[UNAVAILABLE — Phase N failed]`.
+
 ### Present Results
 
 After Phase 4, verify report exists with Glob `{SESSION_DIR}/report.md`, then read and present to user.
-If report file is missing, present available partial results from earlier phases.
+If report file is missing, present available partial results from earlier phases (see Degraded Mode).
 
 Suggest next steps:
 - `/spark` spec for top recommendation
