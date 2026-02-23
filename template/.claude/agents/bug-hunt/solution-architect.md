@@ -88,11 +88,31 @@ Generate the spec in this format:
 1. `{path}` — {why}
 2. `{test_path}` — regression test
 
+## Eval Criteria (MANDATORY)
+
+### Deterministic Assertions
+
+| ID | Finding | Scenario | Expected Behavior | Priority |
+|----|---------|----------|-------------------|----------|
+| EC-1 | F-001 | {what was broken} | {correct behavior after fix} | P0 |
+| EC-2 | F-005 | {what was broken} | {correct behavior after fix} | P0 |
+| EC-3 | - | Regression: no new failures | All existing tests pass | P0 |
+
+### Coverage Summary
+- Deterministic: {N} | Total: {N} (min 3, one per finding + regression)
+
 ## Definition of Done
-- [ ] All findings in group fixed
-- [ ] Regression test added per finding
-- [ ] No new failures
-- [ ] Impact tree verified (grep = 0 stale refs)
+
+### Functional
+- [ ] Feature works as specified
+- [ ] All tasks from Implementation Plan completed
+
+### Tests
+- [ ] All eval criteria from ## Eval Criteria section pass
+
+### Technical
+- [ ] No regressions
+- [ ] All files < 400 LOC
 ```
 
 ## YAML Resilience
