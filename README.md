@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-blue.svg)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/version-3.7-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.9-green.svg)](CHANGELOG.md)
 [![npm version](https://img.shields.io/npm/v/create-dld.svg)](https://www.npmjs.com/package/create-dld)
 
 ---
@@ -196,6 +196,13 @@ my-project/
 | `/audit` | READ-ONLY code analysis |
 | `/reflect` | Synthesize diary into CLAUDE.md rules |
 | `/scout` | Isolated research (Exa + Context7) |
+| `/eval` | Test agent prompts against golden datasets |
+| `/brandbook` | Generate complete brand identity system |
+| `/diagram` | Create professional Excalidraw diagrams |
+| `/board` | Business architecture (revenue model, org structure) |
+| `/architect` | System architecture (domains, data flows, APIs) |
+| `/retrofit` | Reassess existing projects (brownfield lifecycle) |
+| `/release` | Update CHANGELOG, README, docs automatically |
 
 ---
 

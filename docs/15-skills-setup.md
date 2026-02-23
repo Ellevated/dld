@@ -1,4 +1,4 @@
-# Skills Setup Guide v3.7
+# Skills Setup Guide v3.9
 
 How to deploy the LLM skills system in a new project.
 
@@ -21,10 +21,13 @@ spark → autopilot (plan is subagent inside autopilot)
 - **Bootstrap skill** — Day 0 discovery, unpack idea from founder
 - **Skill-writer** — CREATE agents/skills + UPDATE CLAUDE.md/rules (unified)
 
-**v3.7 Changes:**
-- **Bug Hunt Mode** — multi-agent bug analysis integrated into Spark
-- **6+4 bug-hunt agents** — personas (Sonnet) + framework analysts + validator + architect (Opus)
-- **Umbrella specs** — complex bugs get directory with sub-specs
+**v3.9 Changes:**
+- **EDD (Eval-Driven Development)** — structured eval criteria system with DA→EC mapping
+- **eval skill** — agent prompt evaluation suite with golden datasets
+- **LLM-as-Judge** — rubric-based output scoring (eval-judge agent)
+- **Regression Flywheel** — automatic regression test generation from debug loops
+- **Zero-read pattern** — ADR-007/008/009/010 for multi-agent orchestration
+- **Enforcement as Code** — ADR-011 JSON state files + hooks for process gates
 
 | Skill | Purpose | Model |
 |-------|---------|-------|
@@ -35,15 +38,22 @@ spark → autopilot (plan is subagent inside autopilot)
 | **audit** | READ-ONLY code analysis | opus |
 | **reflect** | Diary → CLAUDE.md rules | sonnet |
 | **scout** | External research | sonnet |
+| **eval** | Agent prompt evaluation suite | sonnet (orchestrator) |
 | **tester** | Run tests (wrapper) | sonnet |
 | **coder** | Write code (wrapper) | sonnet |
 | **planner** | Create implementation plan (wrapper) | opus |
 | **bootstrap** | Day 0 — unpack idea from founder | opus |
 | **skill-writer** | Create agents/skills or optimize CLAUDE.md/rules | opus |
+| **brandbook** | Brand identity system | opus |
+| **diagram** | Professional Excalidraw diagrams | sonnet |
+| **board** | Business architecture (revenue, org) | opus |
+| **architect** | System architecture (domains, APIs) | opus |
+| **retrofit** | Brownfield lifecycle reassessment | opus |
+| **release** | CHANGELOG/README/docs updates | sonnet |
 
 ---
 
-## File Structure (v3.7)
+## File Structure (v3.9)
 
 ```
 .claude/

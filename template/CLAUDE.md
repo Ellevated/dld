@@ -84,7 +84,7 @@ See `ai/ARCHITECTURE.md` after bootstrap.
 
 ---
 
-## Project Context System (v3.7)
+## Project Context System (v3.9)
 
 Three-tier knowledge system for preventing breakage during refactoring.
 
@@ -152,6 +152,7 @@ Glossary: ai/glossary/{domain}.md
 | **audit** | Code analysis, consistency check (READ-ONLY) |
 | **reflect** | Synthesize diary + upstream signals into rules |
 | **scout** | Isolated research via Exa + Context7 |
+| **eval** | Agent prompt evaluation suite — test prompts against golden datasets |
 | **release** | Update CHANGELOG, README, docs after changes (fully automatic) |
 | **skill-writer** | Create agents/skills or optimize CLAUDE.md, rules, prompts |
 | **retrofit** | Brownfield lifecycle — reassess existing projects (audit -> architect -> board -> stabilize) |
@@ -182,6 +183,7 @@ Claude auto-selects skills based on user intent. Each skill has semantic trigger
 | "research", "find docs", "how does X work" | scout |
 | "find all", "analyze code", "check for" | audit |
 | "reflect", "what did we learn" | reflect |
+| "eval", "test agent", "golden dataset" | eval |
 | "diagram", "draw", "visualize architecture" | diagram |
 | "retrofit", "brownfield", "reassess project" | retrofit |
 

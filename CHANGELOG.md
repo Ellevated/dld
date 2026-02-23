@@ -6,6 +6,52 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.9] - 2026-02-22
+
+### Added
+- **Eval-Driven Development (EDD)** — 5-wave methodology replacing freeform tests with structured evaluation criteria (ADR-012)
+- **Structured Eval Criteria format** — machine-parseable `## Eval Criteria` section in specs with deterministic/integration/llm-judge assertion types, TDD order, and coverage summary
+- **Devil structured assertions** — DA-N (deterministic) and SA-N (side-effect) table format replacing freeform edge case lists
+- **Regression Flywheel** — automatic regression test generation from debugger root cause analysis
+- **LLM-as-Judge eval type** — 5-dimension scoring (Completeness, Accuracy, Format, Relevance, Safety) with rubric-based evaluation
+- **Agent Prompt Eval Suite** — `/eval` skill for testing agent prompt quality against golden datasets (3 agents × 3 pairs = 9 test cases)
+- **eval-judge agent** — specialized agent for rubric-based output scoring with threshold validation
+- **Brandbook v2** — complete brand identity system with anti-convergence principles, design tokens, and coder handoff
+- **Enforcement as Code (ADR-011)** — JSON state files + hooks + hard gates for process enforcement
+- **autopilot-state.mjs** — state management script for phase/task tracking
+- **spark-state.mjs** — 8-phase state tracking for Spark sessions
+- **test-wrapper.mjs** — Smart Testing with scope protection
+- **eval-judge.mjs** — CLI parser for eval criteria extraction from specs
+
+### Changed
+- **Spark feature mode** — now writes `## Eval Criteria` instead of `## Tests`, with DA→EC mapping from devil scout
+- **Devil scout** — outputs structured assertions (`## Eval Assertions` with DA-N/SA-N IDs) instead of freeform edge cases
+- **Tester agent** — integrated eval criteria testing with deterministic/integration/llm-judge support
+- **6 multi-agent skills** — migrated to ADR-007/008/009/010 zero-read pattern (spark, audit deep, bug hunt, council, architect, board)
+- **Bug Hunt findings collector** — added caller-writes fallback for ADR-010 verification
+- **Autopilot task loop** — integrated regression capture step after debug loops
+- **Debugger agent** — now includes regression test spec in output
+- **Spec validation** — dual-detection for `## Eval Criteria` (priority) and `## Tests` (fallback) for backward compatibility
+- **Pre-edit hook** — enforces eval criteria minimums (3 criteria, coverage summary, TDD order)
+- **validate-spec-complete hook** — extended with eval criteria validation
+
+### Fixed
+- **Planner ALWAYS runs** — resolved contradiction between autopilot files with WHY explanations and VIOLATION markers
+- **Brandbook MCP detection** — simplified to ToolSearch + ask user instead of silent fallbacks
+
+### Architecture
+- **ADR-007** — Caller-writes pattern for subagent output (agents can't reliably write files, caller writes from response)
+- **ADR-008** — Background fan-out pattern (`run_in_background: true` prevents context flooding)
+- **ADR-009** — Background ALL steps (sequential foreground agents accumulate context)
+- **ADR-010** — Orchestrator zero-read (TaskOutput floods context, collector subagent reads + summarizes)
+- **ADR-011** — Enforcement as Code (JSON state + hooks + hard gates, not LLM memory)
+- **ADR-012** — Eval Criteria over freeform Tests (structured, machine-parseable, traceable)
+- **EDD pipeline** — Spark (8 phases) → Devil (DA-N assertions) → Facilitator (DA→EC mapping) → Autopilot → Tester (EC validation)
+- **Golden datasets structure** — `test/agents/{agent}/golden-NNN.{input,output,rubric}.md` for agent prompt evaluation
+- **E2E verification** — FTR-135 example (API version endpoint) validates full EDD cycle
+
+---
+
 ## [3.8] - 2026-02-19
 
 ### Fixed
@@ -186,6 +232,7 @@ Initial public release of DLD methodology.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 3.9 | 2026-02-22 | Eval-Driven Development (EDD) — structured eval criteria, LLM-as-Judge, agent eval suite, ADR-012 |
 | 3.8 | 2026-02-19 | Planner ALWAYS runs — hardened with WHY + VIOLATION markers |
 | 3.7 | 2026-02-14 | Bug Hunt Mode in Spark, TOC+TRIZ agents, multi-phase pipeline |
 | 3.6 | 2026-02-08 | Hooks migrated to Node.js — zero Python dependency, cross-platform |
