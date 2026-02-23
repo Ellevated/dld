@@ -104,6 +104,16 @@ Create structure:
 
 ---
 
+### Cost Estimate
+
+Before launching Phase 1, inform user (non-blocking):
+
+```
+"Council review: {SPEC_ID} — 9 agents (4 opus × 2 phases + 1 opus synthesizer), est. ~$3-8. Running..."
+```
+
+---
+
 ## 3-Phase Protocol (Karpathy)
 
 ### Phase 1: PARALLEL ANALYSIS (Divergence)
@@ -273,6 +283,22 @@ Task:
 Glob("{SESSION_DIR}/phase2/critique-*.md") → must find 4 files
 If < 4: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
 ```
+
+### Degraded Mode
+
+If expert phases fail partially, continue with available data:
+
+| Failed Phase | Action | Impact |
+|-------------|--------|--------|
+| Phase 1: 1-2 experts fail | Continue with available analyses (min 2 required) | Reduced perspective diversity, note missing roles |
+| Phase 1: 3+ experts fail | Abort — insufficient diversity for meaningful council | Report "Council aborted — too few expert analyses" |
+| Phase 2: 1-2 critiques fail | Continue synthesis with available critiques | Note missing cross-critiques in synthesis |
+| Phase 2: All critiques fail | Skip to synthesis using Phase 1 only | Synthesis notes "No cross-critique performed" |
+| Phase 3: Synthesizer fails | Read Phase 1 + Phase 2 files directly, present raw findings | No formatted synthesis, show available expert opinions |
+
+Minimum viable council: 2 expert analyses + synthesizer.
+
+---
 
 ### Phase 3: SYNTHESIS (Chairman)
 

@@ -157,6 +157,23 @@ Each persona knows which label is theirs (to exclude from review)
 Output: ai/architect/research-{role}.md × 8
 ```
 
+### Degraded Mode
+
+If persona phases fail partially, continue with available data:
+
+| Failed Phase | Action | Impact |
+|-------------|--------|--------|
+| Phase 2: 1-3 personas fail | Continue with available research (min 4 required) | Reduced perspective diversity, note missing roles in synthesis |
+| Phase 2: 4+ personas fail | Abort — insufficient diversity for meaningful architecture | Report "Architect aborted — too few persona analyses" |
+| Phase 3: 1-3 critiques fail | Continue synthesis with available critiques | Note missing cross-critiques |
+| Phase 3: All critiques fail | Skip to synthesis using Phase 2 only | Synthesis notes "No cross-critique performed" |
+| Phase 4: Synthesizer fails | Read research + critique files directly, present raw findings | No formatted architectures, show available persona opinions |
+| Phase 7: Write fails | Re-attempt Step 2 (draft). If 2nd failure, present architectures.md as-is | No System Blueprint, manual write required |
+
+Minimum viable architect: 4 persona analyses + synthesizer.
+
+---
+
 ### Phase 3: CROSS-CRITIQUE (Karpathy Protocol)
 
 Each persona reads ANONYMOUS research via Read tool (NOT passed in prompt):
