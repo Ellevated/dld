@@ -47,17 +47,47 @@ Write tool → {SESSION_DIR}/state.json
 
 ---
 
+### Cost Estimate
+
+Before launching Phase 2 (Research), inform user (non-blocking):
+
+```
+"Feature spec: {title} — 4 scouts (parallel) + synthesis, est. ~$1-3. Running..."
+```
+
+---
+
 ## FORBIDDEN ACTIONS (ADR-007/008/009/010)
 
 ```
 ⛔ NEVER store scout responses in orchestrator variables
 ⛔ NEVER pass full scout output in another scout's prompt
+⛔ NEVER use TaskOutput to read scout results
+⛔ NEVER read output_file paths from background scouts
 
 ✅ ALL scout Task calls use run_in_background: true
 ✅ Scouts WRITE output to SESSION_DIR files
 ✅ File gates (Glob) verify scout completion
-✅ Orchestrator reads scout files for synthesis (~20K acceptable)
+✅ Orchestrator reads scout files for synthesis (4 files × ~5K = ~20K acceptable)
 ```
+
+Note: Phase 3 synthesis reads scout output files directly (~20K total). This is an acceptable exception to ADR-010 zero-read — small, bounded output from 4 scouts.
+
+---
+
+### Degraded Mode
+
+If scout phases fail partially, continue with available data:
+
+| Failed Phase | Action | Impact |
+|-------------|--------|--------|
+| Phase 2: 1 scout fails | Continue with 3 of 4 scouts | Note missing perspective in synthesis |
+| Phase 2: 2+ scouts fail | Continue with available (min 2 required) | Reduced analysis quality, note gaps |
+| Phase 2: All scouts fail | Skip research, proceed with user input only | Spec based on dialogue only, note "No external research" |
+| Phase 3: Synthesis fails | Read scout files directly, present raw findings | User manually picks approach |
+| Phase 6: Validation fails | Retry once, then skip validation gate | Note "Spec not validated" |
+
+Minimum viable spec: user dialogue (Phase 1) + 2 scout reports.
 
 ---
 

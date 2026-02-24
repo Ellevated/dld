@@ -134,7 +134,7 @@ Context flooding is prevented by **background ALL steps** (ADR-009) — ALL agen
 
 **Cost estimate:** ~$30-70 per full run (6×N Sonnet personas + 1 Opus validator + M Opus architects). N = number of zones (typically 2-4).
 
-## FORBIDDEN ACTIONS (ADR-010)
+## FORBIDDEN ACTIONS (ADR-007/008/009/010)
 
 The orchestrator (Spark) must NEVER:
 - ❌ Call `TaskOutput` for ANY background agent (floods context with full JSONL, ~70K+ per agent)
@@ -422,7 +422,7 @@ Agent updates spec with executive summary, saves out-of-scope to `ai/ideas.md`.
 
 ---
 
-## Error Handling — Recovery-First Strategy
+## Degraded Mode — Recovery-First Strategy
 
 **Principle:** A degraded result is ALWAYS better than no result.
 
