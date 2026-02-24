@@ -38,6 +38,17 @@ Business architecture: revenue model, channels, org structure, risks — BEFORE 
 
 ---
 
+### Cost Estimate
+
+Before launching, inform user (non-blocking):
+
+```
+Greenfield: "Board: {project} — 14 agents (6 sonnet directors × 2 phases + 1 opus synthesizer + validation), est. ~$8-20. Running..."
+Retrofit:   "Board retrofit: {project} — 14 agents + audit/architecture input, est. ~$8-20. Running..."
+```
+
+---
+
 ## Mode Detection
 
 Board operates in two modes:

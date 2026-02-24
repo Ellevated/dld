@@ -131,6 +131,22 @@ Each director knows which label is theirs (to exclude from review)
 Output: ai/board/research-{role}.md × 6
 ```
 
+### Degraded Mode
+
+If director phases fail partially, continue with available data:
+
+| Failed Phase | Action | Impact |
+|-------------|--------|--------|
+| Phase 2: 1-2 directors fail | Continue with available research (min 4 required) | Note missing perspectives in synthesis |
+| Phase 2: 3+ directors fail | Abort — insufficient diversity for meaningful board | Report "Board aborted — too few director analyses" |
+| Phase 3: 1-2 critiques fail | Continue synthesis with available critiques | Note missing cross-critiques |
+| Phase 3: All critiques fail | Skip to synthesis using Phase 2 only | Synthesis notes "No cross-critique performed" |
+| Phase 4: Synthesizer fails | Read research + critique files directly, present raw findings | No formatted strategies, show available director opinions |
+
+Minimum viable board: 4 director research reports + synthesizer.
+
+---
+
 ### Phase 3: CROSS-CRITIQUE (Karpathy Protocol)
 
 Each director reads ANONYMOUS research via Read tool (NOT passed in prompt):

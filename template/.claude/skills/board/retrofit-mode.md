@@ -19,6 +19,38 @@ Reassess business strategy in context of existing code, architecture, and migrat
 
 ---
 
+## FORBIDDEN ACTIONS (ADR-007/008/009/010)
+
+```
+⛔ NEVER store agent responses in orchestrator variables
+⛔ NEVER pass full agent output in another agent's prompt
+⛔ NEVER use TaskOutput to read agent results
+⛔ NEVER read output_file paths from background agents
+
+✅ ALL Task calls use run_in_background: true
+✅ Agents WRITE their output to ai/board/ files
+✅ Agents READ peer files themselves (via Read tool)
+✅ File gates (Glob) verify completion between phases
+```
+
+---
+
+### Degraded Mode
+
+If director phases fail partially, continue with available data:
+
+| Failed Phase | Action | Impact |
+|-------------|--------|--------|
+| Phase 2: 1-2 directors fail | Continue with available research (min 4 required) | Note missing perspectives in synthesis |
+| Phase 2: 3+ directors fail | Abort — insufficient diversity for meaningful board | Report "Board aborted — too few director analyses" |
+| Phase 3: 1-2 critiques fail | Continue synthesis with available critiques | Note missing cross-critiques |
+| Phase 3: All critiques fail | Skip to synthesis using Phase 2 only | Synthesis notes "No cross-critique performed" |
+| Phase 4: Synthesizer fails | Read research + critique files directly, present raw findings | No formatted strategies, show available director opinions |
+
+Minimum viable board: 4 director research reports + synthesizer.
+
+---
+
 ## Phase 1: BRIEF (Facilitator)
 
 Read ALL three inputs. Extract:
