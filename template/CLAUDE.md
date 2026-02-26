@@ -158,6 +158,7 @@ Glossary: ai/glossary/{domain}.md
 | **retrofit** | Brownfield lifecycle — reassess existing projects (audit -> architect -> board -> stabilize) |
 | **brandbook** | Brand identity system — anti-convergence, design tokens, coder handoff |
 | **diagram** | Generate professional Excalidraw diagrams from description or code analysis |
+| **upgrade** | Upgrade DLD framework from latest GitHub template |
 
 ### Skill Auto-Selection
 
@@ -186,6 +187,7 @@ Claude auto-selects skills based on user intent. Each skill has semantic trigger
 | "eval", "test agent", "golden dataset" | eval |
 | "diagram", "draw", "visualize architecture" | diagram |
 | "retrofit", "brownfield", "reassess project" | retrofit |
+| "upgrade DLD", "update framework", "обнови DLD" | upgrade |
 
 **Flows:**
 ```
