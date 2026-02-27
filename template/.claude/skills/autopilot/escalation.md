@@ -14,7 +14,7 @@ When to escalate and how to handle failures.
 | Heavy drift (planner) | 0 | → Council (immediate) |
 | Out-of-scope failures | ∞ | skip |
 
-## Decision Tree
+## Decision Tree (v2)
 
 After debug/refactor limits exhausted:
 
@@ -24,9 +24,23 @@ After 3 debug attempts:
 │   └── YES → Spark (create BUG-XXX spec)
 │       └── "Bug requires separate spec."
 │
-├── Is it an ARCHITECTURE question?
+├── Is it a SPEC GAP (missing info in spec)?
+│   └── YES → Spark (clarify spec)
+│       └── "Spec needs clarification."
+│       └── Write upstream signal: target=spark, type=gap
+│
+├── Is it a BLUEPRINT CONFLICT (code violates system blueprint)?
+│   └── YES → Architect (update blueprint)
+│       └── "Blueprint conflict — escalating to Architect."
+│       └── Write upstream signal: target=architect, type=contradiction
+│
+├── Is it an ARCHITECTURE DECISION needed?
 │   └── YES → Council (expert review)
 │       └── "Architecture question."
+│
+├── Is it a BUSINESS question?
+│   └── YES → STOP + Write upstream signal: target=board
+│       └── "Business question — needs Board input."
 │
 ├── Is it OUT OF SCOPE?
 │   └── YES → Log + Continue
@@ -35,6 +49,10 @@ After 3 debug attempts:
 └── UNCLEAR?
     └── STOP → Ask Human
         └── "Cannot determine. Need help."
+```
+
+**v2 Rule:** Autopilot NEVER decides questions above its level.
+If the question isn't about code → escalate upward.
 
 Heavy drift detected by Planner:
 ├── Files/functions deleted?
@@ -118,7 +136,7 @@ Skill tool:
 **Council returns:**
 - `solution_found` → apply fix, continue
 - `architecture_change` → update plan, restart task
-- `needs_human` → status: blocked
+- `needs_human` → status: blocked (See Council SKILL.md for notification protocol)
 
 ## Debug Loop
 
@@ -152,6 +170,7 @@ CODE QUALITY REVIEWER returns needs_refactor:
 - `bash_instead_of_tools` — used bash when tool exists
 - `test_retry > 1` — needed multiple debug attempts
 - `escalation_used` — escalated to Spark/Council
+- `regression_captured` — debug fix became permanent regression test
 
 **When:** After DEBUG LOOP (if retry > 1) or after escalation.
 

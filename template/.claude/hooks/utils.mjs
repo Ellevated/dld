@@ -11,8 +11,9 @@
  *   import { allowTool, denyTool, readHookInput } from './utils.mjs';
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
-import { join, dirname, normalize } from 'path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, chmodSync } from 'fs';
+import { join, dirname, normalize, resolve } from 'path';
+import { pathToFileURL } from 'url';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 
@@ -30,10 +31,53 @@ function getErrorLogPath() {
 export function logHookError(hookName, error) {
   try {
     const ts = new Date().toISOString();
-    writeFileSync(getErrorLogPath(), `${ts} [${hookName}]: ${error}\n`, { flag: 'a' });
-  } catch {
+    const logPath = getErrorLogPath();
+    writeFileSync(logPath, `${ts} [${hookName}]: ${error}\n`, { flag: 'a' });
+    try { chmodSync(logPath, 0o600); } catch { /* fail-safe */ }
+  } catch (logErr) {
     // fail-safe: logging must never crash hook
+    // but at least try console before giving up
+    try {
+      console.error(`[hook-error] ${hookName}: ${error}`);
+    } catch {
+      // truly hopeless, give up silently
+    }
   }
+}
+
+// --- Debug Logging ---
+
+const DEBUG = process.env.DLD_HOOK_DEBUG === '1';
+const LOG_FILE = process.env.DLD_HOOK_LOG_FILE || null;
+
+export function debugLog(hookName, event, data = {}) {
+  if (!DEBUG) return;
+  const entry = {
+    ts: new Date().toISOString(),
+    hook: hookName,
+    event,
+    ...data,
+  };
+  const line = JSON.stringify(entry);
+  try {
+    process.stderr.write(line + '\n');
+    if (LOG_FILE) {
+      writeFileSync(LOG_FILE, line + '\n', { flag: 'a' });
+    }
+  } catch {
+    // fail-safe: debug logging must never crash hook (ADR-004)
+  }
+}
+
+export function debugTiming(hookName) {
+  if (!DEBUG) return { end: () => {} };
+  const start = performance.now();
+  return {
+    end: (decision) => {
+      const ms = (performance.now() - start).toFixed(1);
+      debugLog(hookName, 'complete', { decision, ms });
+    },
+  };
 }
 
 // --- Hook Input/Output ---
@@ -49,11 +93,11 @@ export function readHookInput() {
 
 function outputJson(data) {
   try {
-    process.stdout.write(JSON.stringify(data) + '\n');
+    process.stdout.write(JSON.stringify(data) + '\n', () => process.exit(0));
   } catch {
-    // pipe closed early — OK
+    process.exit(0); // pipe closed early — exit anyway
   }
-  process.exit(0);
+  setTimeout(() => process.exit(0), 500); // safety net
 }
 
 // --- PreToolUse hook helpers ---
@@ -120,36 +164,92 @@ export function getUserPrompt(data) {
   return data.user_prompt || '';
 }
 
+// --- Configuration Loading ---
+
+/**
+ * Deep merge two objects. Arrays are replaced (not concatenated).
+ * Only plain objects are recursively merged.
+ */
+export function deepMerge(target, source) {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    const tVal = target[key];
+    const sVal = source[key];
+    if (
+      sVal && typeof sVal === 'object' && !Array.isArray(sVal) &&
+      tVal && typeof tVal === 'object' && !Array.isArray(tVal) &&
+      !(sVal instanceof RegExp) && !(tVal instanceof RegExp)
+    ) {
+      result[key] = deepMerge(tVal, sVal);
+    } else {
+      result[key] = sVal;
+    }
+  }
+  return result;
+}
+
+let _config = null;
+
+/**
+ * Load hook configuration with optional user overrides.
+ * Caches after first load. Fail-safe: returns {} on error.
+ */
+export async function loadConfig() {
+  if (_config) return _config;
+  try {
+    const { default: defaults } = await import('./hooks.config.mjs');
+    try {
+      const localPath = join(getProjectDir(), '.claude', 'hooks', 'hooks.config.local.mjs');
+      if (existsSync(localPath)) {
+        const { default: local } = await import(pathToFileURL(localPath).href);
+        _config = deepMerge(defaults, local);
+        return _config;
+      }
+    } catch { /* no local config = use defaults */ }
+    _config = defaults;
+    return _config;
+  } catch {
+    _config = {};
+    return _config; // fail-safe: no config = hardcoded defaults remain
+  }
+}
+
+/**
+ * Reset config cache (for testing).
+ */
+export function resetConfigCache() {
+  _config = null;
+}
+
 // --- Allowed Files enforcement ---
 
 const ALWAYS_ALLOWED_PATTERNS = [
   'ai/features/*.md',
   'ai/backlog.md',
-  'ai/diary/*',
+  'ai/diary/**',
   '.gitignore',
-  'pyproject.toml',
-  '.claude/*',
+  'pyproject.toml', // root-only; monorepos customize locally
+  '.claude/**',
 ];
 
 function matchesPattern(filePath, pattern) {
-  if (pattern.endsWith('/*')) {
-    const dirPrefix = pattern.slice(0, -1); // "ai/diary/*" -> "ai/diary/"
-    return filePath.startsWith(dirPrefix);
-  }
   return minimatch(filePath, pattern);
 }
 
 /**
  * Simple fnmatch-style glob matching (no external deps).
- * Supports: *, ? and character classes [abc].
+ * Supports: *, **, ? and character classes [abc].
  * Does NOT match / with * (same as Python fnmatch).
  */
 function minimatch(str, pattern) {
   // Escape regex specials, then convert glob to regex
+  // Use placeholder for ** before converting single *
   let re = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/[.+^${}()|\\]/g, '\\$&')
+    .replace(/\*\*/g, '\x00GLOBSTAR\x00')
     .replace(/\*/g, '[^/]*')
-    .replace(/\?/g, '[^/]');
+    .replace(/\?/g, '[^/]')
+    .replace(/\x00GLOBSTAR\x00/g, '.*');
   re = `^${re}$`;
   return new RegExp(re).test(str);
 }
@@ -157,8 +257,8 @@ function minimatch(str, pattern) {
 export function extractAllowedFiles(specPath) {
   try {
     const content = readFileSync(specPath, 'utf-8');
-    const match = content.match(/## Allowed Files\s*\n([\s\S]*?)(?=\n##|\s*$)/i);
-    if (!match) return [];
+    const match = content.match(/## Allowed Files\s*\n([\s\S]*?)(?=\n## (?!#)|\s*$)/i);
+    if (!match) return { files: [], error: false };
 
     const section = match[1];
     const allowed = [];
@@ -168,27 +268,52 @@ export function extractAllowedFiles(specPath) {
       if (!trimmed || trimmed.startsWith('#')) continue;
 
       // Extract path from markdown formats: `path`, **path**, or path - description
-      const pathMatch = trimmed.match(/[`*]*([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+(?::\d+(?:-\d+)?)?)[`*]*/);
+      const pathMatch = trimmed.match(/[`*\-]*\s*([a-zA-Z0-9_./@*-]+(?:\.[a-zA-Z0-9*]+)?(?::\d+(?:-\d+)?)?)[`*]*/);
       if (pathMatch) {
         let p = pathMatch[1];
+        // NOTE: Line number ranges (e.g., :10-20) are informational only, not enforced.
+        // Full file is allowed when path matches, regardless of line range.
         p = p.replace(/:\d+(-\d+)?$/, ''); // Remove line number suffix
         if (p && !p.startsWith('|')) {
           allowed.push(p);
         }
       }
     }
-    return allowed;
+    return { files: allowed, error: false };
   } catch {
-    return []; // fail-safe: missing spec = allow all
+    return { files: [], error: true }; // read error = deny all
   }
 }
 
 export function inferSpecFromBranch() {
   try {
-    const branch = execFileSync('git', ['branch', '--show-current'], {
+    // 1. Try branch name first
+    let branch = execFileSync('git', ['branch', '--show-current'], {
       timeout: GIT_TIMEOUT_MS,
       encoding: 'utf-8',
     }).trim();
+
+    // 2. Fallback: detached HEAD — try symbolic-ref
+    if (!branch) {
+      try {
+        branch = execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], {
+          timeout: GIT_TIMEOUT_MS,
+          encoding: 'utf-8',
+        }).trim();
+      } catch {
+        // 3. Last resort: extract task ID from latest commit message
+        try {
+          const commitMsg = execFileSync('git', ['log', '-1', '--pretty=%s'], {
+            timeout: GIT_TIMEOUT_MS,
+            encoding: 'utf-8',
+          }).trim();
+          const msgMatch = commitMsg.match(/(FTR|BUG|TECH|ARCH|SEC)-\d+/i);
+          if (msgMatch) branch = msgMatch[0];
+        } catch {
+          return null; // fail-safe (ADR-004)
+        }
+      }
+    }
 
     if (!branch) return null;
 
@@ -196,9 +321,8 @@ export function inferSpecFromBranch() {
     if (!match) return null;
 
     const taskId = match[0].toUpperCase();
-    const pattern = `ai/features/${taskId}-`;
 
-    // Simple glob: list files in ai/features/ matching prefix
+    // Look for spec file in ai/features/ matching prefix
     try {
       const dir = 'ai/features';
       if (!existsSync(dir)) return null;
@@ -213,15 +337,16 @@ export function inferSpecFromBranch() {
   }
 }
 
-export function isFileAllowed(filePath, specPath) {
+export function isFileAllowed(filePath, specPath, configPatterns) {
   // Normalize path
   filePath = normalize(filePath).replace(/^\.\//, '');
   if (process.platform === 'win32') {
     filePath = filePath.replace(/\\/g, '/');
   }
 
-  // Always-allowed files
-  for (const pattern of ALWAYS_ALLOWED_PATTERNS) {
+  // Always-allowed files (use config patterns if provided, else hardcoded defaults)
+  const patterns = configPatterns || ALWAYS_ALLOWED_PATTERNS;
+  for (const pattern of patterns) {
     if (matchesPattern(filePath, pattern)) {
       return { allowed: true, allowedFiles: [] };
     }
@@ -233,28 +358,57 @@ export function isFileAllowed(filePath, specPath) {
   }
 
   // Get allowed files from spec
-  const allowedFiles = extractAllowedFiles(specPath);
-  if (allowedFiles.length === 0) {
+  const result = extractAllowedFiles(specPath);
+  if (result.error) {
+    return { allowed: false, allowedFiles: [], error: 'spec read failed' };
+  }
+  if (result.files.length === 0) {
     return { allowed: true, allowedFiles: [] }; // No Allowed Files section = allow all
   }
 
   // Check if file matches any allowed pattern
-  for (let allowed of allowedFiles) {
+  for (let allowed of result.files) {
     allowed = normalize(allowed).replace(/\\/g, '/');
     // Direct match
     if (filePath === allowed) {
-      return { allowed: true, allowedFiles };
+      return { allowed: true, allowedFiles: result.files };
     }
     // Glob pattern match
     if (minimatch(filePath, allowed)) {
-      return { allowed: true, allowedFiles };
-    }
-    // Prefix match (allow subdirs)
-    const prefix = allowed.replace(/\/\*$/, '') + '/';
-    if (filePath.startsWith(prefix)) {
-      return { allowed: true, allowedFiles };
+      return { allowed: true, allowedFiles: result.files };
     }
   }
 
-  return { allowed: false, allowedFiles };
+  return { allowed: false, allowedFiles: result.files };
+}
+
+// --- Path safety ---
+
+/**
+ * Get project directory with path traversal protection.
+ * Falls back to cwd() if CLAUDE_PROJECT_DIR escapes home or /tmp.
+ */
+export function getProjectDir() {
+  const dir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const resolved = resolve(dir);
+  const home = homedir();
+  if (!resolved.startsWith(home) && !resolved.startsWith('/tmp')) {
+    return process.cwd();
+  }
+  return resolved;
+}
+
+/**
+ * Get git worktree root (covers worktree vs main repo mismatch).
+ * @returns {string|null} Worktree root path or null on error
+ */
+export function getWorktreeRoot() {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      encoding: 'utf-8',
+      timeout: GIT_TIMEOUT_MS,
+    }).trim();
+  } catch {
+    return null; // fail-safe (ADR-004)
+  }
 }

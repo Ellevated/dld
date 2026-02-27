@@ -10,6 +10,25 @@ CODER → TESTER → PRE-CHECK → SPEC REVIEWER → CODE QUALITY → COMMIT →
 
 ---
 
+## State Tracking (Enforcement as Code)
+
+After EACH step, update the autopilot state file:
+
+```
+Write tool → autopilot-state.json (in worktree root)
+```
+
+**Format:** See `.claude/scripts/autopilot-state.mjs` for utilities.
+
+**Before starting task loop:**
+1. Initialize autopilot-state.json with `initState()`
+2. After planner creates plan, call `setPlan()` with task list
+3. Each step result updates the current task entry
+
+**This is NOT optional.** Hooks read autopilot-state.json for plan-before-code gate.
+
+---
+
 ## Step 1: CODER
 
 ```yaml
@@ -24,9 +43,22 @@ Task tool:
 
 **Next:** Step 2 (TESTER)
 
+<HARD-GATE>
+DO NOT proceed to Step 2 until:
+- [ ] autopilot-state.json updated: task.coder = "done"
+- [ ] files_changed list captured
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "coder output is obvious, no need to track"
+</HARD-GATE>
+
 ---
 
 ## Step 2: TESTER
+
+**Command:** Use test-wrapper for LLM-optimized output:
+```bash
+node .claude/scripts/test-wrapper.mjs ./test fast
+```
 
 ```yaml
 Task tool:
@@ -34,6 +66,7 @@ Task tool:
   prompt: |
     files_changed: [{list}]
     task_scope: "{TASK_ID}: {description}"
+    test_command: "node .claude/scripts/test-wrapper.mjs ./test fast"
 ```
 
 **Decision Tree:**
@@ -50,28 +83,90 @@ TESTER result?
 
 **In-scope:** Test file path contains any of `files_changed` directories.
 
+<HARD-GATE>
+DO NOT proceed to Step 3 until:
+- [ ] autopilot-state.json updated: task.tester = "pass" or "fail_out_of_scope"
+- [ ] If failed in-scope: debug loop completed or escalated
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "tests are simple, I'll write them later"
+</HARD-GATE>
+
+---
+
+## Step 2.5: REGRESSION CAPTURE (conditional)
+
+**Trigger:** `debug_attempts > 0 AND tester == "pass"`
+
+When debug loop succeeded (bug was found and fixed):
+
+1. Extract `regression` field from debugger's last fix output
+2. Dispatch coder to create regression test file:
+   ```yaml
+   Task tool:
+     subagent_type: "coder"
+     prompt: |
+       Create regression test from debugger output.
+       File: {regression.test_file}
+       Test: {regression.test_code}
+       Do NOT modify any other file.
+   ```
+3. Quick verify: `pytest {test_file}::{test_name} -v` (or equivalent)
+
+**Rules:**
+- ONLY fires after successful debug loop (debug_attempts > 0)
+- Does NOT go through full review cycle (test-only, minimal change)
+- File goes to `tests/regression/` (immutable after creation)
+- If regression field is missing from debugger output → skip (no error)
+
+**After:** Continue to Step 3 (PRE-REVIEW CHECK)
+
 ---
 
 ## Step 3: PRE-REVIEW CHECK
 
 Deterministic checks BEFORE AI review (saves tokens on obvious issues).
 
+### Step 3a: Code Quality Pre-Check
+
+**If `scripts/pre-review-check.py` exists** → run it:
+
 ```bash
 python scripts/pre-review-check.py {files_changed}
-```
-
-**Decision Tree:**
-```
-Exit code?
-├─ 0 (PASS) → Step 4 (SPEC REVIEWER)
-└─ 1 (FAIL) → Back to CODER with issues list
-    └─ CODER fixes issues → re-run PRE-CHECK (Step 3)
 ```
 
 **What PRE-CHECK catches:**
 - `# TODO` or `# FIXME` in code
 - Bare `except:` or `except Exception:` without re-raise
 - Files > 400 LOC (code) or > 600 LOC (tests)
+
+**If not found** → skip to Step 3b
+
+### Step 3b: Blueprint Compliance (v2, NEW)
+
+**If `ai/blueprint/system-blueprint/` exists** → check:
+
+```bash
+node .claude/scripts/validate-blueprint-compliance.mjs ai/features/{TASK_ID}*.md ai/blueprint/system-blueprint
+```
+
+**What BLUEPRINT CHECK catches:**
+- Types not matching cross-cutting.md (e.g., float for money)
+- Import direction violations
+- Domain placement outside domain-map.md
+- Missing Blueprint Reference in spec
+
+**If blueprint doesn't exist** → skip (backwards compatible with legacy projects)
+
+### Pre-Check Decision Tree
+```
+Step 3a result?
+├─ PASS (or skipped) → Step 3b
+└─ FAIL → CODER fixes → re-run Step 3a
+
+Step 3b result?
+├─ PASS (or skipped) → Step 4 (SPEC REVIEWER)
+└─ FAIL → CODER fixes → re-run Step 3b
+```
 
 ---
 
@@ -124,6 +219,14 @@ Code Quality status?
 
 **CRITICAL:** `approved` means proceed to COMMIT. Do NOT stop here!
 
+<HARD-GATE>
+DO NOT proceed to Step 6 until:
+- [ ] autopilot-state.json updated: task.reviewer = "approved"
+- [ ] All review loops resolved (spec reviewer + code quality)
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "the code is clean, review is a formality"
+</HARD-GATE>
+
 ---
 
 ## Step 6: COMMIT
@@ -140,10 +243,28 @@ git commit -m "{type}({scope}): {description}"
 - `fix(review): add TODO/FIXME check`
 - `docs(diary): create escaped-defects template`
 
+**If commit fails:**
+1. Check error message (pre-commit hook? disk space? locked repo?)
+2. Fix the issue if possible
+3. Retry commit ONCE
+4. If still fails → set spec status to `blocked`, add "ACTION REQUIRED: commit failure" to spec, STOP
+
+**NEVER increment task counter if commit failed.**
+
 **After commit:**
 1. Log to Autopilot Log in spec file
-2. Increment task counter: `current_task += 1`
-3. Continue to NEXT TASK (back to Step 1)
+2. Update autopilot-state.json: task.status = "done", task.commit = "{hash}"
+3. Increment task counter: `current_task += 1`
+4. Continue to NEXT TASK (back to Step 1)
+
+<HARD-GATE>
+DO NOT proceed to next task until:
+- [ ] Commit successful (verified by git)
+- [ ] autopilot-state.json updated: task.status = "done", task.commit = hash
+- [ ] Autopilot Log in spec file updated
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "I'll batch commits for efficiency"
+</HARD-GATE>
 
 ---
 
@@ -169,19 +290,34 @@ Reset counters at start of each task.
 
 ---
 
+## Rationalization Pre-emption Table
+
+When you feel tempted to skip a step, consult this table:
+
+| LLM thinks | Correct action |
+|---|---|
+| "Tests are simple, I'll write them later" | TDD: test BEFORE code. No test = no commit. |
+| "The code is clean, review is a formality" | Review catches real issues. Run it honestly. |
+| "I'll batch commits for efficiency" | One task = one commit. Atomic commits only. |
+| "This coder output is obvious" | Track it in state.json anyway. Hooks depend on it. |
+| "Pre-check will pass, I can skip it" | Run deterministic checks. They catch TODOs and LOC violations. |
+| "I'll update state.json at the end" | Update AFTER EACH STEP. State must be current. |
+
+---
+
 ## Quick Reference
 
 ```
 Task N:
-  CODER → files
-  TESTER → pass?
+  CODER → files → update state
+  TESTER → pass? → update state
     └─ fail in-scope? debug (max 3)
     └─ fail out-scope? skip, continue
   PRE-CHECK → pass?
     └─ fail? coder fix, retry
   SPEC REVIEWER → approved?
     └─ needs_*? coder fix, retry (max 2)
-  CODE QUALITY → approved?
+  CODE QUALITY → approved? → update state
     └─ needs_refactor? coder fix, retry (max 2)
-  COMMIT → log → NEXT TASK
+  COMMIT → log → update state → NEXT TASK
 ```

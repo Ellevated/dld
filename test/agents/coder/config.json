@@ -1,0 +1,7 @@
+{
+  "agent": "coder",
+  "agent_path": ".claude/agents/coder.md",
+  "subagent_type": "coder",
+  "description": "Autopilot coder — write/modify code for tasks",
+  "threshold": 0.7
+}

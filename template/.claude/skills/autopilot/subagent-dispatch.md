@@ -10,12 +10,13 @@ How to spawn and manage subagents in autopilot workflow.
 
 | Agent | subagent_type | Model | When |
 |-------|---------------|-------|------|
-| Plan | `planner` | opus | PHASE 1 (ALWAYS) |
+| Plan | `planner` | opus | PHASE 1 (**ALWAYS** — even if spec has plan) |
 | Coder | `coder` | sonnet | PHASE 2 per task |
 | Tester | `tester` | sonnet | PHASE 2 per task |
 | Debugger | `debugger` | opus | If Tester fails (max 3) |
 | Spec Reviewer | `spec-reviewer` | sonnet | PHASE 2 per task |
 | Diary Recorder | `diary-recorder` | haiku | On problems detected |
+| Eval Judge | `eval-judge` | sonnet | LLM-as-Judge eval criteria |
 
 ### External Agents (user OR Autopilot)
 
@@ -29,6 +30,12 @@ How to spawn and manage subagents in autopilot workflow.
 ## Dispatch Templates
 
 ### Plan Subagent (ALWAYS runs — even if spec has plan)
+
+**WHY always:** Autopilot processes specs sequentially. By the time spec #8 runs,
+specs #1-7 already changed the codebase. Plan written yesterday has stale line numbers,
+stale imports, stale patterns. Planner MUST re-read the codebase right before execution.
+
+⛔ **Skipping planner = VIOLATION.** No exceptions, no "plan is good enough".
 
 ```yaml
 Task tool:
@@ -53,13 +60,13 @@ export CLAUDE_CURRENT_SPEC_PATH="ai/features/{TASK_ID}-*.md"
 Task tool:
   subagent_type: "coder"
   prompt: |
-    task: "Task {N}/{M} — {title}"
+    task: "Task {N}/{M} — <user_input>{title}</user_input>"
     type: {code|test|migrate}
     files:
       create: [{from task "Create:" entries}]
       modify: [{from task "Modify:" entries}]
     pattern: "{Research Source URL if any, else 'none'}"
-    acceptance: "{from task acceptance criteria}"
+    acceptance: "<user_input>{from task acceptance criteria}</user_input>"
 ```
 
 ### Tester Subagent
@@ -69,7 +76,7 @@ Task tool:
   subagent_type: "tester"
   prompt: |
     files_changed: [{list}]
-    task_scope: "{TASK_ID}: {current task description}"
+    task_scope: "{TASK_ID}: <user_input>{current task description}</user_input>"
 ```
 
 ### Debugger Subagent
@@ -80,7 +87,10 @@ Task tool:
   prompt: |
     failure:
       test: "{failed_test_name}"
-      error: "{traceback}"
+      error: |
+        <user_input>
+        {traceback}
+        </user_input>
     files_changed: [{list}]
     attempt: {debug_attempts}
 ```
@@ -92,7 +102,7 @@ Task tool:
   subagent_type: "spec-reviewer"
   prompt: |
     feature_spec: "ai/features/{TASK_ID}*.md"
-    task: "Task {N}/{M} — {title}"
+    task: "Task {N}/{M} — <user_input>{title}</user_input>"
     files_changed:
       - path: "{path}"
         action: "{created|modified}"
@@ -104,7 +114,7 @@ Task tool:
 Task tool:
   subagent_type: "review"
   prompt: |
-    TASK: {description}
+    TASK: <user_input>{description}</user_input>
     FILES CHANGED: {list}
 ```
 
@@ -116,7 +126,10 @@ Task tool:
   prompt: |
     task_id: "{TASK_ID}"
     problem_type: {trigger}
-    error_message: "{error}"
+    error_message: |
+      <user_input>
+      {error}
+      </user_input>
     files_changed: [...]
 ```
 

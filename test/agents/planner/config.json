@@ -1,0 +1,7 @@
+{
+  "agent": "planner",
+  "agent_path": ".claude/agents/planner.md",
+  "subagent_type": "planner",
+  "description": "Autopilot planner — implementation planning with drift detection",
+  "threshold": 0.7
+}

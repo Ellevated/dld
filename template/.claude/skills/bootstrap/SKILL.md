@@ -7,7 +7,8 @@ model: opus
 # Skill: Bootstrap
 
 **Trigger:** `/bootstrap`
-**Purpose:** Extract the idea from founder's head → 4 structured files in `ai/idea/`.
+**Purpose:** Extract the idea from founder's head → 6 structured files in `ai/idea/`.
+**v2:** Bootstrap is an INTERVIEWER, not a decider. No architecture, no business decisions.
 
 ---
 
@@ -32,14 +33,19 @@ You are a product partner, NOT a questionnaire.
 
 ## Output
 
-Four files in `ai/idea/`:
+Six files in `ai/idea/`:
 
 | File | Content | Author |
 |------|---------|--------|
-| `vision.md` | Why, founder, success metrics, constraints | Founder → LLM structures |
-| `domain-context.md` | Industry, persona, pain, terminology | Founder → LLM structures |
-| `product-brief.md` | MLP, scenarios, monetization, scope | Joint effort |
-| `architecture.md` | Domains, dependencies, entry points | LLM proposes → Founder validates |
+| `founder.md` | Who is building: experience, motivation, constraints, risk appetite | Founder → LLM structures |
+| `problem.md` | Pain, persona, frequency, cost, current solutions | Founder → LLM structures |
+| `solution-sketch.md` | Founder's raw vision (NOT formalized) | Founder → LLM records |
+| `market-raw.md` | What founder KNOWS about market (beliefs, not facts) | Founder → LLM records |
+| `terms.md` | Domain vocabulary with boundaries | Joint effort |
+| `open-questions.md` | Contradictions, red flags, what needs research | LLM identifies |
+
+**Removed from v1:** `architecture.md` — architecture decisions belong to Architect level.
+**Removed from v1:** `product-brief.md` — business decisions belong to Board level.
 
 ---
 
@@ -169,55 +175,74 @@ Dig into the pain:
 
 **Test:** "If the problem hurts so much — why hasn't Vasya solved it yet?"
 
-### Phase 4: Solution (10-15 min)
+### Phase 4: Past Behavior & Timeline (NEW, 10 min)
 
-Don't ask "what does the product do". Ask for scenario:
-
-```
-"Vasya woke up, pain occurred. What does he do?
-Opens your app — and then what? Step by step."
-```
-
-After scenario:
-- "At what moment does Vasya say 'wow, this is great'?"
-- "What did he do before at this moment?"
-- "How much faster/simpler/cheaper did it become?"
-
-### Phase 5: Market and Money (10 min)
+**Source:** Mom Test (Fitzpatrick) + JTBD (Christensen/Moesta)
 
 ```
-"Who pays the money? The same Vasya or someone else?"
+"How do you solve this problem NOW? What have you already tried?"
+"When did you first think about this? What triggered it?"
+"How much does it cost you today — time, money, nerves?"
 ```
 
-Dig: Model, Price, Competitors, Differentiation.
+**Rules:**
+- Ask about PAST behavior, not hypothetical future
+- "Would you pay $10?" → BAD (hypothetical)
+- "How much do you spend on this now?" → GOOD (fact)
+- If founder says "all" / "always" / "usually" — that's fluff, dig deeper
+- Compliments ("great idea!") = fool's gold
 
-**Research (Exa):** After discussing competitors:
+### Phase 5: Solution Sketch (10 min)
+
+Record the founder's VISION, do NOT formalize:
+
+```
+"Describe your dream product. Don't worry about feasibility —
+just what does the ideal solution look like?"
+```
+
+- Record raw, unstructured
+- Do NOT convert into scope/features
+- Do NOT evaluate feasibility
+- This goes to Board as raw input
+
+### Phase 6: Market Awareness (10 min)
+
+Record what founder KNOWS/BELIEVES about market:
+
+```
+"Who else is in this space? What do they do?"
+"How big is this market? Where did you hear that?"
+```
+
+**Research (Exa):** Quick fact-check (max 3 calls):
 - `web_search_exa` → "{product} competitors alternatives"
-- `company_research_exa` → for each named competitor
-Max 3 Exa calls. Share findings conversationally.
+- Share findings: "Found X — did you know about them?"
 
-### Phase 6: Unfair Advantage (5-10 min)
+**Record beliefs vs facts separately.** Board will validate.
 
-```
-"Why can you specifically build this better than others?"
-```
+### Phase 7: Why Now + Kill Question (NEW, 10 min)
 
-Looking for: Domain expertise? Access to customers? Technical edge?
-
-**Honest question:** "Why won't a big company copy this in a month?"
-
-### Phase 7: MLP Scope (10-15 min)
-
-**MLP = Minimum Lovable Product** — not just works, but delights.
+**Source:** YC interviews + M&A due diligence
 
 ```
-"What MUST work for one Vasya to say
-'yes, this solves my problem AND I love it'?"
+"Why now? What changed in the world that makes this possible today?"
+"Why hasn't anyone solved this yet?"
+"What will kill this project? What breaks at 10× growth?"
+"Why won't a big company copy this in a month?"
 ```
 
-Cut ruthlessly. Define anti-scope. Define North Star metric.
+### Phase 8: Appetite (NEW, 5 min)
 
-### Phase 8: Domain Dictionary (5 min)
+**Source:** Shape Up (Singer)
+
+```
+"Is this a 6-week project or a 6-month project?"
+"What are you willing to invest? What are you willing to lose?"
+"Hours per week? Budget?"
+```
+
+### Phase 9: Terms (5 min)
 
 ```
 "Let's fix the terms. When you say [X] — what exactly do you mean?"
@@ -225,123 +250,89 @@ Cut ruthlessly. Define anti-scope. Define North Star metric.
 
 Collect 5-10 key terms with boundaries.
 
-### Phase 8.5: Research Validation (Exa)
-
-Validate everything externally before synthesis:
-- Competitor landscape → `web_search_exa`
-- Problem validation → `web_search_exa`
-- Pricing benchmarks → `web_search_exa`
-
-Max 6 Exa calls. If research reveals unknown competitors — activate Devil's Advocate.
-
-### Phase 9: Synthesis (10 min)
+### Phase 10: Synthesis + Open Questions (10 min)
 
 ```
 "Let me check if I understood correctly:
 
-VISION: Your motivation: [...], Success in a year: [...], Constraints: [...]
+FOUNDER: Your motivation: [...], Experience: [...], Constraints: [...]
+PROBLEM: Persona: [Vasya], Pain: [...], Current solution: [...], Cost: [...]
+SOLUTION SKETCH: [raw vision as-is]
+MARKET: [beliefs + facts found]
+APPETITE: [timeframe + investment]
 
-DOMAIN: Persona: [Vasya], Pain: [...], Current solution: [...], Why doesn't work: [...]
+Contradictions I noticed:
+1. [...]
+2. [...]
 
-PRODUCT: One-liner: [...], Key scenario: [...], MLP scope: [3-5 features], Monetization: [...]
-
-What did I miss or misunderstand?"
+These will go to the Board (Совет Директоров) for research and decisions."
 ```
 
-### Phase 10: Architecture (10-15 min)
-
-Research first: `get_code_context_exa` → "{product type} architecture patterns"
-
-```
-"Based on what you told me, I see these business entities: [...]
-
-I propose these domains:
-1. `users` — registration, profiles, authentication
-2. `{domain2}` — [description]
-3. `{domain3}` — [description]
-
-Dependencies: [...]
-Entry points: [...]
-
-Does this make sense?"
-```
-
-Principles: one domain = one capability, no cycles, fewer is better.
+**No Phase 11 (Architecture).** That's Architect's job.
 
 ### Phase 11: Documentation
 
-Create 4 files in `ai/idea/`. Show each file. Ask: "Does this accurately describe your idea?"
+Create 6 files in `ai/idea/`. Show each file. Ask: "Does this accurately describe your idea?"
+
+**What Bootstrap does NOT do (v2):**
+- Does NOT research market (Board does)
+- Does NOT choose monetization (Board does)
+- Does NOT design domains (Architect does)
+- Does NOT define MLP scope (Board → Architect → Spark)
+- Does NOT make any decisions — only collects and structures
 
 ---
 
 ## File Templates
 
-### ai/idea/vision.md
+### ai/idea/founder.md
 
 ```markdown
-# Vision: {Project Name}
+# Founder: {Name}
 
 **Date:** {today}
 
 ---
 
-## Why This Project Exists
+## Who
 
-{1-2 paragraphs — mission, what problem we're solving}
-
----
-
-## Founder
-
-**Who:** {name, background}
-**Motivation:** {what personally excites them}
-**Domain experience:** {have they been in user's shoes}
-
-**Constraints:**
-- Time: {hours per week}
-- Budget: {if any}
-- Risk appetite: {what they're willing to lose}
+**Background:** {name, experience, relevant domain expertise}
+**Motivation:** {what personally excites them about this idea}
+**Domain experience:** {have they been in user's shoes? For how long?}
 
 ---
 
-## Success
+## Constraints
+
+- **Time:** {hours per week}
+- **Budget:** {if any}
+- **Risk appetite:** {what they're willing to lose}
+- **Appetite:** {6-week project or 6-month project?}
+
+---
+
+## Success Vision
 
 **In 1 year:** {what success looks like}
 **In 3 years:** {ambition}
-**North Star Metric:** {one number}
 
 ---
 
 ## What We DON'T Do
 
-{explicit boundaries}
+{explicit boundaries from founder}
 ```
 
-### ai/idea/domain-context.md
+### ai/idea/problem.md
 
 ```markdown
-# Domain Context: {industry/area}
-
----
-
-## World Description
-
-{2-3 paragraphs — how the industry works}
-
----
-
-## Key Participants
-
-| Role | Who | What they want |
-|------|-----|----------------|
-| {role1} | {description} | {motivation} |
+# Problem: {one-sentence pain}
 
 ---
 
 ## Persona: {Name}
 
 **Who:** {age, position, company, context}
-
 **Typical day:** {when the pain occurs}
 
 **Pain:** {what exactly hurts}
@@ -353,187 +344,149 @@ Create 4 files in `ai/idea/`. Show each file. Ask: "Does this accurately describ
 
 ---
 
-## Current Processes and Workarounds
+## Past Behavior
 
-{how people solve the problem now}
-
----
-
-## Where Our Product Fits In
-
-{at what moment do we appear}
+**What tried before:** {list of attempts}
+**When first thought about it:** {trigger event}
+**How much costs today:** {specific numbers if available}
 
 ---
 
-## Terminology Dictionary
+## World Description
 
-| Term | Meaning | NOT to confuse with |
-|------|---------|---------------------|
-| {term1} | {definition} | {boundary} |
+{2-3 paragraphs — how the industry works around this problem}
+
+---
+
+## Key Participants
+
+| Role | Who | What they want |
+|------|-----|----------------|
+| {role1} | {description} | {motivation} |
 ```
 
-### ai/idea/product-brief.md
+### ai/idea/solution-sketch.md
 
 ```markdown
-# Product Brief: {Project Name}
+# Solution Sketch: {Project Name}
 
-**One-liner:** {one sentence}
+**One-liner:** {one sentence — founder's words}
+
+**⚠️ This is founder's RAW VISION. Not validated, not scoped, not formalized.**
+**Board and Architect will refine this.**
 
 ---
 
-## MLP (Minimum Lovable Product)
+## Founder's Vision
 
-**Philosophy:** Not just works — one person loves it.
+{Record as-is, founder's own words and ideas}
 
-### Key Scenario
+---
+
+## Key Scenario (as founder sees it)
 
 1. {Vasya does X}
 2. {System does Y}
 3. {Vasya gets Z}
 
 **"Wow!" moment:** {when they fall in love}
-**Why better than current:** {specific comparison}
-
----
-
-## Scope
-
-### Must have (Day 1):
-- [ ] {Feature 1} — {why mandatory for "love"}
-- [ ] {Feature 2}
-- [ ] {Feature 3}
-
-### Postponed (Day 30+):
-- {Feature} — {why not now}
-
-### Anti-scope (never in v1):
-- {What we cut forever}
-
----
-
-## Monetization
-
-**Who pays:** {user / business / third party}
-**Model:** {subscription / transactions / commission / freemium}
-**Price:** {range}
-
-**Competitors:**
-| Competitor | What they do | Our difference |
-|------------|--------------|----------------|
-| {competitor1} | {what} | {why we're better} |
-| Excel/manual | {what} | {why we're better} |
 
 ---
 
 ## Unfair Advantage
 
 {why this founder — honestly}
-**Copy risk:** {assessment}
-
----
-
-## Metrics
-
-**North Star:** {one number}
-**Supporting:** {metric 1}, {metric 2}
-
----
-
-## Open Questions
-
-- [ ] {What remains unclear}
-
----
-
-## Assumptions (critical)
-
-| Assumption | How we'll verify | What if wrong |
-|------------|------------------|---------------|
-| {assumption1} | {method} | {plan B} |
-
----
-
-## "MLP Ready" Criteria
-
-- [ ] {what must work}
-- [ ] {what Vasya must say}
-
----
-
-## Yellow Flags
-
-{What concerned us — honestly}
+**Copy risk:** {founder's assessment}
 ```
 
-### ai/idea/architecture.md
+### ai/idea/market-raw.md
 
 ```markdown
-# Architecture: {Project Name}
+# Market: {industry} — Founder's Beliefs + Quick Facts
 
-**Date:** {today}
-
----
-
-## Business Entities
-
-| Entity | Description | Examples |
-|--------|-------------|----------|
-| {entity1} | {what it is} | {examples} |
+**⚠️ Mix of founder beliefs and quick research. Board will validate thoroughly.**
 
 ---
 
-## Domains
+## Founder Believes
 
-### `{domain1}` — {name}
-**Responsibility:** {what it does}
-**Key entities:** {list}
-**Depends on:** {other domains or —}
-
-### `{domain2}` — {name}
-**Responsibility:** {what it does}
-**Key entities:** {list}
-**Depends on:** {other domains}
+{What founder thinks about market — record beliefs, not assert facts}
 
 ---
 
-## Dependency Graph
+## Competitors (founder knows)
 
-```
-     shared (Result, exceptions)
-          │
-          ▼
-     infra (db, llm, external)
-          │
-    ┌─────┴─────┐
-    ▼           ▼
-{domain1}   {domain2}
+| Competitor | What they do | Founder's take |
+|------------|--------------|----------------|
+| {competitor1} | {what} | {opinion} |
+| Excel/manual | {what} | {opinion} |
+
+## Quick Research (Exa)
+
+{Facts found during bootstrap — with URLs}
+
+---
+
+## Why Now?
+
+{What changed in the world — founder's answer}
+
+---
+
+## Kill Scenarios
+
+{What will kill the project — founder's honest assessment}
 ```
 
-**Rule:** Arrows = "depends on". No cycles.
+### ai/idea/terms.md
+
+```markdown
+# Domain Dictionary
+
+| Term | Meaning | NOT to confuse with |
+|------|---------|---------------------|
+| {term1} | {definition} | {boundary} |
+```
+
+### ai/idea/open-questions.md
+
+```markdown
+# Open Questions — for Board
+
+Contradictions, red flags, and unknowns identified during Bootstrap.
+Board (Совет Директоров) will research and resolve these.
 
 ---
 
-## Entry Points
+## Contradictions
 
-| Type | Technology | For whom |
-|------|------------|----------|
-| {type1} | {tech} | {audience} |
-
----
-
-## Infrastructure
-
-**Database:** {choice and why}
-**LLM:** {if needed}
-**External APIs:** {list}
+| # | What | Why it's a contradiction |
+|---|------|------------------------|
+| 1 | {contradiction} | {explanation} |
 
 ---
 
-## First Steps (Day 1)
+## Red Flags
 
-1. [ ] Create structure `src/domains/{domain1}/`
-2. [ ] Create `CLAUDE.md` from these files
-3. [ ] `/spark` for first feature
+| # | Flag | Severity |
+|---|------|----------|
+| 1 | {flag} | yellow / red |
+
+---
+
+## Needs Research (Board)
+
+- [ ] {What market data is needed}
+- [ ] {What pricing data is needed}
+- [ ] {What competitor analysis is needed}
+
+---
+
+## Needs Decision (Board)
+
+- [ ] {Monetization model}
+- [ ] {Target segment priority}
+- [ ] {MLP scope}
 ```
 
 ---
@@ -574,12 +527,14 @@ Create 4 files in `ai/idea/`. Show each file. Ask: "Does this accurately describ
 
 ```
 ai/idea/
-├── vision.md           ✓
-├── domain-context.md   ✓
-├── product-brief.md    ✓
-└── architecture.md     ✓
+├── founder.md          ✓
+├── problem.md          ✓
+├── solution-sketch.md  ✓
+├── market-raw.md       ✓
+├── terms.md            ✓
+└── open-questions.md   ✓
 
-→ Day 1: create structure per architecture.md
-→ Day 1: create CLAUDE.md from these files
-→ Day 2: /spark for first feature
+→ Next: /board (Совет Директоров researches and decides business strategy)
+→ Then: /architect (Tech Director designs system architecture)
+→ Then: /spark for first feature (within blueprint constraints)
 ```

@@ -9,7 +9,7 @@
  * - "add endpoint", "write function"
  */
 
-import { approvePrompt, askTool, getUserPrompt, logHookError, readHookInput } from './utils.mjs';
+import { approvePrompt, blockPrompt, debugLog, debugTiming, getUserPrompt, logHookError, readHookInput } from './utils.mjs';
 
 // Max chars between keyword and target in complexity patterns
 const KEYWORD_TARGET_GAP = 30;
@@ -38,14 +38,18 @@ const SKILL_INDICATORS = [
 ];
 
 function main() {
+  const timer = debugTiming('prompt-guard');
   try {
     const data = readHookInput();
     const prompt = getUserPrompt(data);
     const promptLower = prompt.toLowerCase();
+    debugLog('prompt-guard', 'input', { prompt: prompt.slice(0, 100) });
 
     // Skip if using skills
     for (const indicator of SKILL_INDICATORS) {
       if (indicator.test(promptLower)) {
+        debugLog('prompt-guard', 'approve', { reason: 'skill_indicator' });
+        timer.end('approve');
         approvePrompt();
         return;
       }
@@ -54,7 +58,9 @@ function main() {
     // Check for complexity patterns
     for (const pattern of COMPLEXITY_PATTERNS) {
       if (pattern.test(promptLower)) {
-        askTool(
+        debugLog('prompt-guard', 'block', { reason: 'complexity_pattern' });
+        timer.end('block');
+        blockPrompt(
           'Complex task detected!\n\n' +
             'Consider using /spark for proper planning:\n' +
             '  /spark <task description>\n\n' +
@@ -63,14 +69,18 @@ function main() {
             '  - Explicit file allowlist\n' +
             '  - Auto-handoff to autopilot\n' +
             '  - Deterministic workflow\n\n' +
-            'Proceed without spark?',
+            'Retype with /spark or rephrase to proceed.',
         );
         return;
       }
     }
 
+    debugLog('prompt-guard', 'approve', { reason: 'simple_prompt' });
+    timer.end('approve');
     approvePrompt();
   } catch (e) {
+    debugLog('prompt-guard', 'error', { error: String(e) });
+    timer.end('error');
     logHookError('prompt_guard', e);
     approvePrompt();
   }

@@ -23,6 +23,15 @@ Before creating spec — determine next ID:
 
 **FORBIDDEN:** Per-type numbering. Guessing ID. Using "approximately next".
 
+### Concurrency Warning
+
+Sequential ID assignment is NOT atomic. If two spark instances run concurrently:
+1. Both read the same max ID from backlog.md
+2. Both create specs with the same next ID
+3. Git merge conflict or duplicate IDs result
+
+**Prevention:** Run spark from ONE terminal at a time. Do not run spark while autopilot is executing.
+
 ---
 
 ## Pre-Completion Checklist (BLOCKING)
@@ -32,7 +41,7 @@ Before creating spec — determine next ID:
 1. [ ] **ID determined by protocol** — not guessed!
 2. [ ] **Uniqueness check** — grep backlog didn't find this ID
 3. [ ] **Spec file created** — ai/features/TYPE-XXX-YYYY-MM-DD-name.md
-4. [ ] **Entry added to backlog** — in `## Queue` section
+4. [ ] **Entry added to backlog** — in active tasks table
 5. [ ] **Status = queued** — spec ready for autopilot!
 6. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
@@ -42,22 +51,22 @@ If any item not done — **STOP and do it**.
 
 ---
 
-## Backlog Entry Verification (BLOCKING — BUG-358)
+## Post-Write Verification (MANDATORY — BUG-358)
 
-After creating spec file, **VERIFY** backlog entry exists:
+After BOTH spec file and backlog entry are written, verify consistency:
 
 ```bash
-# 1. Run verification
+# 1. Verify backlog entry exists
 grep "{TASK_ID}" ai/backlog.md
 
 # 2. If NOT found → ADD NOW (don't proceed!)
-# Edit ai/backlog.md → add entry to ## Queue table
+# Edit ai/backlog.md → add entry to active tasks table
 
 # 3. Re-verify
 grep "{TASK_ID}" ai/backlog.md
 # Must show the entry!
 
-# 4. Only then → complete spark
+# 4. Only then → continue to auto-commit
 ```
 
 ⛔ **Spark without backlog entry = DATA LOSS!**
@@ -95,27 +104,76 @@ When setting status in spec, **verbally confirm**:
 
 ## Backlog Format (STRICT)
 
-**Structure of ai/backlog.md — immutable:**
-
-```
-## Queue          ← single task table
-## Statuses       ← status reference
-## Archive        ← link to archive
-## Ideas          ← link to ideas.md
-```
+**When adding entry:**
+1. Open `ai/backlog.md`
+2. Find the ACTIVE tasks table (above the `## DONE` section)
+3. Add row to **end** of active table (last row before `---` or `## DONE`)
+4. DO NOT create new sections or tables
 
 **FORBIDDEN:**
 - Creating new sections/tables
 - Grouping tasks by categories
 - Adding headers like "## Tests" or "## Legacy"
 
-**When adding entry:**
-1. Open `ai/backlog.md`
-2. Find `## Queue` section
-3. Add row to **end** of table (before `---`)
-4. DO NOT create new sections
+---
 
-**Why:** LLM gets confused with multiple tables and doesn't know where to add new entries. One table = one place = no confusion.
+## File Naming Conventions
+
+| Mode | Pattern | Example |
+|------|---------|---------|
+| Feature | `FTR-XXX-YYYY-MM-DD-name.md` | `FTR-089-2026-02-15-diagram-skill.md` |
+| Quick Bug | `BUG-XXX-YYYY-MM-DD-name.md` | `BUG-082-2026-02-08-push-ambiguity.md` |
+| Bug Hunt report | `BUG-XXX-bughunt.md` | `BUG-084-bughunt.md` |
+| Bug Hunt grouped | `BUG-XXX.md` | `BUG-087.md` |
+
+Bug Hunt grouped specs omit date/name for brevity (auto-generated, many at once).
+
+---
+
+## Bug Hunt Mode Output
+
+Bug Hunt creates a READ-ONLY report + standalone grouped specs:
+
+```
+ai/features/
+├── BUG-XXX-bughunt.md   ← report (READ-ONLY index, NOT in backlog)
+├── BUG-YYY.md            ← standalone spec: Group 1 (queued)
+├── BUG-ZZZ.md            ← standalone spec: Group 2 (queued)
+└── ...
+```
+
+### Report (NOT in Backlog)
+
+The report is a READ-ONLY index of what was found. It does NOT go into backlog.
+File naming: `BUG-XXX-bughunt.md` (the XXX is the report ID, not a task ID).
+
+### Grouped Specs (IN Backlog)
+
+Each group gets its OWN sequential ID and its OWN backlog entry:
+
+```
+| BUG-085 | Hook safety fixes | queued | P0 | [BUG-085](features/BUG-085.md) |
+| BUG-086 | Missing references | queued | P1 | [BUG-086](features/BUG-086.md) |
+| BUG-087 | Prompt injection | queued | P1 | [BUG-087](features/BUG-087.md) |
+```
+
+### ID Protocol for Grouped Specs
+
+1. Report gets an ID (e.g., BUG-084) — used only for the report filename
+2. Find global max ID in backlog (e.g., max is BUG-084)
+3. Each group gets NEXT sequential ID: BUG-085, BUG-086, BUG-087, etc.
+4. Each grouped spec is a standalone, independently executable spec
+
+### Autopilot Handoff
+
+Each grouped spec runs independently through autopilot:
+```
+BUG-085 → Planner → Coder → Tester → done
+BUG-086 → Planner → Coder → Tester → done
+...
+```
+
+Each spec is fully independent. User can run autopilot on any single spec.
 
 ---
 
@@ -124,17 +182,20 @@ When setting status in spec, **verbally confirm**:
 After spec file is created and backlog updated — commit ALL changes locally:
 
 ```bash
-# 1. Stage spec-related changes only
-git add ai/
+# 1. Stage spec-related changes only (explicit paths, not entire ai/ directory)
+git add "ai/features/${TASK_ID}"* ai/backlog.md 2>/dev/null
 
-# 2. Commit locally (NO PUSH!)
-git commit -m "docs: create spec ${TASK_ID}"
+# 2. Commit locally only if something was staged (NO PUSH!)
+# Note: If ai/ is in .gitignore, git add is a no-op — no commit is created (correct behavior)
+git diff --cached --quiet || git commit -m "docs: create spec ${TASK_ID}"
 ```
 
 **Why `git add ai/` (not `-A`):**
 - Only commits spec, backlog, diary — controlled files
 - Protects from accidental credential commits
 - .gitignore is defense-in-depth, not primary protection
+
+**Bug Hunt mode:** Uses its own commit pattern from `bug-mode.md` (explicit file list instead of `ai/`).
 
 **Why NO push:**
 - CI doesn't trigger (saves money)
@@ -151,7 +212,7 @@ git commit -m "docs: create spec ${TASK_ID}"
 After Spec is complete — auto-handoff to Autopilot. No manual "plan" step!
 
 **Flow:**
-1. Spec saved to `ai/features/TYPE-XXX.md`
+1. Spec saved to `ai/features/TYPE-XXX-YYYY-MM-DD-name.md`
 2. Ask user: "Spec ready. Run autopilot?"
 3. If user confirms → invoke Skill tool with `skill: "autopilot"`
 4. If user declines → stop and let user decide
@@ -197,6 +258,6 @@ Write spec file when spec is complete, then ask about autopilot handoff.
 ### Return format:
 ```yaml
 status: complete | needs_discussion | blocked
-spec_path: ai/features/TYPE-XXX.md  # file MUST exist
+spec_path: ai/features/TYPE-XXX-YYYY-MM-DD-name.md  # file MUST exist
 handoff: autopilot | council | blocked
 ```

@@ -18,7 +18,8 @@ You are the PLAN AGENT. Your mission: validate spec against current codebase, ve
 2. **Everything must be written** to the spec file
 3. **Coder will execute literally** — no interpretation, no decisions
 4. **If code is wrong** — implementation fails
-5. **Spec may be stale** — codebase changed since spec was written
+5. **Spec may be stale** — codebase changed since spec was written.
+   Re-read ALL Allowed Files and write a fresh plan based on CURRENT code.
 
 ## Input
 
@@ -415,7 +416,10 @@ Before writing to spec, verify:
 
 ### Phase 6: Write to Spec
 
-Add to spec file using Edit tool:
+If spec already has `## Implementation Plan` or `## Detailed Implementation Plan` — **replace it entirely**.
+Old plan is stale. Your fresh plan based on current codebase is the source of truth.
+
+Add/replace in spec file using Edit tool:
 
 ```markdown
 ## Detailed Implementation Plan

@@ -35,7 +35,7 @@ Day 2+: /spark for the first feature
 
 - [ ] Have an idea (even a vague one)
 - [ ] Created an empty project folder
-- [ ] Copied `ai/principles/` to the project
+- [ ] Ran `npx create-dld` or installed DLD manually
 - [ ] Launched Claude Code in the project folder
 - [ ] Ready to spend 60-90 minutes on an honest conversation
 
@@ -115,30 +115,29 @@ touch ai/backlog.md
 
 ```
 ai/
-├── principles/          # Copy entirely
-└── idea/               # Created by /bootstrap
-    ├── vision.md
-    ├── domain-context.md
-    ├── product-brief.md
-    └── architecture.md
+├── idea/               # Created by /bootstrap
+│   ├── vision.md
+│   ├── domain-context.md
+│   ├── product-brief.md
+│   └── architecture.md
+└── backlog.md          # Task queue
 
 .claude/
-├── skills/             # Copy from principles/skills/
+├── skills/             # Installed by create-dld
 │   └── bootstrap/SKILL.md
 └── settings.json       # Configure
 ```
 
 ---
 
-## What to read from principles
+## What to read
 
 **Before /bootstrap (5 min):**
 - This file
 
 **After /bootstrap, before Day 1 (15 min):**
-- `01-principles.md` — understand the philosophy
-- `03-project-structure.md` — understand the structure
-- `09-onboarding.md` — Day 1-4 checklist
+- `docs/01-principles.md` -- understand the philosophy
+- `docs/03-project-structure.md` -- understand the structure
 
 **As needed:**
-- Other documents — reference material
+- Other documents in `docs/` -- reference material

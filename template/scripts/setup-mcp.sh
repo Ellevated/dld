@@ -3,7 +3,7 @@
 # Usage:
 #   ./scripts/setup-mcp.sh          # Interactive tier selection
 #   ./scripts/setup-mcp.sh --check  # Health check only
-#   ./scripts/setup-mcp.sh --tier 2 # Non-interactive setup
+#   ./scripts/setup-mcp.sh --tier 2 # Non-interactive setup (1=Quick, 2=Standard, 3=Power)
 
 set -euo pipefail
 
@@ -86,17 +86,17 @@ setup_tier() {
 
     case $tier in
         1)
-            echo -e "\n${GREEN}Tier 1: Zero${NC}"
+            echo -e "\n${GREEN}Quick: No MCP${NC}"
             echo "No MCP servers to configure. DLD will use built-in tools."
             ;;
         2)
-            echo -e "\n${GREEN}Tier 2: Recommended (Context7 + Exa)${NC}"
+            echo -e "\n${GREEN}Standard: Context7 + Exa${NC}"
             add_server "Context7" "$CONTEXT7_CMD" "npx -y @context7/mcp-server --help 2>&1 | head -1"
             add_server "Exa" "$EXA_CMD" "curl -s --max-time 5 'https://mcp.exa.ai/mcp' | head -c 1"
             ;;
         3)
-            echo -e "\n${GREEN}Tier 3: Power${NC}"
-            # First add Tier 2
+            echo -e "\n${GREEN}Power: All MCP Servers${NC}"
+            # First add Standard tier servers
             setup_tier 2
 
             echo -e "\n${YELLOW}Note: Memory MCP requires an API key.${NC}"
@@ -115,6 +115,16 @@ setup_tier() {
 
 # Interactive menu
 interactive_menu() {
+    # Check prerequisites
+    if ! command -v claude >/dev/null 2>&1; then
+        echo -e "${RED}Error: Claude Code CLI not found${NC}"
+        echo ""
+        echo "Install Claude Code first:"
+        echo "  https://claude.ai/code"
+        echo ""
+        exit 1
+    fi
+
     echo -e "${BLUE}"
     echo "  ____  _     ____    __  __  ____ ____   ____       _"
     echo " |  _ \| |   |  _ \  |  \/  |/ ___|  _ \ / ___|  ___| |_ _   _ _ __"
@@ -126,10 +136,10 @@ interactive_menu() {
 
     echo "Select MCP tier:"
     echo ""
-    echo "  1) Zero      - No MCP (quick evaluation)"
-    echo "  2) Recommended - Context7 + Exa (no API keys)"
-    echo "  3) Power     - + Memory + Sequential (requires keys)"
-    echo "  4) Skip      - Exit without changes"
+    echo "  1) Quick      - No MCP (quick evaluation)"
+    echo "  2) Standard   - Context7 + Exa (no API keys) [recommended]"
+    echo "  3) Power      - + Memory + Sequential (requires keys)"
+    echo "  4) Skip       - Exit without changes"
     echo ""
 
     read -rp "Your choice [2]: " choice
@@ -176,7 +186,7 @@ main() {
             echo ""
             echo "Options:"
             echo "  --check       Run health check only"
-            echo "  --tier N      Non-interactive setup (1=Zero, 2=Recommended, 3=Power)"
+            echo "  --tier N      Non-interactive setup (1=Quick, 2=Standard, 3=Power)"
             echo "  (no args)     Interactive menu"
             exit 0
             ;;

@@ -10,6 +10,18 @@ For multi-autopilot environments:
 - ⛔ **ONLY take tasks with `queued` or `resumed`**
 - Before taking ANY task: READ backlog → VERIFY status
 
+### Single Instance Rule
+
+**WARNING: No file locking is implemented.** Run ONLY ONE autopilot instance at a time.
+
+Parallel autopilot instances can:
+1. Both read same task as "queued" simultaneously
+2. Both start working on the same task
+3. Create conflicting git commits on the same branch
+4. Corrupt backlog status (both write "in_progress")
+
+**Prevention:** Use `autopilot-loop.sh` for sequential execution. Never run multiple `autopilot` commands in parallel terminals.
+
 ## Git Safety
 
 - ⛔ **NEVER push to `main`** — only `develop`

@@ -1,6 +1,6 @@
 {
   "name": "create-dld",
-  "version": "1.0.3",
+  "version": "3.10.0",
   "description": "Create a new DLD project with Claude Code",
   "author": "DLD Contributors",
   "bin": {

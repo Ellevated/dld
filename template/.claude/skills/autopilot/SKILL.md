@@ -31,8 +31,8 @@ This enables `autopilot-loop.sh` to run overnight with fresh context per spec.
 PHASE 0: Worktree Setup        → worktree-setup.md
   └─ CI check → worktree → env copy → baseline
 
-PHASE 1: Plan                  → subagent-dispatch.md
-  └─ [Plan Agent] opus → tasks in spec
+PHASE 1: Plan (ALWAYS)         → subagent-dispatch.md
+  └─ [Plan Agent] opus → re-reads codebase → tasks in spec
 
 PHASE 2: Execute (per task)    → task-loop.md
   └─ [Coder] sonnet → files
@@ -44,7 +44,7 @@ PHASE 2: Execute (per task)    → task-loop.md
   └─ COMMIT (no push)
 
 PHASE 3: Finish                → finishing.md
-  └─ Final test → Exa verification → status done → merge develop → cleanup
+  └─ Final test → Exa verification → status done → push feature → merge develop → push develop → cleanup
 ```
 
 **Limits & Escalation:** See `escalation.md`
@@ -71,21 +71,22 @@ PHASE 3: Finish                → finishing.md
 PHASE 0: WORKTREE SETUP
   See: worktree-setup.md
 
-PHASE 1: PLAN (if no detailed plan exists)
-  [Plan Subagent] → detailed tasks in spec
+PHASE 1: PLAN (ALWAYS — even if spec has plan)
+  [Plan Subagent] → re-reads codebase → writes/overwrites plan
+  WHY: specs queued earlier have stale line numbers after prior specs execute
   See: subagent-dispatch.md#plan-subagent
 
 PHASE 2: FOR EACH TASK (fresh subagent per task!)
   [CODER] → code → files_changed
   [TESTER] → Smart Testing
-  [DEPLOY CHECK] → migrations? serverless?
-  [DOCUMENTER] → inline
+  PRE-CHECK → deterministic validation
   [SPEC REVIEWER] → Stage 1
   [CODE QUALITY] → Stage 2
   COMMIT (NO PUSH yet!)
-  See: subagent-dispatch.md
+  See: task-loop.md (SSOT for execution flow)
 
 PHASE 3: FINISHING
+  Push feature branch → merge develop → push develop
   See: finishing.md
 ```
 
@@ -110,14 +111,15 @@ For EACH task from plan:
 ```
 ┌─────────────────────────────────────────────────────┐
 │ 1. CODER → files_changed                            │
-│ 2. MIGRATION VALIDATION (if *.sql)                  │
-│ 3. TESTER → Smart Testing                           │
-│ 4. DOCUMENTER → update docs                         │
-│ 5. SPEC REVIEWER (Stage 1) → matches spec?          │
-│ 6. CODE QUALITY (Stage 2) → architecture ok?        │
-│ 7. COMMIT (NO PUSH yet!)                            │
+│ 2. TESTER → Smart Testing                           │
+│ 3. PRE-CHECK → deterministic validation             │
+│ 4. SPEC REVIEWER (Stage 1) → matches spec?          │
+│ 5. CODE QUALITY (Stage 2) → architecture ok?        │
+│ 6. COMMIT (NO PUSH yet!)                            │
 └─────────────────────────────────────────────────────┘
 ```
+
+**SSOT:** See `task-loop.md` for detailed decision trees after each step.
 
 ⛔ **Skipping any step = VIOLATION**
 
@@ -134,17 +136,19 @@ while (queued/resumed tasks in ai/backlog.md):
   3. PHASE 0: Worktree Setup
      See: worktree-setup.md
 
-  4. PHASE 1: Plan (if needed)
-     Check for "## Implementation Plan"
-     Missing? → dispatch Plan Subagent
+  4. PHASE 1: Plan (ALWAYS runs)
+     ALWAYS dispatch Plan Subagent — even if spec has plan
+     Planner re-reads codebase, validates/regenerates plan
+     WHY: prior specs changed code → old plans have stale refs
+     After PHASE 1: plan MUST exist → else blocked
 
-  5. PHASE 2: Execute
+  5. PHASE 2: Execute (see task-loop.md for SSOT)
      FOR EACH TASK:
        a. CODER → files_changed
        b. TESTER → pass? (debug loop if fail)
-       c. DEPLOY CHECK
-       d. DOCUMENTER
-       e. TWO-STAGE REVIEW
+       c. PRE-CHECK → deterministic validation
+       d. SPEC REVIEWER → matches spec?
+       e. CODE QUALITY → architecture ok?
        f. COMMIT (no push)
 
   6. PHASE 3: Finishing
@@ -158,7 +162,7 @@ while (queued/resumed tasks in ai/backlog.md):
 1. Validate SPEC_ID exists in backlog
 2. Verify status is queued or resumed (not in_progress!)
 3. Set status → in_progress
-4. PHASE 0-3: Same as interactive
+4. PHASE 0-3: Same as interactive (including push in Phase 3!)
 5. EXIT (do NOT continue to next spec)
    └─ External orchestrator provides fresh context
 ```
@@ -169,12 +173,24 @@ while (queued/resumed tasks in ai/backlog.md):
 
 ## Pre-flight Check
 
-Before taking a task:
+Before taking a spec from backlog:
 
-1. **Status:** Must be `queued` or `resumed`
+1. **Status:** Must be `queued` or `resumed` → skip otherwise
+
+After PHASE 1 (planner always runs):
+
 2. **Plan:** Must have `## Implementation Plan`
+3. If plan missing after PHASE 1 → set `blocked`, skip spec
 
-Skip if either check fails.
+Skip if status check fails, **with warning to user:**
+
+```
+SKIP: {TASK_ID}
+Status: {current_status} (expected: queued or resumed)
+Fix the issue and re-run autopilot.
+```
+
+⛔ **Skipping planner = VIOLATION.** Planner runs before EVERY spec, no exceptions.
 
 ---
 
@@ -225,6 +241,6 @@ See: `./scripts/autopilot-loop.sh`
 
 ## References
 
-- Agent roles: `docs/foundation/02-agent-roles.md`
+- Agent roles: `.claude/agents/*.md`
 - Creating skills: `/skill-writer create` skill
 - Smart Testing: `.claude/agents/tester.md`

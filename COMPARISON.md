@@ -74,6 +74,7 @@ A fair, factual comparison of DLD with other approaches to AI-assisted developme
 | Specs | None | Feature specs with allowed files |
 | Testing | Run when you remember | Automatic per task |
 | Review | None | Two-stage (spec + code) |
+| Bug hunting | Ad-hoc | 8+ specialized AI agents |
 | Rollback | Manual | Worktree isolation |
 
 ### When to use
@@ -186,6 +187,7 @@ A fair, factual comparison of DLD with other approaches to AI-assisted developme
 | Worktree isolation | ✓ | - | - | - |
 | Mandatory research phase | ✓ | - | - | - |
 | Multi-agent pipeline | ✓ | - | - | - |
+| Multi-agent bug finding | ✓ | - | - | - |
 | Two-stage review | ✓ | - | - | - |
 | File size limits | ✓ | - | - | - |
 | Context persistence | ✓ | Partial | Partial | N/A |

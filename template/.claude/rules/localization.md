@@ -17,6 +17,8 @@ HOW TO USE:
 |---------|-------|
 | "chispa", "crear especificación" | `/spark` |
 | "piloto automático", "ejecutar" | `/autopilot` |
+| "junta directiva", "estrategia de negocio" | `/board` |
+| "arquitecto", "diseñar sistema" | `/architect` |
 | "consejo", "debate" | `/council` |
 | "auditoría", "revisar código" | `/audit` |
 | "explorador", "investigar" | `/scout` |
@@ -25,6 +27,11 @@ HOW TO USE:
 | "codificador" | `/coder` |
 | "planificador" | `/planner` |
 | "revisión" | `/review` |
+| "lanzamiento", "preparar lanzamiento", "actualizar docs" | `/release` |
+| "diagnóstico del sistema", "restricción", "salud del sistema" | `/triz` |
+| "diagrama", "dibujar esquema" | `/diagram` |
+| "retrofit", "brownfield", "reevaluar proyecto" | `/retrofit` |
+| "auditoría profunda", "auditoría completa" | `/audit deep` |
 
 ## Action
 

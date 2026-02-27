@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-blue.svg)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/version-3.4-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.10-green.svg)](CHANGELOG.md)
 [![npm version](https://img.shields.io/npm/v/create-dld.svg)](https://www.npmjs.com/package/create-dld)
 
 ---
@@ -61,7 +61,7 @@ Install DLD from github.com/Ellevated/dld
 
 Claude will scan your project, show what will change, and ask for confirmation before installing.
 
-### Option B: CLI
+### Option B: CLI (New Project)
 
 ```bash
 # Create a new project
@@ -91,7 +91,7 @@ Or run the interactive setup:
 
 MCP enhances `/scout` and `/spark` with real-time docs and web research. See [MCP Setup Guide](docs/20-mcp-setup.md) for all tiers.
 
-That's it. Bootstrap will guide you through extracting your idea into structured specs.
+**Day 0:** Run `/bootstrap` in Claude -- it will guide you through extracting your idea into structured specs. This is the most important step.
 
 ---
 
@@ -166,7 +166,7 @@ Before any code is written:
 ```
 my-project/
 ├── .claude/
-│   ├── skills/          # 12 skills (spark, autopilot, council, audit, ...)
+│   ├── skills/          # 13 skills (spark, autopilot, council, upgrade, ...)
 │   ├── agents/          # 16 agent prompts (planner, coder, council/*, ...)
 │   ├── rules/           # Architecture constraints
 │   └── contexts/        # Domain-specific context
@@ -190,12 +190,20 @@ my-project/
 | Skill | When to Use |
 |-------|-------------|
 | `/bootstrap` | Day 0 — extract idea from your head |
-| `/spark` | New feature, bug, architecture decision |
+| `/spark` | New feature, bug fix, Bug Hunt (multi-agent deep analysis) |
 | `/autopilot` | Autonomous execution with fresh subagents |
 | `/council` | Complex decisions (5 AI experts debate) |
 | `/audit` | READ-ONLY code analysis |
 | `/reflect` | Synthesize diary into CLAUDE.md rules |
 | `/scout` | Isolated research (Exa + Context7) |
+| `/eval` | Test agent prompts against golden datasets |
+| `/brandbook` | Generate complete brand identity system |
+| `/diagram` | Create professional Excalidraw diagrams |
+| `/board` | Business architecture (revenue model, org structure) |
+| `/architect` | System architecture (domains, data flows, APIs) |
+| `/retrofit` | Reassess existing projects (brownfield lifecycle) |
+| `/release` | Update CHANGELOG, README, docs automatically |
+| `/upgrade` | Upgrade DLD framework to latest version from GitHub |
 
 ---
 

@@ -44,7 +44,7 @@ All experts MUST think in terms of LLM development:
 ✅ "Tester subagent will generate tests automatically"
 ```
 
-## Phase 0: Load Context (MANDATORY — NEW)
+## Phase 0: Load Context (MANDATORY)
 
 **Before any expert analysis, load project context ONCE:**
 
@@ -70,11 +70,55 @@ context:
 
 ---
 
+## Session Directory
+
+Compute before any phase:
+
+```
+SESSION_DIR = ai/.council/{YYYYMMDD}-{spec_id}/
+
+Create structure:
+  {SESSION_DIR}/
+  ├── phase1/           # Expert analyses
+  │   └── anonymous/    # Shuffled anonymous copies for cross-critique
+  ├── phase2/           # Cross-critiques
+  └── synthesis.md      # Final synthesis
+```
+
+---
+
+## FORBIDDEN ACTIONS (ADR-007/008/009/010)
+
+```
+⛔ NEVER store agent responses in orchestrator variables
+⛔ NEVER pass full agent output in another agent's prompt
+⛔ NEVER use TaskOutput to read agent results
+⛔ NEVER read output_file paths from background agents
+
+✅ ALL Task calls use run_in_background: true
+✅ Agents WRITE their output to SESSION_DIR files
+✅ Agents READ peer files themselves (via Read tool)
+✅ File gates (Glob) verify completion between phases
+✅ Only synthesis.md is read by orchestrator at the end
+```
+
+---
+
+### Cost Estimate
+
+Before launching Phase 1, inform user (non-blocking):
+
+```
+"Council review: {SPEC_ID} — 9 agents (4 opus × 2 phases + 1 opus synthesizer), est. ~$3-8. Running..."
+```
+
+---
+
 ## 3-Phase Protocol (Karpathy)
 
 ### Phase 1: PARALLEL ANALYSIS (Divergence)
 
-All 4 experts (except Synthesizer) run **in parallel** as subagents:
+All 4 experts (except Synthesizer) run **in parallel** as background subagents:
 
 ```
 ┌─────────────┬─────────────┬─────────────┬─────────────┐
@@ -83,7 +127,7 @@ All 4 experts (except Synthesizer) run **in parallel** as subagents:
        │             │             │             │
        └─────────────┴──────┬──────┴─────────────┘
                             ▼
-                    Collect 4 independent analyses
+                   Write to {SESSION_DIR}/phase1/
 ```
 
 **Model:** Defined in each agent's frontmatter (`council-*.md`). SSOT — don't duplicate here.
@@ -92,166 +136,190 @@ All 4 experts (except Synthesizer) run **in parallel** as subagents:
 1. Receives spec/problem
 2. **MUST** search Exa (patterns, risks, examples)
 3. Forms verdict with reasoning
-4. Returns structured output
-
-### Phase 2: CROSS-CRITIQUE (Peer Review)
-
-Each expert sees **anonymized** responses from others:
-
-```
-Expert A sees:
-- "Analysis 1: [content]"
-- "Analysis 2: [content]"
-- "Analysis 3: [content]"
-
-And responds:
-- Agree/disagree with each
-- Gaps and weak points
-- Ranking: best → worst
-```
-
-**Important:** Anonymization prevents bias ("Architect said it, so it's correct")
-
-### Phase 3: SYNTHESIS (Chairman)
-
-**Synthesizer (Oracle)** receives:
-- All 4 primary analyses
-- All cross-critiques
-- Rankings from each
-
-And forms:
-```yaml
-decision: approved | needs_changes | rejected | needs_human
-reasoning: "Brief justification"
-changes_required: [...] # if needs_changes
-dissenting_opinions: [...] # who disagreed and why
-confidence: high | medium | low
-```
+4. **Writes** output to `{SESSION_DIR}/phase1/analysis-{role}.md`
 
 ## Expert Subagent Format
 
-Each expert — separate subagent with isolated context.
+Each expert — separate background subagent with isolated context.
 
 **Note:** `subagent_type` matches agent's `name` in frontmatter (e.g., `council-architect`), not file path (`council/architect.md`).
 
 ### Phase 1: PARALLEL ANALYSIS
 
 ```yaml
-# Launch experts (parallel)
-Task:
-  subagent_type: council-architect  # → agents/council/architect.md
-  prompt: |
-    PHASE: 1
-    Analyze this spec/problem:
-    [spec_content]
+# Before launching: read .claude/rules/dependencies.md and .claude/rules/architecture.md
+# Compute SESSION_DIR = ai/.council/{YYYYMMDD}-{spec_id}/
+# Create directory structure: phase1/, phase1/anonymous/, phase2/
 
-Task:
-  subagent_type: council-product
-  prompt: |
-    PHASE: 1
-    Analyze this spec/problem:
-    [spec_content]
-
-Task:
-  subagent_type: council-pragmatist
-  prompt: |
-    PHASE: 1
-    Analyze this spec/problem:
-    [spec_content]
-
-Task:
-  subagent_type: council-security
-  prompt: |
-    PHASE: 1
-    Analyze this spec/problem:
-    [spec_content]
-```
-
-**⏳ SYNC POINT:** Wait for ALL 4 Task agents to complete before Phase 2.
-Store results in variables: `architect_analysis`, `product_analysis`, `pragmatist_analysis`, `security_analysis`.
-
-### Phase 2: CROSS-CRITIQUE
-
-After receiving 4 analyses — each expert sees **anonymized** responses from others:
-
-```yaml
-# Launch cross-critique (parallel)
+# Launch experts (ALL background, ALL parallel)
 Task:
   subagent_type: council-architect
+  run_in_background: true
   prompt: |
-    PHASE: 2
-    Your initial analysis:
-    [architect_analysis]
-
-    Review these anonymized peer analyses:
-    - Analysis A: [product_analysis]
-    - Analysis B: [pragmatist_analysis]
-    - Analysis C: [security_analysis]
+    PHASE: 1
+    CONTEXT:
+      dependencies: [summary from dependencies.md]
+      patterns: [key patterns from architecture.md]
+      anti_patterns: [anti-patterns from architecture.md]
+    Analyze this spec/problem:
+    [spec_content]
+    OUTPUT: Write your full analysis to {SESSION_DIR}/phase1/analysis-architect.md
 
 Task:
   subagent_type: council-product
+  run_in_background: true
   prompt: |
-    PHASE: 2
-    Your initial analysis:
-    [product_analysis]
-
-    Review these anonymized peer analyses:
-    - Analysis A: [architect_analysis]
-    - Analysis B: [pragmatist_analysis]
-    - Analysis C: [security_analysis]
+    PHASE: 1
+    CONTEXT:
+      dependencies: [summary from dependencies.md]
+      patterns: [key patterns from architecture.md]
+      anti_patterns: [anti-patterns from architecture.md]
+    Analyze this spec/problem:
+    [spec_content]
+    OUTPUT: Write your full analysis to {SESSION_DIR}/phase1/analysis-product.md
 
 Task:
   subagent_type: council-pragmatist
+  run_in_background: true
   prompt: |
-    PHASE: 2
-    Your initial analysis:
-    [pragmatist_analysis]
-
-    Review these anonymized peer analyses:
-    - Analysis A: [architect_analysis]
-    - Analysis B: [product_analysis]
-    - Analysis C: [security_analysis]
+    PHASE: 1
+    CONTEXT:
+      dependencies: [summary from dependencies.md]
+      patterns: [key patterns from architecture.md]
+      anti_patterns: [anti-patterns from architecture.md]
+    Analyze this spec/problem:
+    [spec_content]
+    OUTPUT: Write your full analysis to {SESSION_DIR}/phase1/analysis-pragmatist.md
 
 Task:
   subagent_type: council-security
+  run_in_background: true
   prompt: |
-    PHASE: 2
-    Your initial analysis:
-    [security_analysis]
-
-    Review these anonymized peer analyses:
-    - Analysis A: [architect_analysis]
-    - Analysis B: [product_analysis]
-    - Analysis C: [pragmatist_analysis]
+    PHASE: 1
+    CONTEXT:
+      dependencies: [summary from dependencies.md]
+      patterns: [key patterns from architecture.md]
+      anti_patterns: [anti-patterns from architecture.md]
+    Analyze this spec/problem:
+    [spec_content]
+    OUTPUT: Write your full analysis to {SESSION_DIR}/phase1/analysis-security.md
 ```
 
-**⏳ SYNC POINT:** Wait for ALL 4 cross-critique Task agents to complete before Phase 3.
-Store results: `architect_cross_critique`, `product_cross_critique`, `pragmatist_cross_critique`, `security_cross_critique`.
+**⏳ FILE GATE:** Wait for ALL 4 completion notifications, then verify:
+```
+Glob("{SESSION_DIR}/phase1/analysis-*.md") → must find 4 files
+If < 4: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
+```
 
-### Phase 3: SYNTHESIS
+**Anonymous label shuffling (between Phase 1 and Phase 2):**
+```
+Create {SESSION_DIR}/phase1/anonymous/
+Copy analyses with shuffled random labels: peer-A.md, peer-B.md, peer-C.md, peer-D.md
+Mapping is random each run to prevent anchoring bias
+Each expert knows which label is theirs (to exclude from review)
+```
 
-After cross-critique — Synthesizer receives everything:
+### Phase 2: CROSS-CRITIQUE (Peer Review)
+
+Each expert reads **anonymous** peer files via Read tool (NOT passed in prompt):
+
+```yaml
+# Launch cross-critique (ALL background, ALL parallel)
+Task:
+  subagent_type: council-architect
+  run_in_background: true
+  prompt: |
+    PHASE: 2 (Cross-Critique)
+    Read your initial analysis: {SESSION_DIR}/phase1/analysis-architect.md
+    Read anonymous peer files from {SESSION_DIR}/phase1/anonymous/:
+    - peer-A.md, peer-B.md, peer-C.md
+    (3 files — your own analysis is excluded, you are label {X})
+
+    For each peer: agree/disagree, gaps, weak points, ranking best→worst.
+    OUTPUT: Write critique to {SESSION_DIR}/phase2/critique-architect.md
+
+Task:
+  subagent_type: council-product
+  run_in_background: true
+  prompt: |
+    PHASE: 2 (Cross-Critique)
+    Read your initial analysis: {SESSION_DIR}/phase1/analysis-product.md
+    Read anonymous peer files from {SESSION_DIR}/phase1/anonymous/:
+    - peer-A.md, peer-B.md, peer-C.md
+    (3 files — your own analysis is excluded, you are label {Y})
+
+    For each peer: agree/disagree, gaps, weak points, ranking best→worst.
+    OUTPUT: Write critique to {SESSION_DIR}/phase2/critique-product.md
+
+Task:
+  subagent_type: council-pragmatist
+  run_in_background: true
+  prompt: |
+    PHASE: 2 (Cross-Critique)
+    Read your initial analysis: {SESSION_DIR}/phase1/analysis-pragmatist.md
+    Read anonymous peer files from {SESSION_DIR}/phase1/anonymous/:
+    - peer-A.md, peer-B.md, peer-C.md
+    (3 files — your own analysis is excluded, you are label {Z})
+
+    For each peer: agree/disagree, gaps, weak points, ranking best→worst.
+    OUTPUT: Write critique to {SESSION_DIR}/phase2/critique-pragmatist.md
+
+Task:
+  subagent_type: council-security
+  run_in_background: true
+  prompt: |
+    PHASE: 2 (Cross-Critique)
+    Read your initial analysis: {SESSION_DIR}/phase1/analysis-security.md
+    Read anonymous peer files from {SESSION_DIR}/phase1/anonymous/:
+    - peer-A.md, peer-B.md, peer-C.md
+    (3 files — your own analysis is excluded, you are label {W})
+
+    For each peer: agree/disagree, gaps, weak points, ranking best→worst.
+    OUTPUT: Write critique to {SESSION_DIR}/phase2/critique-security.md
+```
+
+**⏳ FILE GATE:** Wait for ALL 4 completion notifications, then verify:
+```
+Glob("{SESSION_DIR}/phase2/critique-*.md") → must find 4 files
+If < 4: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
+```
+
+### Degraded Mode
+
+If expert phases fail partially, continue with available data:
+
+| Failed Phase | Action | Impact |
+|-------------|--------|--------|
+| Phase 1: 1-2 experts fail | Continue with available analyses (min 2 required) | Reduced perspective diversity, note missing roles |
+| Phase 1: 3+ experts fail | Abort — insufficient diversity for meaningful council | Report "Council aborted — too few expert analyses" |
+| Phase 2: 1-2 critiques fail | Continue synthesis with available critiques | Note missing cross-critiques in synthesis |
+| Phase 2: All critiques fail | Skip to synthesis using Phase 1 only | Synthesis notes "No cross-critique performed" |
+| Phase 3: Synthesizer fails | Read Phase 1 + Phase 2 files directly, present raw findings | No formatted synthesis, show available expert opinions |
+
+Minimum viable council: 2 expert analyses + synthesizer.
+
+---
+
+### Phase 3: SYNTHESIS (Chairman)
+
+Synthesizer reads ALL files via Read tool (NOT passed in prompt):
 
 ```yaml
 Task:
   subagent_type: council-synthesizer
+  run_in_background: true
   prompt: |
-    PHASE: 3
-
-    Initial analyses (Phase 1):
-    - Architect: [architect_analysis]
-    - Product: [product_analysis]
-    - Pragmatist: [pragmatist_analysis]
-    - Security: [security_analysis]
-
-    Cross-critiques (Phase 2):
-    - Architect critique: [architect_cross_critique]
-    - Product critique: [product_cross_critique]
-    - Pragmatist critique: [pragmatist_cross_critique]
-    - Security critique: [security_cross_critique]
+    PHASE: 3 (Synthesis)
+    Read all analysis and critique files:
+    - Phase 1: {SESSION_DIR}/phase1/analysis-architect.md, analysis-product.md, analysis-pragmatist.md, analysis-security.md
+    - Phase 2: {SESSION_DIR}/phase2/critique-architect.md, critique-product.md, critique-pragmatist.md, critique-security.md
 
     Synthesize final decision.
+    OUTPUT: Write synthesis to {SESSION_DIR}/synthesis.md
 ```
+
+**⏳ FILE GATE:** Verify `{SESSION_DIR}/synthesis.md` exists.
+**Orchestrator reads ONLY `synthesis.md`** for the final decision.
 
 **Note:** Each agent has frontmatter with model=opus and necessary tools (Exa, Read, Grep, Glob).
 
@@ -286,6 +354,17 @@ Task:
 | Any "needs_human" | → Human escalation |
 
 **Synthesizer can override** if sees critical issue missed by others.
+
+### When decision = needs_human
+
+Council MUST notify user and halt execution:
+
+1. Set spec status to `blocked`
+2. Add `## ACTION REQUIRED` section to spec with:
+   - Clear explanation of what Council needs from human
+   - Specific questions or decisions required
+3. Output to user: "COUNCIL BLOCKED — Human decision required. See ACTION REQUIRED section in spec."
+4. Exit autopilot (do not continue to next task)
 
 ## Output Format
 

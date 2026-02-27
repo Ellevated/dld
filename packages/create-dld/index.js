@@ -113,8 +113,8 @@ async function setupMcp(tier) {
   }
 
   if (tier >= 2) {
-    console.log('\nTier 3 servers require API keys.');
-    console.log('Run ./scripts/setup-mcp.sh --tier 3 to complete setup.');
+    console.log('\nPower tier servers require API keys.');
+    console.log('Run ./scripts/setup-mcp.sh --tier 3 to complete Power setup.');
   }
 
   console.log('\nMCP setup complete. Restart Claude Code to activate.');

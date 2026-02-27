@@ -1,0 +1,7 @@
+{
+  "agent": "devil",
+  "agent_path": ".claude/agents/spark/devil.md",
+  "subagent_type": "spark-devil",
+  "description": "Spark Devil's Advocate — challenge feature proposals",
+  "threshold": 0.7
+}

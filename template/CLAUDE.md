@@ -9,6 +9,8 @@
 - `./test fast` — lint + unit tests
 - `./test` — full tests
 
+> **Note:** Create `./test` script for your project's stack (e.g., `pytest`, `npm test`, `cargo test`). See examples in `/bootstrap` output.
+
 ---
 
 ## DLD Tier
@@ -20,7 +22,14 @@
 - Skills: spark, scout, audit, review
 - Hooks: Safety validation
 
-**Upgrade:** Run `./scripts/setup-mcp.sh --tier 3` for Power tier (council, autopilot, planner)
+**Upgrade:** Run `./scripts/setup-mcp.sh --power` for Power tier (council, autopilot, planner)
+
+---
+
+## Prerequisites
+
+- Node.js 18+ (required for hooks)
+- Claude Code CLI
 
 ---
 
@@ -31,12 +40,20 @@
    claude mcp add context7 -- npx -y @context7/mcp-server
    claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
    ```
+
+   > **Alternative:** Copy `.mcp.json.example` to `~/.claude/.mcp.json` for pre-configured MCP setup.
+
 2. Run `/bootstrap` to unpack your idea
 3. Fill this file based on `ai/idea/*.md`
 4. Create domains structure
 5. Run `/spark` for first feature
 
 > MCP enables `/scout` research with Exa (web search, deep research) and Context7 (library docs).
+>
+> **Tiers:**
+> - **Standard** (default): Context7 + Exa — research and docs lookup
+> - **Power**: Adds Sequential Thinking — unlocks `/council` and `/autopilot`
+> For Power tier: `./scripts/setup-mcp.sh --tier 3`
 
 ---
 
@@ -62,11 +79,12 @@ See `ai/ARCHITECTURE.md` after bootstrap.
 |------|---------|----------|
 | {domain1} | `.claude/contexts/{domain1}.md` | `src/domains/{domain1}/**` |
 | DB, LLM, infra | `.claude/contexts/shared.md` | `src/infra/**`, `db/**` |
-| Testing | `.claude/rules/testing.md` | `tests/**`, `*_test.py` |
+
+> **Note:** `.claude/contexts/` and `.claude/rules/` domain files are created during `/bootstrap` when you define your project's domains. They don't exist in the template out of the box.
 
 ---
 
-## Project Context System (v3.4)
+## Project Context System (v3.9)
 
 Three-tier knowledge system for preventing breakage during refactoring.
 
@@ -119,20 +137,28 @@ Glossary: ai/glossary/{domain}.md
 
 ---
 
-## Skills (v3.4)
+## Skills (v4.0)
 
 **Rule:** If skill applies — MUST use it.
 
 | Skill | When |
 |-------|------|
-| **bootstrap** | Day 0 — unpack idea from your head |
-| **spark** | New feature, bug, architecture decision (auto-handoff to autopilot) |
-| **autopilot** | Execute tasks (plan subagent + fresh coder/tester per task + worktree) |
-| **council** | Complex/controversial decisions (5 experts) |
+| **bootstrap** | Day 0 — extract idea from founder's head (interviewer, not decider) |
+| **board** | Business architecture — revenue, channels, org model (after bootstrap) |
+| **architect** | System architecture — domains, data, APIs, cross-cutting (after board) |
+| **spark** | Feature spec — multi-agent with 4 scouts + tests mandatory (within blueprint) |
+| **autopilot** | Execute tasks (plan + coder/tester per task + reflect upstream) |
+| **council** | Complex/controversial decisions (5 experts + cross-critique) |
 | **audit** | Code analysis, consistency check (READ-ONLY) |
-| **reflect** | Synthesize diary entries into CLAUDE.md rules |
+| **reflect** | Synthesize diary + upstream signals into rules |
 | **scout** | Isolated research via Exa + Context7 |
+| **eval** | Agent prompt evaluation suite — test prompts against golden datasets |
+| **release** | Update CHANGELOG, README, docs after changes (fully automatic) |
 | **skill-writer** | Create agents/skills or optimize CLAUDE.md, rules, prompts |
+| **retrofit** | Brownfield lifecycle — reassess existing projects (audit -> architect -> board -> stabilize) |
+| **brandbook** | Brand identity system — anti-convergence, design tokens, coder handoff |
+| **diagram** | Generate professional Excalidraw diagrams from description or code analysis |
+| **upgrade** | Upgrade DLD framework from latest GitHub template |
 
 ### Skill Auto-Selection
 
@@ -149,23 +175,31 @@ Claude auto-selects skills based on user intent. Each skill has semantic trigger
 
 | User says | Skill activated |
 |-----------|-----------------|
+| "new project", "day 0" | bootstrap |
+| "business strategy", "revenue model" | board |
+| "system design", "architecture" | architect |
 | "add feature", "create spec", "bug" | spark |
 | "implement", "execute", "build this" | autopilot |
 | "should we", "which approach", "debate" | council |
 | "research", "find docs", "how does X work" | scout |
 | "find all", "analyze code", "check for" | audit |
 | "reflect", "what did we learn" | reflect |
-| "new project", "day 0" | bootstrap |
+| "eval", "test agent", "golden dataset" | eval |
+| "diagram", "draw", "visualize architecture" | diagram |
+| "retrofit", "brownfield", "reassess project" | retrofit |
+| "upgrade DLD", "update framework", "обнови DLD" | upgrade |
 
 **Flows:**
 ```
-New project: /bootstrap → Day 1 → /spark first feature
-Feature:     /spark → /autopilot (plan is subagent inside autopilot)
-Bug:         diagnose (5 Whys) → /spark → /autopilot
-Hotfix:      <5 LOC → fix directly with user approval
+New project:  /bootstrap → /board → /architect → /spark → /autopilot
+Feature:      /spark → /autopilot (within blueprint constraints)
+Bug:          diagnose (5 Whys) → /spark → /autopilot
+Hotfix:       <5 LOC → fix directly with user approval
+Escalation:   Autopilot → Spark → Architect → Board → Founder
+Brownfield:   /retrofit → /audit deep → /architect → /board → stabilize → normal
 ```
 
-**New in v3.4:**
+**New in v3.7:**
 - Spark auto-hands off to autopilot (no manual "plan" step)
 - Autopilot always uses worktree (isolation)
 - Fresh subagent per task (context stays clean)
@@ -236,6 +270,7 @@ If a tool returns "content filtering policy" error — retry with alternative to
 - **Prefixes:** BUG, FTR, TECH, ARCH only (4 types)
 - **Numbering:** Sequential across all types
 - **Archive:** Weekly check, if >50 → archive to 30
+- **Bug Hunt:** Creates a READ-ONLY report (`BUG-XXX-bughunt.md`, not in backlog) + standalone grouped specs (each with own sequential ID and own backlog entry).
 
 ---
 
@@ -255,9 +290,14 @@ src/
 └── skills/     # spark, autopilot, council, etc.
 
 ai/
-├── idea/       # From /bootstrap
-├── diary/      # Session learnings (v3.4)
-├── features/   # Task specs
-├── ARCHITECTURE.md
+├── idea/       # From /bootstrap (raw founder input)
+├── board/      # From /board (director research, strategies)
+├── architect/  # From /architect (persona research, architectures)
+├── blueprint/  # Business Blueprint + System Blueprint
+│   ├── business-blueprint.md
+│   └── system-blueprint/
+├── reflect/    # Upstream signals between levels
+├── diary/      # Session learnings
+├── features/   # Task specs from /spark
 └── backlog.md
 ```

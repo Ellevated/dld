@@ -88,6 +88,7 @@ autopilot               # Should invoke /autopilot (English still works)
 | "консилиум", "совет" | `/council` |
 | "скаут", "разведка" | `/scout` |
 | "тестер" | `/tester` |
+| "баг-хант", "охота на баги", "командный аудит" | `/spark` (Bug Hunt Mode) |
 ```
 
 ### Spanish (es)
@@ -100,6 +101,7 @@ autopilot               # Should invoke /autopilot (English still works)
 | "consejo" | `/council` |
 | "explorador" | `/scout` |
 | "probador" | `/tester` |
+| "caza de bugs", "auditoría profunda" | `/spark` (Bug Hunt Mode) |
 ```
 
 ### Chinese (zh)
@@ -112,6 +114,7 @@ autopilot               # Should invoke /autopilot (English still works)
 | "理事会" | `/council` |
 | "侦察" | `/scout` |
 | "测试员" | `/tester` |
+| "漏洞猎杀", "深度分析" | `/spark` (Bug Hunt Mode) |
 ```
 
 ### German (de)
@@ -124,6 +127,7 @@ autopilot               # Should invoke /autopilot (English still works)
 | "rat" | `/council` |
 | "kundschafter" | `/scout` |
 | "tester" | `/tester` |
+| "bug-jagd", "tiefenanalyse" | `/spark` (Bug Hunt Mode) |
 ```
 
 **Full example:** After setup, create your own `.claude/rules/localization.md` with complete mappings for your language.

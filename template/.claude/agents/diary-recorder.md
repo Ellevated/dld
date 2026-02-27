@@ -23,12 +23,13 @@ Autopilot detects:
 - `first_pass_success` — Coder + Tester passed on first attempt (no debug loop)
 - `research_useful` — Coder used Exa research source in code
 - `pattern_reused` — Planner found relevant diary entry and applied it
+- `regression_captured` — Debug loop fix became permanent regression test
 
 ## Input
 
 ```yaml
 task_id: "FTR-XXX" | "BUG-XXX" | "TECH-XXX"
-problem_type: bash_instead_of_tools | test_retry | escalation_used | escaped_defect | first_pass_success | research_useful | pattern_reused
+problem_type: bash_instead_of_tools | test_retry | escalation_used | escaped_defect | first_pass_success | research_useful | pattern_reused | regression_captured
 error_message: "..."           # for problems
 success_detail: "..."          # for successes (pattern, source, reuse hint)
 files_changed: [...]
