@@ -19,7 +19,6 @@ const PROTECTED = new Set([
   'CLAUDE.md',
   '.claude/rules/localization.md',
   '.claude/rules/template-sync.md',
-  '.claude/rules/git-local-folders.md',
   '.claude/CUSTOMIZATIONS.md',
   '.claude/settings.local.json',
   '.claude/hooks/hooks.config.local.mjs',

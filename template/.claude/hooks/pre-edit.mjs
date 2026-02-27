@@ -39,7 +39,6 @@ const FALLBACK_SYNC_ZONES = ['.claude/', 'scripts/'];
 const FALLBACK_EXCLUDE_SYNC = [
   '.claude/rules/localization.md',
   '.claude/rules/template-sync.md',
-  '.claude/rules/git-local-folders.md',
   '.claude/CUSTOMIZATIONS.md',
   '.claude/settings.local.json',
 ];

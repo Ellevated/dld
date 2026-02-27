@@ -85,7 +85,6 @@ export default {
     excludeFromSync: [
       '.claude/rules/localization.md',
       '.claude/rules/template-sync.md',
-      '.claude/rules/git-local-folders.md',
       '.claude/CUSTOMIZATIONS.md',
       '.claude/settings.local.json',
     ],

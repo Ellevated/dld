@@ -20,6 +20,3 @@ venv/
 .DS_Store
 Thumbs.db
 
-# DLD local artifacts
-/ai/
-/brandbook/
