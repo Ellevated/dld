@@ -76,10 +76,11 @@ function getGroup(filePath) {
 
 function isGitDirty() {
   try {
-    const status = execSync('git status --porcelain', { stdio: 'pipe', encoding: 'utf-8' });
-    return status.trim().length > 0;
-  } catch {
-    return false; // not a git repo — allow anyway
+    execSync('git diff --quiet HEAD', { stdio: 'pipe' });
+    return false;
+  } catch (err) {
+    if (err.status === 1) return true; // tracked files have changes
+    return false; // not a git repo or no commits — allow anyway
   }
 }
 
