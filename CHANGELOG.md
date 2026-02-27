@@ -6,6 +6,21 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.10] - 2026-02-26
+
+### Added
+- **`/upgrade` skill** — deterministic DLD framework updater: fetches latest template from GitHub, compares every file via SHA256, groups changes by category (agents, hooks, skills, rules, scripts), auto-applies safe groups, shows diff for conflicts. Never touches protected files (CLAUDE.md, localization.md, etc.)
+
+### Changed
+- **Cost estimates in skills** — `/spark`, `/board`, `/council`, `/architect`, `/triz` now show upfront cost estimates before launching multi-agent pipelines (~$2–15 depending on depth)
+- **Degraded mode documentation** — all multi-agent skills document fallback behavior when MCP tools are unavailable (no silent degradation)
+
+### Fixed
+- **Bug Hunt** — Definition of Done replaced with structured Eval Criteria format (ADR-012), enabling machine-parseable quality gates in Bug Hunt specs
+- **Upgrade dirty-tree check** — untracked files no longer incorrectly block upgrade (was using `git status --porcelain`, now uses `git diff --quiet HEAD`)
+
+---
+
 ## [3.9] - 2026-02-22
 
 ### Added
