@@ -1,3 +1,7 @@
+// Hook configuration — default rules from DLD template.
+// DO NOT EDIT for project-specific customizations.
+// Use hooks.config.local.mjs instead (protected from upgrades).
+
 /**
  * Default configuration for Claude Code hooks.
  *

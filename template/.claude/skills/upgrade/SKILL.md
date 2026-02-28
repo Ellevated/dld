@@ -63,9 +63,34 @@ If yes:
 node .claude/scripts/upgrade.mjs --apply --groups safe,new
 ```
 
+### Step 3b: Engine Updates
+
+If report contains infrastructure files with changes:
+
+Show:
+```
+ENGINE UPDATE (requires explicit approval):
+  .claude/scripts/upgrade.mjs — {status}
+  .claude/hooks/run-hook.mjs — {status}
+```
+
+For each, show diff:
+```bash
+node .claude/scripts/upgrade.mjs --diff --file {path}
+```
+
+Ask: "Apply engine update? Y/n"
+
+If yes:
+```bash
+node .claude/scripts/upgrade.mjs --apply --files {path}
+```
+
 ### Step 4: Handle Conflicts
 
 For each non-safe group with changes (skills, settings):
+
+Note: `hooks.config.mjs` is PROTECTED and will never appear here. Users should use `hooks.config.local.mjs` for project-specific hook customizations — it is never touched by upgrades.
 
 Show per-file diff:
 ```bash
@@ -97,6 +122,34 @@ Upgrade complete.
 Restart Claude Code to activate changes.
 ```
 
+If result contains `validation_issues`, show warning:
+```
+WARNING: Post-apply validation failed:
+  {validation_issues[]}
+
+Check .dld-upgrade-log for details.
+```
+
+If result contains `rolled_back: true`, inform user:
+```
+ROLLBACK: Changes were rolled back due to validation failure.
+  Stash ref: {stash_ref} (run `git stash show {stash_ref}` to inspect)
+  No files were modified.
+```
+
+If report contains deprecated files present in the project, offer cleanup:
+```
+DEPRECATED FILES found in your project:
+  {deprecated_files[]}
+
+These were removed from DLD template. Run cleanup? Y/n
+```
+
+If yes:
+```bash
+node .claude/scripts/upgrade.mjs --cleanup
+```
+
 ## Rules
 
 - NEVER use Read/Edit/Write tools to copy template files
@@ -112,3 +165,5 @@ Restart Claude Code to activate changes.
 - Network failure: suggest retry or `--local` mode
 - Partial apply (some errors): show what succeeded and what failed
 - Git dirty: tell user to commit or stash first
+- Validation failure + rollback: show stash ref, suggest manual inspection
+- Deprecated files remaining: run `node .claude/scripts/upgrade.mjs --cleanup`
