@@ -15,8 +15,17 @@ const REPO_URL = 'https://github.com/Ellevated/dld.git';
 const TEMPLATE_DIR = 'template';
 const VERSION_FILE = '.dld-version';
 
+// Project-config files that upgrade must NEVER touch.
+// These are project-specific, not DLD framework files.
 const PROTECTED = new Set([
   'CLAUDE.md',
+  'README.md',
+  '.gitignore',
+  'pyproject.toml',
+  'package.json',
+  'Cargo.toml',
+  'go.mod',
+  'requirements.txt',
   '.claude/rules/localization.md',
   '.claude/rules/template-sync.md',
   '.claude/CUSTOMIZATIONS.md',
@@ -93,10 +102,13 @@ function getLatestCommitSha(sourceDir) {
   }
 }
 
+// Upgrade only touches DLD framework files. Everything else in template/
+// is scaffolding for new projects (pyproject.toml, ai/, README.md, etc.).
+const UPGRADE_SCOPE = (f) => f.startsWith('.claude/') || f.startsWith('scripts/');
+
 function analyze(sourceDir, projectDir, gitRoot) {
-  const templateFiles = walkDir(sourceDir, sourceDir);
-  const projectFiles = walkDir(projectDir, projectDir)
-    .filter((f) => f.startsWith('.claude/') || f.startsWith('scripts/'));
+  const templateFiles = walkDir(sourceDir, sourceDir).filter(UPGRADE_SCOPE);
+  const projectFiles = walkDir(projectDir, projectDir).filter(UPGRADE_SCOPE);
 
   const result = {
     identical: [],
@@ -208,7 +220,9 @@ function resolveTargets(report, groupNames, fileNames) {
           if (SAFE_GROUPS.has(item.group) && !item.always_ask) targets.add(item.path);
         }
       } else if (name === 'new') {
-        for (const item of report.files.new_files) targets.add(item.path);
+        for (const item of report.files.new_files) {
+          if (!PROTECTED.has(item.path)) targets.add(item.path);
+        }
       } else {
         addFromCategory('new_files');
         addFromCategory('different');
