@@ -42,9 +42,10 @@ PHASE 2: Execute (per task)    → task-loop.md
   └─ [Spec Reviewer] sonnet → approved?
   └─ [Code Quality] opus → approved?
   └─ COMMIT (no push)
+  └─ LOCAL VERIFY (if AV section) → warn only
 
 PHASE 3: Finish                → finishing.md
-  └─ Final test → Exa verification → status done → push feature → merge develop → push develop → cleanup
+  └─ Final test → Exa verification → status done → push feature → POST-DEPLOY VERIFY → merge develop → push develop → cleanup
 ```
 
 **Limits & Escalation:** See `escalation.md`
@@ -116,6 +117,7 @@ For EACH task from plan:
 │ 4. SPEC REVIEWER (Stage 1) → matches spec?          │
 │ 5. CODE QUALITY (Stage 2) → architecture ok?        │
 │ 6. COMMIT (NO PUSH yet!)                            │
+│ 7. LOCAL VERIFY → smoke + functional (warn only)    │
 └─────────────────────────────────────────────────────┘
 ```
 

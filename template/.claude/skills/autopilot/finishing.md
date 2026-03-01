@@ -32,6 +32,14 @@ Final verification, status update, merge, and cleanup.
 7. Push feature branch (backup):
    git push -u origin {type}/{ID}
 
+7.5. POST-DEPLOY VERIFY (conditional):
+   If spec has DEPLOY_URL (not "local-only"):
+   a. Poll DEPLOY_URL every 10s (max 120s wait)
+   b. Run Smoke checks from spec against DEPLOY_URL
+   c. Run Functional checks from spec against DEPLOY_URL
+   All results are WARN only, never blocks.
+   No DEPLOY_URL or "local-only" → skip entirely.
+
 8. Merge to develop:
    cd "$MAIN_REPO"
    git checkout develop
@@ -169,6 +177,10 @@ For EACH task, verify:
 - [ ] Pushed to develop
 - [ ] `git status` shows clean working directory
 
+### Acceptance Verification (if spec has AV section)
+- [ ] LOCAL VERIFY results logged for each task
+- [ ] POST-DEPLOY VERIFY attempted (if DEPLOY_URL present)
+
 ### Cleanup
 - [ ] Autopilot Log updated in spec file
 - [ ] Status synced: spec=done AND backlog=done
@@ -191,6 +203,8 @@ Add to feature file:
 - Spec Reviewer: approved | needs_implementation | needs_removal
 - Code Quality Reviewer: approved | needs_refactor
 - Exa Verify: no issues | WARNING: {description}
+- Local Verify: pass | warn: {details} | skip (no AV)
+- Post-Deploy Verify: pass | warn: {details} | skip (no URL)
 - Commit: abc1234 | BLOCKED (reviewer not approved)
 ```
 
