@@ -6,6 +6,29 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.11] - 2026-03-01
+
+### Added
+- **Acceptance Verification system** — 3-layer verification pipeline ensuring code actually works in running systems, not just passes tests. Spark specs now include machine-executable `## Acceptance Verification` section (smoke + functional checks with copy-paste commands). Autopilot executes LOCAL VERIFY after every commit and POST-DEPLOY VERIFY after push. All results are non-blocking (warn only) for backwards compatibility.
+- **`/upgrade` skill — INFRASTRUCTURE guard** — `upgrade.mjs` and `run-hook.mjs` now classified as INFRASTRUCTURE: never auto-applied via `--groups safe`, only via explicit `--files`. Prevents silent engine overwrites.
+- **`/upgrade` skill — `--source` flag** — point upgrade to local template directory instead of GitHub (e.g., for monorepo setups or offline use).
+- **Upgrade contract** — formal spec for upgrade engine behavior: PROTECTED, INFRASTRUCTURE, SAFE_GROUPS, rollback semantics. Lives in `.claude/contracts/upgrade-contract.md`.
+- **`deprecated.json` manifest** — tracks removed/renamed files across versions; upgrade `--cleanup` automatically moves deprecated files to `.claude/.upgrade-trash/`.
+- **Upgrade test suite** — 289-line test suite for upgrade engine (`scripts/__tests__/upgrade.test.mjs`).
+- **`requireAcceptanceVerification` config flag** — hooks.config.mjs enforcement gate for AV section in specs (off by default, opt-in per project).
+
+### Changed
+- **`/upgrade` skill — PROTECTED expansion** — `hooks.config.mjs` added to PROTECTED set (was in SAFE_GROUPS, could be silently overwritten). User hook config is now always preserved across upgrades.
+- **`/upgrade` skill — UPGRADE_SCOPE filter** — upgrade engine now only touches `.claude/` and `scripts/` files. Scaffolding (`pyproject.toml`, `ai/`, etc.) excluded entirely.
+- **Upgrade rollback** — on validation failure after apply, engine auto-reverts via `git checkout -- .` and reports `rolled_back: true`.
+- **autopilot-state.mjs** — added `verify` field to task state tracking (`VALID_STEPS` + `setPlan` task object).
+
+### Fixed
+- **`/upgrade` — hooks.config.mjs overwrite** — was listed in SAFE_GROUPS, silently wiping user hook customizations on every upgrade. Now PROTECTED.
+- **Template `.gitignore`** — removed forced `ai/` and `brandbook/` entries from user project `.gitignore`. These are DLD-internal paths and should not be injected into user repos.
+
+---
+
 ## [3.10] - 2026-02-26
 
 ### Added
