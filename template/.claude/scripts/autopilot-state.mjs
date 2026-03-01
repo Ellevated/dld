@@ -80,6 +80,7 @@ export function setPlan(dir, tasks) {
       tester: 'pending',
       reviewer: 'pending',
       commit: null,
+      verify: 'pending',
     }));
     writeFileSync(statePath(dir), JSON.stringify(state, null, 2) + '\n');
     return true;
@@ -101,7 +102,7 @@ export function updateTask(dir, taskId, step, value) {
     const state = readState(dir);
     if (!state) return false;
 
-    const VALID_STEPS = ['status', 'coder', 'tester', 'reviewer', 'commit'];
+    const VALID_STEPS = ['status', 'coder', 'tester', 'reviewer', 'commit', 'verify'];
     if (!VALID_STEPS.includes(step)) return false;
 
     const task = state.tasks.find(t => t.id === taskId);

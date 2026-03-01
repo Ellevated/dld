@@ -122,6 +122,37 @@ function checkResearch(specFile, minFiles) {
   }
 }
 
+// --- Check 5: Acceptance Verification (optional, off by default) ---
+
+function checkAcceptanceVerification(content) {
+  const avSection = content.match(/## Acceptance Verification[\s\S]*?(?=\n## (?!#)|\s*$)/);
+  if (!avSection) {
+    return 'Spec missing ## Acceptance Verification section!\n\n' +
+      'Add Acceptance Verification with at least:\n' +
+      '- 1 Smoke Check (AV-S*)\n' +
+      '- 1 Functional Check (AV-F*)\n' +
+      'Or mark as "N/A: {reason}" if not applicable.\n\n' +
+      'See: feature-mode.md -> Phase 5: WRITE -> Acceptance Verification';
+  }
+
+  const stripped = stripCodeBlocks(avSection[0]);
+
+  // N/A is allowed with reason
+  if (/\bN\/A\b/i.test(stripped)) return null;
+
+  const smokeChecks = (stripped.match(/\|\s*AV-S\d+/g) || []).length;
+  const funcChecks = (stripped.match(/\|\s*AV-F\d+/g) || []).length;
+
+  if (smokeChecks < 1 || funcChecks < 1) {
+    return `Acceptance Verification has ${smokeChecks} smoke + ${funcChecks} functional checks!\n\n` +
+      'Minimum required: 1 smoke (AV-S*) + 1 functional (AV-F*) check.\n' +
+      'Or mark section as "N/A: {reason}" if not applicable.\n\n' +
+      'See: feature-mode.md -> Phase 5: WRITE -> Acceptance Verification';
+  }
+
+  return null;
+}
+
 // --- Check 4: Eval Criteria / Tests section (dual-detection) ---
 
 function checkEvalCriteria(content, minCriteria) {
@@ -267,6 +298,17 @@ async function main() {
         debugLog('validate-spec', 'deny', { reason: 'tests_incomplete', specFile });
         timer.end('deny');
         denyTool(testsResult);
+        return;
+      }
+    }
+
+    // Check 5: Acceptance Verification (off by default)
+    if (enforcement.requireAcceptanceVerification === true) {
+      const avResult = checkAcceptanceVerification(content);
+      if (avResult) {
+        debugLog('validate-spec', 'deny', { reason: 'acceptance_verification_missing', specFile });
+        timer.end('deny');
+        denyTool(avResult);
         return;
       }
     }

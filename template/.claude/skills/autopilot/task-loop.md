@@ -5,7 +5,7 @@ SSOT for task execution flow. For EACH task from Implementation Plan.
 ## Flow Overview
 
 ```
-CODER → TESTER → PRE-CHECK → SPEC REVIEWER → CODE QUALITY → COMMIT → NEXT
+CODER → TESTER → PRE-CHECK → SPEC REVIEWER → CODE QUALITY → COMMIT → LOCAL VERIFY → NEXT
 ```
 
 ---
@@ -254,16 +254,56 @@ git commit -m "{type}({scope}): {description}"
 **After commit:**
 1. Log to Autopilot Log in spec file
 2. Update autopilot-state.json: task.status = "done", task.commit = "{hash}"
-3. Increment task counter: `current_task += 1`
-4. Continue to NEXT TASK (back to Step 1)
+3. Continue to Step 7 (LOCAL VERIFY)
 
 <HARD-GATE>
-DO NOT proceed to next task until:
+DO NOT proceed to Step 7 until:
 - [ ] Commit successful (verified by git)
 - [ ] autopilot-state.json updated: task.status = "done", task.commit = hash
 - [ ] Autopilot Log in spec file updated
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "I'll batch commits for efficiency"
+</HARD-GATE>
+
+---
+
+## Step 7: LOCAL VERIFY (conditional)
+
+**Trigger:** Spec has `## Acceptance Verification` section with AV-* checks.
+**Skip if:** No AV section in spec, or section contains "N/A".
+
+### 7a: Smoke Checks
+Run commands from spec's Smoke Checks table (AV-S* rows).
+```
+Result?
+├─ ALL PASS → Step 7b
+├─ FAIL, retry < 2 → wait 5s, retry
+├─ FAIL, retry >= 2 → WARN in Autopilot Log, continue
+```
+
+### 7b: Functional Checks
+Run commands from spec's Functional Checks table (AV-F* rows).
+```
+Result?
+├─ ALL PASS → update state, NEXT TASK
+├─ FAIL, retry < 2 → CODER fix → re-commit → retry
+├─ FAIL, retry >= 2 → WARN in Autopilot Log, continue
+```
+
+### Cleanup
+Stop any processes started during smoke/functional checks.
+
+**NON-BLOCKING** — verification failures produce warnings only, never block task progression.
+
+**After LOCAL VERIFY:**
+1. Update autopilot-state.json: task.verify = "pass" | "warn" | "skip"
+2. Log result to Autopilot Log in spec file
+3. Increment task counter: `current_task += 1`
+4. Continue to NEXT TASK (back to Step 1)
+
+<HARD-GATE>
+- [ ] autopilot-state.json: task.verify = "pass" | "warn" | "skip"
+- [ ] If warn: details logged to Autopilot Log
 </HARD-GATE>
 
 ---
@@ -285,6 +325,8 @@ When `current_task > total_tasks`:
 | `debug_attempts` | 3 | Escalate (escalation.md) |
 | `spec_review_loop` | 2 | Escalate to Council |
 | `refactor_loop` | 2 | Escalate to Council |
+| `verify_smoke_retry` | 2 | Warn (don't block) |
+| `verify_func_retry` | 2 | Warn → Coder fix, then warn |
 
 Reset counters at start of each task.
 
@@ -319,5 +361,6 @@ Task N:
     └─ needs_*? coder fix, retry (max 2)
   CODE QUALITY → approved? → update state
     └─ needs_refactor? coder fix, retry (max 2)
-  COMMIT → log → update state → NEXT TASK
+  COMMIT → log → update state
+  LOCAL VERIFY → pass/warn/skip → update state → NEXT TASK
 ```

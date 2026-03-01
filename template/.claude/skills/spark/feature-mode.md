@@ -496,6 +496,45 @@ Map every User Flow step to Implementation Task:
 
 ---
 
+## Acceptance Verification (MANDATORY)
+
+Machine-executable checks: feature WORKS in running system.
+
+### Smoke Checks (process alive)
+
+| ID | Check | Command / Action | Expected | Timeout |
+|----|-------|-----------------|----------|---------|
+| AV-S1 | {service starts} | {command} | exit 0 / ready | 30s |
+
+### Functional Checks (business logic)
+
+| ID | Check | Setup | Action | Expected |
+|----|-------|-------|--------|----------|
+| AV-F1 | {happy path} | {preconditions} | {action} | {result} |
+
+### Verify Command (copy-paste ready)
+
+```bash
+# Smoke
+{exact start command}
+{exact health check}
+# Functional
+{exact test command}
+```
+
+### Post-Deploy URL (if applicable)
+
+```
+DEPLOY_URL={URL or "local-only"}
+```
+
+**Rules:**
+- Commands must be copy-paste executable (no placeholders except project-specific values)
+- Minimum 1 smoke check (AV-S*) + 1 functional check (AV-F*)
+- N/A allowed with reason (e.g., "N/A: pure library, no running process")
+
+---
+
 ## Definition of Done
 
 ### Functional
@@ -511,6 +550,11 @@ Map every User Flow step to Implementation Task:
 - [ ] User can complete full journey from start to finish
 - [ ] No dead-ends or hanging states
 - [ ] Manual E2E test performed
+
+### Acceptance Verification
+- [ ] All Smoke checks (AV-S*) pass locally
+- [ ] All Functional checks (AV-F*) pass locally
+- [ ] Verify Command runs without errors
 
 ### Technical
 - [ ] Tests pass (./test fast)
@@ -535,7 +579,7 @@ Common rationalization to REJECT: "I'll fill the remaining sections later"
 
 ## Phase 6: VALIDATE
 
-Before marking spec `queued`, run 5 structural validation gates.
+Before marking spec `queued`, run 6 structural validation gates.
 
 ### Gate 1: Spec Completeness
 ```
@@ -576,13 +620,21 @@ Before marking spec `queued`, run 5 structural validation gates.
 □ No gaps in flow?
 ```
 
+### Gate 6: Acceptance Verification
+```
+□ Has ## Acceptance Verification section?
+□ At least 1 AV-S* and 1 AV-F* check?
+□ Verify Command has real commands (not just placeholders)?
+□ If N/A — reason is valid and documented?
+```
+
 **GATE RESULT:** pass / reject with reasons
 
 **If any gate fails →** spec stays `draft`, return to Phase 3 (re-synthesize with feedback).
 
 <HARD-GATE>
 DO NOT proceed to Phase 7 until:
-- [ ] All 5 validation gates pass
+- [ ] All 6 validation gates pass
 - [ ] state.json updated: validate = done
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "gates are just a formality, spec looks good"

@@ -1,3 +1,7 @@
+// Hook configuration — default rules from DLD template.
+// DO NOT EDIT for project-specific customizations.
+// Use hooks.config.local.mjs instead (protected from upgrades).
+
 /**
  * Default configuration for Claude Code hooks.
  *
@@ -107,6 +111,7 @@ export default {
     requirePlanBeforeCode: true,
     requireTestsInSpec: true,
     requireEvalCriteria: true,
+    requireAcceptanceVerification: false,
     minTestCases: 3,
     minEvalCriteria: 3,
     minResearchFiles: 2,
