@@ -231,5 +231,5 @@ echo '<JSON_SPEC>' | node template/.claude/tools/excalidraw-gen.mjs ai/diagrams/
 5. **Use groups** for logical clustering when >8 nodes
 6. **Label edges** when relationship isn't obvious
 7. **Title every diagram** — mandatory `title` field
-8. **Output to ai/diagrams/** — diagrams are local artifacts (gitignored)
+8. **Output to ai/diagrams/** — diagrams are project artifacts
 9. **Create ai/diagrams/ directory** if it doesn't exist before writing

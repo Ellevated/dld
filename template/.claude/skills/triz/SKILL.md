@@ -219,6 +219,6 @@ The synthesizer writes a markdown report. See `synthesizer.md` for format.
 
 - **READ-ONLY** — no code modifications
 - **No backlog entries** — report is informational, user decides what to do
-- **No commits** — report stays in ai/.triz/ (gitignored)
+- **No commits** — report stays in ai/.triz/ (session artifact)
 - **Fully automatic** — no AskUserQuestion, no confirmation prompts
 - Session data: `{SESSION_DIR}/` (computed once before Phase 1, see "Compute Session Directory")

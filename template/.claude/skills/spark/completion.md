@@ -186,7 +186,7 @@ After spec file is created and backlog updated — commit ALL changes locally:
 git add "ai/features/${TASK_ID}"* ai/backlog.md 2>/dev/null
 
 # 2. Commit locally only if something was staged (NO PUSH!)
-# Note: If ai/ is in .gitignore, git add is a no-op — no commit is created (correct behavior)
+# Note: If ai/ is in .gitignore, git add is a no-op (expected)
 git diff --cached --quiet || git commit -m "docs: create spec ${TASK_ID}"
 ```
 

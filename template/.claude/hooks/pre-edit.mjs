@@ -38,7 +38,6 @@ const FALLBACK_WARN_THRESHOLD = 7 / 8;
 const FALLBACK_SYNC_ZONES = ['.claude/', 'scripts/'];
 const FALLBACK_EXCLUDE_SYNC = [
   '.claude/rules/localization.md',
-  '.claude/rules/template-sync.md',
   '.claude/CUSTOMIZATIONS.md',
   '.claude/settings.local.json',
 ];

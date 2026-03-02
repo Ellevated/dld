@@ -88,7 +88,6 @@ export default {
     syncZones: ['.claude/', 'scripts/'],
     excludeFromSync: [
       '.claude/rules/localization.md',
-      '.claude/rules/template-sync.md',
       '.claude/CUSTOMIZATIONS.md',
       '.claude/settings.local.json',
     ],
