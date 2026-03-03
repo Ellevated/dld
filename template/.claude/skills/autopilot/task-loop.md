@@ -93,6 +93,21 @@ Common rationalization to REJECT: "tests are simple, I'll write them later"
 
 ---
 
+## Step 2a: INTEGRATION TEST CHECK (conditional)
+
+**Trigger:** files_changed includes `src/infra/db/`, `src/infra/external/`, or `src/domains/*/repository*`
+
+```
+Integration test exists in tests/integration/ for changed module?
+├── YES, no mocks → continue
+├── YES, has mocks → CODER removes mocks → re-test
+└── NO → CODER creates integration test → TESTER verifies → continue
+```
+
+**Skip if:** No DB/infra files in files_changed.
+
+---
+
 ## Step 2.5: REGRESSION CAPTURE (conditional)
 
 **Trigger:** `debug_attempts > 0 AND tester == "pass"`

@@ -6,6 +6,26 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.12] - 2026-03-02
+
+### Added
+- **Mock ban hook (ADR-013)** — deterministic hard-block of mock patterns (`jest.mock`, `vi.mock`, `MagicMock`, `@patch`, `sinon.stub`, etc.) in `tests/integration/`. LLM agents mock 38% more than humans (MSR 2026); this hook makes mocking in integration tests impossible, not just discouraged.
+- **Integration test convention** — `docs/10-testing.md` updated with Testcontainers examples (Python + Node.js), allowed vs forbidden patterns table, and mutation testing section.
+- **Integration test enforcement in agents** — coder agent now has Integration Test Check (Gate 5), tester agent routes DB/infra changes to integration tests, task-loop has Step 2a (conditional integration test check).
+- **Mutation testing setup** — `stryker.config.mjs` template + weekly CI job (`mutation-test`) for measuring real test quality beyond coverage.
+- **44 hook tests** — 10 new mock ban tests (all patterns, allow/deny, message content) added to pre-edit test suite.
+
+### Changed
+- **`hooks.config.mjs`** — added `mockBan` section (9 patterns, 3 integration test path matchers) and `requireIntegrationTests` enforcement flag.
+- **`pre-edit.mjs`** — added `isIntegrationTest()`, `containsMockPattern()` helpers with fallback constants. Mock ban check runs between protected paths and plan-before-code gate.
+- **`ci.yml`** — added `schedule` trigger (Monday 06:00 UTC) and `mutation-test` job.
+- **Selection Algorithm** in tester agent — new step 4: "If file touches DB/infra → also run integration tests".
+
+### Fixed
+- **`@patch` regex** — changed `/\b@patch\b/` to `/@patch\b/` because `@` is not a word character, so `\b` before it never matches.
+
+---
+
 ## [3.11] - 2026-03-01
 
 ### Added

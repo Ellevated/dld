@@ -221,6 +221,7 @@ Brownfield:   /retrofit → /audit deep → /architect → /board → stabilize 
 ### Test Safety
 - NEVER modify `tests/contracts/` or `tests/regression/`
 - Never delete/skip tests without user approval
+- Integration tests (`tests/integration/`) use real dependencies — NO mocks (hook enforced)
 
 ### Atomic Commits
 One task = one commit. Tests must pass.

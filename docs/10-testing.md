@@ -179,6 +179,83 @@ def sample_order():
 
 ---
 
+## Integration Tests — NO MOCKS (MANDATORY)
+
+**Why:** LLM agents prefer mocks because they're faster to write.
+Mocks test "does my mock return what I mocked?" — not "does my code work with real DB."
+
+**Rule:** Code that touches DB or external services MUST have integration tests
+in `tests/integration/` using real dependencies (Testcontainers).
+
+**The pre-edit hook hard-blocks mock patterns in `tests/integration/`.**
+
+### Python (Testcontainers)
+
+```python
+# tests/integration/conftest.py
+import pytest
+from testcontainers.postgres import PostgresContainer
+
+@pytest.fixture(scope="session")
+def postgres():
+    with PostgresContainer("postgres:16") as pg:
+        yield pg
+
+@pytest.fixture
+def db(postgres):
+    conn = psycopg.connect(postgres.get_connection_url())
+    yield conn
+    conn.rollback()
+    conn.close()
+```
+
+### Node.js/TypeScript (Testcontainers)
+
+```typescript
+// tests/integration/setup.ts
+import { PostgreSqlContainer } from '@testcontainers/postgresql';
+let container, db;
+
+beforeAll(async () => {
+  container = await new PostgreSqlContainer().start();
+  db = await connect(container.getConnectionUri());
+});
+afterAll(async () => { await container.stop(); });
+```
+
+### What's allowed vs forbidden in integration tests
+
+| Allowed | Forbidden |
+|---------|-----------|
+| Real DB (Testcontainers) | `jest.mock()`, `vi.mock()` |
+| Test fixtures/factories | `unittest.mock`, `MagicMock` |
+| `jest.spyOn()` (read-only) | `@patch`, `mock.patch` |
+| In-memory SQLite (real SQL) | `sinon.stub()`, `sinon.mock()` |
+
+---
+
+## Mutation Testing
+
+Measures REAL test quality — are tests detecting bugs, or just running code?
+
+### Stryker (JS/TS)
+
+```bash
+npx stryker run    # config: stryker.config.mjs
+```
+
+### mutmut (Python)
+
+```bash
+mutmut run --paths-to-mutate=src/
+```
+
+**Thresholds:** >80% = good, <60% = warning, <40% = fail
+
+**Schedule:** Weekly in CI (too slow for every commit)
+
+---
+
 ## CI Integration
 
 ```yaml
