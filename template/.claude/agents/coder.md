@@ -77,6 +77,7 @@ BEFORE modifying ANY file:
 - **Follow project style** — type hints, async, Google docstrings
 - **Prompt versions** — NEVER edit existing, always create new vX.Y.md
 - **Test placement** — unit tests next to code: `foo.py` → `foo_test.py`
+- **Integration tests for DB code** — code touching DB/infra requires test in `tests/integration/` with real DB. NO mocks in integration tests (hook enforced).
 - **Migrations** — CRITICAL: See Migration Rules below
 
 ## Research Tools
@@ -190,6 +191,13 @@ New file location:
 Verify imports follow: `shared ← infra ← domains ← api`
 - `from src.domains.X import Y` in `src/infra/` → ⛔ WRONG!
 - `from src.infra.X import Y` in `src/domains/` → OK
+
+### 5. Integration Test Check
+
+If task involves DB or infra changes:
+- [ ] Integration test exists in `tests/integration/`?
+- [ ] Test uses real dependencies (no mocks)?
+If NO → create integration test before completing.
 
 **If ANY check fails:**
 ```yaml

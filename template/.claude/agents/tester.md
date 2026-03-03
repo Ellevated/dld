@@ -77,6 +77,17 @@ node .claude/scripts/test-wrapper.mjs ./test fast
 | `tests/integration/*` | `pytest tests/integration/ -v -n auto` |
 | `tests/e2e/*` | `pytest tests/e2e/ --e2e -v -n auto` |
 
+### Integration Tests (NO MOCKS — enforced by hook)
+
+| Changed file | Tests to run |
+|--------------|--------------|
+| `src/infra/db/*` | `pytest tests/integration/ -v` |
+| `src/domains/*/repository*` | `pytest tests/integration/ -v` |
+| `tests/integration/*` | `pytest tests/integration/ -v` |
+
+**CRITICAL:** Integration tests use real dependencies (Testcontainers).
+The pre-edit hook HARD-BLOCKS mock patterns in `tests/integration/`.
+
 ### Unit Tests (collocated)
 
 | Changed file | Tests to run |
@@ -104,7 +115,8 @@ node .claude/scripts/test-wrapper.mjs ./test fast
 1. Match file path against tables (top to bottom)
 2. If multiple matches → run all matched commands
 3. If `tests/contracts/` or `tests/regression/` → add ⛔ warning
-4. If no match → `./test fast` (fallback)
+4. If file touches DB/infra → also run integration tests
+5. If no match → `./test fast` (fallback)
 
 **Fallback:** File not in table → `./test fast`
 

@@ -158,7 +158,7 @@ Use `recommend_model` tool for AI-powered suggestions, or these defaults:
 ## STRICT RULES
 
 1. **READ-ONLY for app code** — never modify source files
-2. **Output ONLY to brandbook/** — local, not committed (except `.claude/rules/brand.md`)
+2. **Output ONLY to brandbook/** — local output directory (except `.claude/rules/brand.md`)
 3. **Every choice needs WHY** — "Blue (#1E40AF) because fintech vertical = trust, contrast 7.2:1"
 4. **Concrete values only** — no "consider using...", always exact HEX/font/size
 5. **Accessibility is mandatory** — WCAG AA minimum for all color combinations

@@ -536,12 +536,12 @@ After Step 6 completes (all solution-architects returned):
 2. **Add backlog entries** — For each spec in SPEC_RESULTS: add backlog entry using {spec_id, group_name, priority, spec_path}
    - Example: `| BUG-095 | Hook Safety | queued | P0 | [BUG-095](features/BUG-095.md) |`
 3. **Verify spec files exist** — For each spec_path in SPEC_RESULTS, confirm the file was written to disk. If any file is missing, report to user.
-4. **Auto-commit** — Stage only spec-related files (resilient to gitignored ai/):
+4. **Auto-commit** — Stage only spec-related files (resilient to project gitignore config):
    ```bash
    git add ai/features/BUG-* ai/backlog.md ai/ideas.md 2>/dev/null
    git diff --cached --quiet || git commit -m "docs: Bug Hunt — {N} grouped specs created"
    ```
-   Note: If `ai/` is in `.gitignore`, `git add` is a no-op and no commit is created — this is correct.
+   Note: If `ai/` is in `.gitignore`, `git add` is a no-op — this is expected.
 5. **Cleanup session** — Remove intermediate data:
    ```bash
    rm -rf {session_dir}

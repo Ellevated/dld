@@ -88,10 +88,28 @@ export default {
     syncZones: ['.claude/', 'scripts/'],
     excludeFromSync: [
       '.claude/rules/localization.md',
-      '.claude/rules/template-sync.md',
       '.claude/CUSTOMIZATIONS.md',
       '.claude/settings.local.json',
     ],
+    mockBan: {
+      enabled: true,
+      integrationTestPatterns: [
+        /^tests\/integration\//,
+        /\.integration\.test\./,
+        /\.integration\.spec\./,
+      ],
+      mockPatterns: [
+        /jest\.mock\s*\(/,
+        /vi\.mock\s*\(/,
+        /\bunittest\.mock\b/,
+        /\bMagicMock\b/,
+        /@patch\b/,
+        /\bmock\.patch\b/,
+        /\bsinon\.stub\b/,
+        /\bsinon\.mock\b/,
+        /\bAsyncMock\b/,
+      ],
+    },
   },
 
   utils: {
@@ -111,6 +129,7 @@ export default {
     requirePlanBeforeCode: true,
     requireTestsInSpec: true,
     requireEvalCriteria: true,
+    requireIntegrationTests: true,
     requireAcceptanceVerification: false,
     minTestCases: 3,
     minEvalCriteria: 3,

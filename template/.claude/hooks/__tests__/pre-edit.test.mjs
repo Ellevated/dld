@@ -453,6 +453,18 @@ describe('general behavior', () => {
     strictEqual(result.exitCode, 0, `hook should never exit with non-zero`);
   });
 
+  it('allows Write tool with non-empty content to normal file', () => {
+    const input = makePreToolInput('Write', {
+      file_path: 'src/utils.py',
+      content: 'def hello(): pass\n',
+    });
+    const result = runHook('pre-edit.mjs', input, {
+      CLAUDE_PROJECT_DIR: tmpDir,
+      CLAUDE_CURRENT_SPEC_PATH: '',
+    });
+    ok(isAllow(result), `Write with content to normal file should be allowed`);
+  });
+
   it('deny decision includes "Fix the code, not the test" message', () => {
     const input = makePreToolInput('Edit', {
       file_path: 'tests/regression/critical.py',
@@ -466,5 +478,135 @@ describe('general behavior', () => {
       result.stdout.hookSpecificOutput.permissionDecisionReason.includes('Fix the code, not the test'),
       'deny reason should instruct to fix code not test'
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mock ban in integration tests
+// ---------------------------------------------------------------------------
+
+describe('mock ban in integration tests', () => {
+  it('denies jest.mock() in tests/integration/ via Edit', () => {
+    const input = makePreToolInput('Edit', {
+      file_path: 'tests/integration/test_db.ts',
+      new_string: 'jest.mock("../db")',
+    });
+    const result = runHook('pre-edit.mjs', input, {
+      CLAUDE_PROJECT_DIR: tmpDir,
+      CLAUDE_CURRENT_SPEC_PATH: '',
+    });
+    ok(isDeny(result), `expected deny for jest.mock in integration test, got: ${JSON.stringify(result.stdout)}`);
+  });
+
+  it('denies vi.mock() in integration test via Write', () => {
+    const input = makePreToolInput('Write', {
+      file_path: 'tests/integration/setup.ts',
+      content: 'import { vi } from "vitest";\nvi.mock("../api");',
+    });
+    const result = runHook('pre-edit.mjs', input, {
+      CLAUDE_PROJECT_DIR: tmpDir,
+      CLAUDE_CURRENT_SPEC_PATH: '',
+    });
+    ok(isDeny(result), `expected deny for vi.mock in integration test, got: ${JSON.stringify(result.stdout)}`);
+  });
+
+  it('denies MagicMock in Python integration test', () => {
+    const input = makePreToolInput('Edit', {
+      file_path: 'tests/integration/test_repo.py',
+      new_string: 'mock_db = MagicMock()',
+    });
+    const result = runHook('pre-edit.mjs', input, {
+      CLAUDE_PROJECT_DIR: tmpDir,
+      CLAUDE_CURRENT_SPEC_PATH: '',
+    });
+    ok(isDeny(result), `expected deny for MagicMock in integration test`);
+  });
+
+  it('denies @patch in integration test', () => {
+    const input = makePreToolInput('Edit', {
+      file_path: 'tests/integration/test_service.py',
+      new_string: '@patch("src.infra.db.connect")',
+    });
+    const result = runHook('pre-edit.mjs', input, {
+      CLAUDE_PROJECT_DIR: tmpDir,
+      CLAUDE_CURRENT_SPEC_PATH: '',
+    });
+    ok(isDeny(result), `expected deny for @patch in integration test`);
+  });
+
+  it('denies sinon.stub in .integration.test. file', () => {
+    const input = makePreToolInput('Edit', {
+      file_path: 'src/db.integration.test.ts',
+      new_string: 'const stub = sinon.stub(db, "query");',
+    });
+    const result = runHook('pre-edit.mjs', input, {
+      CLAUDE_PROJECT_DIR: tmpDir,
+      CLAUDE_CURRENT_SPEC_PATH: '',
+    });
+    ok(isDeny(result), `expected deny for sinon.stub in .integration.test. file`);
+  });
+
+  it('allows mocks in tests/unit/', () => {
+    const input = makePreToolInput('Edit', {
+      file_path: 'tests/unit/test_service.py',
+      new_string: 'mock_db = MagicMock()',
+    });
+    const result = runHook('pre-edit.mjs', input, {
+      CLAUDE_PROJECT_DIR: tmpDir,
+      CLAUDE_CURRENT_SPEC_PATH: '',
+    });
+    ok(isAllow(result), `expected allow for mocks in tests/unit/, got: ${JSON.stringify(result.stdout)}`);
+  });
+
+  it('allows non-mock code in integration tests', () => {
+    const input = makePreToolInput('Edit', {
+      file_path: 'tests/integration/test_db.py',
+      new_string: 'conn = postgres.get_connection_url()',
+    });
+    const result = runHook('pre-edit.mjs', input, {
+      CLAUDE_PROJECT_DIR: tmpDir,
+      CLAUDE_CURRENT_SPEC_PATH: '',
+    });
+    ok(isAllow(result), `expected allow for non-mock code in integration test`);
+  });
+
+  it('allows empty content in integration tests', () => {
+    const input = makePreToolInput('Edit', {
+      file_path: 'tests/integration/test_empty.py',
+      new_string: '',
+    });
+    const result = runHook('pre-edit.mjs', input, {
+      CLAUDE_PROJECT_DIR: tmpDir,
+      CLAUDE_CURRENT_SPEC_PATH: '',
+    });
+    ok(isAllow(result), `expected allow for empty content in integration test`);
+  });
+
+  it('deny message mentions real dependencies', () => {
+    const input = makePreToolInput('Write', {
+      file_path: 'tests/integration/test_api.ts',
+      content: 'jest.mock("../client")',
+    });
+    const result = runHook('pre-edit.mjs', input, {
+      CLAUDE_PROJECT_DIR: tmpDir,
+      CLAUDE_CURRENT_SPEC_PATH: '',
+    });
+    ok(isDeny(result));
+    ok(
+      result.stdout.hookSpecificOutput.permissionDecisionReason.includes('real dependencies'),
+      'deny reason should mention real dependencies'
+    );
+  });
+
+  it('denies unittest.mock import in integration test', () => {
+    const input = makePreToolInput('Edit', {
+      file_path: 'tests/integration/test_utils.py',
+      new_string: 'from unittest.mock import patch',
+    });
+    const result = runHook('pre-edit.mjs', input, {
+      CLAUDE_PROJECT_DIR: tmpDir,
+      CLAUDE_CURRENT_SPEC_PATH: '',
+    });
+    ok(isDeny(result), `expected deny for unittest.mock in integration test`);
   });
 });

@@ -6,6 +6,49 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.12] - 2026-03-02
+
+### Added
+- **Mock ban hook (ADR-013)** — deterministic hard-block of mock patterns (`jest.mock`, `vi.mock`, `MagicMock`, `@patch`, `sinon.stub`, etc.) in `tests/integration/`. LLM agents mock 38% more than humans (MSR 2026); this hook makes mocking in integration tests impossible, not just discouraged.
+- **Integration test convention** — `docs/10-testing.md` updated with Testcontainers examples (Python + Node.js), allowed vs forbidden patterns table, and mutation testing section.
+- **Integration test enforcement in agents** — coder agent now has Integration Test Check (Gate 5), tester agent routes DB/infra changes to integration tests, task-loop has Step 2a (conditional integration test check).
+- **Mutation testing setup** — `stryker.config.mjs` template + weekly CI job (`mutation-test`) for measuring real test quality beyond coverage.
+- **44 hook tests** — 10 new mock ban tests (all patterns, allow/deny, message content) added to pre-edit test suite.
+
+### Changed
+- **`hooks.config.mjs`** — added `mockBan` section (9 patterns, 3 integration test path matchers) and `requireIntegrationTests` enforcement flag.
+- **`pre-edit.mjs`** — added `isIntegrationTest()`, `containsMockPattern()` helpers with fallback constants. Mock ban check runs between protected paths and plan-before-code gate.
+- **`ci.yml`** — added `schedule` trigger (Monday 06:00 UTC) and `mutation-test` job.
+- **Selection Algorithm** in tester agent — new step 4: "If file touches DB/infra → also run integration tests".
+
+### Fixed
+- **`@patch` regex** — changed `/\b@patch\b/` to `/@patch\b/` because `@` is not a word character, so `\b` before it never matches.
+
+---
+
+## [3.11] - 2026-03-01
+
+### Added
+- **Acceptance Verification system** — 3-layer verification pipeline ensuring code actually works in running systems, not just passes tests. Spark specs now include machine-executable `## Acceptance Verification` section (smoke + functional checks with copy-paste commands). Autopilot executes LOCAL VERIFY after every commit and POST-DEPLOY VERIFY after push. All results are non-blocking (warn only) for backwards compatibility.
+- **`/upgrade` skill — INFRASTRUCTURE guard** — `upgrade.mjs` and `run-hook.mjs` now classified as INFRASTRUCTURE: never auto-applied via `--groups safe`, only via explicit `--files`. Prevents silent engine overwrites.
+- **`/upgrade` skill — `--source` flag** — point upgrade to local template directory instead of GitHub (e.g., for monorepo setups or offline use).
+- **Upgrade contract** — formal spec for upgrade engine behavior: PROTECTED, INFRASTRUCTURE, SAFE_GROUPS, rollback semantics. Lives in `.claude/contracts/upgrade-contract.md`.
+- **`deprecated.json` manifest** — tracks removed/renamed files across versions; upgrade `--cleanup` automatically moves deprecated files to `.claude/.upgrade-trash/`.
+- **Upgrade test suite** — 289-line test suite for upgrade engine (`scripts/__tests__/upgrade.test.mjs`).
+- **`requireAcceptanceVerification` config flag** — hooks.config.mjs enforcement gate for AV section in specs (off by default, opt-in per project).
+
+### Changed
+- **`/upgrade` skill — PROTECTED expansion** — `hooks.config.mjs` added to PROTECTED set (was in SAFE_GROUPS, could be silently overwritten). User hook config is now always preserved across upgrades.
+- **`/upgrade` skill — UPGRADE_SCOPE filter** — upgrade engine now only touches `.claude/` and `scripts/` files. Scaffolding (`pyproject.toml`, `ai/`, etc.) excluded entirely.
+- **Upgrade rollback** — on validation failure after apply, engine auto-reverts via `git checkout -- .` and reports `rolled_back: true`.
+- **autopilot-state.mjs** — added `verify` field to task state tracking (`VALID_STEPS` + `setPlan` task object).
+
+### Fixed
+- **`/upgrade` — hooks.config.mjs overwrite** — was listed in SAFE_GROUPS, silently wiping user hook customizations on every upgrade. Now PROTECTED.
+- **Template `.gitignore`** — removed forced `ai/` and `brandbook/` entries from user project `.gitignore`. These are DLD-internal paths and should not be injected into user repos.
+
+---
+
 ## [3.10] - 2026-02-26
 
 ### Added
