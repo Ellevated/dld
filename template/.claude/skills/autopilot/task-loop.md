@@ -5,7 +5,7 @@ SSOT for task execution flow. For EACH task from Implementation Plan.
 ## Flow Overview
 
 ```
-CODER → TESTER → PRE-CHECK → SPEC REVIEWER → CODE QUALITY → COMMIT → LOCAL VERIFY → NEXT
+CODER → TESTER → PRE-CHECK → SPEC REVIEWER → CODE QUALITY → COMMIT → DIARY → LOCAL VERIFY → NEXT
 ```
 
 ---
@@ -282,6 +282,98 @@ Common rationalization to REJECT: "I'll batch commits for efficiency"
 
 ---
 
+## Step 6.5: DIARY RECORD (inline — no subagent)
+
+Record task outcome directly. Per ADR-007: caller writes, not subagent.
+
+**Always runs.** Every task gets an index row — successes AND problems.
+
+### Index Row Format
+
+```
+| {date} | {TASK_ID} | {type} | {summary} | {debug_N} | {files_N} | pending |
+```
+
+**Types:** success, problem, escalation, regression
+
+### Decision Tree
+
+```
+debug_attempts == 0?
+├── YES → index row (success) with files_count
+├── NO  → index row (problem) + detail file
+│
+Escalation happened?
+├── YES → additional index row (escalation)
+│
+Regression test created (Step 2.5)?
+└── YES → additional index row (regression)
+```
+
+### Success (first-pass)
+
+Append to `ai/diary/index.md`:
+```
+| {YYYY-MM-DD} | {TASK_ID} | success | Task {N}/{M}: {title} | 0 | {files_count} | pending |
+```
+
+### Problem (debug retry)
+
+**1.** Append to `ai/diary/index.md`:
+```
+| {YYYY-MM-DD} | {TASK_ID} | problem | debug ×{N}: {brief_error} | {debug_attempts} | {files_count} | pending |
+```
+
+**2.** Create `ai/diary/{YYYY-MM-DD}-{TASK_ID}-task{N}-problem.md`:
+```markdown
+# {TASK_ID} Task {N}/{M} — {YYYY-MM-DD}
+
+## Problem
+- debug retry ×{debug_attempts}
+
+## Context
+- Error: {last_error_message}
+- Files: {files_changed}
+- Attempts: {what_was_tried}
+- Resolution: {what_finally_fixed_it}
+
+## Category
+{code_bug | spec_gap | environment | architecture}
+```
+
+### Escalation (additional row)
+
+If escalation happened during this task (see escalation.md):
+```
+| {YYYY-MM-DD} | {TASK_ID} | escalation | {type}: {brief reason} | — | — | pending |
+```
+
+### Regression Captured (additional row)
+
+If Step 2.5 created a regression test:
+```
+| {YYYY-MM-DD} | {TASK_ID} | regression | {test_name} from debug fix | — | — | pending |
+```
+
+### Rules
+
+- **Factual** — what happened, not interpretation
+- **Minimal** — brief description, not essay
+- **Always index** — every task gets index row, even successes
+- **No fix** — just record, /reflect analyzes later
+- **Category required** for problems — helps /reflect detect patterns
+
+<HARD-GATE>
+DO NOT proceed to Step 7 until:
+- [ ] Index row added to ai/diary/index.md
+- [ ] If debug_attempts > 0: detail file created with Category
+- [ ] autopilot-state.json updated: task.diary = "recorded"
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "diary is optional, I'll do it later"
+</HARD-GATE>
+
+---
+
 ## Step 7: LOCAL VERIFY (conditional)
 
 **Trigger:** Spec has `## Acceptance Verification` section with AV-* checks.
@@ -377,5 +469,6 @@ Task N:
   CODE QUALITY → approved? → update state
     └─ needs_refactor? coder fix, retry (max 2)
   COMMIT → log → update state
+  DIARY → index row + detail (if problem) → update state
   LOCAL VERIFY → pass/warn/skip → update state → NEXT TASK
 ```

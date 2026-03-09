@@ -164,24 +164,20 @@ CODE QUALITY REVIEWER returns needs_refactor:
     └── → Council escalation
 ```
 
-## Diary Recording
+## Diary Recording (Inline — ADR-007)
 
 **Triggers:**
-- `bash_instead_of_tools` — used bash when tool exists
 - `test_retry > 1` — needed multiple debug attempts
 - `escalation_used` — escalated to Spark/Council
 - `regression_captured` — debug fix became permanent regression test
 
 **When:** After DEBUG LOOP (if retry > 1) or after escalation.
 
-```yaml
-Task tool:
-  subagent_type: "diary-recorder"
-  prompt: |
-    task_id: "{TASK_ID}"
-    problem_type: {trigger}
-    error_message: "{error}"
-    files_changed: [...]
+**How:** Inline write by orchestrator (no subagent). See `task-loop.md` → Step 6.5.
+
+Escalation events get an additional index row:
+```
+| {YYYY-MM-DD} | {TASK_ID} | escalation | {escalation_type}: {brief reason} | pending |
 ```
 
 ## Blocked Status

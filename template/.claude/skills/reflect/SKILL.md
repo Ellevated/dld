@@ -36,11 +36,10 @@ Analyzes diary entries AND upstream signals, creates spec with proposals for CLA
 
 ### Step 1: Read Diary Index
 
-```bash
-cat ai/diary/index.md
-```
+Read `ai/diary/index.md` — find all entries with `pending` status.
 
-Find all entries with `pending` status.
+**Deduplication:** If `ai/diary/.processed.log` exists, skip entries already listed there.
+This prevents re-processing entries from previous reflect sessions.
 
 ### Step 1.5: Read Upstream Signals (v2, NEW)
 
@@ -199,11 +198,22 @@ next_action: "Run /skill-creator — it will apply proposed changes to CLAUDE.md
 
 1. Open `ai/diary/index.md`
 2. For each processed entry change status: `pending` -> `done`
-3. Update timestamp:
+3. Append processed entry IDs to dedup log:
+
+```bash
+# Append each processed TASK_ID to prevent re-processing
+echo "{TASK_ID_1}" >> ai/diary/.processed.log
+echo "{TASK_ID_2}" >> ai/diary/.processed.log
+```
+
+4. Update timestamp:
 
 ```bash
 date +%s > ai/diary/.last_reflect
 ```
+
+5. **Optional:** If `ai/diary/{ID}-state.json` files exist for processed entries,
+   read them for rich telemetry (retries, timing, step outcomes) to strengthen pattern analysis.
 
 ---
 

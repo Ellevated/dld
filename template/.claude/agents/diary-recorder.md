@@ -1,101 +1,53 @@
 ---
 name: diary-recorder
-description: Records problems and learnings to diary for future reflection
-model: haiku
-effort: low
+description: "DEPRECATED: Diary entries are now written inline by autopilot (ADR-007). This file is kept as format reference only."
+model: sonnet
+effort: medium
 tools: Read, Write, Edit
 ---
 
-# Diary Recorder Agent
+# Diary Recorder — DEPRECATED
 
-Record problems detected during autopilot execution for future reflection.
+> **Why deprecated:** Subagents can't reliably write files (ADR-007, 0/36 success rate).
+> Diary entries are now written inline by autopilot orchestrator in task-loop Step 6.5.
+> See: `template/.claude/skills/autopilot/task-loop.md`
 
-## When Called
+## Format Reference
 
-Autopilot detects:
+These formats are used by autopilot inline writes and by `/reflect` for reading.
 
-**Problems:**
-- `bash_instead_of_tools` — Bash used where Edit/Write should be
-- `test_retry > 1` — Test failed and required debug loop
-- `escaped_defect` — Bug found after merge that should have been caught by review
+### Index Row (`ai/diary/index.md`)
 
-**Successes:**
-- `first_pass_success` — Coder + Tester passed on first attempt (no debug loop)
-- `research_useful` — Coder used Exa research source in code
-- `pattern_reused` — Planner found relevant diary entry and applied it
-- `regression_captured` — Debug loop fix became permanent regression test
-
-## Input
-
-```yaml
-task_id: "FTR-XXX" | "BUG-XXX" | "TECH-XXX"
-problem_type: bash_instead_of_tools | test_retry | escalation_used | escaped_defect | first_pass_success | research_useful | pattern_reused | regression_captured
-error_message: "..."           # for problems
-success_detail: "..."          # for successes (pattern, source, reuse hint)
-files_changed: [...]
-attempts: "what was tried"     # for problems
-escaped_from: "TASK-YYY"       # for escaped_defect — which task introduced the bug
-found_by: "manual | user | CI | monitoring | /audit"  # for escaped_defect — discovery method
+```
+| {YYYY-MM-DD} | {TASK_ID} | {type} | {brief description} | {debug_N} | {files_N} | {status} |
 ```
 
-## Process
+**Types:** success, problem, escalation, regression, escaped_defect
+**Statuses:** pending, done
+**Columns:** debug_N = debug_attempts count, files_N = files_changed count
 
-1. **Create diary entry:** `ai/diary/{date}-{task_id}-problem.md`
-2. **Update index:** Add row to `ai/diary/index.md`
-
-## Output Format
-
-### Diary Entry (minimal)
+### Problem Detail File (`ai/diary/{YYYY-MM-DD}-{TASK_ID}-task{N}-problem.md`)
 
 ```markdown
-# Session: {task_id} — {date}
+# {TASK_ID} Task {N}/{M} — {YYYY-MM-DD}
 
-## Problems
+## Problem
 - {auto-detected problem description}
 
 ## Context
 - Error: {error_message}
 - Files: {files_changed}
-- Attempts: {attempts}
+- Attempts: {what_was_tried}
 
 ## TODO for reflection
 - Analyze root cause
 - Add rule if pattern repeats
 ```
 
-### Index Row (Problem)
-
-```markdown
-| {date} | {task_id} | problem | {brief description} | pending | [->](ai/diary/{date}-{task_id}-problem.md) |
-```
-
-### Success Entry
-
-```markdown
-# Session: {task_id} — {date}
-
-## Success
-- {auto-detected success description}
-
-## What Worked
-- Pattern: {what approach succeeded}
-- Files: {files_changed}
-- Source: {Exa URL if research_useful}
-
-## Reuse Hint
-- {when to apply this pattern again}
-```
-
-### Index Row (Success)
-
-```markdown
-| {date} | {task_id} | success | {brief description} | pending | [->](ai/diary/{date}-{task_id}-success.md) |
-```
-
 ### Escaped Defect Entry
 
 ```markdown
-# Session: {task_id} — {date}
+# {TASK_ID} — {YYYY-MM-DD}
 
 ## Escaped Defect
 - Bug found after merge from {escaped_from}
@@ -113,34 +65,10 @@ found_by: "manual | user | CI | monitoring | /audit"  # for escaped_defect — d
 - Add check to prevent recurrence (see ai/diary/escaped-defects.md)
 ```
 
-### Index Row (Escaped Defect)
-
-```markdown
-| {date} | {task_id} | escaped_defect | {brief description} | pending | [->](ai/diary/{date}-{task_id}-escaped.md) |
-```
-
-## Directory Structure
-
-```
-ai/diary/
-├── index.md                         # Status table
-├── 2026-01-15-BUG-320.md           # Detailed entry
-├── 2026-01-15-TECH-087-problem.md  # Auto-captured problem
-└── .last_reflect                    # Timestamp of last /reflect
-```
-
-## Rules
+## Rules (preserved from original)
 
 - **Minimal** — brief description, not essay
 - **Factual** — what happened, not interpretation
 - **Readable** — problems in plain language for human review
 - **No fix** — just record, don't try to solve
 - **Always index** — every entry must have index row
-
-## Output
-
-```yaml
-status: recorded
-entry_path: ai/diary/{date}-{task_id}-problem.md
-index_updated: true
-```

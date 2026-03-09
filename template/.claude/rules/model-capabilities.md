@@ -40,7 +40,7 @@ Agents should operate at different effort levels based on task complexity:
 | tester | medium | Execution-focused, less reasoning needed |
 | spec-reviewer | medium | Checklist verification, not creative work |
 | documenter | medium | Structured output, clear patterns |
-| diary-recorder | low | Simple capture, minimal reasoning |
+| ~~diary-recorder~~ | — | DEPRECATED: inline in task-loop Step 6.5 (ADR-007) |
 | eval-judge | high | Rubric-based LLM output evaluation (sonnet) |
 | bughunt scope-decomposer | medium | File listing and grouping (sonnet) |
 | bughunt personas (6) | high | Deep analysis from specialized perspectives (sonnet) |
@@ -82,7 +82,7 @@ Agents should operate at different effort levels based on task complexity:
 |-------|---------|------|
 | opus | Complex reasoning, planning, review, council | $5/$25 |
 | sonnet | Standard implementation, research, testing | $3/$15 |
-| haiku | Simple capture, logging, quick checks | $1/$5 |
+| haiku | Quick checks, simple formatting | $1/$5 |
 
 **Rule:** Model is defined ONCE in agent frontmatter `model:` field.
 Never hardcode model in skill dispatch — use `subagent_type` only.

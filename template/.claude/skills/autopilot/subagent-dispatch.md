@@ -15,7 +15,7 @@ How to spawn and manage subagents in autopilot workflow.
 | Tester | `tester` | sonnet | PHASE 2 per task |
 | Debugger | `debugger` | opus | If Tester fails (max 3) |
 | Spec Reviewer | `spec-reviewer` | sonnet | PHASE 2 per task |
-| Diary Recorder | `diary-recorder` | haiku | On problems detected |
+| ~~Diary Recorder~~ | ~~diary-recorder~~ | — | **DEPRECATED:** inline in task-loop Step 6.5 (ADR-007) |
 | Eval Judge | `eval-judge` | sonnet | LLM-as-Judge eval criteria |
 
 ### External Agents (user OR Autopilot)
@@ -118,54 +118,14 @@ Task tool:
     FILES CHANGED: {list}
 ```
 
-### Diary Recorder (Problems)
+### Diary Recording (Inline — ADR-007)
 
-```yaml
-Task tool:
-  subagent_type: "diary-recorder"
-  prompt: |
-    task_id: "{TASK_ID}"
-    problem_type: {trigger}
-    error_message: |
-      <user_input>
-      {error}
-      </user_input>
-    files_changed: [...]
-```
+**DEPRECATED:** diary-recorder subagent removed. Autopilot writes diary entries directly.
 
-### Diary Recorder (Successes)
+See `task-loop.md` → Step 6.5 for inline diary recording instructions.
 
-```yaml
-# Success: first pass (no debug loop)
-IF tester passed AND debug_attempts == 0:
-  Task tool:
-    subagent_type: "diary-recorder"
-    prompt: |
-      task_id: "{TASK_ID}"
-      problem_type: first_pass_success
-      success_detail: "Task {N}/{M} passed on first attempt"
-      files_changed: [...]
-
-# Success: research was useful
-IF coder output references Research Source URL:
-  Task tool:
-    subagent_type: "diary-recorder"
-    prompt: |
-      task_id: "{TASK_ID}"
-      problem_type: research_useful
-      success_detail: "Query: {query}, Source: {url}, Used in: {file}"
-      files_changed: [...]
-
-# Success: diary pattern reused
-IF planner output mentions diary constraint:
-  Task tool:
-    subagent_type: "diary-recorder"
-    prompt: |
-      task_id: "{TASK_ID}"
-      problem_type: pattern_reused
-      success_detail: "Diary entry {entry_id} applied: {how}"
-      files_changed: [...]
-```
+**Why:** Subagents can't reliably write files (ADR-007, 0/36 success rate).
+Direct Write by orchestrator = guaranteed to work.
 
 ## Task Parsing Algorithm
 
@@ -212,4 +172,4 @@ Each task gets FRESH subagents — no shared context pollution!
 |-------|---------|-----|
 | **Opus** | Plan, Debugger, Code Quality | Architecture decisions, root cause analysis |
 | **Sonnet** | Coder, Tester, Spec Reviewer | 90% capability, 2x speed, cost-effective |
-| **Haiku** | Diary Recorder | Fast, cheap for simple logging |
+| **Haiku** | ~~Diary (deprecated)~~ | Diary now inline in task-loop Step 6.5 |
