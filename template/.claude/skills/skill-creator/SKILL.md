@@ -1,14 +1,14 @@
 ---
-name: skill-writer
+name: skill-creator
 description: Write and optimize CLAUDE.md, rules, agent prompts, and skill prompts
 model: opus
 ---
 
-# Skill Writer — CREATE & UPDATE System Documentation
+# Skill Creator — CREATE & UPDATE System Documentation
 
 **Activation:**
-- `skill-writer create {type} {name}` — new agent/skill/wrapper
-- `skill-writer update {target}` — optimize existing (from /reflect or direct)
+- `skill-creator create {type} {name}` — new agent/skill/wrapper
+- `skill-creator update {target}` — optimize existing (from /reflect or direct)
 
 ## Scope
 

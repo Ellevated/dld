@@ -17,7 +17,7 @@ Analyzes diary entries AND upstream signals, creates spec with proposals for CLA
 | Action | Triggers | What happens |
 |--------|----------|--------------|
 | **Diary entry** | "write to diary", "save to diary", "remember for diary" | New line in index.md + file |
-| **Synthesis (this skill)** | "/reflect", "reflection", "let's analyze the diary" | Analysis -> spec -> skill-writer |
+| **Synthesis (this skill)** | "/reflect", "reflection", "let's analyze the diary" | Analysis -> spec -> skill-creator |
 
 ---
 
@@ -151,19 +151,19 @@ Compare entries with CLAUDE.md:
 | `.claude/rules/*.md` | Update (if needed) |
 
 ## Definition of Done
-- [ ] `skill-writer` applied changes
+- [ ] `skill-creator` applied changes
 - [ ] CLAUDE.md < 200 lines after changes
 - [ ] Diary entries marked as done in index.md
 
 ## Integration
 
-**What `/skill-writer` does with reflect output:**
+**What `/skill-creator` does with reflect output:**
 1. Reads the reflect spec (proposed changes)
 2. Applies changes to CLAUDE.md and .claude/rules/
 3. Validates CLAUDE.md stays under 200 lines
 4. Creates a commit with the integrated changes
 
-**Next step:** Run `/skill-writer` with this spec as input.
+**Next step:** Run `/skill-creator` with this spec as input.
 
 ## After Integration
 Update diary entries status in index.md:
@@ -180,7 +180,7 @@ patterns_found:
   - "Pattern 1"
   - "Pattern 2"
 spec_created: ai/features/TECH-NNN-....md
-next_action: "Run /skill-writer — it will apply proposed changes to CLAUDE.md and rules"
+next_action: "Run /skill-creator — it will apply proposed changes to CLAUDE.md and rules"
 ```
 
 ---
@@ -189,13 +189,13 @@ next_action: "Run /skill-writer — it will apply proposed changes to CLAUDE.md 
 
 | Wrong | Correct |
 |-------|---------|
-| Edit CLAUDE.md directly | Create spec -> skill-writer |
-| Edit .claude/rules directly | Create spec -> skill-writer |
-| Mark entries done before integration | Mark after skill-writer |
+| Edit CLAUDE.md directly | Create spec -> skill-creator |
+| Edit .claude/rules directly | Create spec -> skill-creator |
+| Mark entries done before integration | Mark after skill-creator |
 
 ---
 
-## After skill-writer
+## After skill-creator
 
 1. Open `ai/diary/index.md`
 2. For each processed entry change status: `pending` -> `done`
@@ -216,4 +216,4 @@ Before completing reflect:
 - [ ] Patterns counted correctly (frequency threshold)
 - [ ] Spec created (not direct edits)
 - [ ] Spec contains "Proposed Changes" section with Exa sources
-- [ ] Next action = "run skill-writer"
+- [ ] Next action = "run skill-creator"

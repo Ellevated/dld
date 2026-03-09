@@ -244,5 +244,5 @@ See: `./scripts/autopilot-loop.sh`
 ## References
 
 - Agent roles: `.claude/agents/*.md`
-- Creating skills: `/skill-writer create` skill
+- Creating skills: `/skill-creator create` skill
 - Smart Testing: `.claude/agents/tester.md`

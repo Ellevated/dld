@@ -151,7 +151,7 @@ REQUIRED_SKILLS=(
     "scout"
     "audit"
     "reflect"
-    "skill-writer"
+    "skill-creator"
     "bootstrap"
 )
 
