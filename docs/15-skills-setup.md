@@ -43,7 +43,7 @@ spark → autopilot (plan is subagent inside autopilot)
 | **coder** | Write code (wrapper) | sonnet |
 | **planner** | Create implementation plan (wrapper) | opus |
 | **bootstrap** | Day 0 — unpack idea from founder | opus |
-| **skill-writer** | Create agents/skills or optimize CLAUDE.md/rules | opus |
+| **skill-creator** | Create agents/skills or optimize CLAUDE.md/rules | opus |
 | **brandbook** | Brand identity system | opus |
 | **diagram** | Professional Excalidraw diagrams | sonnet |
 | **board** | Business architecture (revenue, org) | opus |
@@ -98,7 +98,7 @@ spark → autopilot (plan is subagent inside autopilot)
 │   ├── coder/SKILL.md          ← Wrapper → agents/coder.md
 │   ├── planner/SKILL.md        ← Wrapper → agents/planner.md
 │   ├── bootstrap/SKILL.md      ← Standalone (Day 0 discovery)
-│   └── skill-writer/SKILL.md ← Standalone (CREATE + UPDATE prompts)
+│   └── skill-creator/SKILL.md ← Standalone (CREATE + UPDATE prompts)
 │
 ├── contexts/
 │   ├── shared.md               ← infra, db, llm
@@ -206,7 +206,7 @@ agent: .claude/agents/tester.md
     { "name": "coder", "path": ".claude/skills/coder/SKILL.md" },
     { "name": "planner", "path": ".claude/skills/planner/SKILL.md" },
     { "name": "bootstrap", "path": ".claude/skills/bootstrap/SKILL.md" },
-    { "name": "skill-writer", "path": ".claude/skills/skill-writer/SKILL.md" }
+    { "name": "skill-creator", "path": ".claude/skills/skill-creator/SKILL.md" }
   ]
 }
 ```

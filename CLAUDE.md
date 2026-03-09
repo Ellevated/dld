@@ -153,7 +153,7 @@ Glossary: ai/glossary/{domain}.md
 | **reflect** | Synthesize diary + upstream signals into rules |
 | **scout** | Isolated research via Exa + Context7 |
 | **release** | Update CHANGELOG, README, docs after changes (fully automatic) |
-| **skill-writer** | Create agents/skills or optimize CLAUDE.md, rules, prompts |
+| **skill-creator** | Create agents/skills or optimize CLAUDE.md, rules, prompts |
 | **retrofit** | Brownfield lifecycle — reassess existing projects (audit -> architect -> board -> stabilize) |
 | **brandbook** | Brand identity system — anti-convergence, design tokens, coder handoff |
 | **diagram** | Generate professional Excalidraw diagrams from description or code analysis |
