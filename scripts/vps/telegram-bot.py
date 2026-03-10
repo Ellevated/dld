@@ -27,6 +27,7 @@ from telegram.ext import (
 
 sys.path.insert(0, str(Path(__file__).parent))
 import db
+from voice_handler import handle_voice
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -365,6 +366,7 @@ def main() -> None:
     application.add_handler(CommandHandler("resume", cmd_resume))
     application.add_handler(CallbackQueryHandler(handle_approve, pattern=r"^approve:"))
     application.add_handler(CallbackQueryHandler(handle_cancel, pattern=r"^cancel:"))
+    application.add_handler(MessageHandler(filters.VOICE & filters.ChatType.SUPERGROUP, handle_voice))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     logger.info("Starting DLD Telegram bot (PTB v21.9+)")
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
