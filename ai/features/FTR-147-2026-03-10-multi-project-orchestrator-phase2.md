@@ -25,7 +25,6 @@ voice inbox captures ideas on the go, QA fix loop closes the gap between "done" 
 - Audit Night Mode (full project scan + finding dedup via SQLite)
 - Evening review prompt (PTB JobQueue + project multi-select)
 - Approve/Reject flow (per-finding Telegram messages + Spark dispatch)
-- QA fix loop termination (MAX_QA_ITERATIONS=3 + hash dedup)
 - Claude OAuth safety (flock wrapper for race condition #27933)
 - Global CLAUDE.md template for VDS
 - Claude context switching verification (--cwd + CLAUDE.md hierarchy)
@@ -49,7 +48,7 @@ voice inbox captures ideas on the go, QA fix loop closes the gap between "done" 
 |------|-------|--------|
 | `scripts/vps/telegram-bot.py` | Phase 1 bot core (389 LOC) | Add voice handler import, evening prompt, approve/reject handlers, night phase icons |
 | `scripts/vps/db.py` | Phase 1 DB module (231 LOC) | Add finding CRUD functions |
-| `scripts/vps/schema.sql` | Phase 1 DDL (46 LOC) | Add night_findings + qa_iterations tables |
+| `scripts/vps/schema.sql` | Phase 1 DDL (46 LOC) | Add night_findings table |
 | `scripts/vps/run-agent.sh` | Phase 1 provider dispatcher | Add flock OAuth wrapper |
 | `scripts/vps/orchestrator.sh` | Phase 1 main loop | Night review scheduling hook |
 | `.claude/skills/audit/SKILL.md` | Audit skill dispatcher | Add night mode trigger |
@@ -92,7 +91,7 @@ voice inbox captures ideas on the go, QA fix loop closes the gap between "done" 
 
 **ONLY these files may be modified during implementation:**
 
-1. `scripts/vps/schema.sql` — add night_findings + qa_iterations tables
+1. `scripts/vps/schema.sql` — add night_findings table
 2. `scripts/vps/db.py` — add finding CRUD + QA iteration tracking
 3. `scripts/vps/telegram-bot.py` — import handlers, register routes, add phase icons
 4. `scripts/vps/requirements.txt` — add groq SDK
@@ -125,7 +124,7 @@ database: true (SQLite — extend Phase 1 schema)
 
 **Domain:** Orchestrator (VPS infrastructure), Audit (skill extension)
 **Cross-cutting:** Process isolation (OAuth flock), quality gates (night reviewer + QA loop)
-**Data model:** night_findings, qa_iterations (new SQLite tables)
+**Data model:** night_findings (new SQLite table)
 
 ---
 
@@ -197,10 +196,10 @@ SQLite fingerprinting is a one-time design cost that pays off every night.
 **Flow D: QA Fix Loop**
 
 1. Autopilot completes task → QA dispatch (Phase 1 qa-loop.sh)
-2. QA finds bugs → each bug gets fingerprint (SHA256 of file + description)
-3. Check qa_iterations table: if same fingerprint appeared ≥3 times → status = `blocked`, notify human
-4. If <3: bug written to ai/inbox/ → next cycle: Spark → Autopilot → QA again
-5. Loop terminates when: QA passes OR max iterations OR same bug stuck
+2. QA finds bugs → each bug sent as individual Telegram message with [Approve] [Reject]
+3. User approves → bug written to ai/inbox/ with route: spark_bug → Spark → Autopilot → QA again
+4. User rejects → bug discarded
+5. Loop terminates when: QA passes OR user stops approving fixes
 
 ### Architecture
 
@@ -249,16 +248,6 @@ CREATE TABLE IF NOT EXISTS night_findings (
     UNIQUE(project_id, fingerprint)
 );
 
--- QA fix loop iteration tracking
-CREATE TABLE IF NOT EXISTS qa_iterations (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id   TEXT NOT NULL REFERENCES project_state(project_id),
-    spec_id      TEXT NOT NULL,
-    bug_fingerprint TEXT NOT NULL,
-    iteration    INTEGER NOT NULL DEFAULT 1,
-    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-    UNIQUE(project_id, spec_id, bug_fingerprint)
-);
 ```
 
 **Finding fingerprint:** `SHA256(project_id + file_path + issue_type_normalized)`
@@ -306,15 +295,12 @@ CREATE TABLE IF NOT EXISTS qa_iterations (
 **Pattern:** [Groq Whisper API](https://console.groq.com/docs/speech-to-text)
 **Details:**
 - Add `night_findings` table (see Database Changes above)
-- Add `qa_iterations` table
 - Add to db.py:
   - `save_finding(project_id, fingerprint, severity, confidence, file_path, line_range, summary, suggestion)` — INSERT OR IGNORE
   - `get_new_findings(project_id)` — SELECT WHERE status = 'new'
   - `update_finding_status(finding_id, status)` — UPDATE status, reviewed_at
   - `get_finding_by_id(finding_id)` — single finding lookup
   - `get_all_findings(project_id, status=None)` — filtered list
-  - `increment_qa_iteration(project_id, spec_id, bug_fingerprint)` — UPSERT iteration count
-  - `get_qa_iteration_count(project_id, spec_id, bug_fingerprint)` — current count
   - `get_projects_for_night_scan(project_ids)` — filter enabled projects by ID list
 - Follow Phase 1 pattern: `PRAGMA busy_timeout=5000` per-connection, `BEGIN IMMEDIATE` for writes
 **Acceptance:** `python3 -c "import db; print(db.save_finding('test', 'abc', 'high', 'high', 'f.py', '1-5', 'bug', 'fix'))"` → no error. Duplicate INSERT returns silently (OR IGNORE).
@@ -441,25 +427,7 @@ CREATE TABLE IF NOT EXISTS qa_iterations (
 - Throttle: `asyncio.sleep(0.05)` between finding messages (Telegram rate limit)
 **Acceptance:** Evening prompt appears at configured time. User selects projects. Review trigger file created. After review: individual messages with buttons appear. Approve → file in inbox.
 
-### Task 6: QA Fix Loop Termination
-**Type:** code
-**Files:**
-  - modify: `scripts/vps/orchestrator.sh`
-**Pattern:** [QA Bug Fingerprinting](https://www.james-ralph.com/posts/2026-02-15-agentic-development-feedback.html)
-**Details:**
-- In orchestrator.sh QA dispatch section:
-  - After QA failure, before writing bug to inbox:
-    1. Compute bug fingerprint: SHA256 of (project_id + file + description_first_50_chars)
-    2. `python3 db.py increment-qa-iteration $PROJECT_ID $SPEC_ID $FINGERPRINT`
-    3. If iteration count ≥ MAX_QA_ITERATIONS (env var, default 3):
-       - Set phase = `blocked`
-       - Notify Telegram: "QA loop stuck on {bug}. Iteration {N}/{MAX}. Manual review needed."
-       - Do NOT write to inbox (break loop)
-    4. If count < MAX: write bug to inbox (loop continues)
-- MAX_QA_ITERATIONS configurable per project (column in project_state or env var)
-**Acceptance:** Simulate 3 identical QA failures → 4th attempt blocked → Telegram notification.
-
-### Task 7: Claude OAuth Safety + Context Switching
+### Task 6: Claude OAuth Safety + Context Switching
 **Type:** code
 **Files:**
   - modify: `scripts/vps/run-agent.sh`
@@ -495,7 +463,7 @@ CREATE TABLE IF NOT EXISTS qa_iterations (
   - Add pueue group `night-reviewer` with parallel=1
 **Acceptance:** Two concurrent `run-agent.sh` invocations don't corrupt OAuth token. `claude --cwd /path/to/project` loads both global and project CLAUDE.md.
 
-### Task 8: Nexus Read-Only Setup
+### Task 7: Nexus Read-Only Setup
 **Type:** code
 **Files:**
   - modify: `scripts/vps/orchestrator.sh` (or setup-vps.sh)
@@ -510,7 +478,7 @@ CREATE TABLE IF NOT EXISTS qa_iterations (
 - No runtime Nexus dependency. No MCP server on VDS.
 **Acceptance:** `setup-vps.sh` with Nexus installed → projects.json pre-populated. Without Nexus → manual setup still works.
 
-### Task 9: systemd + Logging + Integration
+### Task 8: systemd + Logging + Integration
 **Type:** code
 **Files:**
   - modify: `scripts/vps/orchestrator.sh` (or setup-vps.sh)
@@ -541,15 +509,14 @@ CREATE TABLE IF NOT EXISTS qa_iterations (
 ### Execution Order
 
 ```
-1 (schema) → 2 (voice) → 3 (audit night mode) → 4 (night reviewer) → 5 (approve/reject) → 6 (QA loop) → 7 (OAuth + context) → 8 (Nexus) → 9 (systemd)
+1 (schema) → 2 (voice) → 3 (audit night mode) → 4 (night reviewer) → 5 (approve/reject) → 6 (OAuth + context) → 7 (Nexus) → 8 (systemd)
 ```
 
 Dependencies:
 - Task 2 needs Task 1 (DB functions for inbox)
 - Task 4 needs Task 1 (save_finding) + Task 3 (night-mode.md skill)
 - Task 5 needs Task 1 (get_new_findings) + Task 4 (review trigger)
-- Task 6 needs Task 1 (qa_iterations table)
-- Tasks 7, 8, 9 are independent of each other
+- Tasks 6, 7, 8 are independent of each other
 
 ---
 
@@ -576,13 +543,12 @@ Dependencies:
 | 17 | Spec summary sent to Telegram | - | existing (Phase 1) |
 | 18 | User confirms spec → autopilot runs | Task 5 | ✓ |
 | 19 | QA runs after autopilot | - | existing (Phase 1) |
-| 20 | QA finds bug → check iteration count | Task 6 | ✓ |
-| 21 | Iteration < MAX → bug to inbox → loop | Task 6 | ✓ |
-| 22 | Iteration ≥ MAX → blocked → notify | Task 6 | ✓ |
-| 23 | OAuth refresh serialized via flock | Task 7 | ✓ |
-| 24 | Global CLAUDE.md loaded on VDS | Task 7 | ✓ |
-| 25 | Nexus populates projects.json at setup | Task 8 | ✓ |
-| 26 | systemd restarts services with backoff | Task 9 | ✓ |
+| 20 | QA finds bug → sends to Telegram for approval | Task 5 | ✓ |
+| 21 | User approves QA bug → inbox → Spark → fix | Task 5 | ✓ |
+| 22 | OAuth refresh serialized via flock | Task 6 | ✓ |
+| 23 | Global CLAUDE.md loaded on VDS | Task 6 | ✓ |
+| 24 | Nexus populates projects.json at setup | Task 7 | ✓ |
+| 25 | systemd restarts services with backoff | Task 8 | ✓ |
 
 **GAPS:** None. All steps covered.
 
@@ -598,8 +564,7 @@ Dependencies:
 | EC-2 | Groq API failure fallback | Groq returns 5xx | Bot replies "Voice unavailable, send text", no crash | deterministic | devil DA-5 | P0 |
 | EC-3 | Finding deduplication | Same finding inserted twice | Second INSERT ignored (UNIQUE constraint), no duplicate Telegram message | deterministic | devil DA-3 | P0 |
 | EC-4 | Night reviewer only sends new findings | 25 findings night 1, 3 fixed, night 2 runs | Night 2 sends 0 new messages (22 existing + 3 fixed = 25 known) | deterministic | devil DA-3 | P0 |
-| EC-5 | QA loop terminates | Same bug appears 3 times | Status = blocked, Telegram notification, NO 4th attempt | deterministic | devil DA-2 | P0 |
-| EC-6 | Evening prompt project selection | User toggles 3 of 10 projects | Review trigger file contains exactly 3 project IDs | deterministic | user requirement | P0 |
+| EC-5 | Evening prompt project selection | User toggles 3 of 10 projects | Review trigger file contains exactly 3 project IDs | deterministic | user requirement | P0 |
 | EC-7 | Approve finding → inbox | User taps Approve on finding | File created in `{project}/ai/inbox/` with route: spark_bug | deterministic | user requirement | P0 |
 | EC-8 | Reject finding → no inbox | User taps Reject | Finding status = rejected in SQLite, NO inbox file | deterministic | user requirement | P0 |
 | EC-9 | OAuth flock serialization | 2 concurrent claude launches | Both complete without auth error (429/404 on token) | deterministic | devil DA-13, patterns 5B | P0 |
@@ -618,14 +583,13 @@ Dependencies:
 | EC-17 | Project registered, Groq key set | Send voice message in topic | Transcription appears in inbox, bot confirms | integration | user requirement | P0 |
 | EC-18 | Night mode configured, 1 project | Evening prompt → select → start | Findings appear in Telegram topic as individual messages | integration | user requirement | P0 |
 | EC-19 | Finding approved | Approve → wait for orchestrator cycle | Spark processes inbox → spec summary in Telegram | integration | user requirement | P1 |
-| EC-20 | QA loop 3rd failure | Autopilot → QA fail → fix → QA fail → fix → QA fail | Status = blocked, "Manual review needed" in Telegram | integration | devil DA-2 | P1 |
-| EC-21 | Full night cycle E2E | Evening → select → review → findings → approve → spark → autopilot | Complete cycle from review prompt to autopilot execution | integration | user requirement | P1 |
+| EC-20 | Full night cycle E2E | Evening → select → review → findings → approve → spark → autopilot | Complete cycle from review prompt to autopilot execution | integration | user requirement | P1 |
 
 ### Coverage Summary
-- Deterministic: 16 | Integration: 5 | Total: 21
+- Deterministic: 15 | Integration: 4 | Total: 19
 
 ### TDD Order
-1. EC-3 (dedup) → EC-11 (schema) → EC-1 (voice) → EC-5 (QA loop) → EC-7 (approve)
+1. EC-3 (dedup) → EC-11 (schema) → EC-1 (voice) → EC-5 (evening prompt) → EC-7 (approve)
 2. Continue by priority (P0 first)
 
 ---
@@ -686,17 +650,16 @@ DEPLOY_URL=local-only (VDS deployment after Phase 1 verified)
 - [ ] Finding deduplication works (same finding not re-sent)
 - [ ] Approve → inbox file created with route: spark_bug
 - [ ] Reject → finding marked rejected, not resurfaced
-- [ ] QA fix loop terminates at MAX_QA_ITERATIONS with human notification
 - [ ] OAuth race condition prevented via flock
 
 ### Tests
-- [ ] All 21 eval criteria from ## Eval Criteria section pass
+- [ ] All 19 eval criteria from ## Eval Criteria section pass
 - [ ] Coverage not decreased
 
 ### E2E User Journey (REQUIRED for UI features)
 - [ ] Voice message → transcription → inbox → routing (full path)
 - [ ] Evening prompt → project selection → review → findings → approve → spec → autopilot (full path)
-- [ ] QA loop: autopilot → QA fail → fix → QA fail × 3 → blocked (termination verified)
+- [ ] QA loop: autopilot → QA fail → bug to Telegram → user approves → fix (human-in-the-loop verified)
 
 ### Acceptance Verification
 - [ ] All Smoke checks (AV-S*) pass locally
