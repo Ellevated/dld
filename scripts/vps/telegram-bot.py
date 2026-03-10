@@ -27,6 +27,16 @@ from telegram.ext import (
 
 sys.path.insert(0, str(Path(__file__).parent))
 import db
+from approve_handler import (
+    handle_approve_all,
+    handle_confirm_spec,
+    handle_finding_approve,
+    handle_finding_reject,
+    handle_launch_review,
+    handle_project_toggle,
+    handle_reject_all,
+    register_evening_job,
+)
 from voice_handler import handle_voice
 
 load_dotenv(Path(__file__).parent / ".env")
@@ -216,7 +226,10 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         if not projects:
             await update.message.reply_text("No projects configured.")
             return
-        icons = {"idle": "⚪", "running": "🟢", "qa_pending": "🟡", "failed": "🔴"}
+        icons = {
+            "idle": "⚪", "running": "🟢", "qa_pending": "🟡", "failed": "🔴",
+            "night_reviewing": "🔍", "night_pending": "🌙", "night_failed": "💀",
+        }
         lines = ["*All Projects:*\n"] + [
             f"{icons.get(p['phase'], '⚫')} `{p['project_id']}` — {p['phase']}"
             + (f" ({p['current_task']})" if p.get("current_task") else "")
@@ -364,10 +377,18 @@ def main() -> None:
     application.add_handler(CommandHandler("run", cmd_run))
     application.add_handler(CommandHandler("pause", cmd_pause))
     application.add_handler(CommandHandler("resume", cmd_resume))
+    application.add_handler(CallbackQueryHandler(handle_project_toggle, pattern=r"^toggle:"))
+    application.add_handler(CallbackQueryHandler(handle_launch_review, pattern=r"^launch_review$"))
+    application.add_handler(CallbackQueryHandler(handle_finding_approve, pattern=r"^approve_finding:"))
+    application.add_handler(CallbackQueryHandler(handle_finding_reject, pattern=r"^reject_finding:"))
+    application.add_handler(CallbackQueryHandler(handle_approve_all, pattern=r"^approve_all:"))
+    application.add_handler(CallbackQueryHandler(handle_reject_all, pattern=r"^reject_all:"))
+    application.add_handler(CallbackQueryHandler(handle_confirm_spec, pattern=r"^confirm_spec:"))
     application.add_handler(CallbackQueryHandler(handle_approve, pattern=r"^approve:"))
     application.add_handler(CallbackQueryHandler(handle_cancel, pattern=r"^cancel:"))
     application.add_handler(MessageHandler(filters.VOICE & filters.ChatType.SUPERGROUP, handle_voice))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    register_evening_job(application)
     logger.info("Starting DLD Telegram bot (PTB v21.9+)")
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
