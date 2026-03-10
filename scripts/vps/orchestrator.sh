@@ -27,29 +27,39 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLL_INTERVAL="${POLL_INTERVAL:-300}"
 PROJECTS_JSON="${PROJECTS_JSON:-${SCRIPT_DIR}/projects.json}"
 
+# File-based logging (rotated daily, 7 days retention)
+LOG_DIR="${LOG_DIR:-/var/log/dld-orchestrator}"
+mkdir -p "$LOG_DIR" 2>/dev/null || LOG_DIR="${SCRIPT_DIR}/logs" && mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/orchestrator-$(date '+%Y-%m-%d').log"
+
+# Clean logs older than 7 days
+find "$LOG_DIR" -name "orchestrator-*.log" -mtime +7 -delete 2>/dev/null || true
+
 # PID file for health checks
 PID_FILE="${SCRIPT_DIR}/.orchestrator.pid"
 echo $$ > "$PID_FILE"
 trap 'rm -f "$PID_FILE"; log_json "info" "Orchestrator stopped (pid=$$)"' EXIT INT TERM
 
 # ---------------------------------------------------------------------------
-# Logging
+# Logging (stdout + file)
 # ---------------------------------------------------------------------------
 
 log_json() {
     local level="$1" msg="$2"
-    # Optional extra key=value pairs as additional args
     local extras=""
     shift 2
     while [[ $# -ge 2 ]]; do
         extras="${extras},\"${1}\":\"${2}\""
         shift 2
     done
-    printf '{"ts":"%s","level":"%s","msg":"%s"%s}\n' \
+    local line
+    line=$(printf '{"ts":"%s","level":"%s","msg":"%s"%s}' \
         "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
         "$level" \
         "$msg" \
-        "$extras"
+        "$extras")
+    echo "$line"
+    echo "$line" >> "$LOG_FILE"
 }
 
 # ---------------------------------------------------------------------------
@@ -235,6 +245,29 @@ db.update_project_phase('${project_id}', 'autopilot', '${spec_id}')
 }
 
 # ---------------------------------------------------------------------------
+# Dispatch night reviewer if .review-trigger file exists
+# ---------------------------------------------------------------------------
+
+dispatch_night_review() {
+    local trigger_file="${SCRIPT_DIR}/.review-trigger"
+    [[ ! -f "$trigger_file" ]] && return
+
+    local project_ids
+    project_ids=$(cat "$trigger_file")
+    rm -f "$trigger_file"
+
+    [[ -z "$project_ids" ]] && return
+
+    log_json "info" "dispatching night review" "projects" "$project_ids"
+
+    # Submit to pueue night-reviewer group (non-blocking)
+    set +e
+    pueue add --group night-reviewer --label "night-review" -- \
+        "${SCRIPT_DIR}/night-reviewer.sh" $project_ids 2>/dev/null
+    set -e
+}
+
+# ---------------------------------------------------------------------------
 # Check for qa_pending phase and dispatch QA
 # ---------------------------------------------------------------------------
 
@@ -298,6 +331,9 @@ log_json "info" "orchestrator starting" "pid" "$$" "poll_interval" "$POLL_INTERV
 while true; do
     # Hot-reload projects from JSON → SQLite
     sync_projects
+
+    # Dispatch night reviewer if trigger file exists (global, not per-project)
+    dispatch_night_review
 
     # Fetch enabled projects
     local_projects=$(get_projects)

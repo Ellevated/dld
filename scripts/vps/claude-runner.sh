@@ -24,9 +24,12 @@ export PROJECT_DIR="$PROJECT_DIR"
 PROMPT="/${SKILL} ${TASK}"
 
 # Structured JSON output, bounded turns
+# flock serializes OAuth refresh across concurrent sessions (#27933)
+# --timeout 120: wait up to 2min for lock, then proceed without (better than deadlock)
 # set +e: prevent set -euo pipefail from terminating on non-zero exit (timeout/claude)
 set +e
-timeout 900 "$CLAUDE_BIN" \
+flock --timeout 120 /tmp/claude-oauth.lock \
+    timeout 900 "$CLAUDE_BIN" \
     --print \
     --output-format json \
     --max-turns 30 \

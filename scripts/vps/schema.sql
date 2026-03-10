@@ -44,3 +44,21 @@ CREATE TABLE IF NOT EXISTS task_log (
 INSERT OR IGNORE INTO compute_slots (slot_number, provider) VALUES (1, 'claude');
 INSERT OR IGNORE INTO compute_slots (slot_number, provider) VALUES (2, 'claude');
 INSERT OR IGNORE INTO compute_slots (slot_number, provider) VALUES (3, 'codex');
+
+-- Finding deduplication store (Phase 2)
+CREATE TABLE IF NOT EXISTS night_findings (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id   TEXT NOT NULL REFERENCES project_state(project_id),
+    fingerprint  TEXT NOT NULL,
+    severity     TEXT NOT NULL DEFAULT 'medium',
+    confidence   TEXT NOT NULL DEFAULT 'medium',
+    file_path    TEXT,
+    line_range   TEXT,
+    summary      TEXT NOT NULL,
+    suggestion   TEXT,
+    status       TEXT NOT NULL DEFAULT 'new',
+    message_id   INTEGER,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    reviewed_at  TEXT,
+    UNIQUE(project_id, fingerprint)
+);

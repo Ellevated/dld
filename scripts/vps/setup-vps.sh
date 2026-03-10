@@ -136,9 +136,11 @@ fi
 # Create groups with parallelism limits
 pueue group add claude-runner 2>/dev/null || true
 pueue group add codex-runner  2>/dev/null || true
+pueue group add night-reviewer 2>/dev/null || true
 pueue parallel 2 --group claude-runner 2>/dev/null || true
 pueue parallel 1 --group codex-runner  2>/dev/null || true
-ok "Pueue groups configured (claude-runner=2, codex-runner=1)"
+pueue parallel 1 --group night-reviewer 2>/dev/null || true
+ok "Pueue groups configured (claude-runner=2, codex-runner=1, night-reviewer=1)"
 
 # Configure pueue.yml callback
 PUEUE_CONFIG_DIR="${HOME}/.config/pueue"
@@ -230,6 +232,49 @@ else
 fi
 
 echo ""
+echo "--- Global CLAUDE.md ---"
+GLOBAL_CLAUDE_DIR="${HOME}/.claude"
+mkdir -p "$GLOBAL_CLAUDE_DIR"
+if [[ -f "${SCRIPT_DIR}/global-claude-md.template" ]]; then
+    cp "${SCRIPT_DIR}/global-claude-md.template" "${GLOBAL_CLAUDE_DIR}/CLAUDE.md"
+    ok "Global CLAUDE.md installed at ${GLOBAL_CLAUDE_DIR}/CLAUDE.md"
+else
+    warn "global-claude-md.template not found — skip"
+fi
+
+echo ""
+echo "--- Nexus integration (optional) ---"
+if command -v nexus &>/dev/null || command -v bootstrap &>/dev/null; then
+    NEXUS_BIN=$(command -v nexus || command -v bootstrap)
+    if [[ ! -f "${SCRIPT_DIR}/projects.json" ]]; then
+        echo "Nexus detected — attempting to populate projects.json..."
+        set +e
+        NEXUS_PROJECTS=$("${NEXUS_BIN}" list-projects --format json 2>/dev/null)
+        set -e
+        if [[ -n "$NEXUS_PROJECTS" ]] && echo "$NEXUS_PROJECTS" | jq '.' &>/dev/null; then
+            echo "$NEXUS_PROJECTS" | jq '[.[] | {project_id: .name, path: .path, topic_id: null, provider: "claude", auto_approve_timeout: 30}]' > "${SCRIPT_DIR}/projects.json"
+            ok "projects.json pre-populated from Nexus (review and add topic_ids manually)"
+        else
+            warn "Nexus list-projects failed — create projects.json manually"
+        fi
+    else
+        ok "projects.json exists — skipping Nexus project import"
+    fi
+    # Try to pull GROQ_API_KEY from Nexus secrets
+    if [[ -f "${SCRIPT_DIR}/.env" ]] && ! grep -q "^GROQ_API_KEY=." "${SCRIPT_DIR}/.env"; then
+        set +e
+        GROQ_KEY=$("${NEXUS_BIN}" get-secret GROQ_API_KEY --env prod 2>/dev/null)
+        set -e
+        if [[ -n "$GROQ_KEY" ]]; then
+            sed -i "s|^GROQ_API_KEY=.*|GROQ_API_KEY=${GROQ_KEY}|" "${SCRIPT_DIR}/.env"
+            ok "GROQ_API_KEY populated from Nexus secrets"
+        fi
+    fi
+else
+    ok "Nexus not found — manual projects.json setup required"
+fi
+
+echo ""
 echo "--- systemd units ---"
 
 SYSTEMD_DIR="${HOME}/.config/systemd/user"
@@ -249,9 +294,11 @@ MemoryMax=27G
 MemorySwapMax=0
 KillMode=control-group
 Restart=on-failure
-RestartSec=30
-StartLimitIntervalSec=300
-StartLimitBurst=3
+RestartSec=1s
+RestartMaxDelaySec=60s
+RestartSteps=5
+StartLimitBurst=10
+StartLimitIntervalSec=300s
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=dld-orchestrator
@@ -271,7 +318,11 @@ ExecStart=${SCRIPT_DIR}/venv/bin/python ${SCRIPT_DIR}/telegram-bot.py
 WorkingDirectory=${SCRIPT_DIR}
 EnvironmentFile=${SCRIPT_DIR}/.env
 Restart=on-failure
-RestartSec=10
+RestartSec=1s
+RestartMaxDelaySec=60s
+RestartSteps=5
+StartLimitBurst=10
+StartLimitIntervalSec=300s
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=dld-bot
