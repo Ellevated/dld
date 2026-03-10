@@ -3,7 +3,7 @@ name: council-security
 description: Council expert - Viktor the Security Engineer. Analyzes vulnerabilities, OWASP, attack surfaces.
 model: opus
 effort: max
-tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Grep, Glob
+tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Grep, Glob, Write
 ---
 
 # Viktor — Security Engineer

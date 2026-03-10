@@ -159,6 +159,7 @@ Glossary: ai/glossary/{domain}.md
 | **diagram** | Generate professional Excalidraw diagrams from description or code analysis |
 | **eval** | Agent prompt eval suite — golden datasets + LLM-as-Judge scoring |
 | **upgrade** | Upgrade DLD framework from latest GitHub template |
+| **qa** | Manual QA tester — tests product behavior like a real user, not code |
 
 ### Skill Auto-Selection
 
@@ -187,6 +188,7 @@ Claude auto-selects skills based on user intent. Each skill has semantic trigger
 | "diagram", "draw", "visualize architecture" | diagram |
 | "retrofit", "brownfield", "reassess project" | retrofit |
 | "upgrade DLD", "update framework", "обнови DLD" | upgrade |
+| "протестируй", "проверь как работает", "QA", "потыкай" | qa |
 
 **Flows:**
 ```
