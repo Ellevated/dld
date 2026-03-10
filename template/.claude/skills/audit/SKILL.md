@@ -40,6 +40,7 @@ Audit operates in two modes:
 |---------|------|-------------|-----------|
 | `/audit`, `/audit {zone}`, "quick audit", "check code" | **Light** | Fast scan, single agent, zone-based | Continue below |
 | From `/retrofit`, `/audit deep`, "deep audit", "full audit" | **Deep** | Full forensics, 6 parallel personas + synthesizer | `deep-mode.md` |
+| `/audit night`, from `night-reviewer.sh` | **Night** | Automated nightly scan, 2-3 personas, JSON output | `night-mode.md` |
 
 **Default:** Light (if unclear, ask user)
 
@@ -48,11 +49,13 @@ Audit operates in two modes:
 | Module | When | Content |
 |--------|------|---------|
 | `deep-mode.md` | Mode = Deep | Phase 0 inventory + 6 personas + synthesis + gates |
+| `night-mode.md` | Mode = Night | 2-3 personas, JSON output, self-debate, no Phase 0 |
 
 **Flow:**
 ```
 Light: SKILL.md (zones below)
 Deep:  SKILL.md → deep-mode.md
+Night: SKILL.md → night-mode.md
 ```
 
 ---
