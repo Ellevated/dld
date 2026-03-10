@@ -1,0 +1,28 @@
+# VDS Global Rules
+
+Shared rules for all DLD projects running on this VDS.
+Copied to ~/.claude/CLAUDE.md during setup-vps.sh.
+
+## Git Policy
+
+- Push only to `develop` branch. Never push to `main` directly.
+- Conventional Commits format.
+- One task = one commit. Tests must pass before committing.
+
+## Quality Rules
+
+- Never mock in integration tests (ADR-013).
+- Max 400 LOC per file (600 for tests).
+- Max 5 exports in `__init__.py`.
+- Explicit error types, no bare exceptions.
+
+## Orchestrator Awareness
+
+- This VDS runs up to 3 concurrent autopilot sessions (2 Claude + 1 Codex).
+- Night reviewer runs independently in its own pueue group — do not interfere.
+- Max session length: 30 turns.
+- QA loop runs after autopilot completes — do not skip.
+
+## Language
+
+Always respond in Russian. Technical terms in English.
