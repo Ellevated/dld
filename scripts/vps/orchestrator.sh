@@ -1,0 +1,325 @@
+#!/usr/bin/env bash
+# scripts/vps/orchestrator.sh
+# Main daemon loop for multi-project orchestration.
+# Runs as systemd service (dld-orchestrator.service).
+#
+# Each cycle:
+#   1. Hot-reloads projects.json → SQLite via db.py seed_projects_from_json
+#   2. Per project: git pull, scan ai/inbox/, scan ai/backlog.md, dispatch QA
+#
+# Env vars:
+#   POLL_INTERVAL   — seconds between full cycles (default: 300)
+#   PROJECTS_JSON   — path to projects.json (default: $SCRIPT_DIR/projects.json)
+#   DB_PATH         — override SQLite path (passed to db.py)
+#
+# Trigger files:
+#   .run-now-{project_id} — touch to trigger immediate cycle for that project
+#
+# Exit codes:
+#   signals SIGTERM/SIGINT — clean shutdown (removes PID file)
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source environment
+[[ -f "${SCRIPT_DIR}/.env" ]] && set -a && source "${SCRIPT_DIR}/.env" && set +a
+
+POLL_INTERVAL="${POLL_INTERVAL:-300}"
+PROJECTS_JSON="${PROJECTS_JSON:-${SCRIPT_DIR}/projects.json}"
+
+# PID file for health checks
+PID_FILE="${SCRIPT_DIR}/.orchestrator.pid"
+echo $$ > "$PID_FILE"
+trap 'rm -f "$PID_FILE"; log_json "info" "Orchestrator stopped (pid=$$)"' EXIT INT TERM
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+log_json() {
+    local level="$1" msg="$2"
+    # Optional extra key=value pairs as additional args
+    local extras=""
+    shift 2
+    while [[ $# -ge 2 ]]; do
+        extras="${extras},\"${1}\":\"${2}\""
+        shift 2
+    done
+    printf '{"ts":"%s","level":"%s","msg":"%s"%s}\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+        "$level" \
+        "$msg" \
+        "$extras"
+}
+
+# ---------------------------------------------------------------------------
+# Sync projects.json → SQLite (hot-reload every cycle)
+# ---------------------------------------------------------------------------
+
+sync_projects() {
+    if [[ ! -f "$PROJECTS_JSON" ]]; then
+        log_json "warn" "projects.json not found" "path" "$PROJECTS_JSON"
+        return
+    fi
+    local result
+    result=$(python3 -c "
+import json, sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+with open('${PROJECTS_JSON}') as f:
+    projects = json.load(f)
+db.seed_projects_from_json(projects)
+print(len(projects))
+" 2>&1) || {
+        log_json "error" "sync_projects failed" "detail" "$result"
+        return
+    }
+    log_json "info" "synced projects" "count" "$result"
+}
+
+# ---------------------------------------------------------------------------
+# Get all enabled projects as "project_id|path" lines
+# ---------------------------------------------------------------------------
+
+get_projects() {
+    python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+for p in db.get_all_projects():
+    print(f\"{p['project_id']}|{p['path']}\")
+" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Git pull (skip on failure, log warning)
+# ---------------------------------------------------------------------------
+
+git_pull() {
+    local project_dir="$1"
+    if [[ ! -d "${project_dir}/.git" ]]; then
+        log_json "warn" "not a git repo" "path" "$project_dir"
+        return 1
+    fi
+    local output
+    output=$(git -C "$project_dir" pull --ff-only origin develop 2>&1) || {
+        log_json "warn" "git pull failed" "path" "$project_dir" "detail" "${output:0:200}"
+        return 1
+    }
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# Scan ai/inbox/ for new files
+# ---------------------------------------------------------------------------
+
+scan_inbox() {
+    local project_id="$1" project_dir="$2"
+    local inbox_dir="${project_dir}/ai/inbox"
+
+    [[ ! -d "$inbox_dir" ]] && return
+
+    local count=0
+    local inbox_file
+    for inbox_file in "${inbox_dir}"/*.md; do
+        [[ ! -f "$inbox_file" ]] && continue
+        # Only process files with Status: new
+        if grep -q '^\*\*Status:\*\* new' "$inbox_file" 2>/dev/null; then
+            log_json "info" "processing inbox file" "project" "$project_id" "file" "$(basename "$inbox_file")"
+            "${SCRIPT_DIR}/inbox-processor.sh" "$project_id" "$project_dir" "$inbox_file" || {
+                log_json "error" "inbox-processor failed" "project" "$project_id" "file" "$(basename "$inbox_file")"
+            }
+            count=$((count + 1))
+        fi
+    done
+
+    if (( count > 0 )); then
+        log_json "info" "inbox scan complete" "project" "$project_id" "processed" "$count"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Scan ai/backlog.md for first queued spec and submit to Pueue
+# ---------------------------------------------------------------------------
+
+scan_backlog() {
+    local project_id="$1" project_dir="$2"
+    local backlog="${project_dir}/ai/backlog.md"
+
+    [[ ! -f "$backlog" ]] && return
+
+    # Find first queued spec ID (e.g. FTR-146, TECH-055, BUG-084, ARCH-003)
+    local spec_id
+    spec_id=$(grep -E '\|\s*queued\s*\|' "$backlog" 2>/dev/null | head -1 | \
+              grep -oE '(TECH|FTR|BUG|ARCH)-[0-9]+' | head -1 || true)
+
+    [[ -z "$spec_id" ]] && return
+
+    # Resolve provider from DB
+    local provider
+    provider=$(python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+state = db.get_project_state('${project_id}')
+print(state['provider'] if state else 'claude')
+" 2>/dev/null || echo "claude")
+    provider="${provider:-claude}"
+
+    # Check available slots
+    local available
+    available=$(python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+print(db.get_available_slots('${provider}'))
+" 2>/dev/null || echo "0")
+
+    if (( available < 1 )); then
+        log_json "info" "no slots available" "project" "$project_id" "provider" "$provider"
+        return
+    fi
+
+    # Find spec file in ai/features/
+    local spec_file
+    spec_file=$(find "${project_dir}/ai/features/" -name "${spec_id}*" -type f 2>/dev/null | head -1 || true)
+
+    if [[ -z "$spec_file" ]]; then
+        log_json "warn" "spec file not found" "project" "$project_id" "spec_id" "$spec_id"
+        return
+    fi
+
+    # Submit autopilot task to Pueue
+    local task_label="${project_id}:${spec_id}"
+    local pueue_group="${provider}-runner"
+    local task_cmd="/autopilot ${spec_id}"
+
+    log_json "info" "submitting autopilot" "project" "$project_id" "spec" "$spec_id" "provider" "$provider"
+
+    local pueue_id
+    pueue_id=$(pueue add \
+        --group "$pueue_group" \
+        --label "$task_label" \
+        --print-task-id \
+        -- "${SCRIPT_DIR}/run-agent.sh" "$project_dir" "$task_cmd" "$provider" "autopilot" 2>&1) || {
+        log_json "error" "pueue submission failed" "project" "$project_id" "spec" "$spec_id" "detail" "${pueue_id:0:200}"
+        return
+    }
+
+    # Acquire slot in DB
+    python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+slot = db.try_acquire_slot('${project_id}', '${provider}', ${pueue_id})
+if slot is None:
+    print('[orchestrator] WARN: slot acquisition failed (race condition)', flush=True)
+else:
+    print(f'[orchestrator] slot={slot} acquired', flush=True)
+" || {
+        log_json "warn" "slot acquisition error" "project" "$project_id" "pueue_id" "$pueue_id"
+    }
+
+    # Log task + update phase
+    python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+db.log_task('${project_id}', '${task_label}', 'autopilot', 'running', ${pueue_id})
+db.update_project_phase('${project_id}', 'autopilot', '${spec_id}')
+" || {
+        log_json "warn" "DB update failed" "project" "$project_id" "pueue_id" "$pueue_id"
+    }
+
+    log_json "info" "autopilot submitted" "project" "$project_id" "spec" "$spec_id" "pueue_id" "$pueue_id"
+}
+
+# ---------------------------------------------------------------------------
+# Check for qa_pending phase and dispatch QA
+# ---------------------------------------------------------------------------
+
+dispatch_qa() {
+    local project_id="$1" project_dir="$2"
+
+    local phase current_task
+    phase=$(python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+state = db.get_project_state('${project_id}')
+print(state['phase'] if state else '')
+" 2>/dev/null || true)
+
+    [[ "$phase" != "qa_pending" ]] && return
+
+    current_task=$(python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+state = db.get_project_state('${project_id}')
+print(state['current_task'] if state and state['current_task'] else '')
+" 2>/dev/null || true)
+
+    [[ -z "$current_task" ]] && return
+
+    log_json "info" "dispatching QA" "project" "$project_id" "task" "$current_task"
+    # qa-loop.sh created in Task 8 — background dispatch
+    "${SCRIPT_DIR}/qa-loop.sh" "$project_id" "$project_dir" "$current_task" &
+}
+
+# ---------------------------------------------------------------------------
+# Process a single project (all four steps)
+# ---------------------------------------------------------------------------
+
+process_project() {
+    local project_id="$1" project_dir="$2"
+
+    log_json "info" "processing project" "project" "$project_id"
+
+    # Step 1: git pull (non-fatal on failure)
+    git_pull "$project_dir" || true
+
+    # Step 2: scan inbox
+    scan_inbox "$project_id" "$project_dir"
+
+    # Step 3: scan backlog for queued specs
+    scan_backlog "$project_id" "$project_dir"
+
+    # Step 4: dispatch QA if phase=qa_pending
+    dispatch_qa "$project_id" "$project_dir"
+}
+
+# ---------------------------------------------------------------------------
+# Main loop
+# ---------------------------------------------------------------------------
+
+log_json "info" "orchestrator starting" "pid" "$$" "poll_interval" "$POLL_INTERVAL"
+
+while true; do
+    # Hot-reload projects from JSON → SQLite
+    sync_projects
+
+    # Fetch enabled projects
+    local_projects=$(get_projects)
+
+    if [[ -z "$local_projects" ]]; then
+        log_json "warn" "no enabled projects found"
+    else
+        while IFS='|' read -r project_id project_dir; do
+            [[ -z "$project_id" ]] && continue
+
+            # Check for /run trigger file (immediate cycle)
+            local trigger_file="${SCRIPT_DIR}/.run-now-${project_id}"
+            if [[ -f "$trigger_file" ]]; then
+                rm -f "$trigger_file"
+                log_json "info" "run-now trigger fired" "project" "$project_id"
+            fi
+
+            process_project "$project_id" "$project_dir"
+
+        done <<< "$local_projects"
+    fi
+
+    log_json "info" "cycle complete" "sleeping" "${POLL_INTERVAL}s"
+    sleep "$POLL_INTERVAL"
+done
