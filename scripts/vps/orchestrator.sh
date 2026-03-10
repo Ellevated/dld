@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# orchestrator.sh — Main daemon: watches inbox + backlog, runs Spark + Autopilot
+# orchestrator.sh — Main daemon: watches inbox + backlog, runs Spark + Autopilot + QA
 #
 # This is the "brain" that ties everything together:
 #   1. Polls ai/inbox/ for new ideas → runs inbox-processor.sh (Spark)
 #   2. Polls ai/backlog.md for queued specs → runs autopilot-loop.sh
-#   3. Sends notifications on events (done/blocked/error)
-#   4. Responds to .run-now trigger file (from Telegram /run command)
+#   3. Runs QA on done specs → qa-loop.sh (user-perspective testing)
+#   4. Sends notifications on events (done/blocked/error)
+#   5. Responds to .run-now trigger file (from Telegram /run command)
 #
 # Usage:
 #   ./scripts/vps/orchestrator.sh              # Run forever (daemon mode)
@@ -30,7 +31,9 @@ BACKLOG_FILE="${BACKLOG_FILE:-$PROJECT_DIR/ai/backlog.md}"
 LOG_DIR="${LOG_DIR:-$PROJECT_DIR/ai/diary/vps-logs}"
 INBOX_POLL="${INBOX_POLL_INTERVAL:-300}"
 BACKLOG_POLL="${BACKLOG_POLL_INTERVAL:-60}"
+QA_POLL="${QA_POLL_INTERVAL:-120}"
 MAX_SPECS="${MAX_SPECS_PER_RUN:-10}"
+QA_DIR="$PROJECT_DIR/ai/qa"
 LOCKFILE="$PROJECT_DIR/.orchestrator.lock"
 PIDFILE="$PROJECT_DIR/.orchestrator.pid"
 RUN_TRIGGER="$PROJECT_DIR/.run-now"
@@ -43,7 +46,7 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-mkdir -p "$LOG_DIR" "$INBOX_DIR"
+mkdir -p "$LOG_DIR" "$INBOX_DIR" "$QA_DIR"
 
 # ── Helpers ──
 
@@ -76,6 +79,20 @@ count_queued() {
     else
         echo 0
     fi
+}
+
+count_qa_pending() {
+    local count=0
+    if [[ -f "$BACKLOG_FILE" ]]; then
+        while IFS= read -r line; do
+            local sid
+            sid=$(echo "$line" | grep -oE '(TECH|FTR|BUG|ARCH)-[0-9]+' | head -1)
+            if [[ -n "$sid" ]] && ! ls "$QA_DIR/${sid}"-* &>/dev/null; then
+                count=$((count + 1))
+            fi
+        done < <(grep -E '\|\s*done\s*\|' "$BACKLOG_FILE" 2>/dev/null || true)
+    fi
+    echo "$count"
 }
 
 # ── Lock management ──
@@ -117,6 +134,7 @@ if [[ "${1:-}" == "--status" ]]; then
     echo ""
     echo "Inbox: $(count_inbox) ideas"
     echo "Queued: $(count_queued) specs"
+    echo "QA pending: $(count_qa_pending) specs"
 
     if [[ -f "$LOCKFILE" ]]; then
         echo "Lock: $(cat "$LOCKFILE") ($(kill -0 "$(cat "$LOCKFILE")" 2>/dev/null && echo "alive" || echo "stale"))"
@@ -141,11 +159,12 @@ echo " |___/|____|___/"
 echo -e "${NC}"
 echo "DLD Orchestrator — Autonomous Pipeline"
 echo "Project: $PROJECT_DIR"
-echo "Inbox poll: ${INBOX_POLL}s | Backlog poll: ${BACKLOG_POLL}s"
+echo "Inbox poll: ${INBOX_POLL}s | Backlog poll: ${BACKLOG_POLL}s | QA poll: ${QA_POLL}s"
 echo ""
 
 LAST_INBOX_CHECK=0
 LAST_BACKLOG_CHECK=0
+LAST_QA_CHECK=0
 
 notify() {
     if [[ -x "$SCRIPT_DIR/notify.sh" ]]; then
@@ -166,6 +185,7 @@ while true; do
         rm -f "$RUN_TRIGGER"
         LAST_INBOX_CHECK=0
         LAST_BACKLOG_CHECK=0
+        LAST_QA_CHECK=0
     fi
 
     # ── Phase 1: Process inbox (ideas → specs via Spark) ──
@@ -225,9 +245,36 @@ while true; do
         LAST_BACKLOG_CHECK=$NOW
     fi
 
+    # ── Phase 3: QA testing on done specs ──
+
+    QA_ELAPSED=$((NOW - LAST_QA_CHECK))
+    if [[ $QA_ELAPSED -ge $QA_POLL ]]; then
+        QA_PENDING=$(count_qa_pending)
+        if [[ $QA_PENDING -gt 0 ]]; then
+            log_info "QA pending for $QA_PENDING done spec(s) — running QA loop"
+            update_state "qa" "Testing $QA_PENDING done specs"
+            notify "🔍 Running QA on $QA_PENDING completed spec(s)..."
+
+            set +e
+            cd "$PROJECT_DIR"
+            "$SCRIPT_DIR/qa-loop.sh" "$MAX_SPECS" 2>&1 | tee -a "$LOG_DIR/orchestrator.log"
+            QA_EXIT=$?
+            set -e
+
+            case $QA_EXIT in
+                0) log_ok "QA complete"
+                   # Force inbox check — QA may have filed bugs
+                   LAST_INBOX_CHECK=0 ;;
+                *) log_err "QA loop failed (exit=$QA_EXIT)"
+                   notify "QA loop failed (exit=$QA_EXIT)" ;;
+            esac
+        fi
+        LAST_QA_CHECK=$NOW
+    fi
+
     # ── Idle ──
 
-    update_state "idle" "inbox=$(count_inbox) queued=$(count_queued)"
+    update_state "idle" "inbox=$(count_inbox) queued=$(count_queued) qa_pending=$(count_qa_pending)"
 
     if $ONCE; then
         log_info "Single pass complete (--once mode)"

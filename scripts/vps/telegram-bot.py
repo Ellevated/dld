@@ -48,6 +48,7 @@ ALLOWED_USERS = {
 }
 PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", Path(__file__).parent.parent.parent))
 INBOX_DIR = Path(os.environ.get("INBOX_DIR", PROJECT_DIR / "ai" / "inbox"))
+QA_DIR = Path(os.environ.get("QA_DIR", PROJECT_DIR / "ai" / "qa"))
 WHISPER_PROVIDER = os.environ.get("WHISPER_PROVIDER", "groq")
 
 logging.basicConfig(
@@ -142,6 +143,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/status — current backlog status\n"
         "/queue — list queued specs\n"
         "/inbox — list pending ideas\n"
+        "/qa — QA test results\n"
         "/run — trigger autopilot now"
     )
 
@@ -210,6 +212,51 @@ async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(msg)
 
 
+async def cmd_qa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update.effective_user.id):
+        return
+
+    if not QA_DIR.exists():
+        await update.message.reply_text("No QA reports yet.")
+        return
+
+    ok_files = sorted(QA_DIR.glob("*-ok.md"), reverse=True)
+    bug_files = sorted(QA_DIR.glob("*-bugs.md"), reverse=True)
+
+    if not ok_files and not bug_files:
+        await update.message.reply_text("No QA reports yet.")
+        return
+
+    msg = "QA Results:\n\n"
+    if bug_files:
+        msg += "Bugs found:\n"
+        for f in bug_files[:10]:
+            spec_id = f.name.split("-bugs.md")[0]
+            msg += f"  {spec_id}\n"
+    if ok_files:
+        msg += "\nPassed:\n"
+        for f in ok_files[:10]:
+            spec_id = f.name.split("-ok.md")[0]
+            msg += f"  {spec_id}\n"
+
+    # Count pending QA
+    backlog = PROJECT_DIR / "ai" / "backlog.md"
+    pending = 0
+    if backlog.exists():
+        import re
+        for line in backlog.read_text(encoding="utf-8").split("\n"):
+            if "| done" in line.lower():
+                match = re.search(r"(TECH|FTR|BUG|ARCH)-\d+", line)
+                if match:
+                    sid = match.group(0)
+                    if not list(QA_DIR.glob(f"{sid}-*")):
+                        pending += 1
+    if pending > 0:
+        msg += f"\nPending QA: {pending} spec(s)"
+
+    await update.message.reply_text(msg)
+
+
 async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update.effective_user.id):
         return
@@ -275,6 +322,7 @@ def main() -> None:
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("queue", cmd_queue))
     app.add_handler(CommandHandler("inbox", cmd_inbox))
+    app.add_handler(CommandHandler("qa", cmd_qa))
     app.add_handler(CommandHandler("run", cmd_run))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
