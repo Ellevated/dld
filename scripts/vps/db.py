@@ -3,7 +3,7 @@
 Module: db
 Role: SQLite WAL helpers for orchestrator state management.
 Uses: sqlite3 (stdlib)
-Used by: telegram-bot.py, notify.py
+Used by: telegram-bot.py, notify.py, pueue-callback.sh (via CLI: python3 db.py callback)
 """
 
 import os
@@ -184,3 +184,48 @@ def seed_projects_from_json(projects: list[dict]) -> None:
                     p.get("auto_approve_timeout", 30),
                 ),
             )
+
+
+if __name__ == "__main__":
+    import sys
+
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+
+    if cmd == "callback":
+        # Args: pueue_id status exit_code project_id new_phase
+        if len(sys.argv) != 7:
+            print(
+                "Usage: python3 db.py callback <pueue_id> <status> <exit_code> <project_id> <new_phase>",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        pueue_id = int(sys.argv[2])
+        status = sys.argv[3]
+        exit_code = int(sys.argv[4])
+        project_id = sys.argv[5]
+        new_phase = sys.argv[6]
+        release_slot(pueue_id)
+        finish_task(pueue_id, status, exit_code)
+        update_project_phase(project_id, new_phase)
+        print(
+            f"callback: pueue_id={pueue_id} status={status} project={project_id} phase={new_phase}"
+        )
+
+    elif cmd == "seed":
+        import json
+
+        if len(sys.argv) != 3:
+            print("Usage: python3 db.py seed <path/to/projects.json>", file=sys.stderr)
+            sys.exit(1)
+        path = sys.argv[2]
+        with open(path) as f:
+            projects = json.load(f)
+        seed_projects_from_json(projects)
+        print(f"seeded {len(projects)} projects")
+
+    else:
+        print(
+            "Usage: python3 db.py <callback|seed> [args...]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
