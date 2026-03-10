@@ -1,0 +1,16 @@
+[
+  {
+    "project_id": "saas-app",
+    "path": "/home/ubuntu/projects/saas-app",
+    "topic_id": 5,
+    "provider": "claude",
+    "auto_approve_timeout": 30
+  },
+  {
+    "project_id": "side-project",
+    "path": "/home/ubuntu/projects/side-project",
+    "topic_id": 8,
+    "provider": "claude",
+    "auto_approve_timeout": 0
+  }
+]
