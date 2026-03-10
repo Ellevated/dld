@@ -11,8 +11,10 @@ set -euo pipefail
 
 # Configuration
 MAX_ITERATIONS="${1:-20}"
-BACKLOG_FILE="ai/backlog.md"
-PROGRESS_FILE="ai/diary/autopilot-progress.md"
+# PROJECT_DIR env var allows orchestrator to specify project path (multi-project VPS)
+BASE_DIR="${PROJECT_DIR:-.}"
+BACKLOG_FILE="${BASE_DIR}/ai/backlog.md"
+PROGRESS_FILE="${BASE_DIR}/ai/diary/autopilot-progress.md"
 
 # Colors
 GREEN='\033[0;32m'
