@@ -3,7 +3,9 @@
 Module: db
 Role: SQLite WAL helpers for orchestrator state management.
 Uses: sqlite3 (stdlib)
-Used by: telegram-bot.py, notify.py, pueue-callback.sh (via CLI: python3 db.py callback)
+Used by: telegram-bot.py, notify.py, pueue-callback.sh (via CLI: python3 db.py callback),
+         night-reviewer.sh (via CLI: python3 db.py save-finding / get-new-findings),
+         approve_handler.py (update_finding_status, get_finding_by_id)
 """
 
 import os
@@ -186,6 +188,96 @@ def seed_projects_from_json(projects: list[dict]) -> None:
             )
 
 
+def save_finding(
+    project_id: str,
+    fingerprint: str,
+    severity: str,
+    confidence: str,
+    file_path: Optional[str],
+    line_range: Optional[str],
+    summary: str,
+    suggestion: Optional[str],
+) -> Optional[int]:
+    """Insert finding; returns new row id or None if fingerprint already exists."""
+    with get_db(immediate=True) as conn:
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO night_findings "
+            "(project_id, fingerprint, severity, confidence, file_path, line_range, summary, suggestion) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                project_id,
+                fingerprint,
+                severity,
+                confidence,
+                file_path,
+                line_range,
+                summary,
+                suggestion,
+            ),
+        )
+        return cursor.lastrowid if cursor.rowcount else None
+
+
+def get_new_findings(project_id: str) -> list[dict]:
+    """Return findings with status='new' for a project."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM night_findings WHERE project_id = ? AND status = 'new' ORDER BY id",
+            (project_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def update_finding_status(finding_id: int, status: str) -> None:
+    """Update finding status and set reviewed_at timestamp."""
+    with get_db(immediate=True) as conn:
+        conn.execute(
+            "UPDATE night_findings SET status = ?, "
+            "reviewed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+            "WHERE id = ?",
+            (status, finding_id),
+        )
+
+
+def get_finding_by_id(finding_id: int) -> Optional[dict]:
+    """Return a single finding by id, or None if not found."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM night_findings WHERE id = ?",
+            (finding_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_all_findings(project_id: str, status: Optional[str] = None) -> list[dict]:
+    """Return all findings for project, optionally filtered by status."""
+    with get_db() as conn:
+        if status is not None:
+            rows = conn.execute(
+                "SELECT * FROM night_findings WHERE project_id = ? AND status = ? ORDER BY id",
+                (project_id, status),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM night_findings WHERE project_id = ? ORDER BY id",
+                (project_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_projects_for_night_scan(project_ids: list[str]) -> list[dict]:
+    """Return enabled projects whose project_id is in the given list."""
+    if not project_ids:
+        return []
+    placeholders = ",".join("?" * len(project_ids))
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM project_state WHERE enabled = 1 AND project_id IN ({placeholders}) ORDER BY project_id",
+            project_ids,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 if __name__ == "__main__":
     import sys
 
@@ -223,9 +315,56 @@ if __name__ == "__main__":
         seed_projects_from_json(projects)
         print(f"seeded {len(projects)} projects")
 
+    elif cmd == "save-finding":
+        # Args: project_id fingerprint severity confidence file_path line_range summary suggestion
+        if len(sys.argv) != 10:
+            print(
+                "Usage: python3 db.py save-finding <project_id> <fingerprint> <severity>"
+                " <confidence> <file_path> <line_range> <summary> <suggestion>",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        fid = save_finding(
+            sys.argv[2],
+            sys.argv[3],
+            sys.argv[4],
+            sys.argv[5],
+            sys.argv[6],
+            sys.argv[7],
+            sys.argv[8],
+            sys.argv[9],
+        )
+        print(fid if fid is not None else "duplicate")
+
+    elif cmd == "get-new-findings":
+        import json
+
+        if len(sys.argv) != 3:
+            print("Usage: python3 db.py get-new-findings <project_id>", file=sys.stderr)
+            sys.exit(1)
+        print(json.dumps(get_new_findings(sys.argv[2])))
+
+    elif cmd == "update-finding-status":
+        if len(sys.argv) != 4:
+            print(
+                "Usage: python3 db.py update-finding-status <finding_id> <status>",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        update_finding_status(int(sys.argv[2]), sys.argv[3])
+        print(f"updated finding {sys.argv[2]} -> {sys.argv[3]}")
+
+    elif cmd == "update-phase":
+        if len(sys.argv) != 4:
+            print("Usage: python3 db.py update-phase <project_id> <phase>", file=sys.stderr)
+            sys.exit(1)
+        update_project_phase(sys.argv[2], sys.argv[3])
+        print(f"phase: {sys.argv[2]} -> {sys.argv[3]}")
+
     else:
         print(
-            "Usage: python3 db.py <callback|seed> [args...]",
+            "Usage: python3 db.py <callback|seed|save-finding|get-new-findings"
+            "|update-finding-status|update-phase> [args...]",
             file=sys.stderr,
         )
         sys.exit(1)
