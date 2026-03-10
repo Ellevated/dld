@@ -91,25 +91,15 @@ for idea_file in "${PENDING_FILES[@]}"; do
         IDEA_TEXT=$(cat "$idea_file")
     fi
 
-    # Build prompt for Spark in headless/blueprint mode
-    # The key: provide enough context so Spark treats this as Mode B (no dialogue)
-    PROMPT="You are running in HEADLESS/AUTONOMOUS mode on a VPS. No human is available for dialogue.
+    # Build prompt for Spark — let it work naturally, but autonomously
+    PROMPT="/spark
 
-Treat this as a Blueprint-Initiated feature (Mode B from feature-mode.md).
-DO NOT ask questions — you have all the context you need below.
-If something is ambiguous, make a reasonable decision and note it in the spec.
-
-Run /spark for this idea:
-
----
 ${IDEA_TEXT}
----
 
-IMPORTANT:
-- Skip Socratic Dialogue (Phase 1 Mode A) — use Mode B instead
-- Run all 4 scouts, write spec, validate, add to backlog with status=queued
-- Auto-commit the spec (no push)
-- Priority: P1 unless the idea explicitly says otherwise"
+---
+Ты работаешь автономно на VPS. Человека рядом нет.
+Постарайся выполнить самостоятельно. Если нужны ответы на уточняющие вопросы — спроси у консилиума (/council).
+Приоритет P1 если в идее не указано иначе."
 
     # Run Claude in headless mode
     set +e
