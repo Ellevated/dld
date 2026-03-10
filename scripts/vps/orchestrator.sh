@@ -235,6 +235,29 @@ db.update_project_phase('${project_id}', 'autopilot', '${spec_id}')
 }
 
 # ---------------------------------------------------------------------------
+# Dispatch night reviewer if .review-trigger file exists
+# ---------------------------------------------------------------------------
+
+dispatch_night_review() {
+    local trigger_file="${SCRIPT_DIR}/.review-trigger"
+    [[ ! -f "$trigger_file" ]] && return
+
+    local project_ids
+    project_ids=$(cat "$trigger_file")
+    rm -f "$trigger_file"
+
+    [[ -z "$project_ids" ]] && return
+
+    log_json "info" "dispatching night review" "projects" "$project_ids"
+
+    # Submit to pueue night-reviewer group (non-blocking)
+    set +e
+    pueue add --group night-reviewer --label "night-review" -- \
+        "${SCRIPT_DIR}/night-reviewer.sh" $project_ids 2>/dev/null
+    set -e
+}
+
+# ---------------------------------------------------------------------------
 # Check for qa_pending phase and dispatch QA
 # ---------------------------------------------------------------------------
 
@@ -298,6 +321,9 @@ log_json "info" "orchestrator starting" "pid" "$$" "poll_interval" "$POLL_INTERV
 while true; do
     # Hot-reload projects from JSON → SQLite
     sync_projects
+
+    # Dispatch night reviewer if trigger file exists (global, not per-project)
+    dispatch_night_review
 
     # Fetch enabled projects
     local_projects=$(get_projects)
