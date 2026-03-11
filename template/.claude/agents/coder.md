@@ -113,11 +113,29 @@ research_sources_used:
     used_for: "pattern X"
 ```
 
+## Mock Boundaries (ADR-014)
+
+When writing tests, follow strict mock boundaries:
+
+| What to mock | Example | OK? |
+|--------------|---------|-----|
+| External HTTP APIs | `requests.post`, `httpx.AsyncClient` | ✅ |
+| Time / randomness | `datetime.now`, `random.choice` | ✅ |
+| Env vars / config | `os.environ`, `settings.X` | ✅ |
+| DB query results / row dicts | `{"amount_kopecks": 100}` | ⛔ |
+| Repository return values | `mock_repo.get.return_value = {...}` | ⛔ |
+| ORM model instances | `Mock(spec=UserModel)` | ⛔ |
+
+**Rule:** If a test needs DB data shapes — it's an integration test, put it in `tests/integration/` with real DB.
+
+**Why:** Mocked row shapes drift from real SQL schema silently. Tests pass, prod breaks.
+
 ## Red Flags
 - Copy-paste large chunks
 - Change unrelated files
 - Add deps without reason
 - Edit existing prompt versions
+- Mocking DB result shapes in unit tests (ADR-014)
 
 ## Module Headers Workflow (MANDATORY)
 

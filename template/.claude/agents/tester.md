@@ -160,6 +160,45 @@ Before reporting test failure:
    - Is immutable? (yes/no)
    - Recommendation: fix code / ask user
 
+## Mock Fidelity Audit (ADR-014)
+
+**BEFORE reporting tests as passed**, run this check on any test file that uses mocks:
+
+### Step 1: Detect mock usage
+```bash
+grep -rn "Mock\|patch\|mock\.\|MagicMock\|AsyncMock" {test_file}
+```
+
+### Step 2: For each mock found, classify it
+
+| Mock target | Verdict | Action |
+|-------------|---------|--------|
+| DB query result / row dict / ORM model | ⛔ BANNED | Report as `mock_fidelity_violation`. This MUST be an integration test with real DB. |
+| Repository method return value (dict/row shape) | ⛔ BANNED | Same — mocking row shapes hides schema drift. |
+| External HTTP API response | ✅ ALLOWED | Boundary mock, acceptable. |
+| Time / datetime.now / random | ✅ ALLOWED | Determinism mock, acceptable. |
+| File system / env vars | ✅ ALLOWED | Environment mock, acceptable. |
+| Service-layer dependency (injected interface) | ✅ ALLOWED | But return value must match real type signature. |
+
+### Step 3: Check mock return shapes
+
+For any ALLOWED mock that returns data:
+1. Find the real function/method being mocked
+2. Compare mock return value keys/types with actual return type
+3. If mock invents keys that don't exist in real code → `mock_shape_mismatch`
+
+### Output extension
+```yaml
+mock_fidelity:
+  violations: []        # or list of {file, line, mock_target, verdict}
+  shape_mismatches: []  # {file, line, mock_key, real_keys}
+```
+
+**If any `mock_fidelity_violation` found → report as `failed_in_scope`.**
+**If any `mock_shape_mismatch` found → report as warning, recommend fix.**
+
+---
+
 ## Eval Criteria Testing (LLM-as-Judge)
 
 When spec has `## Eval Criteria` with `llm-judge` type entries:

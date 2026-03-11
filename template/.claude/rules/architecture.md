@@ -66,6 +66,7 @@ Hooks must never crash — a crashing hook breaks Claude Code. See ADR-004.
 | ADR-011 | Enforcement as Code | 2026-02 | Process enforcement via JSON state + hooks + hard gates, not LLM memory. State files are SSOT for phase/task progress. |
 | ADR-012 | Eval Criteria over freeform Tests | 2026-02 | Structured eval criteria (deterministic + integration + llm-judge) provide measurable, repeatable quality gates. Backward compat with legacy ## Tests. |
 | ADR-013 | Mock ban in integration tests | 2026-03 | LLM agents mock 38% more than humans (MSR 2026). Hook hard-blocks mock patterns in tests/integration/. |
+| ADR-014 | Mock boundary rule for unit tests | 2026-03 | Unit test mocks masked schema drift (fake keys like `_kopecks` absent in real SQL). Rule: never mock DB result shapes — test DB layer via integration tests only. Unit mocks allowed only at service boundaries (external APIs, time, randomness). |
 
 ---
 
