@@ -371,7 +371,7 @@ while true; do
             [[ -z "$project_id" ]] && continue
 
             # Check for /run trigger file (immediate cycle)
-            local trigger_file="${SCRIPT_DIR}/.run-now-${project_id}"
+            trigger_file="${SCRIPT_DIR}/.run-now-${project_id}"
             if [[ -f "$trigger_file" ]]; then
                 rm -f "$trigger_file"
                 log_json "info" "run-now trigger fired" "project" "$project_id"
