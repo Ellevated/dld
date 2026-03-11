@@ -169,7 +169,7 @@ PUEUE_ID=$(pueue add \
     --group "$PUEUE_GROUP" \
     --label "$TASK_LABEL" \
     --print-task-id \
-    -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_DIR" "$TASK_CMD" "$PROVIDER" "$SKILL" 2>&1) || {
+    -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_DIR" "$PROVIDER" "$SKILL" $TASK_CMD 2>&1) || {
     echo "[inbox] ERROR: pueue submission failed: ${PUEUE_ID}" >&2
     exit 1
 }

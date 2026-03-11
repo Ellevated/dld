@@ -112,7 +112,7 @@ git_pull() {
         return 1
     fi
     local output
-    output=$(git -C "$project_dir" pull --ff-only origin develop 2>&1) || {
+    output=$(git -C "$project_dir" pull --rebase origin develop 2>&1) || {
         log_json "warn" "git pull failed" "path" "$project_dir" "detail" "${output:0:200}"
         return 1
     }
@@ -237,7 +237,7 @@ print(db.get_available_slots('${task_provider}'))
         --group "$pueue_group" \
         --label "$task_label" \
         --print-task-id \
-        -- "${SCRIPT_DIR}/run-agent.sh" "$project_dir" "$task_cmd" "$provider" "autopilot" 2>&1) || {
+        -- "${SCRIPT_DIR}/run-agent.sh" "$project_dir" "$provider" "autopilot" "$task_cmd" 2>&1) || {
         log_json "error" "pueue submission failed" "project" "$project_id" "spec" "$spec_id" "detail" "${pueue_id:0:200}"
         return
     }

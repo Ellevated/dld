@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # scripts/vps/run-agent.sh
 # Provider abstraction dispatcher for Pueue tasks.
-# Usage: run-agent.sh <project_dir> <task> <provider> [skill]
+# Usage: run-agent.sh <project_dir> <provider> <skill> <task...>
 #   provider: claude | codex | gemini
-#   skill: autopilot (default) | spark | architect | council | qa | bughunt
+#   skill: autopilot | spark | architect | council | qa | bughunt
+#   task: everything after skill is joined as the task string
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-PROJECT_DIR="${1:?Usage: run-agent.sh <project_dir> <task> <provider> [skill]}"
-TASK="${2:?Missing task argument}"
-PROVIDER="${3:?Missing provider argument (claude|codex|gemini)}"
-SKILL="${4:-autopilot}"
+PROJECT_DIR="${1:?Usage: run-agent.sh <project_dir> <provider> <skill> <task...>}"
+PROVIDER="${2:?Missing provider argument (claude|codex|gemini)}"
+SKILL="${3:?Missing skill argument}"
+shift 3
+TASK="$*"
+[[ -z "$TASK" ]] && { echo '{"error":"missing_task"}' >&2; exit 1; }
 
 # Source environment if available
 [[ -f "${SCRIPT_DIR}/.env" ]] && set -a && source "${SCRIPT_DIR}/.env" && set +a
