@@ -108,6 +108,13 @@ print(state['provider'] if state else 'claude')
 " 2>/dev/null || echo "claude")
 PROVIDER="${PROVIDER:-claude}"
 
+# Read Provider: header from inbox file (overrides project default)
+FILE_PROVIDER=$(grep -oE '^\*\*Provider:\*\* \w+' "$INBOX_FILE" 2>/dev/null | sed 's/\*\*Provider:\*\* //' || true)
+if [[ -n "$FILE_PROVIDER" ]]; then
+    PROVIDER="$FILE_PROVIDER"
+    echo "[inbox] provider override from file: ${FILE_PROVIDER}"
+fi
+
 # ---------------------------------------------------------------------------
 # Mark file as processing before dispatch (prevents double-submission)
 # ---------------------------------------------------------------------------

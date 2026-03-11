@@ -20,6 +20,83 @@ ok()   { echo -e "${GREEN}[OK]${NC} $1"; }
 fail() { echo -e "${RED}[FAIL]${NC} $1"; exit 1; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 
+# ── Shared function: sync DLD skills to global ~/.claude/skills/ ─────────────
+update_skills() {
+    local DLD_REPO="${DLD_REPO:-$HOME/dev/dld}"
+    if [[ ! -d "$DLD_REPO/.claude/skills" ]]; then
+        warn "DLD repo not found at $DLD_REPO — cannot sync skills"
+        return 1
+    fi
+    mkdir -p ~/.claude/skills ~/.claude/rules
+    rsync -a --delete "$DLD_REPO/.claude/skills/" ~/.claude/skills/
+    cp "$DLD_REPO/.claude/rules/localization.md" ~/.claude/rules/localization.md 2>/dev/null || true
+    ok "DLD skills synced to ~/.claude/skills/ ($(ls ~/.claude/skills/ | wc -l) skills)"
+}
+
+# ── --update-skills: standalone skills sync ──────────────────────────────────
+if [[ "${1:-}" == "--update-skills" ]]; then
+    update_skills
+    exit 0
+fi
+
+# ── --phase3: Phase 3 incremental setup ──────────────────────────────────────
+if [[ "${1:-}" == "--phase3" ]]; then
+    echo "=== Phase 3 Setup ==="
+
+    # 1. Gemini CLI check
+    GEMINI_BIN="${GEMINI_PATH:-gemini}"
+    if command -v "$GEMINI_BIN" &>/dev/null || [[ -x "$GEMINI_BIN" ]]; then
+        ok "Gemini CLI found: $($GEMINI_BIN --version 2>/dev/null || echo 'available')"
+    else
+        warn "Gemini CLI not found. Install: npm install -g @google/gemini-cli"
+    fi
+
+    # 2. Pueue gemini-runner group
+    pueue group add gemini-runner 2>/dev/null || true
+    pueue parallel 1 --group gemini-runner 2>/dev/null || true
+    ok "Pueue gemini-runner group configured (parallel=1)"
+
+    # 3. Global DLD skills
+    update_skills || warn "Skills sync failed — run manually: bash setup-vps.sh --update-skills"
+
+    # 4. Nexus cache directory
+    NEXUS_CACHE_DIR="/var/dld/nexus-cache"
+    sudo mkdir -p "$NEXUS_CACHE_DIR" 2>/dev/null || mkdir -p "$NEXUS_CACHE_DIR" 2>/dev/null || true
+    sudo chown "$(whoami):$(whoami)" "$NEXUS_CACHE_DIR" 2>/dev/null || true
+    ok "Nexus cache directory: $NEXUS_CACHE_DIR"
+
+    # 5. Install cron for nexus-cache-refresh.sh
+    CACHE_SCRIPT="${SCRIPT_DIR}/nexus-cache-refresh.sh"
+    if [[ -f "$CACHE_SCRIPT" ]]; then
+        CRON_LINE="*/5 * * * * bash ${CACHE_SCRIPT} >> /var/log/dld-orchestrator/nexus-cache.log 2>&1"
+        (crontab -l 2>/dev/null | grep -v "nexus-cache-refresh"; echo "$CRON_LINE") | crontab -
+        ok "Cron installed: nexus-cache-refresh.sh every 5 min"
+    else
+        warn "nexus-cache-refresh.sh not found — cron not installed"
+    fi
+
+    # 6. GEMINI_API_KEY in .env
+    if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+        if ! grep -q "^GEMINI_API_KEY=" "${SCRIPT_DIR}/.env"; then
+            echo "GEMINI_API_KEY=" >> "${SCRIPT_DIR}/.env"
+            warn "GEMINI_API_KEY added to .env — fill in your key from Google AI Studio"
+        else
+            ok "GEMINI_API_KEY already in .env"
+        fi
+    fi
+
+    # 7. Re-apply schema (adds gemini slot idempotently)
+    DB_PATH="${DB_PATH:-${SCRIPT_DIR}/orchestrator.db}"
+    if [[ -f "${SCRIPT_DIR}/schema.sql" ]]; then
+        sqlite3 "$DB_PATH" < "${SCRIPT_DIR}/schema.sql"
+        ok "Schema updated (gemini slot seeded)"
+    fi
+
+    echo ""
+    echo "=== Phase 3 Setup complete ==="
+    exit 0
+fi
+
 echo "=== DLD Multi-Project Orchestrator Setup ==="
 echo ""
 

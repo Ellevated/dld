@@ -2,7 +2,7 @@
 # scripts/vps/run-agent.sh
 # Provider abstraction dispatcher for Pueue tasks.
 # Usage: run-agent.sh <project_dir> <task> <provider> [skill]
-#   provider: claude | codex
+#   provider: claude | codex | gemini
 #   skill: autopilot (default) | spark | architect | council | qa | bughunt
 set -euo pipefail
 
@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PROJECT_DIR="${1:?Usage: run-agent.sh <project_dir> <task> <provider> [skill]}"
 TASK="${2:?Missing task argument}"
-PROVIDER="${3:?Missing provider argument (claude|codex)}"
+PROVIDER="${3:?Missing provider argument (claude|codex|gemini)}"
 SKILL="${4:-autopilot}"
 
 # Source environment if available
@@ -46,6 +46,9 @@ case "$PROVIDER" in
         ;;
     codex)
         exec "${SCRIPT_DIR}/codex-runner.sh" "$PROJECT_DIR" "$TASK" "$SKILL"
+        ;;
+    gemini)
+        exec "${SCRIPT_DIR}/gemini-runner.sh" "$PROJECT_DIR" "$TASK" "$SKILL"
         ;;
     *)
         jq -n --arg provider "$PROVIDER" '{"error":"unknown_provider","provider":$provider}' >&2

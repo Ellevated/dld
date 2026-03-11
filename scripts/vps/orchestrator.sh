@@ -199,6 +199,32 @@ print(db.get_available_slots('${provider}'))
         return
     fi
 
+    # Task-level provider override from spec frontmatter (e.g. "provider: gemini")
+    local task_provider
+    task_provider=$(grep -oE '^provider:\s+\w+' "$spec_file" 2>/dev/null | awk '{print $2}' || true)
+    if [[ -n "$task_provider" ]]; then
+        # Validate provider has compute slots
+        local task_slots
+        task_slots=$(python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+print(db.get_available_slots('${task_provider}'))
+" 2>/dev/null || echo "-1")
+        if [[ "$task_slots" == "-1" ]] || (( task_slots < 0 )); then
+            log_json "warn" "unknown provider in spec, using project default" "project" "$project_id" "spec_provider" "$task_provider"
+        else
+            provider="$task_provider"
+        fi
+    fi
+
+    # Read Nexus cache for deploy rules (non-blocking, stale cache OK)
+    local nexus_ctx
+    nexus_ctx=$(cat "/var/dld/nexus-cache/${project_id}.json" 2>/dev/null || echo "{}")
+    if [[ "$nexus_ctx" != "{}" ]]; then
+        log_json "info" "nexus cache loaded" "project" "$project_id"
+    fi
+
     # Submit autopilot task to Pueue
     local task_label="${project_id}:${spec_id}"
     local pueue_group="${provider}-runner"
