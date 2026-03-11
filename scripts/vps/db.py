@@ -5,7 +5,8 @@ Role: SQLite WAL helpers for orchestrator state management.
 Uses: sqlite3 (stdlib)
 Used by: telegram-bot.py, notify.py, pueue-callback.sh (via CLI: python3 db.py callback),
          night-reviewer.sh (via CLI: python3 db.py save-finding / get-new-findings),
-         approve_handler.py (update_finding_status, get_finding_by_id)
+         approve_handler.py (update_finding_status, get_finding_by_id),
+         admin_handler.py (add_project, get_project_state, get_project_by_topic, get_nexus_cache)
 """
 
 import os
@@ -186,6 +187,34 @@ def seed_projects_from_json(projects: list[dict]) -> None:
                     p.get("auto_approve_timeout", 30),
                 ),
             )
+
+
+def add_project(
+    project_id: str,
+    path: str,
+    topic_id: int,
+    provider: str = "claude",
+    auto_approve_timeout: int = 30,
+) -> None:
+    """Register a new project from Telegram wizard. INSERT OR IGNORE (idempotent)."""
+    with get_db(immediate=True) as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO project_state "
+            "(project_id, path, topic_id, provider, auto_approve_timeout) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (project_id, path, topic_id, provider, auto_approve_timeout),
+        )
+
+
+def get_nexus_cache(project_id: str) -> dict:
+    """Read cached Nexus context for a project. Returns empty dict if not found."""
+    import json
+
+    cache_file = Path("/var/dld/nexus-cache") / f"{project_id}.json"
+    try:
+        return json.loads(cache_file.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
 
 def save_finding(

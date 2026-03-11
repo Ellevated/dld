@@ -2,7 +2,7 @@
 """
 Module: telegram-bot
 Role: Telegram bot with forum topic routing for multi-project orchestration.
-Uses: db.py, python-telegram-bot v21.9+
+Uses: db.py, admin_handler.py, python-telegram-bot v21.9+
 Used by: systemd (dld-telegram-bot.service)
 """
 
@@ -27,6 +27,7 @@ from telegram.ext import (
 
 sys.path.insert(0, str(Path(__file__).parent))
 import db
+from admin_handler import cmd_nexussync, create_addproject_handler
 from approve_handler import (
     handle_approve_all,
     handle_confirm_spec,
@@ -226,10 +227,10 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         if not projects:
             await update.message.reply_text("No projects configured.")
             return
-        icons = {
-            "idle": "⚪", "running": "🟢", "qa_pending": "🟡", "failed": "🔴",
-            "night_reviewing": "🔍", "night_pending": "🌙", "night_failed": "💀",
-        }
+        # fmt: off
+        icons = {"idle": "⚪", "running": "🟢", "qa_pending": "🟡", "failed": "🔴",
+                 "night_reviewing": "🔍", "night_pending": "🌙", "night_failed": "💀"}
+        # fmt: on
         lines = ["*All Projects:*\n"] + [
             f"{icons.get(p['phase'], '⚫')} `{p['project_id']}` — {p['phase']}"
             + (f" ({p['current_task']})" if p.get("current_task") else "")
@@ -373,10 +374,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
+    # ConversationHandler must be registered BEFORE generic text handler
+    application.add_handler(create_addproject_handler())
+    application.add_handler(CommandHandler("nexussync", cmd_nexussync))
     application.add_handler(CommandHandler("status", cmd_status))
     application.add_handler(CommandHandler("run", cmd_run))
     application.add_handler(CommandHandler("pause", cmd_pause))
     application.add_handler(CommandHandler("resume", cmd_resume))
+    # fmt: off
     application.add_handler(CallbackQueryHandler(handle_project_toggle, pattern=r"^toggle:"))
     application.add_handler(CallbackQueryHandler(handle_launch_review, pattern=r"^launch_review$"))
     application.add_handler(CallbackQueryHandler(handle_finding_approve, pattern=r"^approve_finding:"))
@@ -387,6 +392,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(handle_approve, pattern=r"^approve:"))
     application.add_handler(CallbackQueryHandler(handle_cancel, pattern=r"^cancel:"))
     application.add_handler(MessageHandler(filters.VOICE & filters.ChatType.SUPERGROUP, handle_voice))
+    # fmt: on
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     register_evening_job(application)
     logger.info("Starting DLD Telegram bot (PTB v21.9+)")
