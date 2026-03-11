@@ -108,7 +108,8 @@
 | TECH-144 | Clean DLD-specific gitignore rules from template | done | P1 | [spec](features/TECH-144-2026-03-02-clean-gitignore-rules-template.md) |
 | TECH-145 | Upgrade skill-writer → skill-creator (Anthropic upstream parity) | done | P1 | [spec](features/TECH-145-2026-03-08-upgrade-skill-creator.md) |
 | FTR-146 | Multi-Project Orchestrator Phase 1 (Pueue + Telegram Bot + SQLite) | done | P0 | [spec](features/FTR-146-2026-03-10-multi-project-orchestrator-phase1.md) |
-| FTR-147 | Multi-Project Orchestrator Phase 2: Architecture & Reliability | queued | P0 | [spec](features/FTR-147-2026-03-10-multi-project-orchestrator-phase2.md) |
+| FTR-147 | Multi-Project Orchestrator Phase 2: Architecture & Reliability | done | P0 | [spec](features/FTR-147-2026-03-10-multi-project-orchestrator-phase2.md) |
+| FTR-148 | Multi-Project Orchestrator Phase 3: Functionality & Multi-Provider | queued | P1 | [spec](features/FTR-148-2026-03-10-multi-project-orchestrator-phase3.md) |
 
 ---
 
