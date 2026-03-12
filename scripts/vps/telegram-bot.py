@@ -62,7 +62,10 @@ SCRIPT_DIR = Path(__file__).parent
 
 # fmt: off
 ROUTE_PATTERNS: dict[str, list[str]] = {
-    "architect": ["архитектура", "спроектируй", "система", "домены", "как устроить", "интеграция",
+    "qa":        ["проверь как работает", "протестируй", "потыкай", "ручное тестирование",
+                  "проведи qa", "qa тест", "тест лигал", "тест воронк", "проверь воронку",
+                  "проверь на проде", "check how", "manual test", "smoke test"],
+    "architect": ["архитектура", "спроектируй", "домены", "как устроить", "интеграция",
                   "design system", "bounded context", "data flow", "инфраструктура",
                   "схема данных", "миграция", "рефакторинг архитектуры"],
     "council":   ["консилиум", "сравни подходы", "что лучше", "trade-off",
@@ -72,6 +75,8 @@ ROUTE_PATTERNS: dict[str, list[str]] = {
                   "командный аудит багов"],
     "spark_bug": ["баг", "ошибка", "не работает", "сломалось", "падает",
                   "crash", "fix", "broken", "регрессия", "regression"],
+    "reflect":   ["рефлексия", "рефлект", "что мы узнали", "reflect"],
+    "scout":     ["разведка", "исследуй", "найди информацию", "scout", "research"],
 }
 # fmt: on
 
@@ -459,7 +464,24 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(f"Принято. {label} на следующем цикле.")
 
 
+def _kill_other_instances() -> None:
+    """Kill any other telegram-bot.py processes to prevent duplicate responses."""
+    import signal
+    my_pid = os.getpid()
+    for line in subprocess.run(
+        ["pgrep", "-f", "telegram-bot.py"], capture_output=True, text=True
+    ).stdout.strip().split("\n"):
+        pid = int(line.strip()) if line.strip().isdigit() else 0
+        if pid and pid != my_pid:
+            try:
+                os.kill(pid, signal.SIGKILL)
+                logger.info("Killed stale bot instance PID %d", pid)
+            except OSError:
+                pass
+
+
 def main() -> None:
+    _kill_other_instances()
     application = Application.builder().token(BOT_TOKEN).build()
     # ConversationHandler must be registered BEFORE generic text handler
     application.add_handler(create_addproject_handler())

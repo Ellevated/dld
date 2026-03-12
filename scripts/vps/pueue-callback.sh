@@ -86,14 +86,33 @@ python3 "${SCRIPT_DIR}/db.py" callback \
 echo "[callback] db updated pueue_id=${PUEUE_ID} phase=${NEW_PHASE}"
 
 # ---------------------------------------------------------------------------
-# Step 4: Extract result_preview from agent output (human-readable summary)
+# Step 4: Extract structured data from agent JSON output (claude-runner.py)
 # ---------------------------------------------------------------------------
 PREVIEW=""
+SKILL=""
 if command -v pueue &>/dev/null; then
-    # Try to extract result_preview from JSON output of claude-runner
-    PREVIEW=$(pueue log "${PUEUE_ID}" --lines 3 2>/dev/null | \
-        grep -o '"result_preview": *"[^"]*"' | head -1 | \
-        sed 's/"result_preview": *"//;s/"$//' | head -c 300 || true)
+    # claude-runner.py prints JSON with: skill, result_preview, exit_code, etc.
+    # JSON is the last line of stdout; --lines 10 gives enough margin
+    AGENT_JSON=$(pueue log "${PUEUE_ID}" --lines 10 2>/dev/null | \
+        grep -E '^\{.*"skill"' | tail -1 || true)
+    if [[ -n "$AGENT_JSON" ]]; then
+        PREVIEW=$(echo "$AGENT_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(data.get('result_preview', '')[:500])
+" 2>/dev/null || true)
+        SKILL=$(echo "$AGENT_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(data.get('skill', ''))
+" 2>/dev/null || true)
+    fi
+    # Fallback: grep for result_preview if JSON parse failed
+    if [[ -z "$PREVIEW" ]]; then
+        PREVIEW=$(pueue log "${PUEUE_ID}" --lines 3 2>/dev/null | \
+            grep -o '"result_preview": *"[^"]*"' | head -1 | \
+            sed 's/"result_preview": *"//;s/"$//' | head -c 300 || true)
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -111,27 +130,16 @@ ${PREVIEW}"
 fi
 
 # ---------------------------------------------------------------------------
-# Step 6: Send Telegram notification via notify.py (fail-safe)
-# notify.py handles topic routing by project_id.
-# We suppress all errors — a broken notifier must never prevent slot release.
+# Step 5.5: Spark approval notification with result_preview
+# When spark completes successfully, send approval buttons with the summary
+# so the user sees WHAT spark plans to do, not dry spec headers.
 # ---------------------------------------------------------------------------
 NOTIFY_PY="${SCRIPT_DIR}/notify.py"
-if [[ -f "$NOTIFY_PY" ]]; then
-    python3 "$NOTIFY_PY" "$PROJECT_ID" "$MSG" 2>/dev/null || {
-        echo "[callback] WARN: notify.py failed for project=${PROJECT_ID}" >&2
-    }
-else
-    echo "[callback] WARN: notify.py not found at ${NOTIFY_PY} — skipping Telegram notification" >&2
-fi
+SENT_APPROVAL=false
 
-# ---------------------------------------------------------------------------
-# Step 7: Post-autopilot — dispatch QA + Reflect (FTR-149)
-# Only after successful autopilot completion.
-# Non-blocking: submitted to pueue, orchestrator tracks via phase.
-# ---------------------------------------------------------------------------
-if [[ "$STATUS" == "done" && "$GROUP" == *"claude"* ]]; then
-    # Resolve project path from DB
-    PROJECT_PATH=$(python3 -c "
+if [[ "$STATUS" == "done" && "$SKILL" == "spark" && -f "$NOTIFY_PY" ]]; then
+    # Resolve project path for spec file lookup
+    SPARK_PROJECT_PATH=$(python3 -c "
 import sys
 sys.path.insert(0, '${SCRIPT_DIR}')
 import db
@@ -139,21 +147,136 @@ state = db.get_project_state('${PROJECT_ID}')
 print(state['path'] if state else '')
 " 2>/dev/null || true)
 
+    if [[ -n "$SPARK_PROJECT_PATH" ]]; then
+        # Find newest draft spec in backlog
+        BACKLOG="${SPARK_PROJECT_PATH}/ai/backlog.md"
+        SPEC_ID=""
+        SPEC_TITLE=""
+        TASKS_COUNT=0
+
+        if [[ -f "$BACKLOG" ]]; then
+            # Get the last (newest) draft spec ID
+            SPEC_ID=$(grep -E '^\|\s*(TECH|FTR|BUG|ARCH)-[0-9]+\s*\|.*\|\s*draft\s*\|' "$BACKLOG" 2>/dev/null | \
+                      grep -oE '(TECH|FTR|BUG|ARCH)-[0-9]+' | tail -1 || true)
+        fi
+
+        if [[ -n "$SPEC_ID" ]]; then
+            # Find spec file for title and task count
+            SPEC_FILE=$(find "${SPARK_PROJECT_PATH}/ai/features/" -name "${SPEC_ID}*" -type f 2>/dev/null | head -1 || true)
+            if [[ -n "$SPEC_FILE" ]]; then
+                SPEC_TITLE=$(grep -m1 '^# ' "$SPEC_FILE" 2>/dev/null | sed 's/^# //' | head -c 100 || true)
+                TASKS_COUNT=$(grep -c -E '^#{2,3} Task' "$SPEC_FILE" 2>/dev/null || true)
+                TASKS_COUNT=$(( TASKS_COUNT + 0 ))
+            fi
+            SPEC_TITLE="${SPEC_TITLE:-$SPEC_ID}"
+
+            # Use result_preview as the summary (what spark plans to do)
+            SUMMARY="${PREVIEW:-—}"
+
+            echo "[callback] Sending spark approval: project=${PROJECT_ID} spec=${SPEC_ID}"
+            python3 "$NOTIFY_PY" --spec-approval \
+                "$PROJECT_ID" "$SPEC_ID" "$SPEC_TITLE" "$SUMMARY" "$TASKS_COUNT" 2>/dev/null && {
+                SENT_APPROVAL=true
+                # Mark as notified so scan_drafts won't re-notify
+                echo "$SPEC_ID" >> "${SCRIPT_DIR}/.notified-drafts-${PROJECT_ID}"
+                echo "[callback] Spark approval sent: ${PROJECT_ID}:${SPEC_ID}"
+            } || {
+                echo "[callback] WARN: spark approval notification failed" >&2
+            }
+        else
+            echo "[callback] WARN: no draft spec found in backlog for spark result" >&2
+        fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Step 6: Send Telegram completion notification (fail-safe)
+# Skip if we already sent approval notification (avoid double message).
+# notify.py handles topic routing by project_id.
+# ---------------------------------------------------------------------------
+if [[ "$SENT_APPROVAL" == "false" && -f "$NOTIFY_PY" ]]; then
+    python3 "$NOTIFY_PY" "$PROJECT_ID" "$MSG" 2>/dev/null || {
+        echo "[callback] WARN: notify.py failed for project=${PROJECT_ID}" >&2
+    }
+elif [[ ! -f "$NOTIFY_PY" ]]; then
+    echo "[callback] WARN: notify.py not found at ${NOTIFY_PY} — skipping Telegram notification" >&2
+fi
+
+# ---------------------------------------------------------------------------
+# Step 6.5: Council/Architect → Inbox feedback loop
+# When council or architect completes, write result_preview back to inbox
+# with route=spark so the next orchestrator cycle creates a spec from it.
+# ---------------------------------------------------------------------------
+if [[ "$STATUS" == "done" && ( "$SKILL" == "council" || "$SKILL" == "architect" ) && -n "$PREVIEW" ]]; then
+    FEEDBACK_PROJECT_PATH=$(python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+state = db.get_project_state('${PROJECT_ID}')
+print(state['path'] if state else '')
+" 2>/dev/null || true)
+
+    if [[ -n "$FEEDBACK_PROJECT_PATH" ]]; then
+        INBOX_DIR="${FEEDBACK_PROJECT_PATH}/ai/inbox"
+        mkdir -p "$INBOX_DIR"
+        TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
+        INBOX_FILE="${INBOX_DIR}/${TIMESTAMP}-${SKILL}-result.md"
+
+        cat > "$INBOX_FILE" <<INBOX_EOF
+# ${SKILL^} result: ${TASK_LABEL}
+**Source:** ${SKILL}
+**Route:** spark
+**Context:** Результат ${SKILL} по запросу ${TASK_LABEL}
+**Status:** new
+---
+${PREVIEW}
+INBOX_EOF
+
+        echo "[callback] ${SKILL} result written to inbox: ${INBOX_FILE}"
+
+        # Notify user that council result is queued for spark
+        if [[ -f "$NOTIFY_PY" ]]; then
+            python3 "$NOTIFY_PY" "$PROJECT_ID" \
+                "🧠 *${PROJECT_ID}*: ${SKILL} завершён. Результат отправлен в Spark." 2>/dev/null || true
+        fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Step 7: Post-autopilot — dispatch QA + Reflect (FTR-149)
+# Only after successful autopilot completion.
+# Non-blocking: submitted to pueue, orchestrator tracks via phase.
+# ---------------------------------------------------------------------------
+if [[ "$STATUS" == "done" && ( "$SKILL" == "autopilot" || "$SKILL" == "spark" || "$SKILL" == "spark_bug" ) ]]; then
+    # Resolve project path + provider from DB
+    read -r PROJECT_PATH PROJECT_PROVIDER <<< "$(python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+state = db.get_project_state('${PROJECT_ID}')
+if state:
+    print(state['path'], state.get('provider', 'claude'))
+else:
+    print('', 'claude')
+" 2>/dev/null || echo '' 'claude')"
+    PROJECT_PROVIDER="${PROJECT_PROVIDER:-claude}"
+    RUNNER_GROUP="${PROJECT_PROVIDER}-runner"
+
     if [[ -n "$PROJECT_PATH" ]]; then
         # Dispatch QA
-        pueue add --group "${PROJECT_ID}" --label "${PROJECT_ID}:qa-${TASK_LABEL}" \
-            -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "claude" "qa" \
+        pueue add --group "$RUNNER_GROUP" --label "${PROJECT_ID}:qa-${TASK_LABEL}" \
+            -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "$PROJECT_PROVIDER" "qa" \
             "/qa Проверь изменения после ${TASK_LABEL}" 2>/dev/null && {
-            echo "[callback] QA dispatched for ${PROJECT_ID}:${TASK_LABEL}"
+            echo "[callback] QA dispatched for ${PROJECT_ID}:${TASK_LABEL} (group=${RUNNER_GROUP})"
         } || {
             echo "[callback] WARN: QA dispatch failed for ${PROJECT_ID}" >&2
         }
 
         # Dispatch Reflect
-        pueue add --group "${PROJECT_ID}" --label "${PROJECT_ID}:reflect-${TASK_LABEL}" \
-            -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "claude" "reflect" \
+        pueue add --group "$RUNNER_GROUP" --label "${PROJECT_ID}:reflect-${TASK_LABEL}" \
+            -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "$PROJECT_PROVIDER" "reflect" \
             "/reflect" 2>/dev/null && {
-            echo "[callback] Reflect dispatched for ${PROJECT_ID}:${TASK_LABEL}"
+            echo "[callback] Reflect dispatched for ${PROJECT_ID}:${TASK_LABEL} (group=${RUNNER_GROUP})"
         } || {
             echo "[callback] WARN: Reflect dispatch failed for ${PROJECT_ID}" >&2
         }

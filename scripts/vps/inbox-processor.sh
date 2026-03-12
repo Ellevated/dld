@@ -73,11 +73,9 @@ echo "[inbox] route=${ROUTE} project=${PROJECT_ID} file=$(basename "$INBOX_FILE"
 # ---------------------------------------------------------------------------
 # Map route → skill + Claude command
 # ---------------------------------------------------------------------------
-# Build headless context prefix for automated sources (non-telegram)
-HEADLESS_PREFIX=""
-if [[ "$SOURCE" != "telegram" && "$SOURCE" != "human" ]]; then
-    HEADLESS_PREFIX="[headless] Source: ${SOURCE}. "
-fi
+# ALL inbox tasks run headless (no user to answer questions).
+# Telegram messages go through orchestrator → agent without TTY.
+HEADLESS_PREFIX="[headless] Source: ${SOURCE}. "
 if [[ -n "$CONTEXT" ]]; then
     HEADLESS_PREFIX="${HEADLESS_PREFIX}Context: ${CONTEXT}. "
 fi
@@ -102,6 +100,18 @@ case "$ROUTE" in
     bughunt)
         SKILL="bughunt"
         TASK_CMD="/bughunt ${HEADLESS_PREFIX}${IDEA_TEXT}"
+        ;;
+    qa)
+        SKILL="qa"
+        TASK_CMD="/qa ${HEADLESS_PREFIX}${IDEA_TEXT}"
+        ;;
+    reflect)
+        SKILL="reflect"
+        TASK_CMD="/reflect ${HEADLESS_PREFIX}${IDEA_TEXT}"
+        ;;
+    scout)
+        SKILL="scout"
+        TASK_CMD="/scout ${HEADLESS_PREFIX}${IDEA_TEXT}"
         ;;
     *)
         echo "[inbox] Unknown route '${ROUTE}', defaulting to spark" >&2
@@ -190,7 +200,7 @@ PUEUE_ID=$(pueue add \
     --group "$PUEUE_GROUP" \
     --label "$TASK_LABEL" \
     --print-task-id \
-    -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_DIR" "$PROVIDER" "$SKILL" $TASK_CMD 2>&1) || {
+    -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_DIR" "$PROVIDER" "$SKILL" "$TASK_CMD" 2>&1) || {
     echo "[inbox] ERROR: pueue submission failed: ${PUEUE_ID}" >&2
     exit 1
 }

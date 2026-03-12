@@ -99,12 +99,16 @@ async def send_spec_approval(
         clean_title = re.sub(r'(?:Feature|Bug Fix|Tech|Arch):\s*\[' + re.escape(spec_id) + r'\]\s*', '', clean_title).strip()
         clean_title = clean_title.lstrip('—– ').strip()
 
-    text = (
-        f"\U0001f4cb {spec_id} — {clean_title}\n"
-        f"Проект: {project_id}\n"
-        f"\n{problem}\n"
-        f"\nЗадач: {tasks_count}\n"
-    )
+    # Truncate long summaries (result_preview from spark can be 500+ chars)
+    summary = problem[:400] if problem else "—"
+
+    parts = [f"\U0001f4cb {spec_id} — {clean_title}"]
+    parts.append(f"Проект: {project_id}")
+    parts.append("")
+    parts.append(summary)
+    if tasks_count > 0:
+        parts.append(f"\nЗадач: {tasks_count}")
+    text = "\n".join(parts)
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("\u2705 В работу", callback_data=f"spec_approve:{project_id}:{spec_id}"),
