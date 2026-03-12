@@ -144,13 +144,13 @@ async def auto_approve_start(
         return
     timeout = int(project.get("auto_approve_timeout", 30))
     keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("Approve", callback_data=f"approve:{project_id}:{task_id}"),
-        InlineKeyboardButton("Cancel",  callback_data=f"cancel:{project_id}:{task_id}"),
+        InlineKeyboardButton("В работу", callback_data=f"approve:{project_id}:{task_id}"),
+        InlineKeyboardButton("Отмена",  callback_data=f"cancel:{project_id}:{task_id}"),
     ]])
-    countdown = f"Auto-starting in {timeout}s..." if timeout > 0 else "Waiting for manual approval."
+    countdown = f"Автостарт через {timeout}с..." if timeout > 0 else "Жду подтверждения."
     msg = await context.bot.send_message(
         chat_id=CHAT_ID, message_thread_id=topic_id,
-        text=f"Spec ready: {task_id}\nSummary: {summary}\nScope: {scope}\n\n{countdown}",
+        text=f"Спека готова: {task_id}\n{summary}\nОбъём: {scope}\n\n{countdown}",
         reply_markup=keyboard,
     )
     if timeout > 0:
@@ -171,7 +171,7 @@ async def _auto_approve_fire(context: ContextTypes.DEFAULT_TYPE) -> None:
     if not project:
         return
     ok = _submit_to_pueue(project, d["task_id"])
-    label = "Auto-approved — started" if ok else "ERROR: submit failed for"
+    label = "Автостарт —" if ok else "Ошибка запуска:"
     await context.bot.edit_message_text(
         chat_id=d["chat_id"], message_id=d["message_id"],
         text=f"{label} {d['task_id']}",
@@ -189,11 +189,11 @@ async def handle_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         job.schedule_removal()
     project = db.get_project_state(project_id)
     if not project:
-        await query.edit_message_text(f"Project {project_id} not found.")
+        await query.edit_message_text(f"Проект {project_id} не найден.")
         return
     success = _submit_to_pueue(project, task_id)
     await query.edit_message_text(
-        f"Approved — started {task_id}" if success else f"Approve failed: pueue error"
+        f"Запущено: {task_id}" if success else f"Ошибка запуска {task_id}"
     )
 
 
@@ -204,7 +204,7 @@ async def handle_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     _, project_id, task_id = query.data.split(":", 2)
     for job in context.job_queue.get_jobs_by_name(f"approve:{project_id}:{task_id}"):
         job.schedule_removal()
-    await query.edit_message_text(f"Cancelled {task_id}")
+    await query.edit_message_text(f"Отменено: {task_id}")
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -216,7 +216,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         project = db.get_project_state(args[0])
         if not project:
             await update.message.reply_text(
-                f"Project `{args[0]}` not found.", parse_mode="Markdown"
+                f"Проект `{args[0]}` не найден.", parse_mode="Markdown"
             )
             return
         await _send_project_status(update, project)
@@ -225,17 +225,17 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         if project:
             await _send_project_status(update, project)
         else:
-            await update.message.reply_text("This topic is not linked to a project.")
+            await update.message.reply_text("Этот топик не привязан к проекту.")
     else:
         projects = db.get_all_projects()
         if not projects:
-            await update.message.reply_text("No projects configured.")
+            await update.message.reply_text("Проекты не настроены.")
             return
         # fmt: off
         icons = {"idle": "⚪", "running": "🟢", "qa_pending": "🟡", "failed": "🔴",
                  "night_reviewing": "🔍", "night_pending": "🌙", "night_failed": "💀"}
         # fmt: on
-        lines = ["*All Projects:*\n"] + [
+        lines = ["*Все проекты:*\n"] + [
             f"{icons.get(p['phase'], '⚫')} `{p['project_id']}` — {p['phase']}"
             + (f" ({p['current_task']})" if p.get("current_task") else "")
             for p in projects
@@ -286,7 +286,7 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         project = db.get_project_state(args[0])
         if not project:
             await update.message.reply_text(
-                f"Project `{args[0]}` not found.", parse_mode="Markdown"
+                f"Проект `{args[0]}` не найден.", parse_mode="Markdown"
             )
             return
         task_text = " ".join(args[1:]) if len(args) > 1 else None
@@ -294,19 +294,17 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         project = db.get_project_by_topic(topic_id)
     if not project:
         await update.message.reply_text(
-            "Specify project: `/run <project>` or use in project topic.", parse_mode="Markdown"
+            "Укажи проект: `/run <project>` или пиши в топик проекта.", parse_mode="Markdown"
         )
         return
     if task_text:
         _save_to_inbox(project, task_text)
-        await update.message.reply_text(
-            f"Saved to inbox: `{task_text}`\nTriggering cycle...", parse_mode="Markdown"
-        )
+        await update.message.reply_text(f"Принято. Запускаю цикл для `{project['project_id']}`.", parse_mode="Markdown")
     trigger_file = SCRIPT_DIR / f".run-now-{project['project_id']}"
     trigger_file.touch()
     if not task_text:
         await update.message.reply_text(
-            f"Triggered immediate cycle for `{project['project_id']}`.", parse_mode="Markdown"
+            f"Запускаю цикл для `{project['project_id']}`.", parse_mode="Markdown"
         )
 
 
@@ -324,12 +322,12 @@ async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ["pueue", "pause", "--group", project["project_id"]], timeout=5, capture_output=True
         )
         if result.returncode != 0:
-            await update.message.reply_text(f"Pause failed: pueue exited {result.returncode}")
+            await update.message.reply_text(f"Не удалось поставить на паузу (код {result.returncode})")
             return
         db.update_project_phase(project["project_id"], "paused")
-        await update.message.reply_text(f"Paused `{project['project_id']}`.", parse_mode="Markdown")
+        await update.message.reply_text(f"`{project['project_id']}` на паузе.", parse_mode="Markdown")
     except Exception as e:
-        await update.message.reply_text(f"Pause failed: {e}")
+        await update.message.reply_text(f"Ошибка паузы: {e}")
 
 
 async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -338,7 +336,7 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     project = _resolve_project(update, context)
     if not project:
         await update.message.reply_text(
-            "Specify project: `/resume <project>`", parse_mode="Markdown"
+            "Укажи проект: `/resume <project>`", parse_mode="Markdown"
         )
         return
     try:
@@ -346,14 +344,12 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             ["pueue", "start", "--group", project["project_id"]], timeout=5, capture_output=True
         )
         if result.returncode != 0:
-            await update.message.reply_text(f"Resume failed: pueue exited {result.returncode}")
+            await update.message.reply_text(f"Не удалось возобновить (код {result.returncode})")
             return
         db.update_project_phase(project["project_id"], "idle")
-        await update.message.reply_text(
-            f"Resumed `{project['project_id']}`.", parse_mode="Markdown"
-        )
+        await update.message.reply_text(f"`{project['project_id']}` возобновлён.", parse_mode="Markdown")
     except Exception as e:
-        await update.message.reply_text(f"Resume failed: {e}")
+        await update.message.reply_text(f"Ошибка возобновления: {e}")
 
 
 HEAVY_ROUTES = {"architect", "council", "bughunt"}
@@ -375,19 +371,17 @@ async def handle_confirm_heavy(update: Update, context: ContextTypes.DEFAULT_TYP
 
     pending = _pending_heavy.pop(msg_hash, None)
     if not pending:
-        await query.edit_message_text("Confirmation expired (1 hour TTL).")
+        await query.edit_message_text("Подтверждение устарело (1 час).")
         return
 
     project = db.get_project_state(project_id)
     if not project:
-        await query.edit_message_text(f"Project {project_id} not found.")
+        await query.edit_message_text(f"Проект {project_id} не найден.")
         return
 
     if action == "yes":
         _save_to_inbox(project, pending["text"])
-        await query.edit_message_text(
-            f"Confirmed. `{pending['route']}` saved to inbox.", parse_mode="Markdown"
-        )
+        await query.edit_message_text(f"Принято. Запускаю `{pending['route']}`.")
     elif action == "spark":
         # Override route: save as spark instead
         inbox_dir = Path(project["path"]) / "ai" / "inbox"
@@ -398,9 +392,9 @@ async def handle_confirm_heavy(update: Update, context: ContextTypes.DEFAULT_TYP
             f"# Idea: {ts}\n**Source:** telegram\n**Route:** spark\n**Status:** new\n---\n{pending['text']}\n",
             encoding="utf-8",
         )
-        await query.edit_message_text("Redirected to `spark`.", parse_mode="Markdown")
+        await query.edit_message_text("Перенаправлено в Spark.")
     else:  # no
-        await query.edit_message_text("Cancelled.")
+        await query.edit_message_text("Отменено.")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -452,10 +446,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     _save_to_inbox(project, text)
-    await update.message.reply_text(
-        f"Saved to inbox (route: `{route}`).\nOrchestrator will process on next cycle.",
-        parse_mode="Markdown",
-    )
+    _ROUTE_LABELS = {
+        "spark": "Создам спеку",
+        "spark_bug": "Разберу баг",
+        "architect": "Запущу архитектора",
+        "council": "Соберу консилиум",
+        "bughunt": "Запущу охоту на баги",
+        "reflect": "Запущу рефлексию",
+        "scout": "Отправлю на разведку",
+    }
+    label = _ROUTE_LABELS.get(route, "Обработаю")
+    await update.message.reply_text(f"Принято. {label} на следующем цикле.")
 
 
 def main() -> None:
