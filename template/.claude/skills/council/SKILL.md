@@ -421,6 +421,35 @@ context: "Why Council is needed"
 | rejected | → spark with new approach |
 | needs_human | ⚠️ Blocker — wait for human input |
 
+## Inbox Output (Orchestrator Integration)
+
+After synthesis is complete, create an inbox file for each actionable decision:
+
+```markdown
+# Idea: {timestamp}
+**Source:** council
+**Route:** spark
+**Status:** new
+**Context:** {SESSION_DIR}/synthesis.md
+---
+Council decision: {brief description of decision and recommended actions}
+Votes: {summary of votes}. Confidence: {high/medium/low}.
+Changes required: {list of changes if any}
+```
+
+**Rules:**
+- Create inbox file ONLY if decision = approved or needs_changes
+- Do NOT create inbox file for rejected decisions
+- One inbox file per council session (not per expert)
+- Context field links to full synthesis.md
+- Commit + push after creating inbox file
+
+```bash
+git add ai/.council/ ai/inbox/ 2>/dev/null
+git diff --cached --quiet || git commit -m "docs: council synthesis + inbox"
+git push origin develop 2>/dev/null || true
+```
+
 ## Limits
 
 | Condition | Action |

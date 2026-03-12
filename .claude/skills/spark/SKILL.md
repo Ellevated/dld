@@ -1,11 +1,11 @@
 ---
 name: spark
-description: Feature specification and research agent. Creates specs in ai/features/.
+description: Feature specification and research agent. Multi-agent with 4 scouts. Creates specs in ai/features/.
 ---
 
-# Spark — Idea Generation & Specification
+# Spark v2 — Multi-Agent Specification
 
-Transforms raw ideas into specs via Exa research + structured dialogue.
+Transforms raw ideas into specs via 4 parallel scouts + research + structured dialogue.
 
 **Activation:** `spark`, `spark quick`, `spark deep`
 
@@ -16,21 +16,51 @@ Transforms raw ideas into specs via Exa research + structured dialogue.
 
 **Don't use:** Hotfixes <5 LOC (fix directly), pure refactoring without spec
 
+## v2 Changes
+- **Multi-agent:** 4 scouts (external, codebase, patterns, devil) replace single-agent research
+- **Blueprint constraint:** If `ai/blueprint/system-blueprint/` exists, Spark works WITHIN it
+- **Tests mandatory:** Every spec must have ## Tests section (min 3 test cases)
+- **Blueprint Reference:** New section linking spec to system blueprint
+- **Auto-decide:** Simple features skip human approval
+- **Escalation to Architect:** Technical architecture questions → `/architect`, not human
+- **Upstream reflect:** After spec, write signals to `ai/reflect/upstream-signals.md`
+
 ## Principles
 1. **READ-ONLY MODE** — Spark NEVER modifies files (except creating spec in `ai/features/` and `ai/diary/`)
 2. **AUTO-HANDOFF** — After spec is ready, auto-handoff to autopilot (no manual "plan" step)
-3. **Research-First** — Search Exa + Context7 before designing
+3. **Research-First** — 4 parallel scouts before designing
 4. **AI-First** — Can we solve via prompt change?
-5. **Socratic Dialogue** — Ask 5-7 deep questions before designing
+5. **Socratic Dialogue** — Ask 5-7 deep questions before designing (human-initiated features)
 6. **YAGNI** — Only what's necessary
 7. **Explicit Allowlist** — Spec must list ONLY files that can be modified
 8. **Learn from Corrections** — Auto-capture user corrections to diary
+9. **Blueprint Compliance** — All decisions within System Blueprint constraints
 
 ## Status Ownership
 
 **See CLAUDE.md#Task-Statuses** for canonical status definitions.
 
-**Key point:** Spark owns `queued` status. Plan subagent adds tasks but doesn't change status.
+**Key point:** Spark creates specs in `draft` status. Human approves via Telegram → `queued`.
+Orchestrator manages the `draft → queued` transition. Spark NEVER sets `queued` directly.
+
+---
+
+## Headless Mode
+
+When running from orchestrator (automated pipeline), Spark detects headless context:
+
+**Detection:** prompt contains `[headless]` marker OR `Source: council|qa|architect|bughunt|reflect`
+
+**Behavior in headless mode:**
+- DO NOT ask Socratic clarifying questions — all information is already in the prompt
+- If `Context:` field present — READ the linked document for full context before designing
+- If data is insufficient — make a reasonable decision independently or escalate via `/council`
+- PRESERVE ability to invoke council, scout, and other skills when genuinely needed
+- Create spec in `draft` status (orchestrator handles approval via Telegram)
+
+**Behavior in interactive mode (default):**
+- Normal Socratic dialogue, questions, user interaction
+- Create spec in `draft` status (user approves via Telegram or directly)
 
 ---
 
@@ -42,9 +72,9 @@ Spark operates in three modes:
 |---------|------|-----------|
 | "new feature", "add", "want", "create feature", "create spec", "write specification", "make feature" | **Feature Mode** | `feature-mode.md` |
 | "bug", "error", "crashes", "doesn't work" (simple, <5 files) | **Quick Bug Mode** | `bug-mode.md` |
-| "bug hunt", "deep analysis", complex bug (>5 files), explicit request | **Bug Hunt Mode** | `bug-mode.md` |
+| "bug hunt", "deep analysis", complex bug (>5 files), explicit request | **→ /bughunt** | Redirect to standalone skill |
 
-**Bug mode selection:** Start with Quick. Escalate to Bug Hunt if 5 Whys reveals systemic issues or >5 files affected.
+**Bug mode selection:** Start with Quick Bug. If 5 Whys reveals systemic issues → redirect to `/bughunt` standalone skill.
 
 ## Modules
 

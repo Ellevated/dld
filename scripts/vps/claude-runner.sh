@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # scripts/vps/claude-runner.sh
-# Claude Code CLI wrapper with per-project isolation.
-# Called by run-agent.sh, never directly.
+# DEPRECATED: Legacy bash fallback. Use claude-runner.py (Agent SDK) instead.
+# Kept as fallback if claude-agent-sdk is not installed.
+#
+# Limitation: pipe-to-stdin mode may not reliably trigger Skills.
+# The Agent SDK (claude-runner.py) is the correct approach.
 set -euo pipefail
+
+echo "[claude-runner.sh] WARNING: using legacy bash runner. Install claude-agent-sdk for Skill support." >&2
 
 PROJECT_DIR="${1:?Missing project_dir}"
 TASK="${2:?Missing task}"
@@ -11,35 +16,29 @@ SKILL="${3:-autopilot}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_BIN="${CLAUDE_PATH:-claude}"
 
-# Per-project config dir (prevents cross-session contamination — DA-9)
-CONFIG_DIR="${PROJECT_DIR}/.claude-config"
-mkdir -p "$CONFIG_DIR"
+unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT 2>/dev/null || true
+cd "$PROJECT_DIR"
 
-# Export env vars for Claude and DLD hooks
-export CLAUDE_CODE_CONFIG_DIR="$CONFIG_DIR"
-export CLAUDE_PROJECT_DIR="$PROJECT_DIR"
-export PROJECT_DIR="$PROJECT_DIR"
+if [[ "$TASK" == /* ]]; then
+    PROMPT="$TASK"
+else
+    PROMPT="/${SKILL} ${TASK}"
+fi
 
-# Build command based on skill
-PROMPT="/${SKILL} ${TASK}"
+LOG_DIR="${SCRIPT_DIR}/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/$(basename "$PROJECT_DIR")-$(date '+%Y%m%d-%H%M%S').log"
 
-# Structured JSON output, bounded turns
-# flock serializes OAuth refresh across concurrent sessions (#27933)
-# --timeout 120: wait up to 2min for lock, then proceed without (better than deadlock)
-# set +e: prevent set -euo pipefail from terminating on non-zero exit (timeout/claude)
 set +e
-flock --timeout 120 /tmp/claude-oauth.lock \
-    timeout 900 "$CLAUDE_BIN" \
-    --print \
-    --output-format json \
-    --max-turns 30 \
-    --verbose \
+timeout 1800 "$CLAUDE_BIN" \
     -p "$PROMPT" \
-    2>&1
-EXIT_CODE=$?
+    --dangerously-skip-permissions \
+    --max-turns 30 \
+    --output-format stream-json \
+    2>&1 | tee -a "$LOG_FILE"
+EXIT_CODE=${PIPESTATUS[0]}
 set -e
 
-# Output structured result via jq to prevent JSON injection from TASK/SKILL values
 jq -n \
     --arg exit_code "$EXIT_CODE" \
     --arg project "$(basename "$PROJECT_DIR")" \

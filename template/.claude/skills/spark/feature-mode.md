@@ -93,7 +93,17 @@ Minimum viable spec: user dialogue (Phase 1) + 2 scout reports.
 
 ## Phase 1: COLLECT (Socratic Dialogue)
 
-Two modes depending on feature origin:
+Three modes depending on feature origin:
+
+### Mode H: Headless (Orchestrator-Initiated)
+
+Detected by `[headless]` marker or `Source:` field in prompt.
+All information is already provided — DO NOT ask questions.
+
+1. Read the prompt content as the complete problem statement
+2. If `Context:` field present — Read the linked document
+3. Extract problem statement, proceed directly to Phase 2
+4. State.json: collect = done
 
 ### Mode A: Human-Initiated
 
@@ -297,7 +307,7 @@ Write spec using selected approach from Phase 4:
 
 ```markdown
 # Feature: [FTR-XXX] Title
-**Status:** queued | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
+**Status:** draft | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
 
 ## Why
 [Problem statement from Socratic Dialogue]

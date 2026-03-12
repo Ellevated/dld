@@ -83,17 +83,17 @@ else
     INBOX_DIR="${PROJECT_DIR}/ai/inbox"
     mkdir -p "$INBOX_DIR"
 
-    # Write QA failure as new inbox item (orchestrator will pick it up next cycle)
+    # Write QA failure as new inbox item (standardized format with Context)
+    SPEC_REL="${SPEC_FILE#${PROJECT_DIR}/}"
     cat > "${INBOX_DIR}/${TIMESTAMP}-qa-fail.md" << EOF
 # Idea: ${TIMESTAMP}
-**Source:** qa-dispatch
+**Source:** qa
 **Route:** spark_bug
 **Status:** new
+**Context:** ${SPEC_REL}
 ---
 QA failed for ${SPEC_ID}. Exit code: ${QA_EXIT}.
-
 Please investigate and fix the issues found during QA.
-Spec: ${SPEC_FILE}
 EOF
 
     python3 "${SCRIPT_DIR}/notify.py" "$PROJECT_ID" "QA FAILED for ${SPEC_ID}. Bugs written to inbox." 2>/dev/null || true

@@ -110,3 +110,33 @@ ai/blueprint/system-blueprint/
 Greenfield → Next: /spark for features (within blueprint constraints)
 Retrofit   → Next: /board for business strategy (with architecture context)
 ```
+
+---
+
+## Inbox Output (Orchestrator Integration)
+
+After blueprint is written, create inbox file(s) for each actionable architecture decision:
+
+```markdown
+# Idea: {timestamp}
+**Source:** architect
+**Route:** spark
+**Status:** new
+**Context:** ai/architect/{session}.md
+---
+Architecture decision: {brief description of task for implementation}
+Domain: {affected domain}
+Priority: {P0/P1/P2}
+```
+
+**Rules:**
+- One inbox file per actionable decision (not one for entire session)
+- Only create for decisions that need implementation (not documentation-only)
+- Context links to the full architect session document
+- Commit + push after creating inbox files
+
+```bash
+git add ai/blueprint/ ai/architect/ ai/inbox/ 2>/dev/null
+git diff --cached --quiet || git commit -m "docs: architect blueprint + inbox"
+git push origin develop 2>/dev/null || true
+```

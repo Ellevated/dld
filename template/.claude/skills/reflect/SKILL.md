@@ -103,72 +103,53 @@ Compare entries with CLAUDE.md:
 - Rule helped? -> Keep
 - Rule outdated? -> Update or remove
 
-### Step 5: Create Spec (NOT direct edits!)
+### Step 5: Write to Inbox (NOT direct spec creation!)
 
-**CRITICAL:** Never edit CLAUDE.md directly! Create spec.
+**CRITICAL:** Reflect does NOT create TECH specs directly. It writes findings to inbox.
+Spark will create specs from reflect findings.
 
-**Location:** `ai/features/TECH-NNN-YYYY-MM-DD-reflect-synthesis.md`
+For each pattern found (frequency >= 3):
+
+**Location:** `ai/inbox/{timestamp}-reflect-{N}.md`
 
 **Format:**
-
 ```markdown
-# TECH-NNN: Reflect Diary Synthesis — [Month Year]
-
-**Status:** queued | **Priority:** P2 | **Date:** YYYY-MM-DD
-
-## Context
-- Entries analyzed: [list from index.md]
-- Period: [date range]
-
-## Findings
-
-### Patterns Found (threshold 2+ = MUST add)
-| Pattern | Frequency | Source | Action |
-
-### Anti-Patterns Found
-| Anti-Pattern | Frequency | Source | Action |
-
-### User Preferences Found
-| Preference | Frequency | Source | Action |
-
-## Proposed Changes
-
-### 1. CLAUDE.md — [Section]
-**Pattern:** {what we found in diary}
-**Frequency:** {N occurrences}
-**Exa Research:** {what external sources say}
-**Source:** {URL}
-**Add/Update:**
-```markdown
-[exact content to add]
+# Idea: {timestamp}
+**Source:** reflect
+**Route:** spark
+**Status:** new
+**Context:** ai/diary/index.md
+---
+Reflect finding: {description of pattern and recommendation}
+Frequency: {N} occurrences. Evidence: {task_ids}.
+Pattern type: {user_preference | failure_pattern | design_decision | tool_workflow}
+Proposed action: {what should change}
 ```
 
-## Allowed Files
-| File | Change Type |
-|------|-------------|
-| `CLAUDE.md` | Update |
-| `.claude/rules/*.md` | Update (if needed) |
+**Rules:**
+- Only patterns with frequency >= 3 get inbox files
+- Patterns with frequency 2 are noted in diary but NOT sent to inbox
+- Max 5 inbox files per reflect session (prioritize by frequency)
+- One inbox file per pattern (not per diary entry)
+- Context links to diary index for full evidence
 
-## Definition of Done
-- [ ] `skill-creator` applied changes
-- [ ] CLAUDE.md < 200 lines after changes
-- [ ] Diary entries marked as done in index.md
+### Step 5.5: Commit + Push
 
-## Integration
-
-**What `/skill-creator` does with reflect output:**
-1. Reads the reflect spec (proposed changes)
-2. Applies changes to CLAUDE.md and .claude/rules/
-3. Validates CLAUDE.md stays under 200 lines
-4. Creates a commit with the integrated changes
-
-**Next step:** Run `/skill-creator` with this spec as input.
-
-## After Integration
-Update diary entries status in index.md:
 ```bash
-# For each processed entry, change status from pending to done
+git add ai/diary/ ai/inbox/ ai/reflect/ 2>/dev/null
+git diff --cached --quiet || git commit -m "docs: reflect synthesis + inbox findings"
+git push origin develop 2>/dev/null || true
 ```
+
+### Step 5.6: Mark Processed
+
+1. Append processed entry IDs to dedup log:
+```bash
+echo "{TASK_ID}" >> ai/diary/.processed.log
+```
+2. Update timestamp:
+```bash
+date +%s > ai/diary/.last_reflect
 ```
 
 ### Step 6: Output
@@ -176,10 +157,10 @@ Update diary entries status in index.md:
 ```yaml
 entries_analyzed: N
 patterns_found:
-  - "Pattern 1"
-  - "Pattern 2"
-spec_created: ai/features/TECH-NNN-....md
-next_action: "Run /skill-creator — it will apply proposed changes to CLAUDE.md and rules"
+  - "Pattern 1 (frequency: N)"
+  - "Pattern 2 (frequency: N)"
+inbox_files_created: M
+next_action: "Orchestrator will dispatch Spark for each finding"
 ```
 
 ---
@@ -188,32 +169,10 @@ next_action: "Run /skill-creator — it will apply proposed changes to CLAUDE.md
 
 | Wrong | Correct |
 |-------|---------|
-| Edit CLAUDE.md directly | Create spec -> skill-creator |
-| Edit .claude/rules directly | Create spec -> skill-creator |
-| Mark entries done before integration | Mark after skill-creator |
-
----
-
-## After skill-creator
-
-1. Open `ai/diary/index.md`
-2. For each processed entry change status: `pending` -> `done`
-3. Append processed entry IDs to dedup log:
-
-```bash
-# Append each processed TASK_ID to prevent re-processing
-echo "{TASK_ID_1}" >> ai/diary/.processed.log
-echo "{TASK_ID_2}" >> ai/diary/.processed.log
-```
-
-4. Update timestamp:
-
-```bash
-date +%s > ai/diary/.last_reflect
-```
-
-5. **Optional:** If `ai/diary/{ID}-state.json` files exist for processed entries,
-   read them for rich telemetry (retries, timing, step outcomes) to strengthen pattern analysis.
+| Create TECH spec directly | Write to inbox -> Spark creates spec |
+| Edit CLAUDE.md directly | Write to inbox -> Spark -> skill-creator |
+| Mark entries done immediately | Mark after Spark processes findings |
+| Write all patterns to inbox | Only frequency >= 3, max 5 files |
 
 ---
 
@@ -224,6 +183,6 @@ Before completing reflect:
 - [ ] All pending entries analyzed
 - [ ] Exa research performed for patterns with frequency >= 2
 - [ ] Patterns counted correctly (frequency threshold)
-- [ ] Spec created (not direct edits)
-- [ ] Spec contains "Proposed Changes" section with Exa sources
-- [ ] Next action = "run skill-creator"
+- [ ] Findings written to inbox (not direct spec/edits)
+- [ ] Commit + push performed
+- [ ] Processed entries appended to .processed.log

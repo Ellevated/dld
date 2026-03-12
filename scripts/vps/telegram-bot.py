@@ -30,14 +30,18 @@ import db
 from admin_handler import cmd_nexussync, create_addproject_handler
 from approve_handler import (
     handle_approve_all,
-    handle_confirm_spec,
     handle_finding_approve,
     handle_finding_reject,
     handle_launch_review,
     handle_project_toggle,
     handle_reject_all,
+    handle_rework_comment,
+    handle_spec_approve,
+    handle_spec_reject,
+    handle_spec_rework,
     register_evening_job,
 )
+from photo_handler import handle_photo
 from voice_handler import handle_voice
 
 load_dotenv(Path(__file__).parent / ".env")
@@ -352,11 +356,63 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text(f"Resume failed: {e}")
 
 
+HEAVY_ROUTES = {"architect", "council", "bughunt"}
+# In-memory pending heavy skill confirmations: key=msg_hash → {project, text, route, ts}
+_pending_heavy: dict[str, dict] = {}
+
+
+def _msg_hash(text: str) -> str:
+    import hashlib
+    return hashlib.md5(text.encode()).hexdigest()[:12]
+
+
+async def handle_confirm_heavy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Callback for heavy skill confirmation: Да / Нет / → Spark."""
+    query = update.callback_query
+    await query.answer()
+    parts = query.data.split(":", 3)  # confirm_heavy:{action}:{project_id}:{msg_hash}
+    action, project_id, msg_hash = parts[1], parts[2], parts[3]
+
+    pending = _pending_heavy.pop(msg_hash, None)
+    if not pending:
+        await query.edit_message_text("Confirmation expired (1 hour TTL).")
+        return
+
+    project = db.get_project_state(project_id)
+    if not project:
+        await query.edit_message_text(f"Project {project_id} not found.")
+        return
+
+    if action == "yes":
+        _save_to_inbox(project, pending["text"])
+        await query.edit_message_text(
+            f"Confirmed. `{pending['route']}` saved to inbox.", parse_mode="Markdown"
+        )
+    elif action == "spark":
+        # Override route: save as spark instead
+        inbox_dir = Path(project["path"]) / "ai" / "inbox"
+        inbox_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        filepath = inbox_dir / f"{ts}-telegram.md"
+        filepath.write_text(
+            f"# Idea: {ts}\n**Source:** telegram\n**Route:** spark\n**Status:** new\n---\n{pending['text']}\n",
+            encoding="utf-8",
+        )
+        await query.edit_message_text("Redirected to `spark`.", parse_mode="Markdown")
+    else:  # no
+        await query.edit_message_text("Cancelled.")
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update.effective_user.id):
         return
     topic_id = get_topic_id(update)
     if not topic_id:
+        return
+    # Check for pending rework comment first
+    pending_key = f"rework_pending:{topic_id}"
+    if context.bot_data.get(pending_key):
+        await handle_rework_comment(update, context)
         return
     project = db.get_project_by_topic(topic_id)
     if not project:
@@ -364,8 +420,38 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     text = update.message.text
     if not text or text.startswith("/"):
         return
-    _save_to_inbox(project, text)
     route = detect_route(text)
+
+    # Heavy skills require confirmation
+    if route in HEAVY_ROUTES:
+        h = _msg_hash(text)
+        _pending_heavy[h] = {
+            "project_id": project["project_id"],
+            "text": text,
+            "route": route,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        # Cleanup old entries (TTL 1 hour)
+        cutoff = datetime.now(timezone.utc).timestamp() - 3600
+        expired = [k for k, v in _pending_heavy.items()
+                   if datetime.fromisoformat(v["ts"]).timestamp() < cutoff]
+        for k in expired:
+            del _pending_heavy[k]
+
+        pid = project["project_id"]
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Да \u2705", callback_data=f"confirm_heavy:yes:{pid}:{h}"),
+            InlineKeyboardButton("Нет \u274c", callback_data=f"confirm_heavy:no:{pid}:{h}"),
+            InlineKeyboardButton("\u2192 Spark", callback_data=f"confirm_heavy:spark:{pid}:{h}"),
+        ]])
+        await update.message.reply_text(
+            f"Запустить *{route}* для *{pid}*? Это тяжёлый skill.",
+            reply_markup=keyboard,
+            parse_mode="Markdown",
+        )
+        return
+
+    _save_to_inbox(project, text)
     await update.message.reply_text(
         f"Saved to inbox (route: `{route}`).\nOrchestrator will process on next cycle.",
         parse_mode="Markdown",
@@ -388,10 +474,14 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(handle_finding_reject, pattern=r"^reject_finding:"))
     application.add_handler(CallbackQueryHandler(handle_approve_all, pattern=r"^approve_all:"))
     application.add_handler(CallbackQueryHandler(handle_reject_all, pattern=r"^reject_all:"))
-    application.add_handler(CallbackQueryHandler(handle_confirm_spec, pattern=r"^confirm_spec:"))
+    application.add_handler(CallbackQueryHandler(handle_spec_approve, pattern=r"^spec_approve:"))
+    application.add_handler(CallbackQueryHandler(handle_spec_rework, pattern=r"^spec_rework:"))
+    application.add_handler(CallbackQueryHandler(handle_spec_reject, pattern=r"^spec_reject:"))
+    application.add_handler(CallbackQueryHandler(handle_confirm_heavy, pattern=r"^confirm_heavy:"))
     application.add_handler(CallbackQueryHandler(handle_approve, pattern=r"^approve:"))
     application.add_handler(CallbackQueryHandler(handle_cancel, pattern=r"^cancel:"))
     application.add_handler(MessageHandler(filters.VOICE & filters.ChatType.SUPERGROUP, handle_voice))
+    application.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.SUPERGROUP, handle_photo))
     # fmt: on
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     register_evening_job(application)

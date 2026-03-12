@@ -3,13 +3,15 @@
 # Pueue completion callback: release compute slot + update DB + notify Telegram.
 #
 # Called by Pueue daemon via pueue.yml callback config:
-#   callback: "/path/to/pueue-callback.sh {{ id }} '{{ label }}' '{{ group }}' '{{ result }}'"
+#   callback: "/path/to/pueue-callback.sh {{ id }} '{{ group }}' '{{ result }}'"
 #
 # Pueue template variables (v4.0+):
 #   {{ id }}     — numeric pueue task id
-#   {{ label }}  — task label set at submission (format: "project_id:SPEC-ID")
-#   {{ group }}  — pueue group (claude-runner or codex-runner)
+#   {{ group }}  — pueue group (claude-runner, codex-runner, gemini-runner)
 #   {{ result }} — result string (Success, Failed, Killed, Errored(N), etc.)
+#
+# NOTE: {{ label }} is NOT available in Pueue v4.0.4 callback templates.
+# Label is resolved at runtime via `pueue status --json`.
 #
 # Design notes:
 #   DA-8 / SA-2: slot is ALWAYS released, regardless of exit code or any error.
@@ -26,9 +28,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Args
 # ---------------------------------------------------------------------------
 PUEUE_ID="${1:?Missing pueue task id}"
-LABEL="${2:-unknown}"
-GROUP="${3:-unknown}"
-RESULT="${4:-unknown}"
+GROUP="${2:-unknown}"
+RESULT="${3:-unknown}"
+
+# Resolve label from pueue status (not available as callback template var in v4.0.4)
+LABEL=$(pueue status --json 2>/dev/null | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+task = data.get('tasks', {}).get('$PUEUE_ID', {})
+print(task.get('label', 'unknown'))
+" 2>/dev/null || echo "unknown")
 
 # ---------------------------------------------------------------------------
 # Environment
@@ -111,6 +120,42 @@ if [[ -f "$NOTIFY_PY" ]]; then
     }
 else
     echo "[callback] WARN: notify.py not found at ${NOTIFY_PY} — skipping Telegram notification" >&2
+fi
+
+# ---------------------------------------------------------------------------
+# Step 7: Post-autopilot — dispatch QA + Reflect (FTR-149)
+# Only after successful autopilot completion.
+# Non-blocking: submitted to pueue, orchestrator tracks via phase.
+# ---------------------------------------------------------------------------
+if [[ "$STATUS" == "done" && "$GROUP" == *"claude"* ]]; then
+    # Resolve project path from DB
+    PROJECT_PATH=$(python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+state = db.get_project_state('${PROJECT_ID}')
+print(state['path'] if state else '')
+" 2>/dev/null || true)
+
+    if [[ -n "$PROJECT_PATH" ]]; then
+        # Dispatch QA
+        pueue add --group "${PROJECT_ID}" --label "${PROJECT_ID}:qa-${TASK_LABEL}" \
+            -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "claude" "qa" \
+            "/qa Проверь изменения после ${TASK_LABEL}" 2>/dev/null && {
+            echo "[callback] QA dispatched for ${PROJECT_ID}:${TASK_LABEL}"
+        } || {
+            echo "[callback] WARN: QA dispatch failed for ${PROJECT_ID}" >&2
+        }
+
+        # Dispatch Reflect
+        pueue add --group "${PROJECT_ID}" --label "${PROJECT_ID}:reflect-${TASK_LABEL}" \
+            -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "claude" "reflect" \
+            "/reflect" 2>/dev/null && {
+            echo "[callback] Reflect dispatched for ${PROJECT_ID}:${TASK_LABEL}"
+        } || {
+            echo "[callback] WARN: Reflect dispatch failed for ${PROJECT_ID}" >&2
+        }
+    fi
 fi
 
 echo "[callback] done pueue_id=${PUEUE_ID} project=${PROJECT_ID} task=${TASK_LABEL} status=${STATUS}"

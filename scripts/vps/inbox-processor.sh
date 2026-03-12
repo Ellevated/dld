@@ -55,12 +55,17 @@ fi
 ROUTE=$(grep -oE '^\*\*Route:\*\* [^ ]+' "$INBOX_FILE" 2>/dev/null | sed 's/\*\*Route:\*\* //' || echo "spark")
 ROUTE="${ROUTE:-spark}"
 
+SOURCE=$(grep -oE '^\*\*Source:\*\* [^ ]+' "$INBOX_FILE" 2>/dev/null | sed 's/\*\*Source:\*\* //' || echo "telegram")
+
+# Context: optional link to detailed document (synthesis.md, report.md, spec file)
+CONTEXT=$(grep -oE '^\*\*Context:\*\* .+' "$INBOX_FILE" 2>/dev/null | sed 's/\*\*Context:\*\* //' || true)
+
 # Idea text: everything after the --- separator, limited to 50 lines
 IDEA_TEXT=$(sed -n '/^---$/,$ { /^---$/d; p; }' "$INBOX_FILE" 2>/dev/null | head -50 | tr '\n' ' ' | xargs)
 
 # Fallback: if no separator, use entire file body (skip metadata header lines)
 if [[ -z "$IDEA_TEXT" ]]; then
-    IDEA_TEXT=$(grep -vE '^\*\*(Source|Route|Status):\*\*|^#' "$INBOX_FILE" | head -20 | tr '\n' ' ' | xargs)
+    IDEA_TEXT=$(grep -vE '^\*\*(Source|Route|Status|Context):\*\*|^#' "$INBOX_FILE" | head -20 | tr '\n' ' ' | xargs)
 fi
 
 echo "[inbox] route=${ROUTE} project=${PROJECT_ID} file=$(basename "$INBOX_FILE")"
@@ -68,31 +73,40 @@ echo "[inbox] route=${ROUTE} project=${PROJECT_ID} file=$(basename "$INBOX_FILE"
 # ---------------------------------------------------------------------------
 # Map route → skill + Claude command
 # ---------------------------------------------------------------------------
+# Build headless context prefix for automated sources (non-telegram)
+HEADLESS_PREFIX=""
+if [[ "$SOURCE" != "telegram" && "$SOURCE" != "human" ]]; then
+    HEADLESS_PREFIX="[headless] Source: ${SOURCE}. "
+fi
+if [[ -n "$CONTEXT" ]]; then
+    HEADLESS_PREFIX="${HEADLESS_PREFIX}Context: ${CONTEXT}. "
+fi
+
 case "$ROUTE" in
     spark)
         SKILL="spark"
-        TASK_CMD="/spark ${IDEA_TEXT}"
+        TASK_CMD="/spark ${HEADLESS_PREFIX}${IDEA_TEXT}"
         ;;
     architect)
         SKILL="architect"
-        TASK_CMD="/architect ${IDEA_TEXT}"
+        TASK_CMD="/architect ${HEADLESS_PREFIX}${IDEA_TEXT}"
         ;;
     council)
         SKILL="council"
-        TASK_CMD="/council ${IDEA_TEXT}"
+        TASK_CMD="/council ${HEADLESS_PREFIX}${IDEA_TEXT}"
         ;;
     spark_bug)
         SKILL="spark"
-        TASK_CMD="/spark ${IDEA_TEXT}"
+        TASK_CMD="/spark ${HEADLESS_PREFIX}${IDEA_TEXT}"
         ;;
     bughunt)
-        SKILL="spark"
-        TASK_CMD="/spark bug hunt ${IDEA_TEXT}"
+        SKILL="bughunt"
+        TASK_CMD="/bughunt ${HEADLESS_PREFIX}${IDEA_TEXT}"
         ;;
     *)
         echo "[inbox] Unknown route '${ROUTE}', defaulting to spark" >&2
         SKILL="spark"
-        TASK_CMD="/spark ${IDEA_TEXT}"
+        TASK_CMD="/spark ${HEADLESS_PREFIX}${IDEA_TEXT}"
         ;;
 esac
 

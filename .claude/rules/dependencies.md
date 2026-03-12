@@ -190,6 +190,7 @@ Dependency map between project components.
 | pueue CLI | PATH | pueue status --json, pueue add --group, pueue pause --group, pueue start --group |
 | run-agent.sh | scripts/vps/run-agent.sh | invoked via pueue add for autopilot dispatch |
 | python-telegram-bot v21.9+ | pip | Application, CommandHandler, MessageHandler, CallbackQueryHandler, InlineKeyboardMarkup |
+| photo_handler.py | scripts/vps/photo_handler.py | handle_photo — PHOTO MessageHandler |
 
 ### Used by (←)
 
@@ -383,6 +384,29 @@ Dependency map between project components.
 
 ---
 
+## scripts/vps/photo_handler.py
+
+**Path:** `scripts/vps/photo_handler.py`
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| db.py | scripts/vps/db.py | get_project_by_topic() |
+| telegram-bot.py | scripts/vps/telegram-bot.py (via sys.modules) | is_authorized(), get_topic_id(), detect_route() |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| telegram-bot.py | scripts/vps/telegram-bot.py:44,406 | handle_photo registered as PHOTO & SUPERGROUP MessageHandler |
+
+### When changing API, check
+
+- [ ] telegram-bot.py (handle_photo import at line 44, handler at line 406)
+
+---
+
 ## scripts/vps/voice_handler.py
 
 **Path:** `scripts/vps/voice_handler.py`
@@ -526,3 +550,4 @@ Dependency map between project components.
 | 2026-03-10 | Added night-reviewer.sh + dispatch_night_review() in orchestrator.sh (FTR-147 Task 4) | coder |
 | 2026-03-10 | Added approve_handler.py + evening prompt + approve/reject handlers (FTR-147 Task 5) | coder |
 | 2026-03-10 | Added gemini-runner.sh, admin_handler.py, nexus-cache-refresh.sh (FTR-148) | coder |
+| 2026-03-12 | Added photo_handler.py + registered PHOTO handler in telegram-bot.py | coder |

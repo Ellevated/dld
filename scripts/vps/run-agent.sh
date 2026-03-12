@@ -45,7 +45,10 @@ fi
 # Dispatch to provider-specific runner
 case "$PROVIDER" in
     claude)
-        exec "${SCRIPT_DIR}/claude-runner.sh" "$PROJECT_DIR" "$TASK" "$SKILL"
+        # Agent SDK (Python) — native Skill support, structured output
+        VENV_PY="${SCRIPT_DIR}/venv/bin/python3"
+        [[ -x "$VENV_PY" ]] || { echo '{"error":"venv python not found"}' >&2; exit 1; }
+        exec "$VENV_PY" "${SCRIPT_DIR}/claude-runner.py" "$PROJECT_DIR" "$TASK" "$SKILL"
         ;;
     codex)
         exec "${SCRIPT_DIR}/codex-runner.sh" "$PROJECT_DIR" "$TASK" "$SKILL"

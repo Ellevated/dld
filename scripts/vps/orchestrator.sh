@@ -218,13 +218,6 @@ print(db.get_available_slots('${task_provider}'))
         fi
     fi
 
-    # Read Nexus cache for deploy rules (non-blocking, stale cache OK)
-    local nexus_ctx
-    nexus_ctx=$(cat "/var/dld/nexus-cache/${project_id}.json" 2>/dev/null || echo "{}")
-    if [[ "$nexus_ctx" != "{}" ]]; then
-        log_json "info" "nexus cache loaded" "project" "$project_id"
-    fi
-
     # Submit autopilot task to Pueue
     local task_label="${project_id}:${spec_id}"
     local pueue_group="${provider}-runner"
@@ -327,7 +320,105 @@ print(state['current_task'] if state and state['current_task'] else '')
 }
 
 # ---------------------------------------------------------------------------
-# Process a single project (all four steps)
+# Dispatch reflect after autopilot (parallel with QA)
+# ---------------------------------------------------------------------------
+
+dispatch_reflect() {
+    local project_id="$1" project_dir="$2"
+
+    local phase
+    phase=$(python3 -c "
+import sys; sys.path.insert(0, '${SCRIPT_DIR}'); import db
+s = db.get_project_state('${project_id}')
+print(s['phase'] if s else '')
+" 2>/dev/null || true)
+
+    # Reflect runs in parallel with QA on qa_pending or qa_running phase
+    [[ "$phase" != "qa_pending" && "$phase" != "qa_running" ]] && return
+
+    # Check if diary has enough pending entries (min 3 for reflect)
+    local diary_index="${project_dir}/ai/diary/index.md"
+    [[ ! -f "$diary_index" ]] && return
+
+    local pending_count
+    pending_count=$(grep -c '| pending |' "$diary_index" 2>/dev/null || echo "0")
+    (( pending_count < 3 )) && return
+
+    local provider
+    provider=$(python3 -c "
+import sys; sys.path.insert(0, '${SCRIPT_DIR}'); import db
+s = db.get_project_state('${project_id}')
+print(s['provider'] if s else 'claude')
+" 2>/dev/null || echo "claude")
+
+    local pueue_group="${provider}-runner"
+    local task_label="${project_id}:reflect-$(date '+%Y%m%d')"
+
+    log_json "info" "dispatching reflect" "project" "$project_id" "pending" "$pending_count"
+
+    pueue add --group "$pueue_group" --label "$task_label" \
+        -- "${SCRIPT_DIR}/run-agent.sh" "$project_dir" "$provider" "reflect" "/reflect" 2>/dev/null || {
+        log_json "warn" "reflect dispatch failed" "project" "$project_id"
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Scan backlog for draft specs and send Telegram approval notifications
+# ---------------------------------------------------------------------------
+
+scan_drafts() {
+    local project_id="$1" project_dir="$2"
+    local backlog="${project_dir}/ai/backlog.md"
+
+    [[ ! -f "$backlog" ]] && return
+
+    # Find all draft spec IDs
+    local draft_ids
+    draft_ids=$(grep -E '\|\s*draft\s*\|' "$backlog" 2>/dev/null | \
+                grep -oE '(TECH|FTR|BUG|ARCH)-[0-9]+' || true)
+
+    [[ -z "$draft_ids" ]] && return
+
+    # Track which drafts we've already notified about (avoid spam)
+    local notified_file="${SCRIPT_DIR}/.notified-drafts-${project_id}"
+    touch "$notified_file"
+
+    while IFS= read -r spec_id; do
+        [[ -z "$spec_id" ]] && continue
+
+        # Skip if already notified
+        if grep -qF "$spec_id" "$notified_file" 2>/dev/null; then
+            continue
+        fi
+
+        # Find spec file
+        local spec_file
+        spec_file=$(find "${project_dir}/ai/features/" -name "${spec_id}*" -type f 2>/dev/null | head -1 || true)
+        [[ -z "$spec_file" ]] && continue
+
+        # Extract title and problem from spec
+        local title problem tasks_count
+        title=$(grep -m1 '^# ' "$spec_file" 2>/dev/null | sed 's/^# //' | head -c 100 || echo "$spec_id")
+        problem=$(grep -A1 '^## Why' "$spec_file" 2>/dev/null | tail -1 | head -c 150 || echo "—")
+        tasks_count=$(grep -c '^### Task' "$spec_file" 2>/dev/null || echo "0")
+
+        log_json "info" "sending draft approval" "project" "$project_id" "spec" "$spec_id"
+
+        # Send approval notification via notify.py
+        python3 "${SCRIPT_DIR}/notify.py" --spec-approval \
+            "$project_id" "$spec_id" "$title" "$problem" "$tasks_count" 2>/dev/null && {
+            # Mark as notified
+            echo "$spec_id" >> "$notified_file"
+            log_json "info" "draft notification sent" "project" "$project_id" "spec" "$spec_id"
+        } || {
+            log_json "error" "draft notification failed" "project" "$project_id" "spec" "$spec_id"
+        }
+
+    done <<< "$draft_ids"
+}
+
+# ---------------------------------------------------------------------------
+# Process a single project (all steps)
 # ---------------------------------------------------------------------------
 
 process_project() {
@@ -341,11 +432,17 @@ process_project() {
     # Step 2: scan inbox
     scan_inbox "$project_id" "$project_dir"
 
-    # Step 3: scan backlog for queued specs
+    # Step 3: scan backlog for draft specs → send approval notifications
+    scan_drafts "$project_id" "$project_dir"
+
+    # Step 4: scan backlog for queued specs → submit to autopilot
     scan_backlog "$project_id" "$project_dir"
 
-    # Step 4: dispatch QA if phase=qa_pending
+    # Step 5: dispatch QA if phase=qa_pending
     dispatch_qa "$project_id" "$project_dir"
+
+    # Step 6: dispatch reflect (parallel with QA, needs 3+ diary entries)
+    dispatch_reflect "$project_id" "$project_dir"
 }
 
 # ---------------------------------------------------------------------------
