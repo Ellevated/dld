@@ -137,7 +137,7 @@ async def handle_finding_approve(update: Update, context: ContextTypes.DEFAULT_T
         project = db.get_project_state(finding["project_id"])
         if project:
             _write_finding_to_inbox(project, finding)
-    await query.edit_message_text(f"Approved finding #{finding_id}")
+    await query.edit_message_text(f"Находка #{finding_id} принята")
 
 
 async def handle_finding_reject(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -146,7 +146,7 @@ async def handle_finding_reject(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     finding_id = int(query.data.split(":", 1)[1])
     db.update_finding_status(finding_id, "rejected")
-    await query.edit_message_text(f"Rejected finding #{finding_id}")
+    await query.edit_message_text(f"Находка #{finding_id} отклонена")
 
 
 async def handle_approve_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -160,7 +160,7 @@ async def handle_approve_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
         db.update_finding_status(f["id"], "approved")
         if project:
             _write_finding_to_inbox(project, f)
-    await query.edit_message_text(f"All approved ({len(findings)} findings)")
+    await query.edit_message_text(f"Все приняты ({len(findings)} находок)")
 
 
 async def handle_reject_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -171,7 +171,7 @@ async def handle_reject_all(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     findings = db.get_all_findings(project_id, status="sent")
     for f in findings:
         db.update_finding_status(f["id"], "rejected")
-    await query.edit_message_text(f"All rejected ({len(findings)} findings)")
+    await query.edit_message_text(f"Все отклонены ({len(findings)} находок)")
 
 
 # ---------------------------------------------------------------------------
@@ -248,9 +248,9 @@ async def handle_spec_approve(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     ok = _update_spec_status(project["path"], spec_id, "queued")
     if ok:
-        await query.edit_message_text(f"\u2705 {spec_id} approved → queued")
+        await query.edit_message_text(f"\u2705 {spec_id} принята → в очередь")
     else:
-        await query.edit_message_text(f"Failed to approve {spec_id}")
+        await query.edit_message_text(f"Не удалось обновить статус {spec_id}")
 
 
 async def handle_spec_rework(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -269,7 +269,7 @@ async def handle_spec_rework(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if project:
             _update_spec_status(project["path"], spec_id, "blocked")
         await query.edit_message_text(
-            f"\u26a0\ufe0f {spec_id}: max {MAX_REWORK_ITERATIONS} rework iterations reached → blocked"
+            f"\u26a0\ufe0f {spec_id}: лимит доработок ({MAX_REWORK_ITERATIONS}) исчерпан → заблокирована"
         )
         return
 
@@ -279,7 +279,7 @@ async def handle_spec_rework(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "spec_id": spec_id,
     }
     await query.edit_message_text(
-        f"\u270f\ufe0f {spec_id}: напишите комментарий что доработать (ответ в этот топик):"
+        f"\u270f\ufe0f {spec_id}: напиши что доработать (ответом в этот топик):"
     )
 
 
@@ -329,7 +329,7 @@ async def handle_rework_comment(update: Update, context: ContextTypes.DEFAULT_TY
         encoding="utf-8",
     )
     await update.message.reply_text(
-        f"Rework request saved for {spec_id}. Spark will re-process on next cycle."
+        f"Замечание сохранено. Spark доработает {spec_id} в следующем цикле."
     )
 
 
@@ -344,6 +344,6 @@ async def handle_spec_reject(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     ok = _update_spec_status(project["path"], spec_id, "rejected")
     if ok:
-        await query.edit_message_text(f"\u274c {spec_id} rejected")
+        await query.edit_message_text(f"\u274c {spec_id} отклонена")
     else:
-        await query.edit_message_text(f"Failed to reject {spec_id}")
+        await query.edit_message_text(f"Не удалось отклонить {spec_id}")

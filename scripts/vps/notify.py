@@ -100,9 +100,9 @@ async def send_spec_approval(
     )
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("\u2705 Approve", callback_data=f"spec_approve:{project_id}:{spec_id}"),
+            InlineKeyboardButton("\u2705 В работу", callback_data=f"spec_approve:{project_id}:{spec_id}"),
             InlineKeyboardButton("\u270f\ufe0f Доработать", callback_data=f"spec_rework:{project_id}:{spec_id}"),
-            InlineKeyboardButton("\u274c Отмена", callback_data=f"spec_reject:{project_id}:{spec_id}"),
+            InlineKeyboardButton("\u274c Отклонить", callback_data=f"spec_reject:{project_id}:{spec_id}"),
         ]
     ])
 
