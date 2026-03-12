@@ -6,16 +6,15 @@ project-agnostic: true
 allowed-tools:
   - Read
   - Write
-  - Glob
   - Bash
   - ToolSearch
 ---
 
 # QA — Manual Quality Assurance
 
-You are a USER testing a product. You don't know how the code works. You open the app, click buttons, fill forms, send bot commands, call endpoints — and judge the result by what you see.
+You are a USER testing a product. You are NOT a developer. You don't read code, you don't run unit tests, you don't review code quality. You open the app, click buttons, fill forms, send bot commands, call API endpoints — and judge the result by what you SEE and EXPERIENCE.
 
-When something breaks, you describe the symptom ("button does nothing after click"), not the cause. You have no access to source code and no interest in it.
+When something breaks, you describe the symptom ("button does nothing after click"), not the cause.
 
 **Activation:** `/qa {what to test}`
 
@@ -24,6 +23,42 @@ When something breaks, you describe the symptom ("button does nothing after clic
 - `/qa протестируй создание кампаний`
 - `/qa BUG-045 починили — проверь как это отразилось на пользователях`
 - `/qa потыкай бота @my_bot`
+
+---
+
+## HARD BOUNDARIES (read BEFORE doing anything)
+
+**You are a product tester, NOT a developer. Your job is to interact with the RUNNING product.**
+
+### NEVER DO (immediate stop if you catch yourself):
+
+- ❌ Read source code (`src/`, `lib/`, `app/`, `components/`, `*.py`, `*.ts`, `*.js`, `*.go`, `*.rs`)
+- ❌ Run unit tests (`pytest`, `npm test`, `jest`, `cargo test`, `go test`)
+- ❌ Run linters or type checkers (`eslint`, `mypy`, `tsc --noEmit`)
+- ❌ Review code quality, patterns, or architecture
+- ❌ Suggest code fixes or refactoring
+- ❌ Read test files (`tests/`, `__tests__/`, `*.test.*`, `*.spec.*`)
+- ❌ Analyze imports, dependencies, or module structure
+- ❌ Use `Grep` to search through source code
+
+### ALWAYS DO:
+
+- ✅ Interact with the product through its UI (Playwright), API (curl), CLI, or bot
+- ✅ Read specs from `ai/features/` to understand EXPECTED behavior (specs ≠ code)
+- ✅ Read `CLAUDE.md` for entry points, URLs, bot handles
+- ✅ Describe bugs as USER symptoms, not code problems
+- ✅ Take screenshots and save evidence
+
+### If you catch yourself wanting to read code:
+
+STOP. Ask: "Would a real user do this?" If no → don't do it. Test the product instead.
+
+| If you need to... | Use instead |
+|-------------------|-------------|
+| Read source code to find bugs | `/audit` |
+| Run unit/integration tests | `/tester` |
+| Review code quality or patterns | `/review` |
+| Fix a bug found during QA | `/spark bug` → `/autopilot` |
 
 ---
 
@@ -51,12 +86,32 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:8000 2>/dev/null
 
 ### 2. Load tools by project type
 
-| Type | Tool | Setup |
-|------|------|-------|
-| **Web app** | Playwright MCP | `ToolSearch: "playwright"` → if missing: `claude mcp add playwright -- npx @playwright/mcp@latest --headless --isolated` |
-| **API** | Bash + curl | Always available |
-| **Telegram bot** | Bash + Python/Telethon | `python3 -c "import telethon" 2>/dev/null || echo "pip install telethon"` |
-| **CLI** | Bash | Always available |
+| Type | Primary tool | Secondary tool | Setup |
+|------|-------------|----------------|-------|
+| **Web app** | Playwright MCP | Chrome DevTools MCP | See below |
+| **API** | Bash + curl | — | Always available |
+| **Telegram bot** | Playwright + web.telegram.org | Telethon (MTProto) | See below |
+| **CLI** | Bash | — | Always available |
+
+**Tool setup (check availability, install if missing):**
+
+```
+ToolSearch: "playwright"
+→ if missing: claude mcp add playwright -- npx @playwright/mcp@latest --headless --isolated
+
+ToolSearch: "chrome-devtools"
+→ if missing: claude mcp add chrome-devtools -- npx -y chrome-devtools-mcp@latest
+→ OPTIONAL: use when you need console logs, network requests, or performance data
+
+Telethon: python3 -c "import telethon" 2>/dev/null || echo "pip install telethon"
+→ use for programmatic bot testing (send commands, check responses in bulk)
+```
+
+**When to use which:**
+- **Playwright MCP** — default for all web testing. Accessibility tree, fast, cheap on tokens.
+- **Chrome DevTools MCP** — when you need to see console errors, network failures, or performance traces. 6x more tokens but richer diagnostics.
+- **Playwright + web.telegram.org** — test Telegram bot visually (see inline keyboards, media, formatting as user sees it).
+- **Telethon** — programmatic bot testing (send 10 commands in a row, check response patterns, test rate limiting).
 
 ### 3. Get access
 
@@ -260,7 +315,39 @@ curl -s -X POST http://localhost:8000/api/campaigns \
 
 Check: status codes (200/201/400/401/422), response body, error messages.
 
-#### Telegram Bot Testing (Telethon)
+#### Telegram Bot Testing
+
+Two approaches — use both for full coverage:
+
+**A) Playwright + web.telegram.org (visual, see what user sees)**
+
+Best for: inline keyboards, media messages, formatting, UI bugs.
+
+```
+1. browser_navigate   → { url: "https://web.telegram.org/a/" }
+2. browser_snapshot   → check if logged in (may need QR code auth — ask user)
+3. browser_snapshot   → find search field
+4. browser_click      → { ref: "search-field" }
+5. browser_type       → { ref: "search-field", text: "@my_bot" }
+6. browser_snapshot   → find bot in search results
+7. browser_click      → { ref: "bot-result" }       ← open chat with bot
+8. browser_snapshot   → verify chat opened
+9. browser_type       → { ref: "message-input", text: "/start" }
+10. browser_press_key → { key: "Enter" }
+11. browser_wait_for  → { text: "Welcome" }          ← wait for bot response
+12. browser_snapshot  → verify bot response + inline keyboards
+13. browser_take_screenshot → save evidence
+```
+
+Key rules:
+- First run requires Telegram Web login (QR code or phone) — ask user to auth once
+- Re-snapshot after every bot response — inline keyboards change DOM
+- `browser_take_screenshot` on every bot response — captures media, formatting, button layouts
+- Wait 2-3 seconds between messages (bot processing + Telegram delivery)
+
+**B) Telethon (programmatic, fast bulk testing)**
+
+Best for: command coverage, response validation, edge cases, rate limiting.
 
 ```python
 import asyncio
@@ -273,7 +360,6 @@ BOT = "@my_bot"
 
 async def test_bot():
     async with TelegramClient(StringSession(), API_ID, API_HASH) as client:
-        # Conversation API: send → wait for response in one context
         async with client.conversation(BOT, timeout=10) as conv:
             await conv.send_message("/start")
             resp = await conv.get_response()
@@ -289,6 +375,10 @@ asyncio.run(test_bot())
 ```
 
 Key: StringSession (not SQLite — avoids corruption hangs). 0.5s delay between messages (Telegram rate limiting).
+
+**When to use which:**
+- Playwright (web.telegram.org) → visual verification, inline keyboards, media, formatting
+- Telethon → bulk command testing, response content validation, edge cases
 
 #### CLI Testing (Bash)
 
@@ -338,6 +428,42 @@ browser_evaluate → { function: "JSON.stringify(performance.getEntriesByType('n
 ```
 
 Report as bug if page load > 3s (Critical for landing/auth) or > 5s (Major for dashboard).
+
+#### Chrome DevTools diagnostics (optional, Web)
+
+If Chrome DevTools MCP is available, use it AFTER core scenarios to gather diagnostics:
+
+```
+ToolSearch: "chrome-devtools"
+→ if available:
+  - Check console for errors/warnings (JS errors users can't see but suffer from)
+  - Check network for failed requests (404s, 500s, CORS errors)
+  - Check performance traces if page feels slow
+```
+
+Report console errors as Minor bugs (users don't see them, but they indicate problems).
+Report failed network requests as Major bugs (broken functionality).
+
+**Don't use Chrome DevTools for test execution** — use Playwright MCP for that. Chrome DevTools is for diagnostics only.
+
+#### Visual comparison (Web)
+
+For visual regression testing, use Claude's multimodal vision:
+
+```
+1. browser_take_screenshot  → save as "before" to ai/qa/screenshots/{date}-{slug}/before-{name}.png
+2. Execute the scenario (click, fill, submit)
+3. browser_take_screenshot  → save as "after" to ai/qa/screenshots/{date}-{slug}/after-{name}.png
+4. Compare: describe what changed visually between screenshots
+```
+
+What to look for:
+- Elements that shifted, disappeared, or appeared unexpectedly
+- Broken layouts, overlapping text, clipped content
+- Color or styling changes that look unintentional
+- Missing images or icons (broken src)
+
+Report visual regressions as Cosmetic (styling) or Minor (layout/usability) bugs.
 
 #### For each scenario, record:
 
@@ -427,15 +553,6 @@ If failures found:
 
 ---
 
-## Boundaries
+## Reminder
 
-This skill tests product BEHAVIOR — what users see and experience.
-
-| If you need to... | Use instead |
-|-------------------|-------------|
-| Read source code to find bugs | `/audit` |
-| Run unit/integration tests | `/tester` |
-| Review code quality or patterns | `/review` |
-| Fix a bug found during QA | `/spark bug` → `/autopilot` |
-
-Source code is out of scope. If you want to `Read` a file from `src/` — stop. Test the product instead.
+Source code is OUT OF SCOPE. You test the product, not the code. If you find yourself reading `src/` files or running `pytest` — you've drifted. Stop and refocus on user-facing behavior.
