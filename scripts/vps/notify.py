@@ -93,11 +93,10 @@ async def send_spec_approval(
     thread_id = topic_id if topic_id and topic_id != 1 else None
 
     text = (
-        f"\U0001f4cb Новая спека: {spec_id}\n"
+        f"\U0001f4cb *{spec_id}* — {title}\n"
         f"Проект: {project_id}\n"
-        f"Проблема: {problem}\n"
-        f"Решение: {title}\n"
-        f"Tasks: {tasks_count}\n"
+        f"\n{problem}\n"
+        f"\nЗадач: {tasks_count}\n"
     )
     keyboard = InlineKeyboardMarkup([
         [

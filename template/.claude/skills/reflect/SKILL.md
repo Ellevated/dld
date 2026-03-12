@@ -141,8 +141,17 @@ git diff --cached --quiet || git commit -m "docs: reflect synthesis + inbox find
 git push origin develop 2>/dev/null || true
 ```
 
-### Step 5.6: Mark Processed
+### Step 5.6: Mark Diary Entries as Done
 
+**CRITICAL:** Update diary index.md — change status from `pending` to `done` for ALL analyzed entries.
+This prevents the orchestrator from re-dispatching reflect on every cycle.
+
+```bash
+# For each processed TASK_ID:
+sed -i "s/| ${TASK_ID} |\\(.*\\)| pending |/| ${TASK_ID} |\\1| done |/" ai/diary/index.md
+```
+
+Also maintain dedup log and timestamp:
 1. Append processed entry IDs to dedup log:
 ```bash
 echo "{TASK_ID}" >> ai/diary/.processed.log
@@ -171,7 +180,7 @@ next_action: "Orchestrator will dispatch Spark for each finding"
 |-------|---------|
 | Create TECH spec directly | Write to inbox -> Spark creates spec |
 | Edit CLAUDE.md directly | Write to inbox -> Spark -> skill-creator |
-| Mark entries done immediately | Mark after Spark processes findings |
+| Skip marking entries done | MUST mark diary entries `pending → done` in Step 5.6 |
 | Write all patterns to inbox | Only frequency >= 3, max 5 files |
 
 ---

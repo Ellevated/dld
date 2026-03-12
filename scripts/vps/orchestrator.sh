@@ -114,11 +114,29 @@ git_pull() {
         log_json "warn" "not a git repo" "path" "$project_dir"
         return 1
     fi
+
+    # Stash any dirty state before pulling
+    local stashed=false
+    if ! git -C "$project_dir" diff --quiet 2>/dev/null || \
+       ! git -C "$project_dir" diff --cached --quiet 2>/dev/null; then
+        git -C "$project_dir" stash --include-untracked -q 2>/dev/null && stashed=true
+    fi
+
     local output
     output=$(git -C "$project_dir" pull --rebase origin develop 2>&1) || {
         log_json "warn" "git pull failed" "path" "$project_dir" "detail" "${output:0:200}"
+        # Restore stash even on pull failure
+        [[ "$stashed" == true ]] && git -C "$project_dir" stash pop -q 2>/dev/null || true
         return 1
     }
+
+    # Restore stashed changes
+    if [[ "$stashed" == true ]]; then
+        git -C "$project_dir" stash pop -q 2>/dev/null || {
+            log_json "warn" "stash pop conflict" "path" "$project_dir"
+            # Leave stash for manual resolution, don't block cycle
+        }
+    fi
     return 0
 }
 
@@ -339,6 +357,20 @@ print(s['phase'] if s else '')
     # Reflect runs in parallel with QA on qa_pending or qa_running phase
     [[ "$phase" != "qa_pending" && "$phase" != "qa_running" ]] && return
 
+    # Check if reflect is already running in pueue for this project
+    if pueue status --json 2>/dev/null | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for t in data.get('tasks', {}).values():
+    label = t.get('label', '')
+    status = t.get('status', '')
+    if '${project_id}:reflect' in label and isinstance(status, dict) and ('Running' in status or 'Queued' in status):
+        sys.exit(0)
+sys.exit(1)
+" 2>/dev/null; then
+        return
+    fi
+
     # Check if diary has enough pending entries (min 3 for reflect)
     local diary_index="${project_dir}/ai/diary/index.md"
     [[ ! -f "$diary_index" ]] && return
@@ -376,9 +408,9 @@ scan_drafts() {
 
     [[ ! -f "$backlog" ]] && return
 
-    # Find all draft spec IDs
+    # Find all draft spec IDs (exclude status documentation table)
     local draft_ids
-    draft_ids=$(grep -E '\|\s*draft\s*\|' "$backlog" 2>/dev/null | \
+    draft_ids=$(grep -E '^\|\s*(TECH|FTR|BUG|ARCH)-[0-9]+\s*\|.*\|\s*draft\s*\|' "$backlog" 2>/dev/null | \
                 grep -oE '(TECH|FTR|BUG|ARCH)-[0-9]+' || true)
 
     [[ -z "$draft_ids" ]] && return
@@ -400,11 +432,15 @@ scan_drafts() {
         spec_file=$(find "${project_dir}/ai/features/" -name "${spec_id}*" -type f 2>/dev/null | head -1 || true)
         [[ -z "$spec_file" ]] && continue
 
-        # Extract title and problem from spec
+        # Extract title and problem from spec (flexible: handles Symptom, Why, Root Cause, Problem)
         local title problem tasks_count
-        title=$(grep -m1 '^# ' "$spec_file" 2>/dev/null | sed 's/^# //' | head -c 100 || echo "$spec_id")
-        problem=$(grep -A1 '^## Why' "$spec_file" 2>/dev/null | tail -1 | head -c 150 || echo "—")
-        tasks_count=$(grep -c '^### Task' "$spec_file" 2>/dev/null || true)
+        title=$(grep -m1 '^# ' "$spec_file" 2>/dev/null | sed 's/^# //' | head -c 100 || true)
+        title="${title:-$spec_id}"
+        # Try multiple section names for problem description
+        problem=$(grep -A1 -E '^## (Why|Symptom|Problem|Root Cause)' "$spec_file" 2>/dev/null | tail -1 | head -c 200 || true)
+        problem="${problem:-—}"
+        # Count tasks: try "### Task" and "## Task" patterns
+        tasks_count=$(grep -c -E '^#{2,3} Task' "$spec_file" 2>/dev/null || true)
         tasks_count=$(( tasks_count + 0 ))
 
         log_json "info" "sending draft approval" "project" "$project_id" "spec" "$spec_id"
