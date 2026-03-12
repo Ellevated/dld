@@ -341,7 +341,8 @@ print(s['phase'] if s else '')
     [[ ! -f "$diary_index" ]] && return
 
     local pending_count
-    pending_count=$(grep -c '| pending |' "$diary_index" 2>/dev/null || echo "0")
+    pending_count=$(grep -c '| pending |' "$diary_index" 2>/dev/null || true)
+    pending_count=$(( pending_count + 0 ))  # sanitize to integer
     (( pending_count < 3 )) && return
 
     local provider
@@ -400,7 +401,8 @@ scan_drafts() {
         local title problem tasks_count
         title=$(grep -m1 '^# ' "$spec_file" 2>/dev/null | sed 's/^# //' | head -c 100 || echo "$spec_id")
         problem=$(grep -A1 '^## Why' "$spec_file" 2>/dev/null | tail -1 | head -c 150 || echo "—")
-        tasks_count=$(grep -c '^### Task' "$spec_file" 2>/dev/null || echo "0")
+        tasks_count=$(grep -c '^### Task' "$spec_file" 2>/dev/null || true)
+        tasks_count=$(( tasks_count + 0 ))
 
         log_json "info" "sending draft approval" "project" "$project_id" "spec" "$spec_id"
 
