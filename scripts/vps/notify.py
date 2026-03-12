@@ -92,8 +92,15 @@ async def send_spec_approval(
     topic_id = project.get("topic_id")
     thread_id = topic_id if topic_id and topic_id != 1 else None
 
+    # Clean title: remove spec ID prefix if already present (e.g. "Feature: [FTR-242] ...")
+    clean_title = title
+    if spec_id in clean_title:
+        import re
+        clean_title = re.sub(r'(?:Feature|Bug Fix|Tech|Arch):\s*\[' + re.escape(spec_id) + r'\]\s*', '', clean_title).strip()
+        clean_title = clean_title.lstrip('—– ').strip()
+
     text = (
-        f"\U0001f4cb *{spec_id}* — {title}\n"
+        f"\U0001f4cb {spec_id} — {clean_title}\n"
         f"Проект: {project_id}\n"
         f"\n{problem}\n"
         f"\nЗадач: {tasks_count}\n"
