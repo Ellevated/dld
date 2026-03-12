@@ -116,17 +116,41 @@ print(data.get('skill', ''))
 fi
 
 # ---------------------------------------------------------------------------
-# Step 5: Build Telegram message
+# Step 5: Build Telegram message (human-readable)
 # ---------------------------------------------------------------------------
-if [[ "$STATUS" == "done" ]]; then
-    MSG="✅ *${PROJECT_ID}*: ${TASK_LABEL} завершено"
-else
-    MSG="❌ *${PROJECT_ID}*: ${TASK_LABEL} — ошибка (${RESULT})"
+# Skill labels for human-readable notifications
+declare -A SKILL_LABELS=(
+    [spark]="Спека"
+    [autopilot]="Автопилот"
+    [council]="Консилиум"
+    [architect]="Архитектор"
+    [reflect]="Рефлексия"
+    [qa]="QA проверка"
+    [bughunt]="Охота на баги"
+    [scout]="Разведка"
+)
+SKILL_LABEL="${SKILL_LABELS[$SKILL]:-$SKILL}"
+
+# Clean preview: strip markdown headers, bold markers, tables for Telegram
+CLEAN_PREVIEW=""
+if [[ -n "$PREVIEW" ]]; then
+    CLEAN_PREVIEW=$(echo "$PREVIEW" | \
+        sed 's/^##* //g' | \
+        sed 's/\*\*//g' | \
+        sed '/^|[-=]/d' | \
+        sed '/^```/d' | \
+        head -c 300)
 fi
 
-if [[ -n "$PREVIEW" ]]; then
+if [[ "$STATUS" == "done" ]]; then
+    MSG="✅ *${PROJECT_ID}*: ${SKILL_LABEL} завершена"
+else
+    MSG="❌ *${PROJECT_ID}*: ${SKILL_LABEL} — ошибка"
+fi
+
+if [[ -n "$CLEAN_PREVIEW" ]]; then
     MSG="${MSG}
-${PREVIEW}"
+${CLEAN_PREVIEW}"
 fi
 
 # ---------------------------------------------------------------------------
@@ -192,9 +216,26 @@ fi
 # ---------------------------------------------------------------------------
 # Step 6: Send Telegram completion notification (fail-safe)
 # Skip if we already sent approval notification (avoid double message).
+# Skip noise: empty reflect/qa results don't need user attention.
 # notify.py handles topic routing by project_id.
 # ---------------------------------------------------------------------------
-if [[ "$SENT_APPROVAL" == "false" && -f "$NOTIFY_PY" ]]; then
+SKIP_NOTIFY=false
+
+# Don't notify about empty reflect results (0 findings = nothing to report)
+if [[ "$SKILL" == "reflect" && "$STATUS" == "done" ]]; then
+    if echo "$PREVIEW" | grep -qiE 'analyzed: 0|inbox_files_created: 0|нечего обрабатывать|nothing to|0 pending'; then
+        SKIP_NOTIFY=true
+        echo "[callback] Skipping notification: reflect found 0 findings"
+    fi
+fi
+
+# Don't notify about "Unknown skill" errors (skill not deployed yet)
+if echo "$PREVIEW" | grep -qi 'Unknown skill'; then
+    SKIP_NOTIFY=true
+    echo "[callback] Skipping notification: unknown skill error"
+fi
+
+if [[ "$SENT_APPROVAL" == "false" && "$SKIP_NOTIFY" == "false" && -f "$NOTIFY_PY" ]]; then
     python3 "$NOTIFY_PY" "$PROJECT_ID" "$MSG" 2>/dev/null || {
         echo "[callback] WARN: notify.py failed for project=${PROJECT_ID}" >&2
     }
@@ -209,7 +250,13 @@ fi
 # This is a FALLBACK — skills should write inbox files themselves (FTR-149 Tasks 5/6c),
 # but this ensures results aren't lost if the skill didn't write to inbox.
 # ---------------------------------------------------------------------------
-if [[ "$STATUS" == "done" && ( "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "reflect" ) && -n "$PREVIEW" ]]; then
+# Skip empty results (reflect with 0 findings shouldn't create inbox files)
+EMPTY_RESULT=false
+if echo "$PREVIEW" | grep -qiE 'analyzed: 0|inbox_files_created: 0|нечего обрабатывать|0 pending'; then
+    EMPTY_RESULT=true
+fi
+
+if [[ "$STATUS" == "done" && "$EMPTY_RESULT" == "false" && ( "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "reflect" ) && -n "$PREVIEW" ]]; then
     FEEDBACK_PROJECT_PATH=$(python3 -c "
 import sys
 sys.path.insert(0, '${SCRIPT_DIR}')
@@ -247,7 +294,7 @@ INBOX_EOF
         # Notify user that skill result is queued for spark
         if [[ -f "$NOTIFY_PY" ]]; then
             python3 "$NOTIFY_PY" "$PROJECT_ID" \
-                "🧠 *${PROJECT_ID}*: ${SKILL} завершён. Результат отправлен в Spark." 2>/dev/null || true
+                "🧠 *${PROJECT_ID}*: ${SKILL_LABEL} завершена. Результат отправлен в Spark." 2>/dev/null || true
         fi
     fi
 fi
