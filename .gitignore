@@ -2,8 +2,6 @@
 /.claude/settings.local.json
 /.claude/worktrees/
 
-# Личные заметки сессий
-/ai/diary/
 
 # Системные файлы macOS
 .DS_Store
