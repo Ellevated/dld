@@ -240,6 +240,12 @@ When user says "commit/push" — execute without asking:
 ### Migrations — Git-First ONLY
 **NEVER apply migrations directly! CI is the only source of apply.**
 
+### Shell Scripts (scripts/vps/)
+- Header: `#!/usr/bin/env bash` + `set -euo pipefail`
+- SQL: ALWAYS through `python3 db.py <command>`, never shell interpolation
+- Variables: quote all `"$var"`, no bare `$var`
+- CLI flags: verify flag exists in tool version before using
+
 ### Tool Preferences (API Error Prevention)
 Some tools may trigger API content filtering errors. Use fallbacks:
 - **File search:** Use `Glob` instead of `Search` for pattern matching
