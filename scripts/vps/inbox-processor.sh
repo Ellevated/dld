@@ -150,12 +150,19 @@ echo "[inbox] Moved to done: ${DONE_FILE}"
 # ---------------------------------------------------------------------------
 # Send Telegram notification before agent launch
 # ---------------------------------------------------------------------------
-SKILL_UPPER="${SKILL^^}"
-NOTIFY_MSG="Inbox item received for *${PROJECT_ID}*
-Route: \`${ROUTE}\` → \`${SKILL_UPPER}\`
-Task: ${IDEA_TEXT:0:200}
+_SKILL_LABELS_spark="Создаю спеку"
+_SKILL_LABELS_autopilot="Запускаю автопилот"
+_SKILL_LABELS_architect="Запускаю архитектора"
+_SKILL_LABELS_council="Собираю консилиум"
+_SKILL_LABELS_bughunt="Охота на баги"
+_SKILL_LABELS_reflect="Рефлексия"
+_SKILL_LABELS_scout="Разведка"
+_SKILL_LABELS_qa="QA проверка"
+SKILL_LABEL_VAR="_SKILL_LABELS_${SKILL}"
+SKILL_LABEL="${!SKILL_LABEL_VAR:-Обработка}"
 
-Submitting to Pueue..."
+NOTIFY_MSG="🚀 *${PROJECT_ID}*: ${SKILL_LABEL}
+${IDEA_TEXT:0:200}"
 
 NOTIFY_PY="${SCRIPT_DIR}/notify.py"
 if [[ -f "$NOTIFY_PY" ]]; then

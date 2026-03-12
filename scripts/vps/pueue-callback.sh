@@ -86,27 +86,28 @@ python3 "${SCRIPT_DIR}/db.py" callback \
 echo "[callback] db updated pueue_id=${PUEUE_ID} phase=${NEW_PHASE}"
 
 # ---------------------------------------------------------------------------
-# Step 4: Collect a brief log summary to include in Telegram message
+# Step 4: Extract result_preview from agent output (human-readable summary)
 # ---------------------------------------------------------------------------
-SUMMARY=""
+PREVIEW=""
 if command -v pueue &>/dev/null; then
-    SUMMARY=$(pueue log "${PUEUE_ID}" --lines 5 2>/dev/null | tail -5 || true)
+    # Try to extract result_preview from JSON output of claude-runner
+    PREVIEW=$(pueue log "${PUEUE_ID}" --lines 3 2>/dev/null | \
+        grep -o '"result_preview": *"[^"]*"' | head -1 | \
+        sed 's/"result_preview": *"//;s/"$//' | head -c 300 || true)
 fi
 
 # ---------------------------------------------------------------------------
 # Step 5: Build Telegram message
 # ---------------------------------------------------------------------------
 if [[ "$STATUS" == "done" ]]; then
-    MSG="Task ${TASK_LABEL} completed successfully for ${PROJECT_ID} (pueue#${PUEUE_ID})."
+    MSG="✅ *${PROJECT_ID}*: ${TASK_LABEL} завершено"
 else
-    MSG="Task ${TASK_LABEL} FAILED for ${PROJECT_ID} (pueue#${PUEUE_ID}). Result: ${RESULT}. Check: pueue log ${PUEUE_ID}"
+    MSG="❌ *${PROJECT_ID}*: ${TASK_LABEL} — ошибка (${RESULT})"
 fi
 
-if [[ -n "$SUMMARY" ]]; then
+if [[ -n "$PREVIEW" ]]; then
     MSG="${MSG}
-
-Last output:
-${SUMMARY}"
+${PREVIEW}"
 fi
 
 # ---------------------------------------------------------------------------
