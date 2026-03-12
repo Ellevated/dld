@@ -109,34 +109,50 @@ for p in db.get_all_projects():
 # ---------------------------------------------------------------------------
 
 git_pull() {
-    local project_dir="$1"
+    local project_id="$1" project_dir="$2"
     if [[ ! -d "${project_dir}/.git" ]]; then
         log_json "warn" "not a git repo" "path" "$project_dir"
         return 1
     fi
 
-    # Stash any dirty state before pulling
-    local stashed=false
-    if ! git -C "$project_dir" diff --quiet 2>/dev/null || \
-       ! git -C "$project_dir" diff --cached --quiet 2>/dev/null; then
-        git -C "$project_dir" stash --include-untracked -q 2>/dev/null && stashed=true
+    # SAFETY: skip pull entirely if an agent is running in this project
+    if pueue status --json 2>/dev/null | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for t in data.get('tasks', {}).values():
+    label = t.get('label', '')
+    status = t.get('status', '')
+    if label.startswith('${project_id}:') and isinstance(status, dict) and 'Running' in status:
+        sys.exit(0)
+sys.exit(1)
+" 2>/dev/null; then
+        log_json "info" "skip git pull — agent running" "project" "$project_id"
+        return 0
     fi
 
+    # Working tree clean → fast path: pull --rebase
+    if git -C "$project_dir" diff --quiet 2>/dev/null && \
+       git -C "$project_dir" diff --cached --quiet 2>/dev/null; then
+        local output
+        output=$(git -C "$project_dir" pull --rebase origin develop 2>&1) || {
+            log_json "warn" "git pull failed" "path" "$project_dir" "detail" "${output:0:200}"
+            return 1
+        }
+        return 0
+    fi
+
+    # Dirty working tree, no agent running → fetch + rebase with autostash
     local output
-    output=$(git -C "$project_dir" pull --rebase origin develop 2>&1) || {
-        log_json "warn" "git pull failed" "path" "$project_dir" "detail" "${output:0:200}"
-        # Restore stash even on pull failure
-        [[ "$stashed" == true ]] && git -C "$project_dir" stash pop -q 2>/dev/null || true
+    output=$(git -C "$project_dir" fetch origin develop 2>&1) || {
+        log_json "warn" "git fetch failed" "path" "$project_dir" "detail" "${output:0:200}"
         return 1
     }
-
-    # Restore stashed changes
-    if [[ "$stashed" == true ]]; then
-        git -C "$project_dir" stash pop -q 2>/dev/null || {
-            log_json "warn" "stash pop conflict" "path" "$project_dir"
-            # Leave stash for manual resolution, don't block cycle
-        }
-    fi
+    output=$(git -C "$project_dir" rebase --autostash origin/develop 2>&1) || {
+        # Abort failed rebase to leave repo in consistent state
+        git -C "$project_dir" rebase --abort 2>/dev/null || true
+        log_json "warn" "git rebase failed, aborted" "path" "$project_dir" "detail" "${output:0:200}"
+        return 1
+    }
     return 0
 }
 
@@ -467,8 +483,8 @@ process_project() {
 
     log_json "info" "processing project" "project" "$project_id"
 
-    # Step 1: git pull (non-fatal on failure)
-    git_pull "$project_dir" || true
+    # Step 1: git pull (non-fatal on failure, skips if agent running)
+    git_pull "$project_id" "$project_dir" || true
 
     # Step 2: scan inbox
     scan_inbox "$project_id" "$project_dir"
