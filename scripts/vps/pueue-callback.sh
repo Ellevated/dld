@@ -25,6 +25,12 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---------------------------------------------------------------------------
+# Debug trace — every callback invocation is logged
+# ---------------------------------------------------------------------------
+CALLBACK_LOG="${SCRIPT_DIR}/callback-debug.log"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] callback invoked: args=[$*]" >> "$CALLBACK_LOG"
+
+# ---------------------------------------------------------------------------
 # Args
 # ---------------------------------------------------------------------------
 PUEUE_ID="${1:?Missing pueue task id}"
@@ -99,7 +105,10 @@ if command -v pueue &>/dev/null; then
         PREVIEW=$(echo "$AGENT_JSON" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-print(data.get('result_preview', '')[:500])
+text = data.get('result_preview', '')[:500]
+# Strip surrogates that break Telegram API (UnicodeEncodeError)
+text = text.encode('utf-8', errors='replace').decode('utf-8')
+print(text)
 " 2>/dev/null || true)
         SKILL=$(echo "$AGENT_JSON" | python3 -c "
 import sys, json
@@ -198,8 +207,9 @@ print(state['path'] if state else '')
             SUMMARY="${PREVIEW:-—}"
 
             echo "[callback] Sending spark approval: project=${PROJECT_ID} spec=${SPEC_ID}"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] spark approval: project=${PROJECT_ID} spec=${SPEC_ID} title=${SPEC_TITLE}" >> "$CALLBACK_LOG"
             python3 "$NOTIFY_PY" --spec-approval \
-                "$PROJECT_ID" "$SPEC_ID" "$SPEC_TITLE" "$SUMMARY" "$TASKS_COUNT" 2>/dev/null && {
+                "$PROJECT_ID" "$SPEC_ID" "$SPEC_TITLE" "$SUMMARY" "$TASKS_COUNT" 2>>"$CALLBACK_LOG" && {
                 SENT_APPROVAL=true
                 # Mark as notified so scan_drafts won't re-notify
                 echo "$SPEC_ID" >> "${SCRIPT_DIR}/.notified-drafts-${PROJECT_ID}"
@@ -236,8 +246,10 @@ if echo "$PREVIEW" | grep -qi 'Unknown skill'; then
 fi
 
 if [[ "$SENT_APPROVAL" == "false" && "$SKIP_NOTIFY" == "false" && -f "$NOTIFY_PY" ]]; then
-    python3 "$NOTIFY_PY" "$PROJECT_ID" "$MSG" 2>/dev/null || {
+    echo "[callback] Sending notification: project=${PROJECT_ID} msg_len=${#MSG}" >> "$CALLBACK_LOG"
+    python3 "$NOTIFY_PY" "$PROJECT_ID" "$MSG" 2>>"$CALLBACK_LOG" || {
         echo "[callback] WARN: notify.py failed for project=${PROJECT_ID}" >&2
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARN: notify.py failed for project=${PROJECT_ID}" >> "$CALLBACK_LOG"
     }
 elif [[ ! -f "$NOTIFY_PY" ]]; then
     echo "[callback] WARN: notify.py not found at ${NOTIFY_PY} — skipping Telegram notification" >&2
@@ -294,7 +306,7 @@ INBOX_EOF
         # Notify user that skill result is queued for spark
         if [[ -f "$NOTIFY_PY" ]]; then
             python3 "$NOTIFY_PY" "$PROJECT_ID" \
-                "🧠 *${PROJECT_ID}*: ${SKILL_LABEL} завершена. Результат отправлен в Spark." 2>/dev/null || true
+                "🧠 *${PROJECT_ID}*: ${SKILL_LABEL} завершена. Результат отправлен в Spark." 2>>"$CALLBACK_LOG" || true
         fi
     fi
 fi
@@ -341,3 +353,6 @@ else:
 fi
 
 echo "[callback] done pueue_id=${PUEUE_ID} project=${PROJECT_ID} task=${TASK_LABEL} status=${STATUS}"
+
+# Debug trace — log completion
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] callback done: id=${PUEUE_ID} project=${PROJECT_ID} skill=${SKILL} status=${STATUS} sent_approval=${SENT_APPROVAL} skip_notify=${SKIP_NOTIFY}" >> "$CALLBACK_LOG"

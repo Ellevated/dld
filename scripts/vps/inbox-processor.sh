@@ -29,6 +29,7 @@ INBOX_FILE="${3:?Missing inbox_file argument}"
 # Environment
 # ---------------------------------------------------------------------------
 [[ -f "${SCRIPT_DIR}/.env" ]] && set -a && source "${SCRIPT_DIR}/.env" && set +a
+[[ -d "${SCRIPT_DIR}/venv" ]] && export PATH="${SCRIPT_DIR}/venv/bin:$PATH"
 
 # ---------------------------------------------------------------------------
 # Validate inputs

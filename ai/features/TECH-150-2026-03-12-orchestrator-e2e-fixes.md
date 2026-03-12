@@ -1,6 +1,6 @@
 # TECH-150: Orchestrator E2E Fixes — Path to Working Pipeline
 
-**Status:** in_progress
+**Status:** in_progress (E2E cycle verified 2026-03-12)
 **Date:** 2026-03-12
 **Type:** Tech Debt / Bug Fix Batch
 
@@ -86,20 +86,36 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 **Symptom:** При перезапуске старые инстансы не умирают мгновенно → TG API отдаёт updates нескольким
 **Fix:** `_kill_other_instances()` при старте — pkill + SIGKILL старых PID
 
+### 16. inbox-processor.sh — venv не активирован
+**File:** inbox-processor.sh
+**Symptom:** `ModuleNotFoundError: dotenv` при вызове notify.py из inbox-processor
+**Root cause:** В inbox-processor.sh была загрузка .env (`set -a && source`), но не было активации venv
+**Fix:** Добавлена строка `[[ -d "${SCRIPT_DIR}/venv" ]] && export PATH="${SCRIPT_DIR}/venv/bin:$PATH"`
+
+### 17. UnicodeEncodeError surrogates в result_preview
+**File:** pueue-callback.sh Step 4
+**Symptom:** Telegram notification падает с `UnicodeEncodeError: surrogates not allowed` — пользователь не получает QA notification
+**Root cause:** claude-runner.py может вернуть текст с surrogate characters (из LLM output), Telegram API их отвергает
+**Fix:** `text.encode('utf-8', errors='replace').decode('utf-8')` при парсинге result_preview
+
+### 18. Callback errors скрыты `2>/dev/null`
+**File:** pueue-callback.sh Steps 5.5, 6, 6.5
+**Symptom:** notify.py падает тихо, никто не знает что уведомления не доходят
+**Fix:** Все `2>/dev/null` заменены на `2>>"$CALLBACK_LOG"` + добавлен debug-трейс на входе/выходе callback
+
 ## Files Modified
 
 | File | Changes |
 |------|---------|
-| `scripts/vps/pueue-callback.sh` | Step 4 JSON parse, Step 5.5 spark approval, Step 6.5 council→inbox, Step 7 skill filter + provider from DB |
+| `scripts/vps/pueue-callback.sh` | Step 4 JSON parse + surrogate fix, Step 5.5 spark approval, Step 6 debug logging, Step 6.5 council→inbox + reflect, Step 7 skill filter + provider from DB, callback-debug.log tracing |
 | `scripts/vps/claude-runner.py` | TaskNotificationMessage + AssistantMessage capture, total_cost_usd fix |
-| `scripts/vps/inbox-processor.sh` | [headless] for ALL tasks, qa/reflect/scout routes, quoted $TASK_CMD |
+| `scripts/vps/inbox-processor.sh` | [headless] for ALL tasks, qa/reflect/scout routes, quoted $TASK_CMD, venv activation |
 | `scripts/vps/telegram-bot.py` | QA/reflect/scout routes, _kill_other_instances(), Russian localization |
 | `scripts/vps/notify.py` | send_spec_approval format with result_preview |
 | `scripts/vps/orchestrator.sh` | git_pull safety, reflect dedup, scan_drafts regex, venv activation |
 | `scripts/vps/approve_handler.py` | Russian localization |
 | `scripts/vps/voice_handler.py` | Russian localization |
 | `scripts/vps/photo_handler.py` | Russian localization |
-| `scripts/vps/inbox-processor.sh` | venv activation, skill labels |
 | `scripts/vps/qa-loop.sh` | venv activation |
 | `scripts/vps/night-reviewer.sh` | venv activation |
 | `template/.claude/skills/reflect/SKILL.md` | Step 5.6: mark diary entries pending→done |
@@ -115,15 +131,19 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 7. **Template sync** — DLD-специфичный reflect skill устарел (создавал TECH-спеки вместо inbox файлов). Template-версия правильная.
 8. **Pueue daemon restart** — callback не выполняется без перезапуска pueued после изменения pueue.yml.
 9. **QA skill отсутствовал** — во всех 4 проектах не было `.claude/skills/qa/`. Callback Step 7 диспатчил QA → "Unknown skill".
+10. **venv в inbox-processor** — без venv notify.py падает на `import dotenv`, уведомления "Создаю спеку" не доходят.
+11. **Surrogate characters** — LLM output может содержать surrogate chars, Telegram API их отвергает. Нужна явная очистка.
+12. **`2>/dev/null` — враг отладки** — все stderr от notify.py уходили в /dev/null. Проблемы не видны. Заменено на debug log.
 
 ## Acceptance Criteria
 
-- [ ] Telegram → Spark → Approval notification с result_preview и кнопками
-- [ ] User нажимает "В работу" → autopilot запускается
-- [ ] Autopilot завершается → notification с описанием что сделано
-- [ ] QA + Reflect запускаются после autopilot (не после QA/reflect)
+- [x] Telegram → Spark → Approval notification с result_preview и кнопками
+- [x] User нажимает "В работу" → autopilot запускается
+- [x] Autopilot завершается → notification с описанием что сделано
+- [x] QA + Reflect запускаются после autopilot (не после QA/reflect)
 - [ ] Council → result в inbox → Spark создаёт spec
 - [ ] Голосовые и фото обрабатываются корректно
 - [ ] Нет duplicate ответов
 - [ ] Reflect → inbox files (Route: spark) → Spark подхватывает
-- [ ] QA skill работает во всех проектах
+- [x] QA skill работает во всех проектах
+- [x] Inbox → Orchestrator → Spark → Draft spec → Approval (второй круг)
