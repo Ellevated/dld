@@ -1,0 +1,1524 @@
+findings_summary:
+  user_question: "Верификация ADR-010 zero-read pattern — полный аудит hooks на баги, уязвимости, проблемы качества кода"
+  collection_stats:
+    total_raw: 83
+    personas_reported: 6
+    zones_covered: 1
+    by_severity:
+      critical: 0
+      high: 20
+      medium: 43
+      low: 20
+    by_persona:
+      code-reviewer: 12
+      security-auditor: 13
+      ux-analyst: 15
+      junior-developer: 12
+      software-architect: 13
+      qa-engineer: 18
+    by_zone:
+      zone_a: 83
+
+  findings:
+    # ─── CODE REVIEWER (12 findings) ───────────────────────────────────────────
+
+    - id: "A-CR-001"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: high
+      category: "logic"
+      file: ".claude/hooks/utils.mjs"
+      line: 96
+      title: "Race condition in outputJson — process.exit(0) in callback can be preempted by setTimeout"
+      description: |
+        The outputJson function calls process.stdout.write(data, () => process.exit(0)) and
+        simultaneously schedules setTimeout(() => process.exit(0), 500) as a "safety net".
+        If the pipe reader is slow or the write is large, the setTimeout fires FIRST and
+        terminates the process before the write callback confirms the data reached the pipe.
+        If process.stdout.write returns false (backpressure), the callback may never fire at all
+        in some Node.js versions under memory pressure. The setTimeout then exits before the data
+        is actually delivered. Every denyTool(), askTool(), blockPrompt(), and postBlock() call
+        goes through this path. A deny that silently becomes an allow due to this race is a
+        security-relevant failure.
+      evidence: |
+        ```javascript
+        // utils.mjs:94-101
+        function outputJson(data) {
+          try {
+            process.stdout.write(JSON.stringify(data) + '\n', () => process.exit(0));
+          } catch {
+            process.exit(0);
+          }
+          setTimeout(() => process.exit(0), 500); // safety net  <-- can fire first
+        }
+        ```
+      fix_suggestion: "Make the write synchronous, or clear the timeout in the write callback."
+
+    - id: "A-CR-002"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: high
+      category: "logic"
+      file: ".claude/hooks/utils.mjs"
+      line: 244
+      title: "minimatch() escapes bracket character classes, making [abc] patterns non-functional"
+      description: |
+        The custom glob-to-regex translator escapes all characters matching [.+^${}()|\\] BEFORE
+        converting glob syntax. If a user-supplied glob pattern contains [.py], it becomes [\\.py]
+        inside the regex — which matches \, ., p, or y — not the intended set. The docstring
+        documents [abc] as a supported feature, making this a documentation-confirmed contract
+        violation and latent bug.
+      evidence: |
+        ```javascript
+        // utils.mjs:244-254
+        function minimatch(str, pattern) {
+          let re = pattern
+            .replace(/[.+^${}()|\\]/g, '\\$&')   // escapes . + ^ $ { } ( ) | \
+            .replace(/\*\*/g, '\x00GLOBSTAR\x00')
+            ...
+        // Pattern [.py] becomes [\\.py] — matches \, ., p, y — not literal set .py
+        ```
+      fix_suggestion: "Extract and protect bracket expressions before escaping special characters."
+
+    - id: "A-CR-003"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: high
+      category: "logic"
+      file: ".claude/hooks/utils.mjs"
+      line: 395
+      title: "getProjectDir() path-traversal check trusts /tmp prefix — allows any /tmp/* path"
+      description: |
+        getProjectDir() validates that CLAUDE_PROJECT_DIR resolves to a path under homedir() OR
+        under /tmp. An attacker or misconfigured environment that sets CLAUDE_PROJECT_DIR=/tmp/attacker-dir
+        would cause loadConfig() to attempt importing /tmp/attacker-dir/.claude/hooks/hooks.config.local.mjs
+        as trusted config. Since this is a dynamic ESM import, it executes arbitrary JavaScript.
+        The /tmp exception was likely added for CI environments, but creates meaningful attack surface
+        on multi-user systems.
+      evidence: |
+        ```javascript
+        // utils.mjs:391-399
+        export function getProjectDir() {
+          const dir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+          const resolved = resolve(dir);
+          const home = homedir();
+          if (!resolved.startsWith(home) && !resolved.startsWith('/tmp')) {
+            return process.cwd();
+          }
+          return resolved;  // /tmp/anything passes through
+        }
+        ```
+      fix_suggestion: "Restrict to homedir() only for config loading, or validate that the resolved path is a git repository root before accepting it."
+
+    - id: "A-CR-004"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: medium
+      category: "logic"
+      file: ".claude/hooks/utils.mjs"
+      line: 191
+      title: "loadConfig() module-level cache (_config) permanently caches failures as empty object"
+      description: |
+        When loadConfig() fails and catches an exception (line 212), it sets _config = {} — an
+        empty object — and returns it. Any subsequent call sees _config = {} (truthy as an object)
+        and returns {} immediately. If hooks.config.mjs throws on first load (parse error during
+        development), _config = {} and all subsequent calls return {} silently, with no way to
+        diagnose this without checking the error log.
+      evidence: |
+        ```javascript
+        // utils.mjs:191-215
+        let _config = null;
+        export async function loadConfig() {
+          if (_config) return _config;  // {} is truthy — cached failure indistinguishable
+          try { ... } catch {
+            _config = {};  // error cached permanently
+            return _config;
+          }
+        }
+        ```
+      fix_suggestion: "Use a sentinel value to distinguish 'not yet loaded' from 'loaded empty'."
+
+    - id: "A-CR-005"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: medium
+      category: "logic"
+      file: ".claude/hooks/pre-bash.mjs"
+      line: 63
+      title: "Merge pattern --ff-only bypass uses string-contains check — bypassable with --no-ff combined flag"
+      description: |
+        The --ff-only check uses command.includes('--ff-only') as the only guard. A user who runs
+        'git merge --no-ff develop --ff-only' has the string contain '--ff-only' so the hook
+        approves it, even though --no-ff takes precedence (last flag wins in git). This is a logic
+        bypass: the user can force a non-ff merge and the hook approves it.
+      evidence: |
+        ```javascript
+        // pre-bash.mjs:63-73
+        if (command.includes('--ff-only')) continue;  // bypass via string contains
+        // git merge --no-ff develop --ff-only  <-- bypasses this check
+        ```
+      fix_suggestion: "Replace with: if (command.includes('--ff-only') && !command.includes('--no-ff')) continue;"
+
+    - id: "A-CR-006"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: medium
+      category: "logic"
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 149
+      title: "absPath construction for LOC check uses process.cwd() instead of getProjectDir()"
+      description: |
+        The LOC limit check constructs absPath using process.cwd() for relative paths, but
+        normalizePath() uses getProjectDir(). In worktree scenarios where cwd differs from the
+        project root, existsSync() may look in the wrong directory, return false, and silently
+        skip the entire LOC check.
+      evidence: |
+        ```javascript
+        // pre-edit.mjs:149
+        const absPath = filePath.startsWith('/') ? filePath : join(process.cwd(), filePath);
+        //                                                         ^^^^^^^^^^^^^^^^^
+        //              Uses cwd(), not getProjectDir() — inconsistent with normalizePath()
+        ```
+      fix_suggestion: "Use join(getProjectDir(), filePath) instead of join(process.cwd(), filePath)."
+
+    - id: "A-CR-007"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: medium
+      category: "logic"
+      file: ".claude/hooks/prompt-guard.mjs"
+      line: 48
+      title: "SKILL_INDICATORS tested against promptLower without /i flag — fragile case dependency"
+      description: |
+        SKILL_INDICATORS patterns lack the /i flag but are tested against the already-lowercased
+        promptLower. Correctness depends on the implicit case normalization — fragile design where
+        correctness depends on an undocumented interaction. COMPLEXITY_PATTERNS use /i flag
+        redundantly. Makes future pattern additions error-prone.
+      evidence: |
+        ```javascript
+        // prompt-guard.mjs:43-56
+        const promptLower = prompt.toLowerCase();
+        for (const indicator of SKILL_INDICATORS) {
+          if (indicator.test(promptLower)) {  // SKILL_INDICATORS have no /i flag
+        for (const pattern of COMPLEXITY_PATTERNS) {
+          if (pattern.test(promptLower)) {  // COMPLEXITY_PATTERNS have /i flag — redundant
+        ```
+      fix_suggestion: "Make approach consistent: either test all patterns against raw prompt with /i flag, or test against promptLower and remove /i from COMPLEXITY_PATTERNS."
+
+    - id: "A-CR-008"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: medium
+      category: "logic"
+      file: ".claude/hooks/utils.mjs"
+      line: 271
+      title: "extractAllowedFiles regex fails to extract paths containing spaces, parentheses, or special chars"
+      description: |
+        The path extraction regex [a-zA-Z0-9_./@*-]+ does not allow spaces, parentheses, or other
+        common filesystem characters. A path like 'src/auth/handler (v2).py' would be extracted as
+        'src/auth/handler' (stops at space), making the file not in allowedFiles — hook denies edits
+        to it when it should allow them. This is a false-positive denial.
+      evidence: |
+        ```javascript
+        // utils.mjs:271
+        /[`*\-]*\s*([a-zA-Z0-9_./@*-]+(?:\.[a-zA-Z0-9*]+)?(?::\d+(?:-\d+)?)?)[`*]*/
+        // "- `src/auth/handler (v2).py`" → captures only "src/auth/handler"
+        ```
+      fix_suggestion: "Try backtick-delimited path extraction first: const btMatch = trimmed.match(/`([^`]+)`/);"
+
+    - id: "A-CR-009"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: medium
+      category: "logic"
+      file: ".claude/hooks/utils.mjs"
+      line: 129
+      title: "approvePrompt() sends JSON output via async write path — inconsistent with allowTool() silent exit"
+      description: |
+        allowTool() uses process.exit(0) directly (no JSON). approvePrompt() calls
+        outputJson({ decision: 'approve' }) which goes through the async write path with the
+        race condition from CR-001. approvePrompt() is called on EVERY non-blocked prompt —
+        the most common code path runs through the unreliable async write on every single prompt.
+      evidence: |
+        ```javascript
+        export function allowTool() { process.exit(0); }  // Silent exit
+        export function approvePrompt() { outputJson({ decision: 'approve' }); }  // Async path
+        ```
+      fix_suggestion: "If the Claude Code protocol accepts silent exit for UserPromptSubmit approval, change approvePrompt() to use process.exit(0)."
+
+    - id: "A-CR-010"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: low
+      category: "logic"
+      file: ".claude/hooks/utils.mjs"
+      line: 213
+      title: "Comment typo — missing slash on line 213 creates a division expression instead of comment"
+      description: |
+        Line 213 contains: return _config; / fail-safe: no config = hardcoded defaults remain
+        This is a comment missing the second '/'. The division expression is dead code (return
+        exits before it), but it signals the line was never tested in strict mode context.
+      evidence: |
+        ```javascript
+        // utils.mjs:212-214
+        _config = {};
+        return _config; / fail-safe: no config = hardcoded defaults remain
+        //             ^ Missing second / — division expression, not a comment
+        ```
+      fix_suggestion: "Fix: return _config; // fail-safe: no config = hardcoded defaults remain"
+
+    - id: "A-CR-011"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: low
+      category: "logic"
+      file: ".claude/hooks/validate-spec-complete.mjs"
+      line: 43
+      title: "spec file existence check uses relative path without project root resolution"
+      description: |
+        existsSync(specFile) is called with a relative path from git diff output. In worktree
+        scenarios where cwd() is not the main repo root, this resolves to the wrong directory,
+        returns false, and the spec validation is silently skipped — the entire Impact Tree check
+        becomes a no-op.
+      evidence: |
+        ```javascript
+        // validate-spec-complete.mjs:39-44
+        const specFile = stagedFiles.split('\n').find(f => /^ai\/features\/.*\.md$/.test(f));
+        if (specFile && existsSync(specFile)) {  // relative path, wrong in worktrees
+        ```
+      fix_suggestion: "Import getProjectDir() and use join(projectRoot, specFile) before existsSync."
+
+    - id: "A-CR-012"
+      zone: "Zone A"
+      persona: "code-reviewer"
+      severity: low
+      category: "logic"
+      file: ".claude/hooks/hooks.config.mjs"
+      line: 52
+      title: "Force-push regex negative lookahead misses --force-with-lease=ref form"
+      description: |
+        The regex --force\\b(?!-with-lease) does not cover --force-with-lease=<refname> (equals
+        form). Also, 'git push --force --force-with-lease origin develop' is blocked even though
+        the effective intent is --force-with-lease (which should be allowed), creating an
+        inconsistency where the same effective operation is blocked in one flag ordering and
+        allowed in another.
+      evidence: |
+        ```javascript
+        // hooks.config.mjs:52
+        /git\s+push\b(?=.*\b(develop|main)\b)(?=.*(-f\b|--force\b(?!-with-lease)))/i
+        ```
+      fix_suggestion: "Replace regex with a structured parser that checks: if --force-with-lease appears anywhere, allow it."
+
+    # ─── SECURITY AUDITOR (13 findings) ────────────────────────────────────────
+
+    - id: "A-SEC-001"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: high
+      category: "auth"
+      file: ".claude/hooks/utils.mjs"
+      line: 395
+      title: "Path traversal bypass via symlink in getProjectDir() — resolve() does not follow symlinks"
+      description: |
+        getProjectDir() uses startsWith() to validate paths. resolve() uses lexical path
+        normalization, NOT fs.realpathSync(). A symlink at $HOME/project -> /etc would pass the
+        guard. On systems where home is a short path (e.g., /tmp/u), a directory named /tmp/u-evil
+        passes startsWith('/tmp/u'). The function returns the path which is then used for dynamic
+        ESM import of hooks.config.local.mjs — executing arbitrary JavaScript.
+      evidence: |
+        ```javascript
+        // utils.mjs:391-399
+        export function getProjectDir() {
+          const resolved = resolve(dir);  // lexical only, symlinks not followed
+          if (!resolved.startsWith(home) && !resolved.startsWith('/tmp')) { ... }
+          return resolved;  // symlinks still active
+        }
+        ```
+      fix_suggestion: "Use fs.realpathSync() instead of resolve(). Append path separator for prefix checks: resolved.startsWith(home + path.sep)"
+
+    - id: "A-SEC-002"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: high
+      category: "auth"
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 111
+      title: "Attacker-controlled spec path via CLAUDE_CURRENT_SPEC_PATH env var bypasses file allowlist"
+      description: |
+        pre-edit.mjs reads CLAUDE_CURRENT_SPEC_PATH directly from environment and passes it to
+        isFileAllowed() -> extractAllowedFiles() which calls readFileSync(specPath) with NO
+        validation that specPath is within the project directory. Setting
+        CLAUDE_CURRENT_SPEC_PATH=/etc/passwd causes readFileSync to read /etc/passwd. Since no
+        '## Allowed Files' section is found, files.length === 0, and isFileAllowed() returns
+        {allowed: true} — ALL file-write protections are bypassed.
+      evidence: |
+        ```javascript
+        // pre-edit.mjs:111
+        const specPath = process.env.CLAUDE_CURRENT_SPEC_PATH || inferSpecFromBranch();
+        // utils.mjs:259
+        const content = readFileSync(specPath, 'utf-8');  // no path validation
+        // utils.mjs:365-367
+        if (result.files.length === 0) {
+          return { allowed: true };  // No section = allow all
+        }
+        ```
+      fix_suggestion: "Validate specPath: resolve with realpathSync, assert it starts with getProjectDir()/ai/features/, assert it ends with .md."
+
+    - id: "A-SEC-003"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: high
+      category: "injection"
+      file: ".claude/hooks/post-edit.mjs"
+      line: 27
+      title: "Argument injection into ruff via unsanitized filePath from hook input"
+      description: |
+        post-edit.mjs calls execFileSync('ruff', ['format', filePath]) where filePath is taken
+        from Claude tool_input JSON. While execFileSync with an array prevents shell injection,
+        ruff interprets arguments starting with '--' as flags. A filePath of '--config=/tmp/evil.toml'
+        would be passed as a ruff CLI flag. The existsSync check prevents most cases but paths
+        with embedded flag-like strings may still be exploitable.
+      evidence: |
+        ```javascript
+        // post-edit.mjs:27
+        execFileSync('ruff', ['format', filePath], { timeout: RUFF_TIMEOUT_MS, stdio: 'pipe' });
+        // filePath = '--unsafe-fixes' would pass as a ruff flag
+        ```
+      fix_suggestion: "Add explicit argument sanitization: if (filePath.startsWith('-')) { postContinue(); return; }"
+
+    - id: "A-SEC-004"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: medium
+      category: "exposure"
+      file: ".claude/hooks/utils.mjs"
+      line: 51
+      title: "Attacker-controlled log file path via DLD_HOOK_LOG_FILE env var — arbitrary file append"
+      description: |
+        debugLog() writes to a file specified by DLD_HOOK_LOG_FILE with no path validation.
+        An attacker who controls DLD_HOOK_LOG_FILE can redirect debug output to any writable file
+        (e.g., appending to ~/.bashrc, ~/.ssh/authorized_keys, ~/.gitconfig) since writes use
+        {flag: 'a'} (append mode). The JSON content is not fully attacker-controlled but file
+        corruption occurs.
+      fix_suggestion: "Validate LOG_FILE at startup — it must be an absolute path within $HOME or /tmp, must not be a symlink."
+
+    - id: "A-SEC-005"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: medium
+      category: "auth"
+      file: ".claude/hooks/hooks.config.mjs"
+      line: 26
+      title: "Push-to-main regex has edge cases with complex refspecs"
+      description: |
+        The regex that blocks 'git push ... main' is generally robust but has edge cases with
+        refspec ranges (e.g., 'git push origin main..') and URL-like arguments. The lookahead/
+        lookbehind construction handles most cases but complex scenarios remain untested.
+      fix_suggestion: "Replace with a structured command parser that splits git push arguments and checks the destination refspec explicitly."
+
+    - id: "A-SEC-006"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: medium
+      category: "auth"
+      file: ".claude/hooks/hooks.config.mjs"
+      line: 15
+      title: "isDestructiveClean() does not block 'git clean -fx' — destroys ignored files without warning"
+      description: |
+        The function detects destructive 'git clean' by requiring BOTH force (-f) AND directory (-d)
+        flags. 'git clean -fx' (force + remove ignored files, no -d) satisfies hasForce=true but
+        hasDir=false, so isDestructiveClean returns false and allows the command. This deletes all
+        ignored files including .env secrets without any safety prompt.
+      evidence: |
+        ```javascript
+        function isDestructiveClean(cmd) {
+          const hasForce = ...;
+          const hasDir = /(?:^|\s)-[a-z]*d/i.test(cmd);  // -x alone is not caught
+          return hasForce && hasDir;
+        }
+        // git clean -fx: hasForce=true, hasDir=false → returns false → ALLOWED
+        ```
+      fix_suggestion: "Expand detection: const hasX = /(?:^|\\s)-[a-z]*x/i.test(cmd); return hasForce && (hasDir || hasX);"
+
+    - id: "A-SEC-007"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: medium
+      category: "auth"
+      file: ".claude/hooks/utils.mjs"
+      line: 260
+      title: "ReDoS vulnerability in extractAllowedFiles() regex on large spec files"
+      description: |
+        The regex /## Allowed Files\s*\n([\s\S]*?)(?=\n##|\s*$)/i has potential for catastrophic
+        backtracking with [\s\S]*? combined with \s*$. On a 50KB spec file where Allowed Files is
+        the last section, every character from that point to EOF must be tried against the alternation.
+        Hook timeout leads to fail-safe mode where all file writes are allowed.
+      fix_suggestion: "Rewrite regex: /## Allowed Files\s*\n(.*?)(?=\n##|$)/is or split on section headers first."
+
+    - id: "A-SEC-008"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: medium
+      category: "auth"
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 134
+      title: "Protected path check ordering — always-allowed patterns bypass protected path enforcement"
+      description: |
+        The always-allowed check in isFileAllowed() runs BEFORE protected path checks. A file in
+        .claude/** (always-allowed) that also matches a protectedPath would be ALLOWED because the
+        always-allowed check returns early before the protected path check is ever reached. Protected
+        paths under .claude/ (non-standard layout) would not be protected.
+      fix_suggestion: "Apply protected path checks BEFORE always-allowed pattern checks. Protected paths should be an absolute hard block."
+
+    - id: "A-SEC-009"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: medium
+      category: "auth"
+      file: ".claude/hooks/prompt-guard.mjs"
+      line: 44
+      title: "Prompt guard complexity detection fails on non-ASCII locales due to toLowerCase()"
+      description: |
+        On Turkish locale, 'I'.toLowerCase() produces 'ı' (not 'i'), so COMPLEXITY_PATTERNS that
+        expect Latin 'i' would not match the lowercased form. Complexity detection fails silently
+        for Turkish locale users, bypassing the prompt guard entirely and allowing users to proceed
+        without the intended /spark guidance.
+      fix_suggestion: "Test patterns against original prompt (not lowercased); ensure all patterns include /i flag; remove redundant toLowerCase()."
+
+    - id: "A-SEC-010"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: low
+      category: "exposure"
+      file: ".claude/hooks/utils.mjs"
+      line: 35
+      title: "Error log appends unsanitized error objects — potential log injection"
+      description: |
+        logHookError() writes: ${ts} [${hookName}]: ${error}\n — If an Error object's message
+        contains newlines, log entries spanning multiple lines are written, allowing fake log entry
+        injection. This is a local debug log only (chmod 600) but could confuse audit trails.
+      fix_suggestion: "Sanitize: const safeError = String(error).replace(/\\n/g, ' | ');"
+
+    - id: "A-SEC-011"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: low
+      category: "auth"
+      file: ".claude/hooks/run-hook.mjs"
+      line: 35
+      title: "git worktree list output parsing is brittle — malformed output silently disables all hooks"
+      description: |
+        run-hook.mjs parses 'git worktree list --porcelain' with output.split('\n')[0].replace('worktree ', '').trim().
+        If git output is malformed (corrupted git state, unusual path names), root gets set to a
+        garbage string. hookPath points to a non-existent location, hooks silently fail, and all
+        blocks are bypassed (fail-open).
+      fix_suggestion: "Use: const firstLine = output.split('\n').find(l => l.startsWith('worktree ')); root = firstLine?.slice('worktree '.length).trim() ?? process.cwd();"
+
+    - id: "A-SEC-012"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: low
+      category: "auth"
+      file: ".claude/hooks/session-end.mjs"
+      line: 25
+      title: "session-end.mjs uses raw CLAUDE_PROJECT_DIR without getProjectDir() validation"
+      description: |
+        session-end.mjs reads the project directory as process.env.CLAUDE_PROJECT_DIR || process.cwd()
+        without calling getProjectDir() from utils.mjs, which provides path traversal protection.
+        If CLAUDE_PROJECT_DIR is set to an arbitrary path, session-end constructs an unchecked path
+        and reads a file from it.
+      fix_suggestion: "Import and use getProjectDir() from utils.mjs."
+
+    - id: "A-SEC-013"
+      zone: "Zone A"
+      persona: "security-auditor"
+      severity: low
+      category: "auth"
+      file: ".claude/hooks/utils.mjs"
+      line: 244
+      title: "minimatch() character class injection — unmatched ] in spec causes regex syntax error / DoS"
+      description: |
+        The path glob minimatch does not escape ] characters. An allowed file entry of 'src/]evil.py'
+        in the spec produces regex ^src/]evil\\.py$ which is a syntax error. new RegExp(re) throws,
+        extractAllowedFiles() catches and returns {files: [], error: true}, causing all file writes
+        to be denied for this session (DoS of file write capability).
+      fix_suggestion: "Wrap new RegExp(re) in try/catch within minimatch() and return false on error, rather than propagating the exception."
+
+    # ─── UX ANALYST (15 findings) ──────────────────────────────────────────────
+
+    - id: "A-UX-001"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: high
+      category: "inconsistency"
+      file: ".claude/hooks/utils.mjs"
+      line: 310
+      title: "SEC prefix in spec inference not in CLAUDE.md backlog rules — creates silent allowlist bypass"
+      description: |
+        The spec inference regex at lines 310 and 320 accepts SEC as a valid task prefix, but CLAUDE.md
+        explicitly states only 4 prefix types are allowed: BUG, FTR, TECH, ARCH. A SEC branch gets spec
+        inference, but the spec would never legally exist in the backlog. If spec does not exist, spec
+        enforcement is silently bypassed — all file edits allowed.
+      fix_suggestion: "Remove SEC from the regex patterns: use /(FTR|BUG|TECH|ARCH)-\\d+/i"
+
+    - id: "A-UX-002"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: high
+      category: "inconsistency"
+      file: ".claude/hooks/prompt-guard.mjs"
+      line: 18
+      title: "prompt-guard ignores config — always uses hardcoded patterns, making promptGuard config dead code"
+      description: |
+        prompt-guard.mjs defines its own hardcoded COMPLEXITY_PATTERNS and SKILL_INDICATORS constants
+        and never calls loadConfig(). hooks.config.mjs defines promptGuard.complexityPatterns and
+        promptGuard.skillIndicators (lines 106-124), but no hook ever reads them. User customizations
+        to complexity patterns via hooks.config.local.mjs are silently ignored. The config section
+        promptGuard in hooks.config.mjs is dead code.
+      fix_suggestion: "Add async function main(), call loadConfig(), use config.promptGuard.complexityPatterns and skillIndicators."
+
+    - id: "A-UX-003"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: high
+      category: "inconsistency"
+      file: ".claude/hooks/prompt-guard.mjs"
+      line: 44
+      title: "SKILL_INDICATORS tested against lowercased string but patterns lack /i flag — latent maintenance hazard"
+      description: |
+        SKILL_INDICATORS regexes are tested against promptLower (lowercased) but patterns have no /i
+        flag. Correctness depends on undocumented implicit case normalization. A future maintainer adding
+        a pattern with uppercase letters to SKILL_INDICATORS would create a silent bug where the indicator
+        never fires and the prompt is incorrectly blocked as complex.
+      fix_suggestion: "Document clearly that all indicator patterns must be lowercase-safe because input is pre-lowercased, or switch to testing against raw prompt with /i flags."
+
+    - id: "A-UX-004"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: high
+      category: "error-ux"
+      file: ".claude/hooks/utils.mjs"
+      line: 202
+      title: "hooks.config.local.mjs not found in git worktrees — customizations silently lost"
+      description: |
+        hooks.config.local.mjs is loaded via getProjectDir() which uses CLAUDE_PROJECT_DIR. In git
+        worktrees where this env var is unset, getProjectDir() falls back to process.cwd() — the
+        worktree directory. The local config in the main repo's .claude/hooks/ will not be found from
+        a worktree. User believes their custom limits are active; they are not.
+      fix_suggestion: "Use the main repo root (resolved in run-hook.mjs via git worktree list) for local config resolution."
+
+    - id: "A-UX-005"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: high
+      category: "error-ux"
+      file: ".claude/hooks/utils.mjs"
+      line: 395
+      title: "getProjectDir path traversal guard blocks legitimate CI paths silently with no diagnostic output"
+      description: |
+        On Linux CI systems, projects are often in /home/runner/work/ which doesn't match homedir()
+        when the runner is root (/root). The guard silently falls back to process.cwd() with no
+        warning. Developer has no idea the path guard fired, causing spec files not to be found and
+        file allowlist enforcement to silently break.
+      fix_suggestion: "At minimum, log when the guard fires via logHookError so the developer can diagnose."
+
+    - id: "A-UX-006"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: medium
+      category: "error-ux"
+      file: ".claude/hooks/post-edit.mjs"
+      line: 83
+      title: "ruff format failure silently swallowed — user sees no feedback when formatting fails"
+      description: |
+        When ruff format fails (non-zero exit, e.g., syntax error in file), formatPythonFile()
+        returns {success: false, msg: 'some error'}. The main() function discards the error message
+        entirely and calls postContinue() silently. Developer sees no indication that formatting
+        failed or why, even for genuine ruff errors (misconfiguration, version mismatch).
+      fix_suggestion: "When success is false and msg is not 'ruff not found' or 'format timeout', include the failure message: messages.push(`ruff format failed: ${msg}`)."
+
+    - id: "A-UX-007"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: medium
+      category: "error-ux"
+      file: ".claude/hooks/validate-spec-complete.mjs"
+      line: 43
+      title: "specFile found only via relative path — Impact Tree check silently skipped in worktrees"
+      description: |
+        git diff --cached --name-only returns relative paths. existsSync(specFile) with a relative
+        path resolves against process.cwd(). If the hook's cwd is not the repo root, existsSync
+        returns false even though the file exists, causing the spec check to be silently skipped.
+        Developer commits with unfilled checkboxes and no hook fires.
+      fix_suggestion: "Resolve specFile against the repo root. Use git worktree list --porcelain or join with a known absolute project directory."
+
+    - id: "A-UX-008"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: medium
+      category: "inconsistency"
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 149
+      title: "LOC check uses process.cwd() for relative paths, inconsistent with normalizePath which uses getProjectDir()"
+      description: |
+        pre-edit.mjs normalizes filePath against getProjectDir() (line 67-71) for spec checks, but
+        for the LOC limit check (line 149) it constructs absPath using process.cwd(). In worktrees
+        where cwd != projectDir, the LOC check may silently open the wrong file or find no file,
+        skipping LOC enforcement. Developer editing a large file gets no warning about the LOC limit.
+      fix_suggestion: "Replace line 149 with: const absPath = filePath.startsWith('/') ? filePath : join(getProjectDir(), filePath);"
+
+    - id: "A-UX-009"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: medium
+      category: "dead-end"
+      file: ".claude/hooks/session-end.mjs"
+      line: 29
+      title: "Diary reminder threshold of >5 is hardcoded — no config path exists for session-end"
+      description: |
+        session-end.mjs fires a reminder only when pendingCount > 5, hardcoded with no way to
+        configure it. hooks.config.mjs has no sessionEnd section. Unlike all other hooks, session-end
+        does not call loadConfig() at all. Users with different workflow speeds cannot customize
+        this threshold.
+      fix_suggestion: "Add sessionEnd.pendingThreshold field to hooks.config.mjs with default 5. Have session-end.mjs call loadConfig() and read the threshold."
+
+    - id: "A-UX-010"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: medium
+      category: "error-ux"
+      file: ".claude/hooks/utils.mjs"
+      line: 96
+      title: "setTimeout safety net in outputJson not cleared after write callback — 500ms unnecessary hang"
+      description: |
+        outputJson() registers both a write callback exit and a setTimeout(500ms) safety net. The
+        setTimeout handle is never stored and never cleared after the callback fires. In abnormal
+        pipe scenarios (Claude Code kills the pipe), the hook may appear to hang for up to 500ms
+        before the safety net fires, adding latency to every blocked operation in degraded environments.
+      fix_suggestion: "const t = setTimeout(() => process.exit(0), 500); process.stdout.write(..., () => { clearTimeout(t); process.exit(0); });"
+
+    - id: "A-UX-011"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: medium
+      category: "inconsistency"
+      file: ".claude/hooks/pre-bash.mjs"
+      line: 18
+      title: "isDestructiveClean duplicated between hooks.config.mjs and pre-bash.mjs — divergence risk"
+      description: |
+        isDestructiveClean is defined identically in both hooks.config.mjs (lines 12-17) and
+        pre-bash.mjs (lines 18-25). If someone fixes a bug in one copy, the other remains wrong.
+        Already demonstrates divergence potential — any future update must be applied in two places.
+      fix_suggestion: "Export isDestructiveClean from a shared location and import it in pre-bash.mjs."
+
+    - id: "A-UX-012"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: medium
+      category: "error-ux"
+      file: ".claude/hooks/utils.mjs"
+      line: 260
+      title: "extractAllowedFiles regex fails on specs where Allowed Files section uses heading level 3"
+      description: |
+        extractAllowedFiles looks for ## Allowed Files (level 2 heading). If a spec author writes
+        ### Allowed Files (level 3), the regex returns no match, isFileAllowed sees files: [], error: false,
+        and by the design at line 365-366: 'No Allowed Files section = allow all'. The file protection
+        is silently bypassed. Developer believes their spec is enforcing file boundaries, but it is not.
+      fix_suggestion: "Update the regex to match any heading level: /^#{1,6}\\s+Allowed Files\\s*$/im"
+
+    - id: "A-UX-013"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: low
+      category: "inconsistency"
+      file: ".claude/hooks/utils.mjs"
+      line: 226
+      title: "ALWAYS_ALLOWED_PATTERNS hardcoded in utils.mjs duplicates hooks.config.mjs — drift risk"
+      description: |
+        ALWAYS_ALLOWED_PATTERNS is defined at line 226 in utils.mjs as a fallback, and also in
+        hooks.config.mjs as utils.alwaysAllowedPatterns. When config loads, the hardcoded list is
+        never used. When config fails, the hardcoded fallback is used. These two lists can silently
+        drift if one is updated and the other is not, giving different always-allowed files depending
+        on whether config loaded successfully.
+      fix_suggestion: "Remove ALWAYS_ALLOWED_PATTERNS from utils.mjs and import the default config synchronously for fallback."
+
+    - id: "A-UX-014"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: low
+      category: "error-ux"
+      file: ".claude/hooks/run-hook.mjs"
+      line: 35
+      title: "Worktree root parsing has no existsSync validation — malformed output silently disables hooks"
+      description: |
+        run-hook.mjs parses git worktree list --porcelain output but adds no validation that the
+        parsed root is an existing directory. If git output format changes or is malformed, root
+        is set to an invalid path silently, hookPath points to nothing, process.exit(0) is called —
+        all hooks silently pass. No error is logged, no user notification.
+      fix_suggestion: "Add existsSync(root) check after parsing. If root does not exist, fall back to process.cwd() and log via logHookError."
+
+    - id: "A-UX-015"
+      zone: "Zone A"
+      persona: "ux-analyst"
+      severity: low
+      category: "inconsistency"
+      file: ".claude/hooks/utils.mjs"
+      line: 271
+      title: "extractAllowedFiles path regex excludes valid path characters — parentheses, special chars"
+      description: |
+        The path extraction regex does not allow parentheses, spaces, brackets, plus signs. A file
+        listed as src/domains/auth(v2)/handler.py is silently dropped from the allowed list, causing
+        the hook to deny edits to it. The error message 'not in Allowed Files' is confusing because
+        the developer did add it to the spec.
+      fix_suggestion: "Match content between backticks or bold markers directly as a separate regex branch."
+
+    # ─── JUNIOR DEVELOPER (12 findings) ────────────────────────────────────────
+
+    - id: "A-JR-001"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: high
+      category: "copy-paste"
+      file: ".claude/hooks/prompt-guard.mjs"
+      line: 18
+      title: "prompt-guard uses hardcoded patterns instead of config — config values silently ignored"
+      description: |
+        prompt-guard.mjs defines its own hardcoded COMPLEXITY_PATTERNS and SKILL_INDICATORS (lines 18-38)
+        and never calls loadConfig(). hooks.config.mjs has a promptGuard section (lines 106-124) with
+        complexityPatterns and skillIndicators — but no hook ever reads them. User overrides in
+        hooks.config.local.mjs have zero effect on prompt-guard behavior. The config section is dead code.
+        KEYWORD_TARGET_GAP (line 15) is also hardcoded and never sourced from config.
+      evidence: |
+        ```javascript
+        // prompt-guard.mjs line 15-26 — hardcoded, never reads config
+        const KEYWORD_TARGET_GAP = 30;
+        const COMPLEXITY_PATTERNS = [...];
+        // hooks.config.mjs lines 106-124 — exists but is never consumed
+        promptGuard: { keywordTargetGap: 30, complexityPatterns: [...], skillIndicators: [...] }
+        ```
+      fix_suggestion: "Make prompt-guard.mjs async, call loadConfig(), use config.promptGuard.complexityPatterns and skillIndicators."
+
+    - id: "A-JR-002"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: high
+      category: "logic"
+      file: ".claude/hooks/utils.mjs"
+      line: 340
+      title: "isFileAllowed strips ./ prefix from filePath but NOT from allowed entries — path mismatch"
+      description: |
+        isFileAllowed() at line 342 strips the './' prefix from filePath via .replace(/^\.\//, '').
+        But at line 371, the allowed entries from the spec are only stripped of backslashes on win32,
+        NOT the './' prefix. A spec listing './src/foo.py' would not match 'src/foo.py' because
+        'src/foo.py' !== './src/foo.py'. The file would be incorrectly denied.
+      evidence: |
+        ```javascript
+        // utils.mjs line 342 — strips ./ from filePath
+        filePath = normalize(filePath).replace(/^\.\//, '');
+        // utils.mjs line 371 — does NOT strip ./ from allowed entries
+        allowed = normalize(allowed).replace(/\\/g, '/');  // no ^\.\/ strip!
+        ```
+      fix_suggestion: "Apply the same .replace(/^\\.\\//,'') strip to each allowed entry on line 371."
+
+    - id: "A-JR-003"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: high
+      category: "logic"
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 149
+      title: "Absolute path construction for LOC check uses process.cwd() instead of getProjectDir()"
+      description: |
+        LOC limit check constructs absPath using process.cwd() for relative paths. getProjectDir() is
+        already imported. In worktrees where cwd differs from CLAUDE_PROJECT_DIR, process.cwd() gives
+        the wrong base directory, existsSync(absPath) returns false for files that exist in the project
+        root, and LOC checks are silently skipped.
+      evidence: |
+        ```javascript
+        // pre-edit.mjs line 149 — uses process.cwd() not getProjectDir()
+        const absPath = filePath.startsWith('/') ? filePath : join(process.cwd(), filePath);
+        ```
+      fix_suggestion: "Replace with: const absPath = filePath.startsWith('/') ? filePath : join(getProjectDir(), filePath);"
+
+    - id: "A-JR-004"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: medium
+      category: "logic"
+      file: ".claude/hooks/session-end.mjs"
+      line: 25
+      title: "session-end duplicates getProjectDir() logic without path traversal protection"
+      description: |
+        session-end.mjs line 25 inlines: process.env.CLAUDE_PROJECT_DIR || process.cwd() — without
+        the path traversal check that getProjectDir() performs. utils.mjs exports getProjectDir() and
+        session-end.mjs already imports logHookError from utils.mjs, so getProjectDir is available.
+        A malicious CLAUDE_PROJECT_DIR value is accepted by session-end.mjs but rejected by all other hooks.
+      evidence: |
+        ```javascript
+        // session-end.mjs line 25 — no path traversal protection
+        const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+        ```
+      fix_suggestion: "Import getProjectDir from utils.mjs and replace line 25 with: const projectDir = getProjectDir();"
+
+    - id: "A-JR-005"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: medium
+      category: "logic"
+      file: ".claude/hooks/utils.mjs"
+      line: 271
+      title: "extractAllowedFiles path regex does not capture paths with parentheses or other special chars"
+      description: |
+        The regex character class [a-zA-Z0-9_./@*-] does not allow parentheses, plus signs, spaces,
+        or other common filesystem characters. Files with parentheses in their name (e.g.,
+        test_(foo).py) are silently dropped from the allowed list, causing the hook to deny edits
+        with a confusing denial message.
+      fix_suggestion: "Switch to a broader match: extract content between backticks first, then fall back to current regex."
+
+    - id: "A-JR-006"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: medium
+      category: "logic"
+      file: ".claude/hooks/hooks.config.mjs"
+      line: 52
+      title: "Force-push block regex negative lookahead does not cover --force-with-lease=ref form"
+      description: |
+        The pattern --force\\b(?!-with-lease) covers --force-with-lease but not --force-with-lease=ref
+        (equals form). 'git push --force-with-lease=origin/main origin develop' would match --force
+        and be blocked even though it uses the safe form.
+      fix_suggestion: "Change to: --force(?!-with-lease[=\\s]) to also exclude --force-with-lease=ref forms."
+
+    - id: "A-JR-007"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: medium
+      category: "logic"
+      file: ".claude/hooks/utils.mjs"
+      line: 191
+      title: "loadConfig() async init has theoretical double-import race — no promise caching"
+      description: |
+        loadConfig() is async with a cache check at line 198: if (_config) return _config. In tests
+        with parallel execution (--test-concurrency > 1), two concurrent calls to loadConfig() would
+        both see _config === null and start independent loads. Both set _config = defaults, which is
+        harmless but if one picks up a freshly written local config while the other doesn't, the cache
+        is set to whichever completed last — non-deterministic test behavior.
+      fix_suggestion: "Store the in-flight promise as the cache value: if (!_configPromise) _configPromise = _doLoadConfig(); return _configPromise;"
+
+    - id: "A-JR-008"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: medium
+      category: "mismatch"
+      file: ".claude/hooks/validate-spec-complete.mjs"
+      line: 43
+      title: "specFile existence check uses relative path — fails when cwd differs from repo root"
+      description: |
+        existsSync(specFile) where specFile is a relative path from git diff. In worktrees, cwd may
+        be a subdirectory, so existsSync returns false even though the file exists. The Impact Tree
+        check is silently skipped, allowing commits with unfilled checkboxes.
+      fix_suggestion: "Resolve specFile against the repo root. Import getProjectDir from utils.mjs and use join(getProjectDir(), specFile)."
+
+    - id: "A-JR-009"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: low
+      category: "naming"
+      file: ".claude/hooks/utils.mjs"
+      line: 235
+      title: "matchesPattern() is a one-line passthrough wrapper — inconsistent usage with direct minimatch calls"
+      description: |
+        matchesPattern() simply delegates to minimatch(). Line 349 calls matchesPattern() while
+        line 377 calls minimatch() directly, bypassing the wrapper. If matchesPattern() is later
+        modified, line 377 would diverge and produce different behavior for the same files.
+      fix_suggestion: "Either remove matchesPattern() and call minimatch() everywhere, or update line 377 to use matchesPattern()."
+
+    - id: "A-JR-010"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: low
+      category: "logic"
+      file: ".claude/hooks/run-hook.mjs"
+      line: 35
+      title: "Worktree root detection uses fragile string replace() instead of anchored regex"
+      description: |
+        root = output.split('\n')[0].replace('worktree ', '').trim() — String.replace with a string
+        argument only replaces the first occurrence. If the path contains 'worktree ', only the
+        first instance is replaced. Using anchored regex /^worktree\s+/ would be more precise.
+      fix_suggestion: "Use: output.split('\n')[0].replace(/^worktree\\s+/, '').trim()"
+
+    - id: "A-JR-011"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: low
+      category: "logic"
+      file: ".claude/hooks/utils.mjs"
+      line: 15
+      title: "dirname is imported but never used"
+      description: |
+        dirname is imported from 'path' on line 15 but grep finds zero usages of dirname in the file.
+        This is a leftover import — dead code.
+      evidence: |
+        ```javascript
+        // utils.mjs line 15
+        import { join, dirname, normalize, resolve } from 'path';  // dirname unused
+        ```
+      fix_suggestion: "Remove dirname from the import on line 15."
+
+    - id: "A-JR-012"
+      zone: "Zone A"
+      persona: "junior-developer"
+      severity: low
+      category: "logic"
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 167
+      title: "LOC warn threshold becomes unreachable when warnThreshold set to 1.0"
+      description: |
+        If warnThreshold is set to exactly 1.0 in hooks.config.local.mjs, warnLoc = Math.floor(maxLoc * 1.0) = maxLoc.
+        The hard-block condition (loc >= maxLoc) fires first, and the warn condition (loc >= warnLoc) is
+        never reached. Warnings are permanently suppressed when threshold is 1.0 — not documented or tested.
+      fix_suggestion: "Document that warnThreshold must be < 1.0, or guard: const warnLoc = Math.min(Math.floor(maxLoc * warnThreshold), maxLoc - 1);"
+
+    # ─── SOFTWARE ARCHITECT (13 findings) ──────────────────────────────────────
+
+    - id: "A-ARCH-001"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: high
+      category: "consistency"
+      file: ".claude/hooks/utils.mjs"
+      line: 191
+      title: "loadConfig() silently absorbs local config failures — operator's custom rules invisibly inactive"
+      description: |
+        When hooks.config.local.mjs has a syntax error, the inner catch at line 208 silently absorbs
+        the error and falls through to defaults. No log entry is written. The operator's custom rules
+        (additional blocked patterns, different LOC limits) are silently ignored for the entire process
+        lifetime. The failure is completely invisible without manually checking error logs.
+      evidence: |
+        ```javascript
+        // utils.mjs:197-215
+        try {
+          const localPath = join(getProjectDir(), '.claude', 'hooks', 'hooks.config.local.mjs');
+          if (existsSync(localPath)) {
+            const { default: local } = await import(pathToFileURL(localPath).href);
+            _config = deepMerge(defaults, local);
+          }
+        } catch { /* no local config = use defaults */ }  // silent! no log
+        ```
+      fix_suggestion: "Log a warning via logHookError in the inner catch: logHookError('loadConfig', `local config failed to load: ${localErr}`);"
+
+    - id: "A-ARCH-002"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: high
+      category: "race-condition"
+      file: ".claude/hooks/utils.mjs"
+      line: 94
+      title: "outputJson — missing process.stdout error handler causes uncaught SIGPIPE/EPIPE crash"
+      description: |
+        If the parent process closes its read end of the pipe while a denyTool() response is being
+        written, Node.js emits an unhandled 'error' event on process.stdout (SIGPIPE/EPIPE). There is
+        no process.stdout.on('error', ...) handler. This causes an uncaught exception, crashing the
+        hook with a non-zero exit code. Claude Code receives a crashed hook and may treat the tool
+        call as allowed — the deny decision is silently lost.
+      fix_suggestion: "Add: process.stdout.on('error', () => process.exit(0)); at module top-level in utils.mjs."
+
+    - id: "A-ARCH-003"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: high
+      category: "consistency"
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 149
+      title: "Inconsistent absolute path resolution — pre-edit uses process.cwd() while post-edit uses resolve()"
+      description: |
+        pre-edit.mjs at line 149 uses join(process.cwd(), filePath) for LOC check.
+        post-edit.mjs at line 75 uses resolve(filePath). resolve() handles normalization and is
+        semantically correct. In git worktrees where CLAUDE_PROJECT_DIR !== process.cwd(), the LOC
+        enforcement in pre-edit uses the wrong base directory, causing existsSync to return false
+        for relative-path file edits, silently skipping LOC enforcement.
+      fix_suggestion: "Use join(getProjectDir(), relPath) since relPath is already computed as the project-relative path."
+
+    - id: "A-ARCH-004"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: high
+      category: "state-machine"
+      file: ".claude/hooks/utils.mjs"
+      line: 340
+      title: "isFileAllowed — absolute paths from Claude Code incorrectly fail spec allowlist matching"
+      description: |
+        When Claude Code provides an absolute path (e.g., /project/worktree/src/api.py), and the
+        symlink resolution diverges from CLAUDE_PROJECT_DIR (e.g., macOS /var -> /private/var),
+        normalizePath() fails to strip the project dir prefix. isFileAllowed receives an absolute
+        path, which doesn't match any relative spec pattern. The edit is denied even though
+        src/api.py is in the spec allowlist. This breaks autopilot.
+      fix_suggestion: "In isFileAllowed, add absolute path normalization relative to project dir using realpathSync."
+
+    - id: "A-ARCH-005"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: medium
+      category: "state-machine"
+      file: ".claude/hooks/utils.mjs"
+      line: 244
+      title: "minimatch glob engine — src/**/*.py does not match src/foo.py (non-standard behavior)"
+      description: |
+        The custom minimatch converts ** to .* (regex). The pattern src/**/*.py becomes
+        ^src/.*/[^/]*\\.py$, which requires at least one directory separator — meaning src/foo.py
+        does NOT match. Standard glob semantics say ** can match zero path segments. Any spec using
+        src/**/*.py will silently deny edits to top-level files while allowing deeper ones.
+        This is documented in tests as 'known behavior' but will surprise operators.
+      fix_suggestion: "Fix ** conversion: .replace(/\\*\\*\\//g, '(?:.*/)?') .replace(/\\*\\*/g, '.*') — makes src/**/*.py match both src/foo.py and src/sub/foo.py."
+
+    - id: "A-ARCH-006"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: medium
+      category: "consistency"
+      file: ".claude/hooks/utils.mjs"
+      line: 271
+      title: "extractAllowedFiles path extractor regex silently truncates paths with special characters"
+      description: |
+        The character class [a-zA-Z0-9_./@*-] does not include +, ~, !, {, }, (, ), space. Paths like
+        src/api/v2+beta/main.py are extracted as 'src/api/v2' (truncated at +), 'src/feature (draft)/main.py'
+        stops at space. A spec writer who includes such paths in their allowlist will have them silently
+        extracted incorrectly — either a directory match occurs or the file is denied.
+      fix_suggestion: "Switch to extracting everything between backticks/bold markers directly: const backtickMatch = trimmed.match(/`([^`]+)`);"
+
+    - id: "A-ARCH-007"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: medium
+      category: "cascade"
+      file: ".claude/hooks/pre-bash.mjs"
+      line: 29
+      title: "Force push with --force-with-lease to develop still allows data loss in stale-tracking-ref scenarios"
+      description: |
+        git push --force-with-lease origin develop is allowed (correctly per current design). But
+        --force-with-lease checks against the locally tracked remote-tracking ref, which may be stale
+        if the worktree was created before CI pushed commits to develop. An autopilot rebasing in a
+        worktree can overwrite CI commits on develop. The hook's protection is incomplete — it treats
+        --force-with-lease as always safe, which is wrong in stale-tracking-ref scenarios.
+      fix_suggestion: "Change --force-with-lease to require explicit user confirmation via askTool. The 'force-with-lease is always safe' assumption is wrong in stale-tracking-ref scenarios."
+
+    - id: "A-ARCH-008"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: medium
+      category: "atomicity"
+      file: ".claude/hooks/utils.mjs"
+      line: 197
+      title: "loadConfig async TOCTOU — concurrent calls can load config twice before cache is set"
+      description: |
+        loadConfig() is async with cache check at line 198. Between the check and the assignment,
+        the module is awaiting I/O. Another concurrent caller during this gap starts a second load.
+        While both produce the same result in production (single-process), in tests with
+        --test-concurrency > 1, timing can cause non-deterministic test behavior if one load picks
+        up a freshly written local config that the other missed.
+      fix_suggestion: "Use pending-promise pattern: if (!_configPromise) _configPromise = _doLoadConfig(); return _configPromise;"
+
+    - id: "A-ARCH-009"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: medium
+      category: "consistency"
+      file: ".claude/hooks/session-end.mjs"
+      line: 25
+      title: "session-end uses raw process.env instead of getProjectDir() — bypasses path safety"
+      description: |
+        session-end.mjs uses process.env.CLAUDE_PROJECT_DIR || process.cwd() directly, bypassing
+        getProjectDir() from utils.mjs which validates paths. If CLAUDE_PROJECT_DIR is set to a
+        malicious path (e.g., /etc), session-end would attempt to read /etc/ai/diary/index.md.
+        This is an architectural inconsistency where one hook diverges from the established safety pattern.
+      fix_suggestion: "Import and use getProjectDir() from utils.mjs."
+
+    - id: "A-ARCH-010"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: medium
+      category: "state-machine"
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 111
+      title: "Empty string CLAUDE_CURRENT_SPEC_PATH triggers branch inference instead of disabling enforcement"
+      description: |
+        Line 111: const specPath = process.env.CLAUDE_CURRENT_SPEC_PATH || inferSpecFromBranch()
+        JavaScript's || treats empty string as falsy. If CLAUDE_CURRENT_SPEC_PATH is set to '' (empty
+        string) to disable enforcement during debugging, inferSpecFromBranch() is called instead. If the
+        current branch matches a task ID, the spec is found and enforcement continues — the opposite of
+        what the operator intended.
+      fix_suggestion: "Use explicit undefined check: const envSpec = process.env.CLAUDE_CURRENT_SPEC_PATH; const specPath = (envSpec !== undefined && envSpec !== '') ? envSpec : inferSpecFromBranch();"
+
+    - id: "A-ARCH-011"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: low
+      category: "consistency"
+      file: ".claude/hooks/prompt-guard.mjs"
+      line: 18
+      title: "prompt-guard does not use config — hardcoded patterns cannot be overridden by hooks.config.mjs"
+      description: |
+        prompt-guard.mjs has COMPLEXITY_PATTERNS and SKILL_INDICATORS defined as module-level constants
+        and does NOT call loadConfig(). hooks.config.mjs defines promptGuard.complexityPatterns and
+        promptGuard.skillIndicators — but the hook never reads them. The architectural contract (hooks
+        read from config, config is overridable) is violated for prompt-guard specifically.
+      fix_suggestion: "Add loadConfig() call and use config values: const complexityPatterns = config?.promptGuard?.complexityPatterns || COMPLEXITY_PATTERNS;"
+
+    - id: "A-ARCH-012"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: low
+      category: "consistency"
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 74
+      title: "When a file is both near LOC limit AND in a sync zone, only LOC warning fires — sync reminder dropped"
+      description: |
+        When a .claude/ file is both over LOC warn threshold AND in a sync zone (exists in
+        template/.claude/), the LOC warning fires first (step 3) and returns early. The sync zone
+        reminder (step 4) is never reached. Developer edits .claude/hooks/utils.mjs without seeing
+        the sync reminder — creating divergence between the two copies without notification.
+      fix_suggestion: "Collect all soft warnings into an array and join them into a single askTool call: if (warnings.length > 0) { askTool(warnings.join('\n\n---\n\n')); return; }"
+
+    - id: "A-ARCH-013"
+      zone: "Zone A"
+      persona: "software-architect"
+      severity: low
+      category: "coupling"
+      file: ".claude/hooks/utils.mjs"
+      line: 326
+      title: "inferSpecFromBranch hardcodes 'ai/features' as relative path — breaks in worktrees"
+      description: |
+        inferSpecFromBranch() uses const dir = 'ai/features' — a relative path resolved against
+        process.cwd(). In worktrees where cwd is not the main repo root, existsSync('ai/features')
+        returns false and spec inference silently returns null. With ARCH-003 (cwd vs CLAUDE_PROJECT_DIR
+        inconsistency), spec enforcement is silently disabled in autopilot worktree scenarios.
+      fix_suggestion: "Use getProjectDir() as base: const dir = join(getProjectDir(), 'ai', 'features'); Add utils.specDir config key for customization."
+
+    # ─── QA ENGINEER (18 findings) ─────────────────────────────────────────────
+
+    - id: "A-QA-001"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: high
+      category: "boundary"
+      file: ".claude/hooks/utils.mjs"
+      line: 395
+      title: "getProjectDir() /tmp check fails on macOS due to /private/tmp symlink"
+      description: |
+        On macOS, /tmp is a symlink to /private/tmp. Node's resolve('/tmp/foo') returns
+        '/private/tmp/foo', which does NOT start with the literal string '/tmp'. The guard condition
+        !resolved.startsWith('/tmp') therefore falls through to process.cwd(). This silently breaks
+        the boundary check for all test environments using mkdtempSync (which returns /tmp/... paths),
+        and means the security fallback fires in normal operation on macOS dev machines.
+      evidence: |
+        Input: CLAUDE_PROJECT_DIR = '/tmp/myproject'
+        On macOS: resolve('/tmp/myproject') → '/private/tmp/myproject'
+        '/private/tmp/myproject'.startsWith('/tmp') → false
+        Expected: returns '/private/tmp/myproject'
+        Actual: returns process.cwd() — wrong directory
+      fix_suggestion: "const tmpResolved = resolve('/tmp'); use !resolved.startsWith(tmpResolved) instead of !resolved.startsWith('/tmp')"
+
+    - id: "A-QA-002"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: high
+      category: "boundary"
+      file: ".claude/hooks/utils.mjs"
+      line: 391
+      title: "getProjectDir() accepts CLAUDE_PROJECT_DIR=/tmp root — makes entire /tmp filesystem 'inside project'"
+      description: |
+        CLAUDE_PROJECT_DIR=/tmp (the root of /tmp) passes the startsWith guard and is returned.
+        post-edit.mjs's project boundary check uses absPath.startsWith(projectDir) which becomes
+        startsWith('/tmp'). Now every file in /tmp is 'inside the project' — ruff would be invoked
+        on any .py file anywhere under /tmp.
+      evidence: |
+        CLAUDE_PROJECT_DIR = '/tmp' → getProjectDir() returns '/tmp'
+        post-edit.mjs: '/tmp/etc/shadow'.startsWith('/tmp') → true
+      fix_suggestion: "Require at least one level below /tmp: resolved.startsWith(tmpResolved + path.sep)"
+
+    - id: "A-QA-003"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: high
+      category: "boundary"
+      file: ".claude/hooks/utils.mjs"
+      line: 244
+      title: "minimatch '**' requires intermediate directory — src/**/*.py does not match src/foo.py"
+      description: |
+        The minimatch function converts ** to .* in regex. The pattern src/**/*.py becomes
+        ^src/.*/[^/]*\\.py$. Because .* includes the empty string AND requires a literal / after
+        src/, src/foo.py does NOT match. Acknowledged in tests as 'known quirk' but causes real
+        failures — any spec using common src/**/*.py pattern expecting standard glob semantics
+        will deny edits to top-level files in that directory.
+      evidence: |
+        Spec: ## Allowed Files\n`src/**/*.py`
+        Input file: 'src/models.py'
+        Expected (standard glob): allowed = true
+        Actual (current): allowed = false (^src/.*/[^/]*\\.py$ does not match 'src/models.py')
+      fix_suggestion: "Convert src/**/*.py to ^src/(?:.*/)?[^/]*\\.py$ so ** matches zero or more path segments."
+
+    - id: "A-QA-004"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: high
+      category: "coverage-gap"
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 149
+      title: "LOC check uses process.cwd() for relative paths — silently bypassed in worktree context"
+      description: |
+        At line 149, absPath = filePath.startsWith('/') ? filePath : join(process.cwd(), filePath).
+        In a git worktree scenario where cwd is the worktree directory, relative file paths resolve
+        to non-existent paths. existsSync returns false, countLines is skipped, and the LOC check
+        is silently bypassed. Files of any size are allowed through without warning.
+      evidence: |
+        Setup: hook runs from /worktrees/feature-xyz/, project at /project/
+        Input file_path: 'src/main.py' (relative, 450 lines)
+        absPath = '/worktrees/feature-xyz/src/main.py' → does not exist
+        Expected: ASK at 400+ lines
+        Actual: existsSync returns false → LOC check skipped
+      fix_suggestion: "Replace with: const absPath = filePath.startsWith('/') ? filePath : join(getProjectDir(), filePath);"
+
+    - id: "A-QA-005"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: high
+      category: "negative-test"
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 112
+      title: "Missing test: spec whitelisting a contract file must still be blocked by protected-paths check"
+      description: |
+        The execution order is: (1) isFileAllowed() gate, (2) protected-paths check. The code is
+        currently correct — if the spec allows tests/contracts/critical.py, the protected-paths check
+        at step 2 still blocks it. But there is NO TEST verifying this invariant. If someone reorders
+        the checks or adds an early return, this silently breaks and contract tests become editable.
+      evidence: |
+        Spec: ## Allowed Files\n`tests/contracts/critical.py`
+        Input: file_path = 'tests/contracts/critical.py'
+        isFileAllowed() → allowed: true (file is in spec)
+        protected-paths check → should deny
+        Expected: deny (protected path rule wins over spec)
+        Actual: deny (currently correct, but zero test coverage for this interaction)
+      fix_suggestion: "Add an explicit test: spec allows tests/contracts/foo.py, verify hook still returns deny."
+
+    - id: "A-QA-006"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: medium
+      category: "coverage-gap"
+      file: ".claude/hooks/utils.mjs"
+      line: 94
+      title: "outputJson setTimeout not cleared after write callback — 500ms unnecessary hang in degraded environments"
+      description: |
+        The outputJson function registers both a write callback exit and a setTimeout(500ms) safety net.
+        The timeout is never cleared when the callback fires. If process.stdout.write throws synchronously
+        (EPIPE), the catch block calls process.exit(0) but the setTimeout lingers, causing the process
+        to hang for 500ms after every pipe failure in broken environments. No test covers this scenario.
+      evidence: |
+        Input: pipe stdout to a process that closes immediately
+        Expected: process exits immediately after write failure
+        Actual: process hangs for 500ms due to lingering setTimeout
+      fix_suggestion: "const t = setTimeout(() => process.exit(0), 500); process.stdout.write(data, () => { clearTimeout(t); process.exit(0); });"
+
+    - id: "A-QA-007"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: medium
+      category: "combination"
+      file: ".claude/hooks/hooks.config.mjs"
+      line: 52
+      title: "Force-push regex does not block bare 'git push -f' with no explicit branch specified"
+      description: |
+        The force-push-to-protected-branches pattern requires \\b(develop|main)\\b to appear in the
+        command. A bare 'git push -f' with no explicit branch is not blocked, even though the current
+        tracking branch might be develop or main. This is a false negative — the hook cannot know
+        the tracking branch without executing git.
+      evidence: |
+        Input: 'git push -f'  (no explicit branch, tracking branch is develop)
+        Expected: deny (could be pushing to develop)
+        Actual: allow (no develop/main match in lookahead)
+      fix_suggestion: "Add a separate pattern for bare 'git push -f' and 'git push --force' (without explicit safe branch): ask for confirmation."
+
+    - id: "A-QA-008"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: medium
+      category: "boundary"
+      file: ".claude/hooks/validate-spec-complete.mjs"
+      line: 12
+      title: "stripCodeBlocks fails on code blocks containing text with triple-backtick sequences"
+      description: |
+        stripCodeBlocks uses /```[\\s\\S]*?```/g — a non-greedy match that stops at the FIRST closing
+        triple-backtick. Code blocks containing text with triple backtick sequences cause premature
+        termination, leaving part of the code block's contents in the stripped output. This can expose
+        '- [ ]' patterns from inside code examples, causing false positive failures of the Impact Tree
+        checkbox validation.
+      evidence: |
+        Input: spec containing ``` sh\n# run `` git commit `` here\n```
+        Non-greedy stops at the first `` ` `` sequence within the block
+        Expected: entire block stripped; Actual: partial strip
+      fix_suggestion: "Use: /^```[^`\\n]*\\n[\\s\\S]*?\\n```$/gm or scan line by line for fence boundaries."
+
+    - id: "A-QA-009"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: medium
+      category: "coverage-gap"
+      file: ".claude/hooks/session-end.mjs"
+      line: 25
+      title: "session-end.mjs uses raw CLAUDE_PROJECT_DIR without getProjectDir() sanitization"
+      description: |
+        session-end.mjs: const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd() — bypasses
+        the path sanitization present in all other hooks (getProjectDir() from utils.mjs). Inconsistency
+        opens an arbitrary file read path (probing existence of files at predictable paths like /etc/ai/diary/index.md).
+      fix_suggestion: "Import getProjectDir from utils.mjs and replace line 25 with: const projectDir = getProjectDir();"
+
+    - id: "A-QA-010"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: medium
+      category: "coverage-gap"
+      file: ".claude/hooks/pre-bash.mjs"
+      line: 17
+      title: "isDestructiveClean duplicated in both pre-bash.mjs and hooks.config.mjs — silent divergence risk"
+      description: |
+        isDestructiveClean is defined independently in both pre-bash.mjs (lines 18-25) and
+        hooks.config.mjs (lines 12-18). If the config is unavailable, pre-bash.mjs uses its own fallback
+        version. If someone patches the config version but forgets the fallback, the two code paths
+        produce different results. No test exercises the fallback path directly.
+      fix_suggestion: "Export isDestructiveClean from utils.mjs (or hooks.config.mjs) and import it in pre-bash.mjs for the fallback."
+
+    - id: "A-QA-011"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: medium
+      category: "negative-test"
+      file: ".claude/hooks/utils.mjs"
+      line: 271
+      title: "extractAllowedFiles path regex fails for paths with + characters (e.g., src/c++/)"
+      description: |
+        The path extraction character class [a-zA-Z0-9_./@*-] does not include +. A path like
+        src/c++/parser.cpp is extracted as 'src/c' (truncated at '+'). isFileAllowed sees no match
+        for 'src/c++/parser.cpp' against 'src/c', denies the edit despite the file being in the spec.
+      evidence: |
+        Spec: ## Allowed Files\n`src/c++/parser.cpp`
+        extractAllowedFiles → extracted as 'src/c'
+        isFileAllowed('src/c++/parser.cpp', spec) → false → file denied
+      fix_suggestion: "Extract content between backticks first: /`([^`]+)`/ then fall back to current regex."
+
+    - id: "A-QA-012"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: medium
+      category: "coverage-gap"
+      file: ".claude/hooks/utils.mjs"
+      line: 197
+      title: "loadConfig: _config = {} on failure is truthy — permanently disables config retry for process lifetime"
+      description: |
+        When loadConfig() fails, it sets _config = {} (empty but truthy). All subsequent calls return {}
+        without retrying. In tests, if a test triggers a failure and resetConfigCache() is not called,
+        subsequent tests get the poisoned cache. In production, a transient config load failure
+        permanently disables all custom rules for the hook process lifetime.
+      evidence: |
+        1. loadConfig() fails → _config = {}
+        2. resetConfigCache() NOT called
+        3. loadConfig() again → returns {} (no retry, _config is truthy)
+      fix_suggestion: "Use a separate _configError flag or sentinel value; do not use {} for permanent failure caching."
+
+    - id: "A-QA-013"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: medium
+      category: "negative-test"
+      file: ".claude/hooks/utils.mjs"
+      line: 260
+      title: "extractAllowedFiles regex fails on specs with CRLF line endings"
+      description: |
+        The section boundary lookahead (?=\\n##) does not match \\r\\n##. On Windows or specs committed
+        with CRLF, the regex captures content from beyond the ## Allowed Files section boundary —
+        including files listed in subsequent sections. Files from other spec sections are incorrectly
+        added to the allowed list.
+      evidence: |
+        Spec with CRLF: "## Allowed Files\r\n`src/foo.py`\r\n\r\n## Next Section\r\n`src/bar.py`\r\n"
+        Expected: files = ['src/foo.py']
+        Actual: lookahead \n## fails to match \r\n## → captures everything → files = ['src/foo.py', 'src/bar.py']
+      fix_suggestion: "Update lookahead: (?=\\r?\\n##|\\s*$). Normalize line endings at parse entry: content.replace(/\\r\\n/g, '\\n')"
+
+    - id: "A-QA-014"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: low
+      category: "coverage-gap"
+      file: ".claude/hooks/pre-bash.mjs"
+      line: 63
+      title: "--ff-only bypass check is case-sensitive while all surrounding patterns use /i flag"
+      description: |
+        The bypass for --ff-only uses command.includes('--ff-only') — case-sensitive. The rest of the
+        hook uses case-insensitive regex patterns (/i flag). 'git merge --FF-ONLY feature/foo' would
+        trigger askTool even though git would reject the command anyway. No test covers uppercase.
+      fix_suggestion: "Use command.toLowerCase().includes('--ff-only') for consistency."
+
+    - id: "A-QA-015"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: low
+      category: "coverage-gap"
+      file: ".claude/hooks/utils.mjs"
+      line: 288
+      title: "inferSpecFromBranch uses relative path 'ai/features' — breaks in worktree context"
+      description: |
+        inferSpecFromBranch() uses const dir = 'ai/features' — a relative path resolved against
+        process.cwd(). In a git worktree where cwd is not the main repo root, existsSync('ai/features')
+        returns false, function silently returns null, and all Allowed Files enforcement is bypassed.
+      evidence: |
+        worktree at /worktrees/feature-xyz/; spec at /project/ai/features/FTR-042-my-feature.md
+        existsSync('ai/features') → false (relative to worktree, not main repo)
+        Expected: spec found; Actual: returns null → enforcement disabled
+      fix_suggestion: "const dir = join(getProjectDir(), 'ai', 'features');"
+
+    - id: "A-QA-016"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: low
+      category: "coverage-gap"
+      file: ".claude/hooks/prompt-guard.mjs"
+      line: 43
+      title: "SKILL_INDICATORS bypass not tested with uppercase skill names"
+      description: |
+        prompt-guard.mjs lowercases the prompt before testing SKILL_INDICATORS. Uppercase skill names
+        (/SPARK, /AUTOPILOT) are correctly lowercased and then matched, but there is no test verifying
+        this. The behavior is correct but unverified, and future pattern additions could break it.
+      fix_suggestion: "Add tests for uppercase skill indicators. Document that toLowerCase() is intentional."
+
+    - id: "A-QA-017"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: low
+      category: "coverage-gap"
+      file: ".claude/hooks/validate-spec-complete.mjs"
+      line: 39
+      title: "validate-spec-complete: only first staged spec file is checked — second spec with unchecked boxes passes"
+      description: |
+        Array.find() returns only the FIRST matching spec file from staged files. If two spec files
+        are staged simultaneously (e.g., bulk commit), only the first alphabetically has its Impact
+        Tree checkboxes verified. The second spec could have unfilled checkboxes and be committed unchecked.
+      evidence: |
+        Staged: ai/features/BUG-001-fix.md (complete), ai/features/BUG-002-other.md (- [ ] unchecked)
+        Array.find → returns BUG-001-fix.md (complete) → check passes
+        BUG-002 with unchecked boxes NOT checked → allowed
+      fix_suggestion: "Use Array.filter() to get ALL staged spec files, check each one, block if ANY has unfilled checkboxes."
+
+    - id: "A-QA-018"
+      zone: "Zone A"
+      persona: "qa-engineer"
+      severity: low
+      category: "regression"
+      file: ".claude/hooks/utils.mjs"
+      line: 50
+      title: "DEBUG constant captured at module import time — DLD_HOOK_DEBUG=1 in developer's shell bleeds into tests"
+      description: |
+        const DEBUG = process.env.DLD_HOOK_DEBUG === '1' is evaluated at import. runHook() in helpers.mjs
+        spreads process.env ({ ...process.env, CLAUDE_PROJECT_DIR: ..., ...envOverrides }), inheriting
+        DLD_HOOK_DEBUG=1 from the test runner environment. If a developer has DLD_HOOK_DEBUG=1 set when
+        running tests, debug output appears on stderr and debug.test.mjs assertions about empty stderr
+        fail.
+      fix_suggestion: "In helpers.mjs runHook(), explicitly unset DLD_HOOK_DEBUG unless the test overrides it: add DLD_HOOK_DEBUG: '' to the base env spread."

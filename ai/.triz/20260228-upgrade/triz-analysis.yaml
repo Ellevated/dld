@@ -1,0 +1,494 @@
+triz_analysis:
+  target: "/Users/desperado/dev/dld"
+  question: "Hidden negative consequences of /upgrade mechanism — what systemic risks remain beyond pyproject.toml overwrite? Find contradictions and inventive solutions."
+  informed_by_toc: "No upgrade contract — no formal specification of what constitutes a correct, safe, reversible upgrade operation (POLICY constraint)"
+
+  # ═══════════════════════════════════════════════════════════════
+  # IDEAL FINAL RESULT
+  # ═══════════════════════════════════════════════════════════════
+  ideal_final_result: >
+    The upgrade engine ITSELF delivers every framework improvement to every user
+    WITHOUT destroying customizations, WITHOUT bypassing safety hooks,
+    WITHOUT requiring manual review of 39 files, and WITHOUT being able
+    to silently corrupt its own logic.
+
+  # ═══════════════════════════════════════════════════════════════
+  # TECHNICAL CONTRADICTIONS
+  # ═══════════════════════════════════════════════════════════════
+  technical_contradictions:
+    - id: TC-1
+      improving: "Upgrade frictionlessness (speed of delivery)"
+      worsening: "User configuration safety (reliability of state)"
+      example: >
+        SAFE_GROUPS auto-apply hooks, agents, rules, scripts without confirmation.
+        This delivers improvements instantly — but hooks.config.mjs is in SAFE_GROUPS
+        and user's copy DIFFERS from template (git-local-folders.md in excludeFromSync).
+        Next auto-apply silently destroys this customization.
+        The faster the delivery, the less the user can protect their state.
+      triz_parameters: [speed, reliability]
+      suggested_principles: [1, 2, 15, 17, 35]
+      evidence:
+        - "hooks.config.mjs SHA256 differs between user (line 88: git-local-folders.md) and template"
+        - "SAFE_GROUPS = auto-apply = no diff shown to user"
+        - "hooks.config.local.mjs exists as override mechanism but SKILL.md never warns about this"
+
+    - id: TC-2
+      improving: "Framework coverage (completeness of upgrade scope)"
+      worsening: "Engine trustworthiness (integrity of upgrade mechanism)"
+      example: >
+        upgrade.mjs is in .claude/scripts/ which is in UPGRADE_SCOPE and scripts-claude
+        group which is in SAFE_GROUPS. This means upgrade.mjs receives improvements
+        automatically — good for coverage. But it also means upgrade.mjs silently
+        overwrites itself during auto-apply. The engine that governs all upgrades
+        can modify its own governance logic without explicit consent.
+        Node.js loads the script into memory so the CURRENT run is safe, but the
+        NEXT run executes new (potentially breaking) logic that the user never reviewed.
+      triz_parameters: [universality, reliability]
+      suggested_principles: [1, 2, 13, 17, 24]
+      evidence:
+        - "SAFE_GROUPS includes scripts-claude; upgrade.mjs matches .claude/scripts/*"
+        - "apply() has no special case for self — cpSync overwrites in-place"
+        - "Only 3 commits since creation — minimal validation history for self-upgrade path"
+
+    - id: TC-3
+      improving: "Upgrade determinism (predictability via cpSync)"
+      worsening: "Safety layer integrity (hook enforcement coverage)"
+      example: >
+        The upgrade engine uses cpSync() in a Bash subprocess — pure filesystem
+        operations, deterministic, fast, no Claude tool intermediary. This is good
+        engineering: the engine does not depend on LLM behavior for file writes.
+        But DLD's entire safety layer (pre-edit hooks: protected paths, sync-zone
+        warnings, LOC limits; post-edit hooks: ADR validation, diary recording)
+        fires on Claude's Edit/Write/MultiEdit tool calls via PostToolUse matcher.
+        cpSync() bypasses ALL of these. The most destructive operation in the
+        framework (overwriting 146 files) runs with zero hook coverage.
+      triz_parameters: [reliability_of_action, loss_of_information]
+      suggested_principles: [10, 13, 17, 24, 25]
+      evidence:
+        - "hooks fire on PostToolUse for Edit/Write/MultiEdit — not on Bash/fs calls"
+        - "upgrade.mjs uses cpSync (Node.js fs), not Claude Write tool"
+        - "pre-edit.mjs checks protected paths, LOC limits, sync zones — ALL bypassed"
+        - "post-edit hook records diary, validates ADR — ALL bypassed"
+
+    - id: TC-4
+      improving: "PROTECTED set stability (user data safety)"
+      worsening: "Framework content freshness (CLAUDE.md has 28 changes never delivered)"
+      example: >
+        CLAUDE.md is PROTECTED — never touched by upgrade. This protects user's
+        project name, stack description, domain structure. But CLAUDE.md also
+        contains framework content: skill tables, flow descriptions, version
+        references (v3.7 vs v3.9), ADR list. Template CLAUDE.md changed 28 times
+        in 6 months — the most-changed file. Skills reference CLAUDE.md sections
+        that may not exist in the user's copy. The protection that saves user
+        data also prevents framework content from ever reaching users.
+      triz_parameters: [stability_of_object, adaptability]
+      suggested_principles: [1, 2, 5, 15, 35]
+      evidence:
+        - "template/CLAUDE.md: 28 changes in 6 months, churn_rate=HIGH"
+        - "User CLAUDE.md: v3.7 references; template CLAUDE.md: v3.9"
+        - "Skills reference CLAUDE.md sections (Skill Auto-Selection, Flows, etc.)"
+        - "PROTECTED is all-or-nothing per file, no section-level granularity"
+
+    - id: TC-5
+      improving: "Upgrade simplicity (file-copier model)"
+      worsening: "State cleanliness (zombie file accumulation)"
+      example: >
+        upgrade.mjs sees files as independent blobs: present=compare, absent=new.
+        It never DELETES user files. If template removes an agent or skill in a
+        new version, the user's copy persists forever. Over multiple upgrades,
+        user projects accumulate deprecated prompts, renamed agents, and orphaned
+        scripts that the template no longer ships. The engine's simplicity
+        (no delete, no lifecycle) causes progressive state pollution.
+      triz_parameters: [ease_of_operation, loss_of_substance]
+      suggested_principles: [2, 10, 34, 39]
+      evidence:
+        - "user_only files detected and reported but NEVER deleted"
+        - "No 'deprecated' or 'removed in template' annotation exists"
+        - "No file lifecycle model (added/modified/deprecated/removed)"
+
+    - id: TC-6
+      improving: "Review thoroughness (per-file diff for skills)"
+      worsening: "Upgrade adoption rate (cognitive load causes fatigue)"
+      example: >
+        Skills are NOT in SAFE_GROUPS — each requires manual review via diff +
+        3-option prompt (take/keep/skip). There are 39 skill files. spark/bug-mode.md
+        changed 29 times in 6 months. Each upgrade requires the user to read diffs
+        and make decisions on potentially dozens of files. This thoroughness causes
+        upgrade fatigue: users eventually skip reviews, leading to permanently
+        stale skills — the exact opposite of what the review was meant to prevent.
+      triz_parameters: [reliability, loss_of_time]
+      suggested_principles: [1, 5, 10, 15, 17]
+      evidence:
+        - "39 skill files, none in SAFE_GROUPS"
+        - "spark/bug-mode.md: 29 changes (highest churn single file in skills)"
+        - "Co-change cluster: autopilot/SKILL + spark/completion + spark/bug-mode + council/SKILL change together (5 co-changes)"
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHYSICAL CONTRADICTIONS
+  # ═══════════════════════════════════════════════════════════════
+  physical_contradictions:
+    - id: PC-1
+      property: "upgrade.mjs upgradability"
+      must_be: "upgradable (to receive engine improvements, bug fixes, new features)"
+      must_not_be: "upgradable (because self-modification destroys trust chain — who validates the validator?)"
+      separation_principle: "separation in condition"
+      resolution: >
+        upgrade.mjs is upgradable WHEN the user explicitly approves it (ALWAYS_ASK),
+        and non-upgradable WHEN running as part of a batch auto-apply (SAFE_GROUPS).
+        Move upgrade.mjs to a new INFRASTRUCTURE category that is always shown as
+        a diff and never included in group-based apply. The condition that separates
+        the two states is: "Is this the engine itself, or content managed by the engine?"
+
+    - id: PC-2
+      property: "Hook enforcement scope"
+      must_be: "universal (hooks must validate ALL file modifications — that is their contract)"
+      must_not_be: "universal (upgrade cannot route through Claude Edit tool — it needs direct filesystem access for determinism)"
+      separation_principle: "separation in time"
+      resolution: >
+        Hooks enforce BEFORE and AFTER the upgrade, not DURING. Pre-upgrade hook:
+        verify git clean, verify engine integrity (SHA check). Post-upgrade hook:
+        validate that no PROTECTED files were modified, that hooks still load,
+        that LOC limits are met, that no orphaned imports exist. The upgrade
+        itself runs at the filesystem level (fast, deterministic), but is
+        sandwiched between hook-equivalent validation passes.
+
+    - id: PC-3
+      property: "CLAUDE.md mutability"
+      must_be: "mutable (framework sections must update — skill tables, flows, version strings)"
+      must_not_be: "mutable (user sections must never be touched — project name, stack, domains)"
+      separation_principle: "separation in space"
+      resolution: >
+        Split CLAUDE.md into two spatial regions using markers:
+        <!-- DLD:BEGIN:skills --> ... <!-- DLD:END:skills -->
+        <!-- DLD:BEGIN:flows --> ... <!-- DLD:END:flows -->
+        Everything inside markers = framework content, updated by upgrade.
+        Everything outside markers = user content, never touched.
+        The same file serves both purposes by having spatially separated zones.
+
+    - id: PC-4
+      property: "File overwrite atomicity"
+      must_be: "immediate (cpSync is fast, simple, deterministic — one operation per file)"
+      must_not_be: "immediate (without backup, any failure during multi-file apply creates unrecoverable mixed state)"
+      separation_principle: "separation in time"
+      resolution: >
+        Phase 1 (before): git stash create → save stash SHA as rollback point.
+        Phase 2 (during): cpSync all files as today (fast, simple).
+        Phase 3 (after): validate result. If validation fails, git stash pop.
+        The operation is still immediate at the file level, but bracketed by
+        a time-separated backup and validation. The clean-tree check already
+        runs — stash is a natural extension of the existing git dependency.
+
+    - id: PC-5
+      property: "Group granularity"
+      must_be: "coarse (directory-based groups are simple to understand and maintain)"
+      must_not_be: "coarse (co-change clusters cross directory boundaries — bug-hunt pipeline spans agents/ + skills/ + rules/)"
+      separation_principle: "separation in scale"
+      resolution: >
+        Two scales of grouping coexist. MACRO scale: directory-based groups
+        for simple cases (agents, rules, scripts). MICRO scale: functional
+        units for cross-cutting pipelines (bug-hunt-pipeline, autopilot-pipeline,
+        hook-system). The user sees groups at the macro scale by default. When
+        a functional unit has cross-directory changes, the engine surfaces it
+        as a named unit ("bug-hunt pipeline: 4 files across agents/ and skills/")
+        and applies it atomically at the micro scale.
+
+    - id: PC-6
+      property: "Version tracking utility"
+      must_be: "present (users need to know what version they are on, what was applied, what was skipped)"
+      must_not_be: "present (current .dld-version is inert — hardcoded string, skip[] never read, no gating logic)"
+      separation_principle: "separation in condition"
+      resolution: >
+        .dld-version transitions from receipt to state machine. It is a passive
+        receipt WHEN written (as today — record what happened). It is an active
+        gate WHEN read (before next upgrade — compare semantic versions, honor
+        skip list, detect if previous upgrade was partial). The condition is
+        the direction of data flow: write-path stays simple, read-path gains
+        intelligence. This requires: (1) derive version from git tag or
+        package.json instead of hardcoding, (2) implement skip[] consumption
+        in analyze(), (3) add partial-apply state tracking.
+
+  # ═══════════════════════════════════════════════════════════════
+  # INVENTIVE SOLUTIONS
+  # ═══════════════════════════════════════════════════════════════
+  inventive_solutions:
+    # --- TC-1: Frictionless delivery vs configuration safety ---
+    - contradiction: TC-1
+      principle: "#2 Taking out — extract the volatile part from the stable"
+      solution: >
+        Extract user-customizable configuration from auto-applied files.
+        hooks.config.mjs becomes a PURE DEFAULT — no user edits ever.
+        All customizations go exclusively through hooks.config.local.mjs
+        (already PROTECTED). The engine auto-applies hooks.config.mjs
+        freely because it contains zero user state. To enforce this:
+        add a comment header to hooks.config.mjs: "DO NOT EDIT — use
+        hooks.config.local.mjs for customizations" and add a pre-upgrade
+        check that warns if user's hooks.config.mjs differs from template
+        (indicating they edited the wrong file).
+      effort: "20 minutes"
+      risk: "low"
+
+    - contradiction: TC-1
+      principle: "#35 Parameter changes — config over code"
+      solution: >
+        Introduce a .dld-upgrade.config file where users declare their
+        safe/unsafe preferences per group or per file. Instead of the engine
+        deciding what is safe, the USER configures their own safety boundary.
+        Default config ships with current SAFE_GROUPS. Power users can add
+        skills to safe. Cautious users can remove hooks from safe.
+        The parameter (safety classification) moves from hardcoded engine
+        logic to user-controlled configuration.
+      effort: "1 hour"
+      risk: "medium — adds configuration surface"
+
+    # --- TC-2: Framework coverage vs engine trustworthiness ---
+    - contradiction: TC-2
+      principle: "#1 Segmentation — separate engine from content"
+      solution: >
+        Create a new file category: INFRASTRUCTURE. Files in this category:
+        .claude/scripts/upgrade.mjs, .claude/hooks/run-hook.mjs (the hook
+        runner itself). Infrastructure files are NEVER in SAFE_GROUPS.
+        They are always shown as a diff with a special warning:
+        "ENGINE UPDATE: This changes the upgrade engine itself. Review carefully."
+        The engine code is segmented from the content it manages.
+        Implementation: add INFRASTRUCTURE set alongside PROTECTED and ALWAYS_ASK.
+        In resolveTargets(), skip infrastructure files when processing group-based
+        apply. Only process them when --files explicitly names them.
+      effort: "30 minutes"
+      risk: "low"
+
+    - contradiction: TC-2
+      principle: "#17 Another dimension — add integrity verification layer"
+      solution: >
+        Before upgrade.mjs executes, verify its own integrity. Ship a
+        .claude/scripts/upgrade.mjs.sha256 file alongside it. On startup,
+        upgrade.mjs reads its own content, computes SHA256, compares to the
+        manifest. If mismatch: "Engine integrity check failed — file may have
+        been modified outside upgrade process." This adds a dimension of
+        self-awareness: the engine knows whether it is in a known-good state.
+        After a self-upgrade, the new upgrade.mjs ships with its own new
+        .sha256, so the NEXT run can self-verify.
+      effort: "15 minutes"
+      risk: "low"
+
+    # --- TC-3: Deterministic filesystem vs hook enforcement ---
+    - contradiction: TC-3
+      principle: "#10 Preliminary action — pre-compute validation"
+      solution: >
+        Add a validate() function to upgrade.mjs that runs AFTER apply().
+        validate() performs the same checks that hooks would:
+        (1) No PROTECTED file was modified (compare SHA before/after).
+        (2) hooks.config.mjs still loads (dynamic import + catch).
+        (3) No file exceeds LOC limit.
+        (4) Sync-zone consistency (template/ and .claude/ versions match
+        for critical files).
+        This is preliminary action for the NEXT session — validating now
+        that what hooks would catch later is already correct.
+      effort: "1 hour"
+      risk: "low"
+
+    - contradiction: TC-3
+      principle: "#25 Self-service — self-validating upgrade"
+      solution: >
+        The upgrade engine becomes self-validating. After apply(), it runs
+        a smoke test: import the hooks config, verify all hook files exist
+        and are valid JS/ESM, verify .claude/settings.json parses as valid
+        JSON, verify no circular skill references. If any check fails, the
+        engine reports the failure AND rolls back via git stash pop (see PC-4).
+        The system heals itself without requiring user diagnosis.
+      effort: "2 hours"
+      risk: "medium — false positives possible"
+
+    # --- TC-4: Protected CLAUDE.md vs stale framework content ---
+    - contradiction: TC-4
+      principle: "#1 Segmentation — split file into user zone and framework zone"
+      solution: >
+        Add DLD markers to CLAUDE.md template:
+          <!-- DLD:BEGIN:section_name -->
+          ... framework content ...
+          <!-- DLD:END:section_name -->
+        Sections: skills-table, flows, key-rules, project-structure.
+        upgrade.mjs gains a patchCLAUDE() function that:
+        (1) Reads user's CLAUDE.md
+        (2) For each DLD:BEGIN/END block, replaces content from template
+        (3) Leaves everything outside markers untouched
+        (4) Writes back
+        CLAUDE.md moves from PROTECTED to a new SECTION_SYNC category.
+        User content (project name, stack, domains) is always safe.
+        Framework content (skill table, flow diagrams) always updates.
+      effort: "2-3 hours"
+      risk: "medium — marker preservation across manual edits"
+
+    - contradiction: TC-4
+      principle: "#15 Dynamization — generate rather than sync"
+      solution: >
+        Instead of syncing CLAUDE.md content, generate the framework
+        sections dynamically. A script (.claude/scripts/generate-claude-sections.mjs)
+        reads the actual skills/, agents/, rules/ directories and generates
+        the skill table, flow descriptions, and ADR list from source.
+        The sections are always accurate because they are derived from the
+        files that actually exist — not from a template copy. Run this
+        script as the final step of upgrade. CLAUDE.md becomes a mix of
+        user-written content and auto-generated framework documentation.
+      effort: "3-4 hours"
+      risk: "medium — generation logic must stay in sync with conventions"
+
+    # --- TC-5: Simplicity vs zombie accumulation ---
+    - contradiction: TC-5
+      principle: "#10 Preliminary action — deprecation manifest"
+      solution: >
+        Template ships a .claude/deprecated.json listing files removed or
+        renamed in each version:
+          {"3.10": {"removed": ["agents/old-agent.md"], "renamed": {"agents/foo.md": "agents/bar.md"}}}
+        During analyze(), upgrade.mjs reads this manifest and flags user_only
+        files that match a removed/renamed entry:
+          "DEPRECATED: agents/old-agent.md was removed in v3.10. Safe to delete."
+        The engine never deletes automatically (preserving simplicity) but
+        provides actionable intelligence about what is dead weight.
+      effort: "1 hour"
+      risk: "low — additive, no deletion"
+
+    - contradiction: TC-5
+      principle: "#34 Discarding and recovering — safe cleanup mode"
+      solution: >
+        Add --cleanup flag to upgrade.mjs. When run:
+        (1) Shows user_only files that are NOT in deprecated.json (truly user-created)
+        (2) Shows user_only files that ARE in deprecated.json (safe to remove)
+        (3) Asks: "Remove deprecated files? (list shown above)"
+        (4) If yes, moves them to .claude/.upgrade-trash/ (recoverable)
+        Files are discarded but recoverable. User has explicit control.
+        The trash directory is itself in .gitignore — invisible to git.
+      effort: "1.5 hours"
+      risk: "low — trash is recoverable"
+
+    # --- TC-6: Review thoroughness vs upgrade adoption ---
+    - contradiction: TC-6
+      principle: "#5 Merging — batch by functional unit, not by file"
+      solution: >
+        Instead of reviewing 39 individual skill files, present them as
+        functional units derived from co-change data:
+          "Bug Hunt pipeline: 4 files changed (orchestrator, validator, bug-mode, model-capabilities)"
+          "Autopilot pipeline: 3 files changed (SKILL, task-loop, subagent-dispatch)"
+          "Spark core: 2 files changed (feature-mode, completion)"
+        User reviews ONE diff per unit (aggregated) and makes ONE decision.
+        39 files -> 8-10 functional units -> 8-10 decisions.
+        The co-change clusters from metrics data (8 co-changes for bug-hunt,
+        5 for core skills) directly inform the unit boundaries.
+      effort: "3 hours"
+      risk: "medium — unit definitions need maintenance"
+
+    - contradiction: TC-6
+      principle: "#15 Dynamization — trust tiers evolve with user behavior"
+      solution: >
+        Track upgrade decisions in .dld-version history:
+          "skills:spark/SKILL.md": {"last_action": "take", "times_taken": 5, "times_kept": 0}
+        After a user takes a skill file N times consecutively (e.g., 3),
+        automatically promote it to auto-apply for that user. If user keeps
+        a file, it stays in manual review. Safety classification becomes
+        dynamic per-user, adapting to their actual preferences.
+        Users who always take spark updates stop seeing the diff.
+        Users who customize spark always get asked.
+      effort: "2-3 hours"
+      risk: "medium — must handle reset on major version bumps"
+
+    # --- PC-4: Atomicity solution ---
+    - contradiction: PC-4
+      principle: "#10 Preliminary action — git-based backup"
+      solution: >
+        Before apply(), create a git stash of the clean working tree:
+          const stashRef = execSync('git stash create').toString().trim();
+        If apply() succeeds and validate() passes: do nothing (stash auto-expires).
+        If apply() fails or validate() fails:
+          execSync(`git stash apply ${stashRef}`);
+        This uses the EXISTING git infrastructure — no new backup mechanism.
+        The dirty-check already ensures clean state, so stash is free.
+        Total addition: ~10 lines of code in upgrade.mjs.
+      effort: "15 minutes"
+      risk: "very low — git stash is battle-tested"
+
+  # ═══════════════════════════════════════════════════════════════
+  # UNUSED RESOURCES
+  # ═══════════════════════════════════════════════════════════════
+  unused_resources:
+    - type: "information"
+      resource: "Co-change data from git log is collected by TRIZ metrics but not used by upgrade.mjs"
+      how_to_use: >
+        Feed co-change clusters into functional unit definitions.
+        Files that change together should upgrade together. The data
+        already exists (8 co-changes for bug-hunt, 6 for hooks, 5 for
+        core skills). Export as .claude/upgrade-units.json and read
+        during analyze() to group files by functional dependency
+        instead of directory path.
+
+    - type: "information"
+      resource: "git diff output is already generated by showDiff() but not used for automated safety checks"
+      how_to_use: >
+        Parse diff output to detect specific risk patterns:
+        (1) If diff shows PROTECTED-set changes -> block
+        (2) If diff shows function signature changes -> flag as breaking
+        (3) If diff shows new imports -> flag as dependency change
+        The diff data flows through the system but is only shown to
+        the human. Programmatic analysis would catch risks the human
+        might miss after reviewing 20+ diffs.
+
+    - type: "structural"
+      resource: "hooks.config.local.mjs override mechanism exists but is invisible to users during upgrade"
+      how_to_use: >
+        When upgrade detects hooks.config.mjs divergence, proactively
+        generate a migration: extract user's customizations into
+        hooks.config.local.mjs format. Show the user: "Your hooks.config.mjs
+        has custom rules. I can migrate them to hooks.config.local.mjs
+        (protected from future upgrades). Proceed?" The structural
+        mechanism is already built — it just needs a migration path.
+
+    - type: "structural"
+      resource: ".dld-version skip[] field is written but never consumed"
+      how_to_use: >
+        Implement skip[] reading in analyze(). When a user chooses
+        "keep" for a file, add it to skip[]. On next upgrade, files
+        in skip[] are excluded from the diff report unless a major
+        version bump clears the skip list. The storage mechanism
+        already exists — only the read path is missing.
+        Implementation: in analyze(), after SHA comparison, check
+        if file is in skip[] -> classify as "skipped" instead of "different".
+
+    - type: "time"
+      resource: "Post-upgrade verification step (Step 5 in SKILL.md) runs --analyze again but does not validate state"
+      how_to_use: >
+        Step 5 already re-runs analyze to show final state. Extend
+        this to include a validate() call that checks hook loading,
+        settings parsing, and PROTECTED integrity. The time slot
+        (post-apply, pre-session-restart) is already allocated in the
+        flow. Adding validation there costs zero UX friction.
+
+    - type: "information"
+      resource: "Template git tags/releases contain semantic version info not used by upgrade.mjs"
+      how_to_use: >
+        When cloning from GitHub (--latest mode), read the latest
+        git tag (git describe --tags --abbrev=0) and use it as the
+        version string instead of the hardcoded '3.9.0'. Compare
+        with .dld-version's stored version to determine if upgrade
+        is minor (safe) or major (extra caution). Semantic version
+        comparison enables intelligent gating: minor versions
+        auto-apply more aggressively, major versions require more review.
+
+    - type: "structural"
+      resource: "CI pipeline (smoke-test.yml) tests hooks but could also test upgrade.mjs"
+      how_to_use: >
+        Add an upgrade smoke test to CI: create a temp project from
+        template/, modify a few files to simulate user customizations,
+        run upgrade.mjs --analyze --local, run upgrade.mjs --apply --groups safe,
+        verify PROTECTED files untouched, verify hooks load, verify
+        .dld-version written correctly. This uses the existing CI
+        infrastructure to cover the most dangerous untested module.
+
+    - type: "structural"
+      resource: "ADR-011 (Enforcement as Code) is declared but not applied to upgrade.mjs itself"
+      how_to_use: >
+        Apply ADR-011 literally to the upgrade process:
+        (1) JSON state file: .dld-upgrade-state.json tracks phase
+            (analyzing, applying, validating, complete, rolled-back)
+        (2) Hooks: post-upgrade validation (see TC-3 solutions)
+        (3) Hard gates: upgrade cannot proceed from apply to complete
+            without passing validation
+        The ADR already mandates this pattern. Applying it to upgrade.mjs
+        is not new architecture — it is consistency with existing decisions.

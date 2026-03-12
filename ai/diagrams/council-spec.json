@@ -1,0 +1,56 @@
+{
+  "title": "Council — Karpathy Protocol (3 Phases)",
+  "nodes": [
+    {"id": "input",    "x": 400, "y": 50,   "label": "Spec / Problem\nEscalation", "shape": "ellipse", "color": "orange"},
+
+    {"id": "ctx",      "x": 400, "y": 200,  "label": "Phase 0\nLoad Context\ndependencies + architecture", "shape": "rect", "color": "gray"},
+
+    {"id": "winston",  "x": 150, "y": 400,  "label": "Winston\nArchitect\nDRY, SSOT, scale", "shape": "rect", "color": "blue"},
+    {"id": "viktor",   "x": 350, "y": 400,  "label": "Viktor\nSecurity\nOWASP, attacks", "shape": "rect", "color": "red"},
+    {"id": "amelia",   "x": 550, "y": 400,  "label": "Amelia\nPragmatist\nYAGNI, simplicity", "shape": "rect", "color": "green"},
+    {"id": "john",     "x": 750, "y": 400,  "label": "John\nProduct\nUX, edge cases", "shape": "rect", "color": "teal"},
+
+    {"id": "exa",      "x": 900, "y": 200,  "label": "Exa\nResearch\n(mandatory)", "shape": "external", "color": "gray"},
+
+    {"id": "sync1",    "x": 400, "y": 580,  "label": "Sync Point\nCollect 4 analyses", "shape": "diamond", "color": "yellow"},
+
+    {"id": "cross",    "x": 400, "y": 750,  "label": "Phase 2: Cross-Critique\nAnonymized peer review\n(Analysis A / B / C)", "shape": "rect", "color": "purple", "w": 300},
+
+    {"id": "sync2",    "x": 400, "y": 920,  "label": "Sync Point\nCollect 4 critiques", "shape": "diamond", "color": "yellow"},
+
+    {"id": "oracle",   "x": 400, "y": 1100, "label": "Oracle\nSynthesizer\nChairman", "shape": "rect", "color": "orange", "w": 200},
+
+    {"id": "decision", "x": 400, "y": 1270, "label": "Decision?", "shape": "diamond", "color": "yellow"},
+
+    {"id": "approved", "x": 150, "y": 1430, "label": "Approved\n-> Autopilot", "shape": "rounded", "color": "green"},
+    {"id": "changes",  "x": 400, "y": 1430, "label": "Needs Changes\n-> Update Spec", "shape": "rounded", "color": "teal"},
+    {"id": "rejected", "x": 650, "y": 1430, "label": "Rejected\n-> Spark", "shape": "rounded", "color": "red"},
+    {"id": "human",    "x": 850, "y": 1270, "label": "Needs Human\nBLOCKED", "shape": "rounded", "color": "red"}
+  ],
+  "edges": [
+    {"from": "input", "to": "ctx"},
+    {"from": "ctx", "to": "winston"},
+    {"from": "ctx", "to": "viktor"},
+    {"from": "ctx", "to": "amelia"},
+    {"from": "ctx", "to": "john"},
+
+    {"from": "winston", "to": "sync1"},
+    {"from": "viktor", "to": "sync1"},
+    {"from": "amelia", "to": "sync1"},
+    {"from": "john", "to": "sync1"},
+
+    {"from": "sync1", "to": "cross"},
+    {"from": "cross", "to": "sync2"},
+    {"from": "sync2", "to": "oracle"},
+    {"from": "oracle", "to": "decision"},
+
+    {"from": "decision", "to": "approved", "label": "3-4 approve"},
+    {"from": "decision", "to": "changes", "label": "with changes"},
+    {"from": "decision", "to": "rejected", "label": "3-4 reject"},
+    {"from": "decision", "to": "human", "label": "blocked", "style": "dashed", "elbow": "h"}
+  ],
+  "groups": [
+    {"id": "g-phase1", "label": "Phase 1: Parallel Analysis (4 experts, opus)", "nodes": ["winston", "viktor", "amelia", "john"], "color": "blue"},
+    {"id": "g-phase3", "label": "Phase 3: Synthesis", "nodes": ["oracle", "decision"], "color": "orange"}
+  ]
+}

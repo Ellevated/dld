@@ -1,0 +1,15 @@
+{
+  "spec_id": "FTR-137",
+  "title": "Deterministic DLD Upgrade Skill",
+  "session_dir": "ai/.spark/20260226-upgrade",
+  "phases": {
+    "collect": { "status": "done", "finished_at": "2026-02-26T12:05:00Z" },
+    "research": { "status": "done", "finished_at": "2026-02-26T12:35:00Z", "files": ["research-external.md", "research-codebase.md", "research-patterns.md", "research-devil.md"] },
+    "synthesize": { "status": "done", "finished_at": "2026-02-26T12:40:00Z" },
+    "decide": { "status": "done", "finished_at": "2026-02-26T12:42:00Z", "approach": 3 },
+    "write": { "status": "done", "finished_at": "2026-02-26T12:50:00Z" },
+    "validate": { "status": "done", "finished_at": "2026-02-26T12:52:00Z" },
+    "reflect": { "status": "done", "finished_at": "2026-02-26T12:53:00Z" },
+    "completion": { "status": "done", "finished_at": "2026-02-26T12:55:00Z" }
+  }
+}

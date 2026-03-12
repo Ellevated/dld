@@ -1,0 +1,415 @@
+system_metrics:
+  target: "/Users/desperado/dev/dld"
+  question: "Hidden negative consequences of /upgrade mechanism — what systemic risks remain beyond pyproject.toml overwrite? Analyze upgrade.mjs, SKILL.md, template/ structure, and all file operations."
+  collection_date: "2026-02-28"
+  git_period: "6 months"
+
+  # ─────────────────────────────────────────────────────────────
+  # FILE CHURN (upgrade-related files only)
+  # ─────────────────────────────────────────────────────────────
+  file_churn:
+    - module: "template/.claude/skills/spark"
+      total_changes: 62
+      files_changed: 4
+      avg_per_file: 15.5
+      churn_rate: HIGH
+      top_files:
+        - path: "template/.claude/skills/spark/bug-mode.md"
+          changes: 29
+        - path: "template/.claude/skills/spark/completion.md"
+          changes: 13
+        - path: "template/.claude/skills/spark/SKILL.md"
+          changes: 12
+        - path: "template/.claude/skills/spark/feature-mode.md"
+          changes: 7
+
+    - module: "template/CLAUDE.md"
+      total_changes: 28
+      files_changed: 1
+      avg_per_file: 28
+      churn_rate: HIGH
+      note: "Most-changed single file in entire template. PROTECTED — never upgraded."
+      top_files:
+        - path: "template/CLAUDE.md"
+          changes: 28
+
+    - module: "template/.claude/skills/autopilot"
+      total_changes: 58
+      files_changed: 7
+      avg_per_file: 8.3
+      churn_rate: HIGH
+      top_files:
+        - path: "template/.claude/skills/autopilot/SKILL.md"
+          changes: 18
+        - path: "template/.claude/skills/autopilot/task-loop.md"
+          changes: 8
+        - path: "template/.claude/skills/autopilot/subagent-dispatch.md"
+          changes: 9
+
+    - module: "template/.claude/hooks"
+      total_changes: 84
+      files_changed: 9
+      avg_per_file: 9.3
+      churn_rate: HIGH
+      note: "hooks.config.mjs is in SAFE_GROUPS — auto-applied without confirmation. User's copy is currently DIFFERENT from template."
+      top_files:
+        - path: "template/.claude/hooks/utils.mjs"
+          changes: 14
+        - path: "template/.claude/hooks/pre-edit.mjs"
+          changes: 12
+        - path: "template/.claude/hooks/validate-spec-complete.mjs"
+          changes: 8
+        - path: "template/.claude/hooks/pre-bash.mjs"
+          changes: 8
+
+    - module: "template/.claude/agents/bug-hunt"
+      total_changes: 96
+      files_changed: 12
+      avg_per_file: 8.0
+      churn_rate: HIGH
+      top_files:
+        - path: "template/.claude/agents/bug-hunt/orchestrator.md"
+          changes: 12
+        - path: "template/.claude/agents/bug-hunt/validator.md"
+          changes: 12
+
+    - module: "template/.claude/rules"
+      total_changes: 40
+      files_changed: 5
+      avg_per_file: 8.0
+      churn_rate: HIGH
+      note: "model-capabilities.md and architecture.md change frequently. Both in SAFE_GROUPS. localization.md is PROTECTED."
+      top_files:
+        - path: "template/.claude/rules/model-capabilities.md"
+          changes: 10
+        - path: "template/.claude/rules/architecture.md"
+          changes: 10
+
+    - module: ".claude/scripts/upgrade.mjs (the upgrade engine itself)"
+      total_changes: 3
+      files_changed: 1
+      avg_per_file: 3
+      churn_rate: LOW
+      note: "Only 3 commits since creation (create + two fixes). Young mechanism — minimal validation history."
+      top_files:
+        - path: ".claude/scripts/upgrade.mjs"
+          changes: 3
+
+  # ─────────────────────────────────────────────────────────────
+  # CO-CHANGE CLUSTERS
+  # ─────────────────────────────────────────────────────────────
+  co_change_clusters:
+    - files:
+        - "template/.claude/hooks/hooks.config.mjs"
+        - "template/.claude/hooks/pre-edit.mjs"
+        - "template/.claude/scripts/upgrade.mjs"
+        - "template/.gitignore"
+      co_changes: 1
+      possible_reason: "Upgrade engine co-introduced with hook/config changes. Low co-change count = upgrade.mjs was isolated addition."
+
+    - files:
+        - "template/.claude/skills/spark/bug-mode.md"
+        - "template/.claude/agents/bug-hunt/orchestrator.md"
+        - "template/.claude/agents/bug-hunt/validator.md"
+        - "template/.claude/rules/model-capabilities.md"
+      co_changes: 8
+      possible_reason: "Bug-hunt pipeline evolves as a unit. These files change together on every bughunt iteration."
+
+    - files:
+        - "template/.claude/hooks/pre-edit.mjs"
+        - "template/.claude/hooks/utils.mjs"
+        - "template/.claude/hooks/validate-spec-complete.mjs"
+        - "template/.claude/hooks/hooks.config.mjs"
+      co_changes: 6
+      possible_reason: "Hook files form a tight coupling cluster. Auto-applying hooks group without atomicity check risks partial state."
+
+    - files:
+        - "template/CLAUDE.md"
+        - "template/.claude/rules/localization.md"
+        - "template/.claude/skills/release/SKILL.md"
+      co_changes: 3
+      possible_reason: "Release + localization + CLAUDE.md updated together on version bumps. CLAUDE.md is PROTECTED — version bump info never propagates to users via upgrade."
+
+    - files:
+        - "template/.claude/skills/autopilot/SKILL.md"
+        - "template/.claude/skills/spark/completion.md"
+        - "template/.claude/skills/spark/bug-mode.md"
+        - "template/.claude/skills/council/SKILL.md"
+      co_changes: 5
+      possible_reason: "Core skill files (NOT in SAFE_GROUPS) change together. Each requires manual review = high cognitive load per upgrade."
+
+  # ─────────────────────────────────────────────────────────────
+  # MODULE STATS
+  # ─────────────────────────────────────────────────────────────
+  module_stats:
+    - module: "upgrade engine: .claude/scripts/upgrade.mjs"
+      source_files: 1
+      test_files: 0
+      loc: 394
+      test_ratio: 0.0
+      test_coverage_indicator: NONE
+      note: "Zero tests for the mechanism that overwrites all framework files. No rollback, no backup, no dry-run mode."
+
+    - module: "upgrade skill: .claude/skills/upgrade/"
+      source_files: 1
+      test_files: 0
+      loc: 115
+      test_ratio: 0.0
+      test_coverage_indicator: NONE
+      note: "Pure LLM prompt — no deterministic validation of the upgrade flow."
+
+    - module: "template/.claude/ (UPGRADE_SCOPE)"
+      source_files: 146
+      test_files: 11  # hook __tests__
+      loc: "~8500 estimated"
+      test_ratio: 0.075
+      test_coverage_indicator: LOW
+      note: "Only hooks have tests. Agents, skills, rules, scripts have zero test coverage."
+
+    - module: "template/ (outside UPGRADE_SCOPE)"
+      source_files: 20
+      test_files: 0
+      loc: "~1200 estimated"
+      test_ratio: 0.0
+      test_coverage_indicator: NONE
+      note: "ai/, CLAUDE.md, README.md, pyproject.toml — never upgraded even if stale. Installation guide never updated."
+
+    - module: "template/scripts/ (bash scripts)"
+      source_files: 6
+      test_files: 0
+      loc: "~400 estimated"
+      test_ratio: 0.0
+      test_coverage_indicator: NONE
+
+    - module: "template/.claude/hooks/ (safety layer)"
+      source_files: 9
+      test_files: 11
+      loc: "~1500 estimated"
+      test_ratio: 1.2
+      test_coverage_indicator: HIGH
+      note: "Best-tested module. But hooks are BYPASSED during upgrade (cpSync runs in Bash subprocess, not Claude Edit tool)."
+
+  # ─────────────────────────────────────────────────────────────
+  # ARCHITECTURE CONTEXT
+  # ─────────────────────────────────────────────────────────────
+  architecture:
+    structure: |
+      upgrade.mjs flow:
+        1. isGitDirty() check (git diff --quiet HEAD — tracked files only)
+        2. Source resolution: --local (template/) | --latest (GitHub clone to /tmp)
+        3. analyze(): walkDir + sha256 comparison → {identical, new_files, different, protected, user_only}
+        4. UPGRADE_SCOPE filter: only .claude/** and scripts/**
+        5. apply(): cpSync() per file, writeVersion() on success
+        6. Cleanup: rmSync(tempCloneRoot)
+
+      PROTECTED set (15 entries):
+        CLAUDE.md, README.md, .gitignore, pyproject.toml, package.json,
+        Cargo.toml, go.mod, requirements.txt
+        .claude/rules/localization.md
+        .claude/rules/template-sync.md
+        .claude/rules/git-local-folders.md
+        .claude/CUSTOMIZATIONS.md
+        .claude/settings.local.json
+        .claude/hooks/hooks.config.local.mjs
+        [NOTE: hooks.config.mjs is NOT protected]
+
+      ALWAYS_ASK set (1 entry):
+        .claude/settings.json
+
+      SAFE_GROUPS (auto-apply without confirmation):
+        agents, hooks, hook-tests, rules, scripts-claude, scripts-bash
+
+      NOT SAFE (require per-file manual review):
+        skills, settings, other
+
+      UPGRADE_SCOPE predicate:
+        f.startsWith('.claude/') || f.startsWith('scripts/')
+        Excludes: ai/, CLAUDE.md, README.md, pyproject.toml, .mcp.json.example
+
+      .dld-version tracking:
+        - Written ONLY after apply with 0 errors
+        - Contains hardcoded version string ('3.9.0') — not derived from git tag
+        - Has skip: [] field that is written but never READ by upgrade.mjs
+        - No version used in any gating logic during analyze
+
+    import_rules: |
+      upgrade.mjs dependencies:
+        - child_process: execSync, execFileSync (git commands, git diff)
+        - crypto: createHash (sha256 comparison)
+        - fs: existsSync, readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, readdirSync
+        - path: join, relative, dirname
+      No external npm dependencies. Entirely Node.js stdlib.
+
+    known_constraints: |
+      ADR-011: Enforcement as Code — upgrade.mjs is the enforcement mechanism itself.
+               But upgrade.mjs has zero tests, contradicting this ADR's intent.
+
+      CRITICAL: upgrade.mjs is in UPGRADE_SCOPE (.claude/scripts/) and in SAFE_GROUPS
+               (scripts-claude). Therefore upgrade.mjs can overwrite itself during
+               auto-apply. Node.js loads the script into memory before execution,
+               so the current run completes safely — but the NEXT run uses new logic.
+               This is a silent self-modification pattern with no warning to user.
+
+      CRITICAL: pre-edit hook (which enforces sync-zone warnings and protected paths)
+               is BYPASSED during upgrade. cpSync() is a Node.js fs call inside a
+               Bash subprocess — it never triggers PostToolUse hook on Edit/Write.
+               Result: upgrade bypasses DLD's own safety layer.
+
+      hooks.config.mjs divergence: User's copy DIFFERS from template (different SHA256).
+               hooks.config.mjs is in 'hooks' group = SAFE_GROUPS = auto-applied.
+               User will lose their hooks config customizations silently on next upgrade
+               unless they use hooks.config.local.mjs for overrides.
+
+      .dld-version skip[] field: written but never read. Declared intent to support
+               skip-list is unimplemented. Users cannot pin files across upgrades.
+
+    dependency_graph: |
+      Claude (SKILL.md prompt)
+        └─→ Bash: node upgrade.mjs --analyze
+              └─→ walkDir(template/) + sha256 comparison
+        └─→ Bash: node upgrade.mjs --apply --groups safe,new
+              └─→ cpSync(template/file → project/file)  [bypasses hooks]
+              └─→ writeFileSync(.dld-version)
+        └─→ Bash: node upgrade.mjs --diff --file X
+              └─→ execFileSync('git', ['diff', '--no-index', ...])
+
+      upgrade.mjs clones from: github.com/Ellevated/dld (depth=1, sparse)
+      Temp dir: /tmp/dld-upgrade-{timestamp}/ (cleaned in finally block)
+
+      hooks (pre-edit, post-edit) — NOT in upgrade path
+      hooks (pre-bash) — fires on Bash calls from Claude, but upgrade.mjs
+                         script execution is already permitted (no pattern block)
+
+  # ─────────────────────────────────────────────────────────────
+  # CI COVERAGE
+  # ─────────────────────────────────────────────────────────────
+  ci_coverage:
+    has_ci: true
+    workflows:
+      - "ci.yml"
+      - "npm-publish.yml"
+      - "smoke-test.yml"
+    modules_tested:
+      - "template/.claude/hooks/ (11 test files, package.json)"
+    modules_untested:
+      - ".claude/scripts/upgrade.mjs (0 tests)"
+      - "template/.claude/skills/ (all 39 files)"
+      - "template/.claude/agents/ (all 64 files)"
+      - "template/.claude/rules/ (all 5 files)"
+      - "template/.claude/scripts/ (all 13 files except upgrade.mjs implied)"
+
+  # ─────────────────────────────────────────────────────────────
+  # UPGRADE-SPECIFIC RISK INVENTORY
+  # ─────────────────────────────────────────────────────────────
+  upgrade_specific_findings:
+
+    file_operations:
+      write_paths:
+        - operation: "cpSync(src, dst)"
+          trigger: "apply() function, called for each target file"
+          behavior: "Overwrites without backup. No temp-copy-then-rename. No rollback."
+          safety: "NONE — silent destructive overwrite"
+
+        - operation: "writeFileSync(.dld-version)"
+          trigger: "After apply() with applied.length > 0 AND errors.length === 0"
+          behavior: "Partial apply (some errors) does NOT update .dld-version. Version stays stale."
+          safety: "PARTIAL — version not updated on partial failure"
+
+        - operation: "mkdirSync(dirname(dst), { recursive: true })"
+          trigger: "Before each cpSync"
+          behavior: "Creates directory tree silently. No check if directory was intentionally absent."
+          safety: "LOW"
+
+      delete_paths:
+        - operation: "rmSync(tempCloneRoot, { recursive: true, force: true })"
+          trigger: "finally block after all operations"
+          behavior: "Cleans /tmp/dld-upgrade-{timestamp}. Safe — temp dir only."
+          safety: "SAFE"
+
+      no_delete_of_user_files:
+        note: "user_only files (in user's .claude/ but not in template/) are detected and reported but NEVER deleted. No cleanup of removed template files."
+        implication: "Stale/removed agent prompts or skills accumulate in user projects across upgrades. Zombie files persist."
+
+    dirty_check_edge_cases:
+      implementation: "git diff --quiet HEAD → exit 0 (clean) or exit 1 (dirty)"
+      passes_on:
+        - "Untracked files (intentional — fix in commit 9a5d738)"
+        - "Staged but not committed files: NO — 'git diff HEAD' includes staged changes"
+        - "Repos with no commits: returns false (not a git repo path) — upgrade allowed"
+        - "Detached HEAD: works correctly"
+        - "Submodules: only checks parent repo, not submodules"
+      blocks_on:
+        - "Modified tracked files"
+        - "Staged changes"
+
+    version_tracking:
+      file: ".dld-version"
+      current_state: "NOT FOUND in project root — no version baseline exists"
+      version_string: "Hardcoded '3.9.0' in writeVersion(). Not derived from git tag or package.json."
+      skip_field: "Written as skip: [] but NEVER READ by analyze() or apply(). Dead code."
+      template_commit: "Captured from git rev-parse HEAD of cloned repo — accurate for --latest, unreliable for --local (uses project dir HEAD)"
+      implication: "No way to know which files were previously skipped. No upgrade history."
+
+    self_upgrade_risk:
+      description: "upgrade.mjs is in .claude/scripts/ → UPGRADE_SCOPE → scripts-claude group → SAFE_GROUPS → auto-applied"
+      behavior: "upgrade.mjs overwrites itself silently during 'apply safe' step"
+      safety_mechanism: "Node.js loads script to memory before execution — current run completes with old logic"
+      risk: "Next run uses new (possibly breaking) logic with no diff shown to user. User approved 'scripts-claude' group, not specific files."
+
+    hooks_bypass:
+      description: "All DLD safety hooks fire on Claude's Edit/Write/MultiEdit tool calls (PostToolUse matcher)"
+      upgrade_mechanism: "cpSync() runs inside Bash subprocess — not a Claude tool call"
+      consequence: "pre-edit hook (protected paths, sync zone warnings, LOC limits) is fully bypassed during upgrade"
+      consequence2: "post-edit hook (ADR validation, diary recording) is also bypassed"
+      affected_protections:
+        - "Sync zone reminders (would warn about template/ mismatch)"
+        - "Protected path enforcement (tests/contracts/, tests/regression/)"
+        - "LOC limit enforcement"
+
+    hooks_config_overwrite_risk:
+      file: ".claude/hooks/hooks.config.mjs"
+      current_status: "DIFFERS from template (different SHA256)"
+      protected: false
+      group: "hooks"
+      in_safe_groups: true
+      consequence: "User's hooks.config.mjs customizations will be silently overwritten on next 'apply safe' run"
+      mitigation_exists: "hooks.config.local.mjs IS protected — users must know to use it"
+      documentation_quality: "README.md mentions hooks.config.local.mjs but upgrade SKILL.md does not warn about this"
+
+    skills_review_burden:
+      total_skills_files: 39
+      group: "skills"
+      in_safe_groups: false
+      review_process: "Per-file diff + 3-option prompt (take/keep/skip)"
+      cognitive_load: "HIGH — 39 files × (read diff + decide) per upgrade"
+      churn_rate: "HIGH — spark/bug-mode.md changed 29x in 6 months"
+      implication: "High-churn files require frequent manual review. Upgrade fatigue likely → users skip reviews → stale skills."
+
+    out_of_scope_drift:
+      files_not_upgraded:
+        - "template/ai/installation-guide.md (changed 5x in 6 months)"
+        - "template/ai/ARCHITECTURE.md"
+        - "template/.mcp.json.example"
+        - "template/CLAUDE.md (28 changes — most-changed file, PROTECTED)"
+      consequence: "User's ai/ directory and project CLAUDE.md never receive framework updates. Version-referenced content diverges silently."
+
+    partial_apply_version_bug:
+      scenario: "Apply runs, 8/10 files succeed, 2 fail (permissions, disk)"
+      writeVersion_called: false
+      consequence: ".dld-version not updated. User cannot tell what was applied. Re-running apply may skip already-applied files (sha256 match) but version still wrong."
+      note: "Actually re-running IS idempotent (sha256 stops re-applying matching files). But partial state is invisible."
+
+    network_dependency:
+      default_mode: "GitHub clone (depth=1 sparse checkout)"
+      failure_modes:
+        - "No internet → error, user told to retry or --local"
+        - "GitHub down → blocked"
+        - "Rate limiting → blocked"
+        - "MITM → malicious template injected (no signature verification)"
+      signature_verification: "NONE — git clone over HTTPS only, no gpg/sha verification of template content"
+
+    localization_md_asymmetry:
+      template_version: "Spanish triggers (placeholder template)"
+      user_dld_version: "Russian triggers (DLD-specific customization)"
+      protected: true
+      note: "Correct — localization.md is in PROTECTED. But template's localization.md has Spanish placeholder that new users get, requiring manual setup."

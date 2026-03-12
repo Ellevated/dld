@@ -1,0 +1,29 @@
+decomposition:
+  target: ".claude/hooks/"
+  total_files: 10
+  zones:
+    - name: "Zone A: Security & Enforcement Hooks"
+      key: "zone-a"
+      description: "Hooks that actively block, deny, or ask for confirmation on dangerous operations. Enforcement layer — regex flaw = security failure."
+      focus: "Regex bypass, logic errors in pattern matching, false positives/negatives, race conditions, git command detection edge cases, prompt-guard evasion, spec allowlist bypass, protected-path prefix-match weaknesses, LOC counter off-by-one."
+      files:
+        - ".claude/hooks/pre-bash.mjs"
+        - ".claude/hooks/pre-edit.mjs"
+        - ".claude/hooks/validate-spec-complete.mjs"
+        - ".claude/hooks/prompt-guard.mjs"
+        - ".claude/hooks/hooks.config.mjs"
+      file_count: 5
+
+    - name: "Zone B: Infrastructure & Utilities"
+      key: "zone-b"
+      description: "Shared foundation: hook runner, utilities, config loader, post-edit side effects, session-end. Bug here affects all hooks."
+      focus: "Path traversal in getProjectDir/run-hook, config cache poisoning, deepMerge correctness, minimatch edge cases, extractAllowedFiles regex, inferSpecFromBranch reliability, outputJson flush/race, ruff command injection via file path, logHookError log exposure, session-end cwd vs getProjectDir, worktree resolution fragility."
+      files:
+        - ".claude/hooks/run-hook.mjs"
+        - ".claude/hooks/utils.mjs"
+        - ".claude/hooks/post-edit.mjs"
+        - ".claude/hooks/session-end.mjs"
+        - ".claude/hooks/README.md"
+      file_count: 5
+
+  total_zones: 2

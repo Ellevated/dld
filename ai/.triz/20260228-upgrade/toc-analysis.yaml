@@ -1,0 +1,333 @@
+toc_analysis:
+  target: "/Users/desperado/dev/dld"
+  question: "Hidden negative consequences of /upgrade mechanism — what systemic risks remain beyond pyproject.toml overwrite? What is the core constraint preventing safe, reliable upgrades?"
+
+  # ─────────────────────────────────────────────────────────────
+  # UNDESIRABLE EFFECTS (UDEs)
+  # ─────────────────────────────────────────────────────────────
+  udes:
+    - id: UDE-1
+      statement: "upgrade.mjs has zero tests yet overwrites the entire framework"
+      evidence: "source_files=1, test_files=0, test_ratio=0.0, LOC=394. Module stats show NONE test coverage. Only 3 commits since creation."
+      severity: critical
+      note: "ADR-011 mandates Enforcement as Code — but the enforcement mechanism itself has no enforcement."
+
+    - id: UDE-2
+      statement: "upgrade.mjs silently overwrites itself during auto-apply"
+      evidence: ".claude/scripts/ is in UPGRADE_SCOPE and scripts-claude group is in SAFE_GROUPS. cpSync replaces upgrade.mjs in-place. Node.js loads script to memory so current run completes, but next run uses untested new logic without explicit user approval of that specific file."
+      severity: critical
+
+    - id: UDE-3
+      statement: "DLD safety hooks are fully bypassed during upgrade"
+      evidence: "pre-edit and post-edit hooks fire on Claude's Edit/Write/MultiEdit tool calls (PostToolUse matcher). upgrade.mjs uses cpSync() inside a Bash subprocess — not a Claude tool call. Result: protected-path enforcement, sync-zone warnings, LOC limits, ADR validation, diary recording — ALL bypassed."
+      severity: critical
+
+    - id: UDE-4
+      statement: "hooks.config.mjs diverges between user and template, will be silently overwritten"
+      evidence: "SHA256 differs. hooks.config.mjs is in 'hooks' group which is in SAFE_GROUPS. User's version has '.claude/rules/git-local-folders.md' in excludeFromSync (line 88), template lacks it. Next 'apply safe' silently drops this customization."
+      severity: high
+
+    - id: UDE-5
+      statement: "No backup, no rollback, no dry-run mode for file overwrites"
+      evidence: "apply() does cpSync(src,dst) directly. No temp-copy-then-rename. No backup of previous file. No undo mechanism. Partial failure leaves mixed state with no record of what changed."
+      severity: high
+
+    - id: UDE-6
+      statement: "Zombie files accumulate — template file removal never propagates"
+      evidence: "user_only files are detected and reported but NEVER deleted. If template removes an agent or skill in a new version, user's copy persists forever. No 'deprecated' or 'removed in template' annotation."
+      severity: medium
+
+    - id: UDE-7
+      statement: "Version tracking is inert — .dld-version skip[] written but never read"
+      evidence: "writeVersion() writes skip:[] on every apply. readVersion() reads the file but skip field is never consumed by analyze() or apply(). Users cannot pin files across upgrades. Declared capability is dead code."
+      severity: medium
+
+    - id: UDE-8
+      statement: "Skills require per-file manual review (39 files) creating upgrade fatigue"
+      evidence: "39 skill files not in SAFE_GROUPS. spark/bug-mode.md changed 29x in 6 months. Each upgrade requires reading diffs and deciding take/keep/skip per file. High cognitive load leads to skipping reviews, leading to stale skills."
+      severity: high
+
+    - id: UDE-9
+      statement: "Hardcoded version string disconnected from actual release"
+      evidence: "writeVersion() writes '3.9.0' as a string literal, not derived from git tag, package.json, or any SSOT. Version in .dld-version cannot be trusted for gating, comparison, or audit."
+      severity: medium
+
+    - id: UDE-10
+      statement: "High-churn co-change clusters applied atomically by group, not by functional unit"
+      evidence: "Hook files co-change 6x as a cluster (pre-edit, utils, validate-spec, config). Bug-hunt files co-change 8x as a cluster. But grouping is by directory (hooks/, agents/) not by functional dependency. Applying hooks without all co-dependent files risks partial state."
+      severity: medium
+
+    - id: UDE-11
+      statement: "CLAUDE.md (28 changes, most-changed file) is PROTECTED — version-referenced content never reaches users"
+      evidence: "CLAUDE.md changed 28x in 6 months. Contains skill tables, flow descriptions, version strings. PROTECTED means users never get these updates. Skills reference CLAUDE.md sections that may not exist in user's copy."
+      severity: high
+
+    - id: UDE-12
+      statement: "No supply-chain verification — template content fetched from GitHub with zero integrity check"
+      evidence: "git clone over HTTPS only. No GPG signature verification. No SHA manifest of expected template contents. MITM or compromised repo injects malicious agent prompts, hook code, or scripts into user's .claude/ directory."
+      severity: medium
+      note: "Risk is LOW probability but CATASTROPHIC impact — hooks execute arbitrary JS."
+
+  # ─────────────────────────────────────────────────────────────
+  # CURRENT REALITY TREE (CRT)
+  # ─────────────────────────────────────────────────────────────
+  current_reality_tree:
+    root_cause: "The upgrade engine operates OUTSIDE the system it maintains — no tests validate its behavior, no hooks constrain its writes, no contracts define what 'safe upgrade' means."
+
+    causal_chains:
+      - chain: "UDE-1 <- UDE-5 <- UDE-2 <- ROOT"
+        logic: |
+          The upgrade engine has zero tests (UDE-1) because there is no definition of
+          correct upgrade behavior (no contract, no invariants, no spec). Without a
+          contract, there is no backup/rollback (UDE-5) because nobody specified what
+          "safe apply" means. The engine can silently rewrite itself (UDE-2) because
+          it falls through the same "safe group" logic without special-casing — the
+          ROOT cause being that upgrade.mjs was built as a file-copier, not as a
+          safety-critical system with its own integrity guarantees.
+
+      - chain: "UDE-3 <- UDE-4 <- ROOT"
+        logic: |
+          Hooks are bypassed during upgrade (UDE-3) because cpSync() operates at the
+          OS/filesystem level, not through Claude's tool interface. This means the very
+          safety layer (hooks.config.mjs) that protects the system can itself be
+          overwritten silently (UDE-4). The ROOT is that the upgrade engine was designed
+          to operate BELOW the hook layer, in the same trust zone as the OS, but it
+          modifies the hook layer it bypasses — a classic privilege escalation pattern.
+
+      - chain: "UDE-8 <- UDE-11 <- UDE-6 <- ROOT"
+        logic: |
+          Skills require exhausting manual review (UDE-8) because there is no semantic
+          versioning or breaking-change annotation per file. CLAUDE.md updates never
+          reach users (UDE-11) because it is PROTECTED, but skills reference CLAUDE.md
+          content — creating a documentation/behavior mismatch. Zombie files accumulate
+          (UDE-6) because the engine has no concept of "file lifecycle" (added, modified,
+          deprecated, removed). ROOT: the upgrade engine sees files as isolated blobs,
+          not as components of a versioned, interdependent system.
+
+      - chain: "UDE-7 <- UDE-9 <- ROOT"
+        logic: |
+          The skip[] field is dead code (UDE-7) because there is no version comparison
+          logic in analyze(). The hardcoded version string (UDE-9) cannot support
+          semantic comparison because it was never designed as a gating mechanism.
+          ROOT: .dld-version was implemented as a human-readable receipt, not as a
+          machine-actionable state file. This contradicts ADR-011 (Enforcement as Code).
+
+      - chain: "UDE-10 <- UDE-3 <- ROOT"
+        logic: |
+          Co-change clusters are applied by directory group, not by functional unit
+          (UDE-10), because the grouping logic (GROUP_PATTERNS) uses path prefixes,
+          not dependency analysis. Hooks bypass (UDE-3) means even if a partial apply
+          creates broken state, no post-edit validation catches it. ROOT: the engine
+          has no model of file dependencies — it treats all files as independently
+          replaceable units.
+
+      - chain: "UDE-12 <- UDE-1 <- ROOT"
+        logic: |
+          No supply-chain verification (UDE-12) because there are no tests (UDE-1)
+          that would assert integrity properties (expected file count, known SHA
+          manifest, signature check). ROOT: the engine was designed for a trusted
+          single-developer workflow, not for distribution to unknown users.
+
+    convergence_point: |
+      ALL chains converge on: the upgrade engine has no CONTRACT defining what a
+      correct upgrade looks like. Without a contract:
+      - No tests can be written (what would they assert?)
+      - No rollback can be designed (what state to restore to?)
+      - No hooks can gate (what invariants to check?)
+      - No versioning can work (what semantics to compare?)
+      The constraint is not "missing tests" — tests are a symptom. The constraint
+      is "missing contract" — the formal definition of upgrade correctness.
+
+  # ─────────────────────────────────────────────────────────────
+  # CORE CONSTRAINT
+  # ─────────────────────────────────────────────────────────────
+  core_constraint:
+    description: "No upgrade contract — no formal specification of what constitutes a correct, safe, reversible upgrade operation"
+    type: "policy"
+    evidence: |
+      1. Zero tests (test_ratio=0.0) — not because testing is hard, but because
+         there is nothing to test AGAINST. No invariants are specified.
+      2. PROTECTED set was built reactively (pyproject.toml added after it was
+         destroyed), not from a design principle.
+      3. SAFE_GROUPS defined by directory, not by safety analysis.
+      4. .dld-version skip[] is dead code — the contract for "what can be skipped"
+         was never defined.
+      5. No backup mechanism — the contract for "reversibility" was never defined.
+      6. Self-upgrade path exists — the contract for "engine integrity" was never defined.
+      7. Hooks bypassed — the contract for "upgrade must respect safety layer" was
+         never defined.
+
+    why_this_is_THE_constraint: |
+      Every individual fix (add tests, add backup, protect hooks.config.mjs) is a
+      local optimization that does not address WHY these gaps exist. They exist because
+      upgrade.mjs was conceived as a "smart cp -r" utility, not as a safety-critical
+      state transition system. Without a contract, each bug found leads to another
+      reactive patch (e.g., adding pyproject.toml to PROTECTED), and the PROTECTED set
+      grows ad-hoc while the actual risk surface remains unknown.
+
+      The constraint is POLICY, not physical — the code can be changed, the team has
+      the skills. What is missing is the DECISION to treat upgrade as a first-class
+      system with defined correctness properties.
+
+  # ─────────────────────────────────────────────────────────────
+  # EVAPORATING CLOUDS
+  # ─────────────────────────────────────────────────────────────
+  evaporating_clouds:
+    - id: EC-1
+      objective: "Users must receive framework improvements AND their project must remain stable"
+      requirement_a: "Upgrade must overwrite framework files to deliver improvements"
+      requirement_b: "Upgrade must not break user's working configuration"
+      conflict: "Overwriting is destructive; not overwriting means stale framework"
+      hidden_assumption: "Overwrite is the only mechanism for delivering changes"
+      resolution: |
+        Three-phase apply: (1) backup current state, (2) apply new files,
+        (3) validate result against contract. If validation fails, restore backup.
+        The destructive operation becomes reversible.
+
+    - id: EC-2
+      objective: "Upgrade must be fast AND safe"
+      requirement_a: "SAFE_GROUPS auto-apply without confirmation (speed)"
+      requirement_b: "No file should be overwritten without the user understanding the impact (safety)"
+      conflict: "Auto-apply skips user review; manual review for everything is too slow"
+      hidden_assumption: "Safety = human review. Auto = unsafe."
+      resolution: |
+        Safety through CONTRACT, not through human review. A file in SAFE_GROUPS
+        is safe not because a human reviewed it, but because: (a) automated tests
+        validate it works after replacement, (b) backup exists for rollback, and
+        (c) the engine verified no user customizations are lost. The human reviews
+        the CONTRACT once; the machine enforces it every time.
+
+    - id: EC-3
+      objective: "The upgrade engine must be upgradeable AND trustworthy"
+      requirement_a: "upgrade.mjs must be in UPGRADE_SCOPE to receive improvements"
+      requirement_b: "upgrade.mjs must not silently change its own logic"
+      conflict: "Self-upgrade enables improvement; self-upgrade breaks trust chain"
+      hidden_assumption: "upgrade.mjs is just another framework file"
+      resolution: |
+        Treat upgrade.mjs as infrastructure, not content. Move it to ALWAYS_ASK
+        or a new SELF category. Show diff, require explicit user approval. The
+        engine that governs all other upgrades must itself be upgraded through a
+        distinct, higher-trust path.
+
+    - id: EC-4
+      objective: "Hooks must protect the system AND the upgrade must function"
+      requirement_a: "cpSync must bypass hooks (it is a filesystem operation, not a Claude tool)"
+      requirement_b: "Hooks must validate all file modifications (that is their purpose)"
+      conflict: "Hooks cannot intercept filesystem calls; upgrade writes directly to filesystem"
+      hidden_assumption: "Hooks can only fire on Claude tool calls"
+      resolution: |
+        Post-upgrade validation hook. After upgrade.mjs completes, run a
+        verification pass: check that no protected paths were modified, that
+        hook configs are consistent, that LOC limits are met. This is not
+        pre-write prevention — it is post-write audit. The upgrade engine
+        itself calls the validator as its final step.
+
+  # ─────────────────────────────────────────────────────────────
+  # EXPLOITATION STRATEGY (use the constraint better without changing it)
+  # ─────────────────────────────────────────────────────────────
+  exploitation_strategy:
+    - action: "Move upgrade.mjs from SAFE_GROUPS to ALWAYS_ASK"
+      rationale: "Prevents silent self-overwrite. Minimal code change (add one entry to ALWAYS_ASK set). Stops the most dangerous failure mode immediately."
+      effort: "5 minutes"
+
+    - action: "Move hooks.config.mjs to PROTECTED set"
+      rationale: "Prevents silent loss of user hook customizations. Users who want template updates can manually diff. Alternatively, add it to ALWAYS_ASK."
+      effort: "5 minutes"
+
+    - action: "Add git stash before apply, git stash pop on error"
+      rationale: "Git-based backup/rollback without inventing a new mechanism. The dirty-check already ensures clean state, so stash after apply gives a restore point. If apply fails mid-way, stash pop restores."
+      effort: "30 minutes"
+      note: "Requires changing isGitDirty() to run before apply but after analyze, and wrapping apply in try/catch that calls git stash pop on error."
+
+    - action: "Log every cpSync to a manifest file (.dld-upgrade-log)"
+      rationale: "Creates an audit trail of what was changed. Enables manual rollback via git checkout of specific files. Zero complexity — just push to an array and writeFileSync at the end."
+      effort: "15 minutes"
+
+    - action: "Add post-upgrade smoke check: validate that hooks load without error"
+      rationale: "After applying hooks group, do a simple dynamic import of hooks.config.mjs. If it throws, the upgrade broke hooks. Alert immediately instead of waiting for next Claude session."
+      effort: "20 minutes"
+
+  # ─────────────────────────────────────────────────────────────
+  # ELEVATION STRATEGY (change the system to eliminate the constraint)
+  # ─────────────────────────────────────────────────────────────
+  elevation_strategy:
+    - action: "Define the upgrade contract as a specification"
+      description: |
+        Create .claude/contracts/upgrade.contract.md defining:
+        1. INVARIANTS: what must be true before, during, and after upgrade
+           - No user file outside UPGRADE_SCOPE is modified
+           - No PROTECTED file is modified
+           - Every modified file has a backup
+           - Engine integrity: upgrade.mjs hash is verified before execution
+           - Hooks load successfully after upgrade
+           - .dld-version accurately reflects applied state
+        2. FILE LIFECYCLE: added, modified, deprecated, removed — with
+           propagation rules for each state
+        3. ATOMICITY: either all files in a functional unit are applied, or none
+        4. REVERSIBILITY: any upgrade can be undone within the same session
+      priority: "FIRST — everything else derives from this"
+
+    - action: "Write tests that verify the contract"
+      description: |
+        Test suite using temp directories (no real project risk):
+        - Test: PROTECTED files are never modified
+        - Test: UPGRADE_SCOPE filter excludes all non-framework files
+        - Test: Self-upgrade requires explicit approval (not in SAFE_GROUPS)
+        - Test: Partial failure does not corrupt state
+        - Test: Backup is created before first cpSync
+        - Test: .dld-version reflects actual applied files
+        - Test: skip[] field is honored during analyze
+        - Test: Removed template files are flagged to user
+      priority: "SECOND — makes the contract enforceable"
+
+    - action: "Replace directory-based grouping with dependency-aware functional units"
+      description: |
+        Instead of GROUP_PATTERNS by path prefix, define upgrade units:
+        - unit: "bug-hunt-pipeline" = [agents/bug-hunt/*, skills/spark/bug-mode.md, rules/model-capabilities.md]
+        - unit: "hook-system" = [hooks/*.mjs, hooks/__tests__/*, hooks/hooks.config.mjs]
+        - unit: "autopilot-pipeline" = [skills/autopilot/*, agents/planner.md, agents/coder.md, agents/tester.md]
+        Each unit is applied atomically — all or none. This matches the co-change
+        clusters found in the data (8 co-changes for bug-hunt, 6 for hooks).
+      priority: "THIRD — eliminates partial-state risk"
+
+    - action: "Implement CLAUDE.md section sync instead of full-file protection"
+      description: |
+        CLAUDE.md is PROTECTED because it contains user customizations (project name,
+        stack, domains). But it also contains framework content (skill tables, flow
+        descriptions, version strings) that drifts across 28 changes. Solution:
+        Mark framework sections with <!-- DLD:BEGIN --> / <!-- DLD:END --> markers.
+        Upgrade replaces only marked sections, preserves user content.
+      priority: "FOURTH — solves the most-changed-file problem"
+
+    - action: "Add SHA manifest for supply-chain integrity"
+      description: |
+        Template releases include a signed manifest (sha256 per file). upgrade.mjs
+        verifies each file against the manifest before applying. Prevents MITM
+        injection of malicious prompts or hook code.
+      priority: "FIFTH — low probability but catastrophic impact risk"
+
+  # ─────────────────────────────────────────────────────────────
+  # SUBORDINATION CHECK
+  # ─────────────────────────────────────────────────────────────
+  subordination_check:
+    question: "Does every other part of the system support the constraint resolution?"
+    findings:
+      - component: "SKILL.md (the LLM prompt)"
+        status: "ALIGNED"
+        note: "SKILL.md correctly delegates all file operations to upgrade.mjs. If the engine gains backup/rollback, the skill does not need to change."
+
+      - component: "hooks system"
+        status: "MISALIGNED"
+        note: "Hooks cannot intercept upgrade writes (cpSync bypasses PostToolUse). Need a post-upgrade validation path — either upgrade.mjs calls a validator, or a post-session hook checks .dld-upgrade-log."
+
+      - component: "template-sync.md rule"
+        status: "PARTIALLY ALIGNED"
+        note: "Rule correctly identifies two-copy problem (template/ vs .claude/). But it gives guidance to HUMANS, not to the upgrade engine. The engine has no concept of 'template-first editing.' Rule should be encoded in the contract."
+
+      - component: "CI pipeline"
+        status: "MISALIGNED"
+        note: "CI tests hooks (11 test files) but not upgrade.mjs. The most destructive mechanism in the framework has zero CI coverage."
+
+      - component: "ADR-011 (Enforcement as Code)"
+        status: "VIOLATED"
+        note: "ADR-011 mandates process enforcement via JSON state + hooks + hard gates. upgrade.mjs uses none of these — no state file tracking upgrade progress, no hooks, no gates. The upgrade process is enforced by LLM prompt compliance alone."

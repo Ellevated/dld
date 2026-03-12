@@ -1,0 +1,22 @@
+{
+  "spec_id": "TECH-145",
+  "title": "Upgrade skill-writer to skill-creator",
+  "mode": "feature",
+  "created_at": "2026-03-08T14:00:00Z",
+  "phases": {
+    "collect": { "status": "done", "timestamp": "2026-03-08T14:00:00Z" },
+    "research": { "status": "done", "timestamp": "2026-03-08T14:15:00Z", "files": ["research-external.md", "research-codebase.md", "research-patterns.md", "research-devil.md"] },
+    "synthesize": { "status": "done", "timestamp": "2026-03-08T14:20:00Z" },
+    "decide": { "status": "done", "timestamp": "2026-03-08T14:21:00Z", "approach": 3, "route": "HUMAN" },
+    "write": { "status": "done", "timestamp": "2026-03-08T14:30:00Z" },
+    "validate": { "status": "done", "timestamp": "2026-03-08T14:31:00Z" },
+    "reflect": { "status": "done", "timestamp": "2026-03-08T14:32:00Z" },
+    "completion": { "status": "done", "timestamp": "2026-03-08T14:35:00Z" }
+  },
+  "decisions": {
+    "naming": "rename to skill-creator",
+    "scripts": "key scripts only (run_eval, improve_description, aggregate_benchmark) + adapt",
+    "update_mode": "keep in same skill, two modes (CREATE + UPDATE)",
+    "frontmatter": "hybrid: add project-agnostic + allowed-tools, keep model"
+  }
+}

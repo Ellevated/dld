@@ -1,8 +1,9 @@
-# Внутренняя кухня разработки (только корневая)
-/ai/
+# Локальные настройки Claude Code (не коммитить permissions)
+/.claude/settings.local.json
+/.claude/worktrees/
 
-# Локальные настройки Claude Code (только корневая)
-/.claude/
+# Личные заметки сессий
+/ai/diary/
 
 # Системные файлы macOS
 .DS_Store

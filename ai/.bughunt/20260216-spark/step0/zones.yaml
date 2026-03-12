@@ -1,0 +1,27 @@
+decomposition:
+  target: "template/.claude/skills/spark/"
+  total_files: 4
+  zones:
+    - name: "Zone A: Spark Skill Complete System"
+      description: "Complete Spark skill implementation including orchestrator, feature mode, bug mode (Quick + Bug Hunt), and completion logic"
+      focus: |
+        Look for:
+        - Logical inconsistencies between SKILL.md orchestrator and mode files
+        - Dead code or unreachable branches in mode detection
+        - Missing edge cases in Bug Hunt pipeline (steps 0-6)
+        - Inconsistencies in ID protocol between completion.md and bug-mode.md
+        - Gate failures in Bug Hunt pipeline (file gates, caller-writes fallbacks)
+        - Feature Mode validation gate completeness
+        - Status sync issues (spec vs backlog)
+        - Prompt injection vulnerabilities in user_input handling
+        - Missing error recovery paths
+        - Contradictions between ADR-007/008 implementation and documentation
+      files:
+        - "/Users/desperado/dev/dld/template/.claude/skills/spark/SKILL.md"
+        - "/Users/desperado/dev/dld/template/.claude/skills/spark/feature-mode.md"
+        - "/Users/desperado/dev/dld/template/.claude/skills/spark/bug-mode.md"
+        - "/Users/desperado/dev/dld/template/.claude/skills/spark/completion.md"
+      file_count: 4
+
+  total_zones: 1
+  estimated_agents: "6 persona agents + 1 validator"

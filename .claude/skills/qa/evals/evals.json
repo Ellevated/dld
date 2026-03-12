@@ -1,0 +1,89 @@
+{
+  "skill_name": "qa",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/qa проверь как работает главная страница на localhost:3000",
+      "expected_output": "QA report with scenarios, execution results, and saved report file",
+      "assertions": [
+        { "id": "no-source-code", "text": "Agent never reads files from src/ directory or any source code files", "type": "quality" },
+        { "id": "scenarios-before-exec", "text": "Agent presents planned scenarios to user before executing them", "type": "quality" },
+        { "id": "negative-ratio", "text": "At least 40% of scenarios are negative/edge cases", "type": "quality" },
+        { "id": "report-saved", "text": "Report file saved to ai/qa/ directory", "type": "deterministic" },
+        { "id": "user-language", "text": "Scenarios written from user perspective (I click, I see, I expect)", "type": "quality" }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/qa протестируй API эндпоинт POST /api/users на localhost:8000",
+      "expected_output": "API testing with curl, both happy path and error cases",
+      "assertions": [
+        { "id": "uses-curl", "text": "Agent uses curl for API testing, not code inspection", "type": "deterministic" },
+        { "id": "happy-path", "text": "Includes at least one happy path scenario with valid data", "type": "quality" },
+        { "id": "error-cases", "text": "Tests invalid input, missing fields, wrong types", "type": "quality" },
+        { "id": "status-codes", "text": "Checks HTTP status codes in responses", "type": "quality" },
+        { "id": "min-scenarios", "text": "At least 5 scenarios total", "type": "quality" }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "/qa BUG-045 починили, проверь что регистрация теперь работает",
+      "expected_output": "Agent reads bug spec, then tests the fixed behavior as user",
+      "assertions": [
+        { "id": "reads-spec", "text": "Agent reads the bug spec from ai/features/ to understand what was broken", "type": "quality" },
+        { "id": "no-code-read", "text": "Agent does NOT read source code to verify the fix", "type": "quality" },
+        { "id": "tests-fix", "text": "Agent tests the specific behavior that was reported broken", "type": "quality" },
+        { "id": "regression", "text": "Agent also tests related flows that could have been affected", "type": "quality" },
+        { "id": "verdict", "text": "Clear pass/fail verdict on whether the bug is actually fixed from user perspective", "type": "quality" }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "/qa потыкай телеграм бота @my_test_bot",
+      "expected_output": "Telegram bot testing with real message exchange",
+      "assertions": [
+        { "id": "telethon-check", "text": "Agent checks if telethon is installed before proceeding", "type": "deterministic" },
+        { "id": "sends-commands", "text": "Agent sends actual messages/commands to the bot", "type": "quality" },
+        { "id": "checks-responses", "text": "Agent verifies bot responses match expected behavior", "type": "quality" },
+        { "id": "asks-credentials", "text": "Agent asks for API credentials if not available", "type": "quality" },
+        { "id": "negative-bot", "text": "Tests invalid commands and unexpected input to bot", "type": "quality" }
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "/qa проверь что кнопка 'Создать кампанию' работает на https://app.example.com",
+      "expected_output": "Web testing with Playwright, focused on specific UI element",
+      "assertions": [
+        { "id": "playwright-load", "text": "Agent loads Playwright MCP tools via ToolSearch", "type": "deterministic" },
+        { "id": "navigates", "text": "Agent navigates to the URL and takes snapshot", "type": "quality" },
+        { "id": "clicks-button", "text": "Agent clicks the specified button and verifies result", "type": "quality" },
+        { "id": "screenshot-on-fail", "text": "Agent takes screenshot if something fails", "type": "quality" },
+        { "id": "form-fill", "text": "Agent fills in required form fields as a user would", "type": "quality" }
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "/qa проверь CLI команду 'myapp deploy --env staging'",
+      "expected_output": "CLI testing with bash, checking exit codes and output",
+      "assertions": [
+        { "id": "runs-command", "text": "Agent executes the CLI command via Bash", "type": "deterministic" },
+        { "id": "checks-exit-code", "text": "Agent checks exit code (0 = success)", "type": "quality" },
+        { "id": "checks-output", "text": "Agent verifies stdout/stderr content", "type": "quality" },
+        { "id": "help-flag", "text": "Agent tests --help or invalid args for error handling", "type": "quality" },
+        { "id": "report-format", "text": "Report follows the standard QA report template", "type": "quality" }
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "/qa full regression — проверь все основные пользовательские флоу",
+      "expected_output": "Comprehensive testing across multiple feature areas",
+      "assertions": [
+        { "id": "discovers-features", "text": "Agent discovers available features by probing the product, not reading code", "type": "quality" },
+        { "id": "multiple-areas", "text": "Tests cover at least 3 different feature areas", "type": "quality" },
+        { "id": "severity-assigned", "text": "Each failure has severity (Critical/Major/Minor/Cosmetic)", "type": "quality" },
+        { "id": "handoff-offer", "text": "Agent offers to create /spark specs for found bugs", "type": "quality" },
+        { "id": "report-complete", "text": "Report has Summary table, Failures section, Passed section", "type": "quality" }
+      ]
+    }
+  ]
+}

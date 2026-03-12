@@ -1,0 +1,16 @@
+{
+  "spec_id": "FTR-147",
+  "title": "Multi-Project Orchestrator Phase 2: Architecture & Reliability",
+  "mode": "feature",
+  "origin": "blueprint",
+  "phases": {
+    "collect": {"status": "done", "timestamp": "2026-03-10T15:00:00Z"},
+    "research": {"status": "done", "files": ["research-codebase.md", "research-external.md", "research-patterns.md", "research-devil.md"]},
+    "synthesize": {"status": "done"},
+    "decide": {"status": "done", "approach": 3},
+    "write": {"status": "done"},
+    "validate": {"status": "done"},
+    "reflect": {"status": "done"},
+    "completion": {"status": "done", "timestamp": "2026-03-10T16:30:00Z"}
+  }
+}

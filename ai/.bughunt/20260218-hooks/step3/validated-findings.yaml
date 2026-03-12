@@ -1,0 +1,827 @@
+validator_result:
+  scope: "Full audit of .claude/hooks/ — bugs, vulnerabilities, code quality issues, worktree compatibility"
+
+  validation_stats:
+    total_input: 83
+    validated: 40
+    duplicates_merged: 25
+    false_findings: 2
+    rejected: 18
+    groups: 8
+    severity_breakdown:
+      high: 9
+      medium: 16
+      low: 15
+
+  # ─── GROUP 1: Worktree Path Resolution ───
+  # Root cause: inconsistent use of process.cwd() vs getProjectDir() across hooks.
+  # Breaks ALL enforcement (LOC, spec, Impact Tree) in git worktree/autopilot context.
+
+  groups:
+    - name: "Worktree Path Resolution"
+      priority: P0
+      finding_ids: [F-001, F-002, F-003, F-004, F-005]
+      rationale: >
+        Root cause: inconsistent use of process.cwd() vs getProjectDir() across hooks.
+        Breaks ALL enforcement (LOC, spec, Impact Tree) in git worktree/autopilot context.
+        5 independent findings, each confirmed by 2-5 personas.
+
+    - name: "getProjectDir Safety"
+      priority: P0
+      finding_ids: [F-006, F-007, F-008]
+      rationale: >
+        The central path safety function has macOS-specific bug (/private/tmp symlink)
+        and missing symlink resolution. Affects all hooks that call getProjectDir().
+
+    - name: "Hook Output Reliability"
+      priority: P1
+      finding_ids: [F-009, F-010]
+      rationale: >
+        outputJson race condition and missing EPIPE handler can lose deny decisions —
+        security-critical silent failure. Affects every deny/ask/block path.
+
+    - name: "Spec Allowlist Enforcement"
+      priority: P1
+      finding_ids: [F-011, F-012, F-013, F-014, F-015, F-016, F-017]
+      rationale: >
+        Multiple bypass vectors in the file allowlist system: regex truncation,
+        path mismatch, heading level, CRLF, env var injection, phantom prefix.
+        Each independently weakens the enforcement boundary.
+
+    - name: "Glob Engine"
+      priority: P1
+      finding_ids: [F-018, F-019, F-020]
+      rationale: >
+        Custom minimatch implementation has non-standard ** behavior (zero-segment mismatch)
+        and bracket class escaping bug. Directly affects spec allowlist pattern matching.
+
+    - name: "Config & Dead Code"
+      priority: P2
+      finding_ids: [F-021, F-022, F-023, F-024, F-025, F-026]
+      rationale: >
+        prompt-guard completely ignores config system. loadConfig failure caching,
+        silent error absorption, code duplication. Maintenance hazards.
+
+    - name: "Git Command Safety"
+      priority: P2
+      finding_ids: [F-027, F-028, F-029, F-030]
+      rationale: >
+        isDestructiveClean misses -x flag, merge bypass via --no-ff, force push edge cases.
+        Defense-in-depth gaps in git command blocking.
+
+    - name: "Minor Quality"
+      priority: P3
+      finding_ids: [F-031, F-032, F-033, F-034, F-035, F-036, F-037, F-038, F-039, F-040]
+      rationale: >
+        Low-severity quality issues: inconsistent wrappers, hardcoded thresholds,
+        edge cases, dead imports. Each individually low impact.
+
+  findings:
+    # ─── GROUP 1: Worktree Path Resolution (P0) ───
+
+    - id: F-001
+      group: "Worktree Path Resolution"
+      priority: P0
+      severity: high
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 149
+      title: "pre-edit LOC check uses process.cwd() instead of getProjectDir() — silently skipped in worktrees"
+      description: >
+        const absPath = filePath.startsWith('/') ? filePath : join(process.cwd(), filePath);
+        In a git worktree, process.cwd() points to the worktree directory, not the main repo.
+        File path resolution fails silently, causing LOC enforcement to be bypassed entirely.
+      fix_suggestion: "Replace process.cwd() with getProjectDir() on line 149"
+      source_ids: [A-CR-006, A-JR-003, A-UX-008, A-ARCH-003, A-QA-004]
+
+    - id: F-002
+      group: "Worktree Path Resolution"
+      priority: P0
+      severity: high
+      file: ".claude/hooks/session-end.mjs"
+      line: 25
+      title: "session-end.mjs bypasses getProjectDir() — uses raw CLAUDE_PROJECT_DIR without path traversal protection"
+      description: >
+        const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+        All other hooks use getProjectDir() which validates paths against home directory
+        and provides symlink safety. session-end.mjs deviates from this established pattern.
+      fix_suggestion: "Import and use getProjectDir() from utils.mjs"
+      source_ids: [A-SEC-012, A-JR-004, A-ARCH-009, A-QA-009]
+
+    - id: F-003
+      group: "Worktree Path Resolution"
+      priority: P0
+      severity: medium
+      file: ".claude/hooks/validate-spec-complete.mjs"
+      line: 43
+      title: "validate-spec-complete uses relative path — existsSync fails in worktrees, skipping Impact Tree check"
+      description: >
+        const specFile = stagedFiles.split('\n').find(f => /^ai\/features\/.*\.md$/.test(f));
+        if (specFile && existsSync(specFile)) {  // relative path, wrong in worktrees
+        In a worktree, the relative path resolves to the worktree directory, not the main repo.
+        Impact Tree enforcement is silently disabled.
+      fix_suggestion: "Import getProjectDir() and use join(getProjectDir(), specFile)"
+      source_ids: [A-CR-011, A-UX-007, A-JR-008]
+
+    - id: F-004
+      group: "Worktree Path Resolution"
+      priority: P0
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 327
+      title: "inferSpecFromBranch() hardcodes relative path 'ai/features' — breaks in worktrees"
+      description: >
+        const dir = 'ai/features';
+        if (!existsSync(dir)) return null;
+        Relative to cwd, not project root. In worktrees, spec inference fails silently,
+        disabling file allowlist enforcement.
+      fix_suggestion: "const dir = join(getProjectDir(), 'ai', 'features');"
+      source_ids: [A-ARCH-013, A-QA-015]
+
+    - id: F-005
+      group: "Worktree Path Resolution"
+      priority: P0
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 202
+      title: "hooks.config.local.mjs not found in git worktrees — custom config silently lost"
+      description: >
+        const localPath = join(getProjectDir(), '.claude', 'hooks', 'hooks.config.local.mjs');
+        getProjectDir() may fall back to cwd() in worktree if CLAUDE_PROJECT_DIR is unset,
+        causing local config to not be found and user custom limits silently ignored.
+      fix_suggestion: "Resolve main repo root via git worktree list for local config path"
+      source_ids: [A-UX-004]
+
+    # ─── GROUP 2: getProjectDir Safety (P0) ───
+
+    - id: F-006
+      group: "getProjectDir Safety"
+      priority: P0
+      severity: high
+      file: ".claude/hooks/utils.mjs"
+      line: 395
+      title: "getProjectDir() /tmp check fails on macOS due to /private/tmp symlink resolution"
+      description: >
+        if (!resolved.startsWith(home) && !resolved.startsWith('/tmp')) {
+        On macOS: resolve('/tmp/foo') -> '/private/tmp/foo'
+        '/private/tmp/foo'.startsWith('/tmp') -> false
+        Guard fires incorrectly, falls back to cwd(). Affects ALL test environments
+        and any /tmp-based CI on macOS.
+      fix_suggestion: "const tmpResolved = resolve('/tmp'); use !resolved.startsWith(tmpResolved)"
+      source_ids: [A-QA-001, A-CR-003, A-SEC-001, A-UX-005]
+
+    - id: F-007
+      group: "getProjectDir Safety"
+      priority: P0
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 395
+      title: "getProjectDir() accepts CLAUDE_PROJECT_DIR=/tmp root — makes entire /tmp 'inside project'"
+      description: >
+        CLAUDE_PROJECT_DIR=/tmp passes guard. With /tmp as project dir, post-edit hook
+        ruff-formats any .py file in /tmp. Boundary check too permissive for /tmp root.
+      fix_suggestion: "Require at least one level below /tmp: resolved.startsWith(tmpResolved + path.sep)"
+      source_ids: [A-QA-002]
+
+    - id: F-008
+      group: "getProjectDir Safety"
+      priority: P0
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 393
+      title: "getProjectDir() uses resolve() not realpathSync() — symlinks bypass startsWith guard"
+      description: >
+        const resolved = resolve(dir);  // lexical only, does not follow symlinks
+        Symlink: $HOME/project -> /etc passes because resolve() doesn't dereference symlinks.
+        Prefix check: resolved.startsWith(home) — passes for symlink target outside home.
+        Path used for dynamic ESM import (loadConfig), so symlink bypass is meaningful.
+      fix_suggestion: "Use fs.realpathSync() and append path.sep for prefix checks"
+      source_ids: [A-SEC-001]
+
+    # ─── GROUP 3: Hook Output Reliability (P1) ───
+
+    - id: F-009
+      group: "Hook Output Reliability"
+      priority: P1
+      severity: high
+      file: ".claude/hooks/utils.mjs"
+      line: 94
+      title: "outputJson race condition — setTimeout(500ms) can fire before write callback, losing deny decisions"
+      description: >
+        function outputJson(data) {
+          try {
+            process.stdout.write(JSON.stringify(data) + '\n', () => process.exit(0));
+          } catch {
+            process.exit(0);
+          }
+          setTimeout(() => process.exit(0), 500); // can fire first under backpressure
+        }
+        Security-critical: a deny decision that exits before write completes becomes an implicit allow.
+      fix_suggestion: "Store timeout handle, clear in write callback: const t = setTimeout(...); write(data, () => { clearTimeout(t); process.exit(0); })"
+      source_ids: [A-CR-001, A-QA-006, A-UX-010]
+
+    - id: F-010
+      group: "Hook Output Reliability"
+      priority: P1
+      severity: high
+      file: ".claude/hooks/utils.mjs"
+      line: 94
+      title: "Missing process.stdout error handler — EPIPE/SIGPIPE crashes hook, losing deny decisions"
+      description: >
+        No process.stdout.on('error', ...) handler exists. If parent closes pipe,
+        unhandled 'error' event crashes hook with non-zero exit code.
+        Claude Code may treat crashed hook as allow. Hook crash = implicit allow.
+      fix_suggestion: "Add process.stdout.on('error', () => process.exit(0)) at module top-level"
+      source_ids: [A-ARCH-002]
+
+    # ─── GROUP 4: Spec Allowlist Enforcement (P1) ───
+
+    - id: F-011
+      group: "Spec Allowlist Enforcement"
+      priority: P1
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 271
+      title: "extractAllowedFiles regex truncates paths with special chars (+, parens, spaces)"
+      description: >
+        /[`*\-]*\s*([a-zA-Z0-9_./@*-]+(?:\.[a-zA-Z0-9*]+)?...)/
+        'src/c++/parser.cpp' extracted as 'src/c' (truncated at +)
+        'src/auth/handler (v2).py' extracted as 'src/auth/handler'
+        Causes false positive file denials when spec contains paths with special characters.
+      fix_suggestion: "Extract content between backticks first: /`([^`]+)`/ then fall back to current regex"
+      source_ids: [A-CR-008, A-JR-005, A-UX-015, A-ARCH-006, A-QA-011]
+
+    - id: F-012
+      group: "Spec Allowlist Enforcement"
+      priority: P1
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 342
+      title: "isFileAllowed strips ./ from filePath but NOT from allowed entries — path mismatch"
+      description: >
+        Line 342: filePath = normalize(filePath).replace(/^\.\//, '');
+        Line 371: allowed = normalize(allowed).replace(/\\/g, '/');  // no ./ strip!
+        Spec entry './src/foo.py' !== 'src/foo.py' after normalization -> false denial.
+      fix_suggestion: "Apply same .replace(/^\\.\\//,'') to allowed entries on line 371"
+      source_ids: [A-JR-002]
+
+    - id: F-013
+      group: "Spec Allowlist Enforcement"
+      priority: P1
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 260
+      title: "extractAllowedFiles regex only matches ## heading level — ### Allowed Files silently bypassed"
+      description: >
+        const match = content.match(/## Allowed Files\s*\n([\s\S]*?)(?=\n##|\s*$)/i);
+        ### Allowed Files does not match -> files: [] -> allow all (bypass).
+        Spec authors using heading level 3 get silent allowlist bypass.
+      fix_suggestion: "Update regex to match any heading level: /^#{1,6}\\s+Allowed Files/im"
+      source_ids: [A-UX-012]
+
+    - id: F-014
+      group: "Spec Allowlist Enforcement"
+      priority: P1
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 340
+      title: "isFileAllowed fails when Claude Code provides absolute path with divergent symlink resolution"
+      description: >
+        normalizePath at pre-edit.mjs:65-71 strips projectDir prefix.
+        If /var vs /private/var divergence (macOS), prefix strip fails.
+        Absolute path reaches isFileAllowed, matches no relative spec pattern -> denied.
+        Causes false denials in autopilot mode on macOS.
+      fix_suggestion: "Use realpathSync for both projectDir and filePath before prefix strip"
+      source_ids: [A-ARCH-004]
+
+    - id: F-015
+      group: "Spec Allowlist Enforcement"
+      priority: P1
+      severity: high
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 111
+      title: "CLAUDE_CURRENT_SPEC_PATH env var has no path validation — arbitrary file read + allowlist bypass"
+      description: >
+        const specPath = process.env.CLAUDE_CURRENT_SPEC_PATH || inferSpecFromBranch();
+        utils.mjs:259: const content = readFileSync(specPath, 'utf-8');  // no validation
+        CLAUDE_CURRENT_SPEC_PATH=/etc/passwd -> no '## Allowed Files' -> allow all.
+        Attacker-controlled env var bypasses all file write protection.
+      fix_suggestion: "Validate specPath: resolve with realpathSync, assert starts with getProjectDir()/ai/features/, assert ends with .md"
+      source_ids: [A-SEC-002]
+
+    - id: F-016
+      group: "Spec Allowlist Enforcement"
+      priority: P1
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 260
+      title: "extractAllowedFiles regex fails on CRLF line endings — captures files from wrong sections"
+      description: >
+        Lookahead: (?=\n##|\s*$) does not match \r\n##.
+        CRLF spec: captures beyond section boundary, adding extra files to allowlist.
+        Windows-originated specs silently get wrong allowlist.
+      fix_suggestion: "Normalize line endings: content.replace(/\\r\\n/g, '\\n') at parse entry"
+      source_ids: [A-QA-013]
+
+    - id: F-017
+      group: "Spec Allowlist Enforcement"
+      priority: P1
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 310
+      title: "SEC prefix in spec inference regex not in CLAUDE.md backlog rules — creates phantom spec path"
+      description: >
+        const msgMatch = commitMsg.match(/(FTR|BUG|TECH|ARCH|SEC)-\d+/i);
+        Line 320: const match = branch.match(/(FTR|BUG|TECH|ARCH|SEC)-\d+/i);
+        CLAUDE.md states: "Prefixes: BUG, FTR, TECH, ARCH only (4 types)"
+        SEC branches trigger spec inference for non-existent specs, silently bypassing enforcement.
+      fix_suggestion: "Remove SEC from both regex patterns: use /(FTR|BUG|TECH|ARCH)-\\d+/i"
+      source_ids: [A-UX-001]
+
+    # ─── GROUP 5: Glob Engine (P1) ───
+
+    - id: F-018
+      group: "Glob Engine"
+      priority: P1
+      severity: high
+      file: ".claude/hooks/utils.mjs"
+      line: 244
+      title: "minimatch ** requires intermediate directory — src/**/*.py does not match src/foo.py"
+      description: >
+        ** converts to .* but combined with / separator:
+        src/**/*.py -> ^src/.*/[^/]*\.py$ (requires at least one dir level)
+        src/foo.py does NOT match — should match per standard glob semantics.
+        Common glob pattern breaks file allowlist.
+      fix_suggestion: "Convert **/ to (?:.*/)? so zero path segments match"
+      source_ids: [A-ARCH-005, A-QA-003]
+
+    - id: F-019
+      group: "Glob Engine"
+      priority: P1
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 248
+      title: "minimatch escapes bracket characters before glob conversion — [abc] patterns broken"
+      description: >
+        .replace(/[.+^${}()|\\]/g, '\\$&')
+        Escapes . + ^ $ { } ( ) | \ before glob-to-regex conversion.
+        Pattern [.py] becomes [\\.py] — matches wrong chars.
+        Documented feature ([abc] support) is broken.
+      fix_suggestion: "Extract and protect bracket expressions before escaping special characters"
+      source_ids: [A-CR-002]
+
+    - id: F-020
+      group: "Glob Engine"
+      priority: P1
+      severity: low
+      file: ".claude/hooks/utils.mjs"
+      line: 244
+      title: "minimatch unmatched ] in pattern causes regex syntax error — DoS of file write capability"
+      description: >
+        Pattern 'src/]evil.py' -> new RegExp('^src/]evil\\.py$') -> syntax error
+        extractAllowedFiles catches -> files: [], error: true -> deny all.
+        Malformed spec pattern can deny ALL file writes for the session.
+      fix_suggestion: "Wrap new RegExp(re) in try/catch within minimatch() and return false on error"
+      source_ids: [A-SEC-013]
+
+    # ─── GROUP 6: Config & Dead Code (P2) ───
+
+    - id: F-021
+      group: "Config & Dead Code"
+      priority: P2
+      severity: high
+      file: ".claude/hooks/prompt-guard.mjs"
+      line: 18
+      title: "prompt-guard ignores hooks.config.mjs — hardcoded patterns make promptGuard config dead code"
+      description: >
+        prompt-guard.mjs: hardcoded COMPLEXITY_PATTERNS, SKILL_INDICATORS.
+        hooks.config.mjs lines 106-124: promptGuard.complexityPatterns, skillIndicators exist.
+        No hook ever calls loadConfig() for prompt-guard.
+        User customizations to prompt guard via hooks.config.local.mjs silently ignored.
+      fix_suggestion: "Make main() async, call loadConfig(), use config.promptGuard values with fallback to hardcoded"
+      source_ids: [A-UX-002, A-JR-001, A-ARCH-011]
+
+    - id: F-022
+      group: "Config & Dead Code"
+      priority: P2
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 191
+      title: "loadConfig() permanently caches failures as {} — no retry for process lifetime"
+      description: >
+        On error: _config = {} (truthy)
+        Subsequent calls: if (_config) return _config; -> returns {} immediately.
+        Transient failure = permanent silent degradation for the entire process lifetime.
+        Config load failure permanently disables custom rules.
+      fix_suggestion: "Use sentinel value to distinguish 'not loaded' from 'loaded empty': e.g., _config = { _error: true }"
+      source_ids: [A-CR-004, A-QA-012]
+
+    - id: F-023
+      group: "Config & Dead Code"
+      priority: P2
+      severity: medium
+      file: ".claude/hooks/utils.mjs"
+      line: 208
+      title: "loadConfig() silently absorbs local config failures — no diagnostic output"
+      description: >
+        } catch { /* no local config = use defaults */ }
+        Syntax error in hooks.config.local.mjs -> silent fallback to defaults.
+        Operator has no way to know their custom rules are not active.
+        Silent failure makes custom config debugging impossible.
+      fix_suggestion: "Log via logHookError in catch block"
+      source_ids: [A-ARCH-001]
+
+    - id: F-024
+      group: "Config & Dead Code"
+      priority: P2
+      severity: medium
+      file: ".claude/hooks/pre-bash.mjs"
+      line: 18
+      title: "isDestructiveClean duplicated in hooks.config.mjs and pre-bash.mjs — divergence risk"
+      description: >
+        hooks.config.mjs lines 12-17: isDestructiveClean (used in config).
+        pre-bash.mjs lines 18-25: isDestructiveClean (fallback copy).
+        Identical today, but any patch to one misses the other. DRY violation.
+      fix_suggestion: "Export from one location, import in the other"
+      source_ids: [A-UX-011, A-QA-010]
+
+    - id: F-025
+      group: "Config & Dead Code"
+      priority: P2
+      severity: low
+      file: ".claude/hooks/utils.mjs"
+      line: 226
+      title: "ALWAYS_ALLOWED_PATTERNS hardcoded in utils.mjs duplicates hooks.config.mjs — drift risk"
+      description: >
+        utils.mjs:226: ALWAYS_ALLOWED_PATTERNS (hardcoded fallback).
+        hooks.config.mjs:96: utils.alwaysAllowedPatterns (config version).
+        Two copies can drift if one updated without the other.
+        Compounds with F-022 — if config fails, hardcoded fallback may differ.
+      fix_suggestion: "Single source of truth for defaults"
+      source_ids: [A-UX-013]
+
+    - id: F-026
+      group: "Config & Dead Code"
+      priority: P2
+      severity: low
+      file: ".claude/hooks/utils.mjs"
+      line: 15
+      title: "dirname imported but never used in utils.mjs"
+      description: >
+        import { join, dirname, normalize, resolve } from 'path';
+        grep dirname utils.mjs -> only the import line.
+        Verified: dirname appears only on line 15.
+      fix_suggestion: "Remove dirname from import"
+      source_ids: [A-JR-011]
+
+    # ─── GROUP 7: Git Command Safety (P2) ───
+
+    - id: F-027
+      group: "Git Command Safety"
+      priority: P2
+      severity: high
+      file: ".claude/hooks/hooks.config.mjs"
+      line: 12
+      title: "isDestructiveClean does not block 'git clean -fx' — destroys ignored files (.env) without warning"
+      description: >
+        git clean -fx: hasForce=true, hasDir=false -> returns false -> ALLOWED.
+        -x flag removes ignored files including .env, node_modules, secrets.
+        Only -d flag is checked, not -x. Security-relevant: .env secrets can be destroyed.
+      fix_suggestion: "Add hasX check: const hasX = /(?:^|\\s)-[a-z]*x/i.test(cmd); return hasForce && (hasDir || hasX);"
+      source_ids: [A-SEC-006]
+
+    - id: F-028
+      group: "Git Command Safety"
+      priority: P2
+      severity: medium
+      file: ".claude/hooks/pre-bash.mjs"
+      line: 67
+      title: "Merge --ff-only bypass uses string includes — bypassable with --no-ff combined flag"
+      description: >
+        if (command.includes('--ff-only')) continue;
+        'git merge --ff-only --no-ff develop' also contains '--ff-only'
+        but --no-ff wins (last flag) — hook incorrectly approves the unsafe merge.
+      fix_suggestion: "Check both flags: if (command.includes('--ff-only') && !command.includes('--no-ff')) continue;"
+      source_ids: [A-CR-005]
+
+    - id: F-029
+      group: "Git Command Safety"
+      priority: P2
+      severity: low
+      file: ".claude/hooks/hooks.config.mjs"
+      line: 52
+      title: "Force-push regex negative lookahead misses --force-with-lease=ref form"
+      description: >
+        /--force\b(?!-with-lease)/
+        Edge case: --force-with-lease=origin/main behavior depends on regex engine details.
+        After re-verification: the lookahead does match -with-lease= prefix in most cases.
+        Low practical impact but edge case exists when flags separated from =ref by whitespace.
+      fix_suggestion: "Minor: change to --force(?!-with-lease) covers both forms"
+      source_ids: [A-CR-012, A-JR-006]
+
+    - id: F-030
+      group: "Git Command Safety"
+      priority: P2
+      severity: medium
+      file: ".claude/hooks/hooks.config.mjs"
+      line: 52
+      title: "Bare 'git push -f' without explicit branch not blocked — tracking branch may be develop/main"
+      description: >
+        /git\s+push\b(?=.*\b(develop|main)\b)(?=.*(-f\b|--force\b(?!-with-lease)))/i
+        'git push -f' (no branch) — no develop/main in string -> not blocked.
+        But tracking branch could be develop or main. False negative in force push protection.
+        Hook cannot know tracking branch without git query.
+      fix_suggestion: "Add separate pattern for bare 'git push -f' without explicit branch: ask for confirmation"
+      source_ids: [A-QA-007]
+
+    # ─── GROUP 8: Minor Quality (P3) ───
+
+    - id: F-031
+      group: "Minor Quality"
+      priority: P3
+      severity: low
+      file: ".claude/hooks/post-edit.mjs"
+      line: 27
+      title: "Argument injection into ruff via filePath starting with '--'"
+      description: >
+        execFileSync('ruff', ['format', filePath], ...);
+        filePath '--config=/tmp/evil.toml' passed as ruff flag.
+        existsSync check prevents most cases but edge cases remain.
+        Low risk: existsSync check on line 68 prevents most exploitation.
+      fix_suggestion: "if (filePath.startsWith('-')) { postContinue(); return; }"
+      source_ids: [A-SEC-003]
+
+    - id: F-032
+      group: "Minor Quality"
+      priority: P3
+      severity: low
+      file: ".claude/hooks/utils.mjs"
+      line: 51
+      title: "DLD_HOOK_LOG_FILE env var allows arbitrary file append with no path validation"
+      description: >
+        const LOG_FILE = process.env.DLD_HOOK_LOG_FILE || null;
+        writeFileSync(LOG_FILE, line + '\n', { flag: 'a' });
+        Can append to ~/.bashrc, ~/.gitconfig etc.
+        Low risk: requires env control. Content is JSON (not arbitrary). File corruption possible.
+      fix_suggestion: "Validate LOG_FILE is within $HOME or /tmp and not a symlink"
+      source_ids: [A-SEC-004]
+
+    - id: F-033
+      group: "Minor Quality"
+      priority: P3
+      severity: low
+      file: ".claude/hooks/utils.mjs"
+      line: 235
+      title: "matchesPattern() wrapper inconsistently used — direct minimatch() call at line 377"
+      description: >
+        Line 350: matchesPattern(filePath, pattern)
+        Line 377: minimatch(filePath, allowed) — bypasses wrapper.
+        Inconsistency that could cause divergence if matchesPattern is modified.
+      fix_suggestion: "Use matchesPattern() everywhere or remove the wrapper"
+      source_ids: [A-JR-009]
+
+    - id: F-034
+      group: "Minor Quality"
+      priority: P3
+      severity: low
+      file: ".claude/hooks/session-end.mjs"
+      line: 29
+      title: "session-end diary threshold >5 hardcoded — no config path exists"
+      description: >
+        if (pendingCount > 5) {  // hardcoded, no config loading
+        session-end is the only hook that does not use loadConfig().
+        Minor inconsistency with the rest of the hooks configuration system.
+      fix_suggestion: "Add sessionEnd.pendingThreshold to hooks.config.mjs"
+      source_ids: [A-UX-009]
+
+    - id: F-035
+      group: "Minor Quality"
+      priority: P3
+      severity: low
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 156
+      title: "LOC warning and sync zone reminder are mutually exclusive — sync reminder dropped when LOC fires"
+      description: >
+        if (loc >= maxLoc) { askTool(...); return; }  // early return
+        Sync zone check at line 180 never reached when LOC fires.
+        Developer misses sync reminder when editing large .claude/ files.
+      fix_suggestion: "Collect all soft warnings and join into single askTool call"
+      source_ids: [A-ARCH-012]
+
+    - id: F-036
+      group: "Minor Quality"
+      priority: P3
+      severity: low
+      file: ".claude/hooks/validate-spec-complete.mjs"
+      line: 39
+      title: "validate-spec-complete only checks first staged spec file — additional specs skip Impact Tree check"
+      description: >
+        const specFile = stagedFiles.split('\n').find(f => ...);
+        Array.find returns only first match — additional staged specs unchecked.
+        Edge case: bulk commits with multiple specs.
+      fix_suggestion: "Use Array.filter() and check all staged spec files"
+      source_ids: [A-QA-017]
+
+    - id: F-037
+      group: "Minor Quality"
+      priority: P3
+      severity: low
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 111
+      title: "Empty string CLAUDE_CURRENT_SPEC_PATH triggers branch inference instead of disabling enforcement"
+      description: >
+        const specPath = process.env.CLAUDE_CURRENT_SPEC_PATH || inferSpecFromBranch();
+        '' || inferSpecFromBranch() -> inference runs (JS falsy).
+        Operator intending to disable enforcement by setting empty string gets inference instead.
+      fix_suggestion: "Use explicit undefined check instead of ||"
+      source_ids: [A-ARCH-010]
+
+    - id: F-038
+      group: "Minor Quality"
+      priority: P3
+      severity: low
+      file: ".claude/hooks/pre-edit.mjs"
+      line: 154
+      title: "LOC warnThreshold=1.0 makes warning unreachable — hard block fires first"
+      description: >
+        const warnLoc = Math.floor(maxLoc * warnThreshold);
+        warnThreshold=1.0: warnLoc = maxLoc
+        loc >= maxLoc fires before loc >= warnLoc -> no warning ever shown.
+        Undocumented config edge case.
+      fix_suggestion: "Document that warnThreshold must be < 1.0, or cap: Math.min(warnLoc, maxLoc - 1)"
+      source_ids: [A-JR-012]
+
+    - id: F-039
+      group: "Minor Quality"
+      priority: P3
+      severity: low
+      file: ".claude/hooks/run-hook.mjs"
+      line: 35
+      title: "run-hook.mjs worktree root parsing is brittle — no existsSync validation on parsed path"
+      description: >
+        root = output.split('\n')[0].replace('worktree ', '').trim();
+        No validation that root is a real directory.
+        Malformed output -> garbage path -> hooks silently pass.
+        Fail-open if git output format changes.
+      fix_suggestion: "Add existsSync(root) check. Use anchored regex /^worktree\\s+/"
+      source_ids: [A-SEC-011, A-UX-014, A-JR-010]
+
+    - id: F-040
+      group: "Minor Quality"
+      priority: P3
+      severity: low
+      file: ".claude/hooks/validate-spec-complete.mjs"
+      line: 12
+      title: "stripCodeBlocks regex fragile with nested backtick sequences inside code blocks"
+      description: >
+        return text.replace(/```[\s\S]*?```/g, '');
+        Non-greedy match stops at first ``` inside code block.
+        Can cause false positive Impact Tree checkbox failures.
+      fix_suggestion: "Use line-by-line fence boundary scanning"
+      source_ids: [A-QA-008]
+
+  out_of_scope:
+    - original_id: A-CR-010
+      title: "Comment typo — missing slash on line 213"
+      reason: "FALSE finding. Verified line 213 in source: 'return _config; // fail-safe: ...' — comment is properly formed with //. The finding fabricated a non-existent bug."
+
+    - original_id: A-SEC-008
+      title: "Protected path check ordering — always-allowed patterns bypass protected paths"
+      reason: "FALSE finding. Incorrect control flow analysis. In pre-edit.mjs: isFileAllowed (which checks always-allowed) -> protected paths check. A .claude/ file passes isFileAllowed but then hits the protected paths check at line 133. isFileAllowed returning {allowed: true} means the pre-edit flow CONTINUES to the protected path check. No bypass exists."
+
+    - original_id: A-CR-009
+      title: "approvePrompt() sends JSON via async write path — inconsistent with allowTool() silent exit"
+      reason: "By design. UserPromptSubmit hooks MUST return JSON {decision: 'approve'} per Claude Code protocol. approvePrompt() correctly uses outputJson. allowTool() is for PreToolUse hooks which use silent exit. Different hook types, different protocols."
+
+    - original_id: A-SEC-009
+      title: "Prompt guard complexity detection fails on Turkish locale due to toLowerCase()"
+      reason: "Theoretical concern. Hooks run in Node.js server context where locale is controlled. Turkish locale dotless-i issue would require developer's system to be Turkish locale AND prompt to contain Turkish-specific uppercase I. Extremely unlikely in practice."
+
+    - original_id: A-CR-007
+      title: "SKILL_INDICATORS tested against promptLower without /i flag"
+      reason: "Not a bug — SKILL_INDICATORS patterns are all lowercase and tested against already-lowercased input. Works correctly. The /i flag on COMPLEXITY_PATTERNS is redundant but harmless. Concern absorbed into F-021 (prompt-guard should use config)."
+
+    - original_id: A-UX-003
+      title: "SKILL_INDICATORS case sensitivity maintenance hazard"
+      reason: "Duplicate of A-CR-007 concern, which is itself not a current bug. The maintenance hazard is addressed by F-021 (prompt-guard should use config)."
+
+    - original_id: A-UX-006
+      title: "ruff format failure silently swallowed"
+      reason: "By design per ADR-004 (fail-safe). Post-edit hooks should never block on tool failures. Silent continuation is the correct behavior. Ruff errors are visible in the file itself."
+
+    - original_id: A-SEC-010
+      title: "Error log appends unsanitized error objects — log injection"
+      reason: "Log is local-only (chmod 600), not parsed by any automated system. The 'injection' has no practical exploit path. Newlines in error messages are standard Node.js behavior."
+
+    - original_id: A-SEC-005
+      title: "Push-to-main regex edge cases with complex refspecs"
+      reason: "Vague finding with no concrete repro. 'Complex scenarios remain untested' is not actionable without specific failing inputs."
+
+    - original_id: A-ARCH-007
+      title: "Force push with --force-with-lease to develop allows data loss in stale-tracking-ref scenarios"
+      reason: "Known limitation of git --force-with-lease itself, not a hook bug. The hook correctly allows --force-with-lease as the 'safe' alternative to --force. Changing this would block the documented workflow."
+
+    - original_id: A-QA-005
+      title: "Missing test: spec whitelisting a contract file must still be blocked by protected-paths check"
+      reason: "Test coverage request, not a bug finding. The code is correct (verified). Appropriate for a separate testing task."
+
+    - original_id: A-JR-007
+      title: "loadConfig async TOCTOU — concurrent calls can load config twice"
+      reason: "Each hook runs as a separate Node.js process (spawned by run-hook.mjs). There is only ONE call to loadConfig() per process. Concurrent calls cannot happen in production."
+
+    - original_id: A-ARCH-008
+      title: "loadConfig async TOCTOU — concurrent calls between check and assignment"
+      reason: "Duplicate of A-JR-007. Same incorrect assumption about concurrent calls."
+
+    - original_id: A-QA-014
+      title: "--ff-only bypass check is case-sensitive while surrounding patterns use /i"
+      reason: "Git itself is case-sensitive for flags. --FF-ONLY is not a valid git flag. Case-sensitive check is correct."
+
+    - original_id: A-QA-016
+      title: "SKILL_INDICATORS bypass not tested with uppercase skill names"
+      reason: "Test coverage request, not a bug. Behavior is correct (toLowerCase + lowercase patterns). Addressed by F-021."
+
+    - original_id: A-SEC-007
+      title: "ReDoS vulnerability in extractAllowedFiles regex"
+      reason: "Overstated. The regex uses non-greedy quantifier which is linear in most engines. Node.js V8 regex engine handles this pattern without catastrophic backtracking. Alternation \\n## or \\s*$ does not create exponential branching."
+
+    - original_id: A-QA-018
+      title: "DEBUG constant captured at module import time — DLD_HOOK_DEBUG bleeds into tests"
+      reason: "Test infrastructure concern, not a hook bug. Test helpers should control env vars, which is a test setup issue."
+
+    - original_id: A-QA-015
+      title: "inferSpecFromBranch relative path — duplicate"
+      reason: "Merged into F-004 (A-ARCH-013 kept as primary)"
+
+  duplicates_merged:
+    - kept: A-CR-006
+      merged: [A-JR-003, A-UX-008, A-ARCH-003, A-QA-004]
+      final_id: F-001
+      reason: "All describe process.cwd() vs getProjectDir() in pre-edit LOC check at line 149"
+
+    - kept: A-SEC-012
+      merged: [A-JR-004, A-ARCH-009, A-QA-009]
+      final_id: F-002
+      reason: "All describe session-end.mjs bypassing getProjectDir() at line 25"
+
+    - kept: A-CR-011
+      merged: [A-UX-007, A-JR-008]
+      final_id: F-003
+      reason: "All describe validate-spec-complete relative path issue at line 43"
+
+    - kept: A-ARCH-013
+      merged: [A-QA-015]
+      final_id: F-004
+      reason: "Both describe inferSpecFromBranch relative 'ai/features' path"
+
+    - kept: A-QA-001
+      merged: [A-CR-003, A-SEC-001, A-UX-005]
+      final_id: F-006
+      reason: "All describe getProjectDir /tmp check failure on macOS. QA-001 has clearest repro (macOS /private/tmp). SEC-001 symlink concern extracted as separate F-008."
+
+    - kept: A-CR-001
+      merged: [A-QA-006, A-UX-010]
+      final_id: F-009
+      reason: "All describe outputJson race condition between write callback and setTimeout"
+
+    - kept: A-CR-008
+      merged: [A-JR-005, A-UX-015, A-ARCH-006, A-QA-011]
+      final_id: F-011
+      reason: "All describe extractAllowedFiles regex character class too restrictive for special chars"
+
+    - kept: A-UX-002
+      merged: [A-JR-001, A-ARCH-011]
+      final_id: F-021
+      reason: "All describe prompt-guard ignoring hooks.config.mjs promptGuard section"
+
+    - kept: A-CR-004
+      merged: [A-QA-012]
+      final_id: F-022
+      reason: "Both describe loadConfig failure caching as {} (truthy) permanently"
+
+    - kept: A-UX-011
+      merged: [A-QA-010]
+      final_id: F-024
+      reason: "Both describe isDestructiveClean duplication between config and pre-bash"
+
+    - kept: A-ARCH-005
+      merged: [A-QA-003]
+      final_id: F-018
+      reason: "Both describe minimatch ** not matching zero path segments"
+
+    - kept: A-CR-012
+      merged: [A-JR-006]
+      final_id: F-029
+      reason: "Both describe force-push regex --force-with-lease=ref edge case"
+
+    - kept: A-SEC-011
+      merged: [A-UX-014, A-JR-010]
+      final_id: F-039
+      reason: "All describe run-hook.mjs worktree root parsing fragility"
+
+    - kept: A-CR-007
+      merged: [A-UX-003]
+      reason: "Both describe SKILL_INDICATORS case flag inconsistency — rejected as false finding after verification"
+
+    - kept: A-JR-007
+      merged: [A-ARCH-008]
+      reason: "Both describe loadConfig async TOCTOU race condition — rejected as invalid (single-process model)"

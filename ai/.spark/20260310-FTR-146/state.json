@@ -1,0 +1,26 @@
+{
+  "spec_id": "FTR-146",
+  "title": "Multi-Project Orchestrator Phase 1",
+  "mode": "feature",
+  "origin": "blueprint",
+  "created_at": "2026-03-10T15:00:00Z",
+  "phases": {
+    "collect": {"status": "done", "timestamp": "2026-03-10T15:00:00Z"},
+    "research": {
+      "status": "done",
+      "timestamp": "2026-03-10T16:30:00Z",
+      "files": [
+        "ai/.spark/20260310-FTR-146/research-codebase.md",
+        "ai/.spark/20260310-FTR-146/research-external.md",
+        "ai/.spark/20260310-FTR-146/research-patterns.md",
+        "ai/.spark/20260310-FTR-146/research-devil.md"
+      ]
+    },
+    "synthesize": {"status": "done", "timestamp": "2026-03-10T17:00:00Z"},
+    "decide": {"status": "done", "timestamp": "2026-03-10T17:05:00Z", "approach": 2},
+    "write": {"status": "done", "timestamp": "2026-03-10T17:30:00Z"},
+    "validate": {"status": "done", "timestamp": "2026-03-10T17:35:00Z"},
+    "reflect": {"status": "done", "timestamp": "2026-03-10T17:40:00Z"},
+    "completion": {"status": "done", "timestamp": "2026-03-10T17:45:00Z"}
+  }
+}

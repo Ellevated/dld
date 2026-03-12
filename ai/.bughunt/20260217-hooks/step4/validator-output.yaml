@@ -1,0 +1,58 @@
+validation:
+  status: approved
+  scope: "Find all bugs in template/.claude/hooks/ — security, error handling, edge cases, architectural problems"
+  date: "2026-02-17"
+  spec_id: BUG-117
+
+  stats:
+    total_input: 23
+    false_positives: 4
+    duplicates_of_existing: 5
+    extensions_of_existing: 4
+    genuinely_new: 10
+    groups_formed: 3
+
+  false_positives:
+    - original_id: "F-001"
+      title: "Pipe-bypass on push-to-main regex"
+      reason: "Regex engine searches full string; piped commands ARE caught."
+    - original_id: "F-008"
+      title: "Force-push --force-with-lease false-blocks"
+      reason: "Blocking --force when present alongside --force-with-lease is correct."
+    - original_id: "F-015"
+      title: "SYNC_ZONES missing template/.claude/"
+      reason: "By design — sync reminder fires on .claude/ edits."
+    - original_id: "F-023"
+      title: "Merge --ff-only check uses bare includes"
+      reason: "No practical false-positive."
+
+  duplicates_of_existing_specs:
+    - { original_id: "F-002", existing: "BUG-103 F-011", title: "git clean -f -d bypass" }
+    - { original_id: "F-003", existing: "BUG-104 F-009", title: "extractAllowedFiles drops extensionless files" }
+    - { original_id: "F-005", existing: "BUG-104 F-006", title: "validate-spec-complete disabled by gitignore" }
+    - { original_id: "F-010", existing: "BUG-104 F-007", title: "PROTECTED_PATHS bypassed by absolute path" }
+    - { original_id: "F-012", existing: "BUG-104 F-022", title: "checkSyncZone relative templatePath" }
+
+  extensions_of_existing_specs:
+    - { original_id: "F-004", extends: "BUG-104 F-006", title: "inferSpecFromBranch relative path fails in worktrees" }
+    - { original_id: "F-007", extends: "BUG-104 F-018", title: "getProjectDir symlink/path bypass" }
+    - { original_id: "F-019", extends: "BUG-104 F-007", title: "normalizePath does not strip ./ prefix" }
+    - { original_id: "F-020", extends: "BUG-104 F-009", title: "extractAllowedFiles drops paths with spaces/unicode" }
+
+  groups:
+    - name: "Command Detection Gaps"
+      priority: P1
+      findings: ["F-009", "F-017"]
+      description: "matchesPattern /* shortcut allows nested subdirs; git commit substring catches commit-graph"
+    - name: "File Classification Bugs"
+      priority: P2
+      findings: ["F-013", "F-014"]
+      description: "countLines off-by-one; isTestFile misses common patterns"
+    - name: "Robustness and Code Quality"
+      priority: P2
+      findings: ["F-006", "F-011", "F-016", "F-018", "F-021", "F-022"]
+      description: "outputJson flush, missing return, Impact Tree fragility, minor edge cases"
+
+  severity_adjustments:
+    - { finding: "F-006", from: "critical", to: "medium", reason: "POSIX stdout to pipe is synchronous" }
+    - { finding: "F-011", from: "high", to: "low", reason: "denyTool calls process.exit internally" }

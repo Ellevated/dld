@@ -1,0 +1,44 @@
+{
+  "title": "DLD — From Idea to Profit",
+  "nodes": [
+    {"id": "idea",      "x": 400, "y": 50,   "label": "Idea\nin Your Head", "shape": "ellipse", "color": "orange"},
+
+    {"id": "bootstrap", "x": 400, "y": 220,  "label": "Bootstrap\nQuestions + Answers\nDomain Knowledge", "shape": "rect", "color": "orange", "w": 260},
+
+    {"id": "bizmodel",  "x": 400, "y": 420,  "label": "Business Model\nWho pays? How much?\nUnit economics", "shape": "rect", "color": "yellow", "w": 260},
+
+    {"id": "backlog",   "x": 400, "y": 600,  "label": "Backlog\nArchitecture + Specs", "shape": "database", "color": "purple"},
+
+    {"id": "spark",     "x": 400, "y": 770,  "label": "Spark\nCreate Spec", "shape": "rect", "color": "orange"},
+    {"id": "scout",     "x": 700, "y": 770,  "label": "Scout\nBest Practices\n\"How others did it\"", "shape": "rounded", "color": "blue"},
+
+    {"id": "autopilot", "x": 400, "y": 950,  "label": "Autopilot\nPlan + Code + Test + Review", "shape": "rect", "color": "green", "w": 300},
+
+    {"id": "product",   "x": 400, "y": 1130, "label": "Working\nProduct", "shape": "rect", "color": "green", "w": 200},
+
+    {"id": "launch",    "x": 400, "y": 1310, "label": "Launch\nLanding + Telegram + Blog", "shape": "rect", "color": "teal", "w": 280},
+
+    {"id": "users",     "x": 400, "y": 1490, "label": "Users\nCustomers", "shape": "ellipse", "color": "green"},
+
+    {"id": "revenue",   "x": 400, "y": 1650, "label": "Revenue\nPayments", "shape": "rect", "color": "green"},
+
+    {"id": "profit",    "x": 400, "y": 1800, "label": "Profit", "shape": "ellipse", "color": "green"}
+  ],
+  "edges": [
+    {"from": "idea", "to": "bootstrap"},
+    {"from": "bootstrap", "to": "bizmodel"},
+    {"from": "bizmodel", "to": "backlog"},
+    {"from": "backlog", "to": "spark"},
+    {"from": "spark", "to": "scout", "label": "best practices", "style": "dashed"},
+    {"from": "spark", "to": "autopilot"},
+    {"from": "autopilot", "to": "product"},
+    {"from": "product", "to": "launch"},
+    {"from": "launch", "to": "users"},
+    {"from": "users", "to": "revenue"},
+    {"from": "revenue", "to": "profit"},
+    {"from": "users", "to": "backlog", "label": "feedback", "style": "dashed", "elbow": "loop-left"}
+  ],
+  "groups": [
+    {"id": "g-blackbox", "label": "DLD Black Box", "nodes": ["bootstrap", "bizmodel", "backlog", "spark", "scout", "autopilot", "product", "launch"], "color": "gray"}
+  ]
+}

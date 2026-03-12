@@ -1,0 +1,33 @@
+{
+  "title": "DLD Retrofit Flow",
+  "nodes": [
+    {"id": "pivot", "x": 130, "y": 80, "label": "Pivot", "shape": "rounded", "color": "orange", "w": 140},
+    {"id": "ratio", "x": 310, "y": 80, "label": "Bugfix/Feature\n> 1:1", "shape": "rounded", "color": "orange", "w": 150},
+    {"id": "upgrade", "x": 500, "y": 80, "label": "Framework\nUpgrade", "shape": "rounded", "color": "orange", "w": 150},
+    {"id": "triz", "x": 680, "y": 80, "label": "/triz\nDiagnostic", "shape": "rounded", "color": "orange", "w": 140},
+
+    {"id": "audit", "x": 400, "y": 270, "label": "1. Audit\nWhat do we have?", "shape": "rounded", "color": "orange", "w": 240},
+    {"id": "architect", "x": 400, "y": 440, "label": "2. Architect Recovery\nDocument & design", "shape": "rect", "color": "blue", "w": 240},
+    {"id": "board", "x": 400, "y": 610, "label": "3. Board Recovery\nPriorities & direction", "shape": "rect", "color": "blue", "w": 240},
+    {"id": "stabilize", "x": 400, "y": 780, "label": "4. Stabilization\nFix foundations", "shape": "rect", "color": "teal", "w": 240},
+    {"id": "normal", "x": 400, "y": 950, "label": "5. Normal Flow\nBuild features", "shape": "rounded", "color": "green", "w": 240}
+  ],
+  "edges": [
+    {"from": "pivot", "to": "audit", "style": "dashed"},
+    {"from": "ratio", "to": "audit", "style": "dashed"},
+    {"from": "upgrade", "to": "audit", "style": "dashed"},
+    {"from": "triz", "to": "audit", "style": "dashed"},
+
+    {"from": "audit", "to": "architect"},
+    {"from": "architect", "to": "board"},
+    {"from": "board", "to": "stabilize"},
+    {"from": "stabilize", "to": "normal"},
+
+    {"from": "stabilize", "to": "architect", "label": "AS-IS ≠ TO-BE", "style": "dashed", "elbow": "loop-left"},
+    {"from": "normal", "to": "audit", "label": "Lifecycle event", "style": "dashed", "elbow": "loop-left"}
+  ],
+  "groups": [
+    {"id": "triggers", "label": "Triggers", "nodes": ["pivot", "ratio", "upgrade", "triz"], "color": "orange"},
+    {"id": "pipeline", "label": "Retrofit Pipeline", "nodes": ["audit", "architect", "board", "stabilize", "normal"], "color": "blue"}
+  ]
+}

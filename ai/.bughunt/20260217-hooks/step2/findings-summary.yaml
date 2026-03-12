@@ -1,0 +1,209 @@
+findings_summary:
+  user_question: "Bug hunt template/.claude/hooks/ — find all bugs: security, error handling, edge cases, architectural problems"
+  target: "/Users/desperado/dev/dld/template/.claude/hooks/"
+  date: "2026-02-17"
+  collection_stats:
+    total_raw: 82
+    unique_normalized: 56
+    personas_reported: 10
+    zones_covered: 3
+    by_severity:
+      critical: 9
+      high: 31
+      medium: 32
+      low: 10
+    by_zone:
+      zone_a: 55
+      zone_b: 27
+      zone_c: 0
+    notes: |
+      Zone A all 6 personas complete. Zone B 2 of 6 complete. Zone C incomplete (agents still reading).
+      Many Zone B findings are confirmed duplicates of Zone A.
+
+  # Full findings are in collector output file:
+  full_findings_source: "/private/tmp/claude-501/-Users-desperado-dev-dld/tasks/ab3581c.output"
+
+  top_confirmed_findings:
+    - id: "F-001"
+      title: "Pipe-bypass on push-to-main regex"
+      severity: critical
+      file: "template/.claude/hooks/pre-bash.mjs"
+      line: 23
+      confirmations: 3
+      description: "[^|]* stops regex at pipe, allowing 'git push develop | git push origin main' to bypass"
+
+    - id: "F-002"
+      title: "git clean -f -d space-separated bypass"
+      severity: critical
+      file: "template/.claude/hooks/pre-bash.mjs"
+      line: 32
+      confirmations: 3
+      description: "Regex only matches combined -fd flag tokens, not space-separated -f -d"
+
+    - id: "F-003"
+      title: "extractAllowedFiles drops extensionless files"
+      severity: critical
+      file: "template/.claude/hooks/utils.mjs"
+      line: 182
+      confirmations: 4
+      description: "Makefile, Dockerfile, Procfile silently excluded from allowlist due to mandatory dot in regex"
+
+    - id: "F-004"
+      title: "inferSpecFromBranch relative path fails in worktrees"
+      severity: critical
+      file: "template/.claude/hooks/utils.mjs"
+      line: 199
+      confirmations: 4
+      description: "ai/features/ not found in worktrees (gitignored), all file protection silently disabled"
+
+    - id: "F-005"
+      title: "validate-spec-complete permanently disabled by gitignore"
+      severity: critical
+      file: "template/.claude/hooks/validate-spec-complete.mjs"
+      line: 35
+      confirmations: 3
+      description: "ai/features/ gitignored so git diff --cached never returns spec files; check never executes"
+
+    - id: "F-006"
+      title: "outputJson process.exit before stdout flush"
+      severity: critical
+      file: "template/.claude/hooks/utils.mjs"
+      line: 58
+      confirmations: 3
+      description: "deny decision may be lost on loaded systems, turning block into allow"
+
+    - id: "F-007"
+      title: "getProjectDir symlink/path bypass"
+      severity: critical
+      file: "template/.claude/hooks/utils.mjs"
+      line: 306
+      confirmations: 4
+      description: "resolve() doesn't dereference symlinks; startsWith(home) missing trailing slash; cwd() fallback never validated"
+
+    - id: "F-008"
+      title: "Force-push --force-with-lease false-blocks when both flags present"
+      severity: critical
+      file: "template/.claude/hooks/pre-bash.mjs"
+      line: 55
+      confirmations: 1
+      description: "Regex finds --force first, lookahead passes even though --force-with-lease makes operation safe"
+
+    - id: "F-009"
+      title: "matchesPattern /* shortcut more permissive than glob semantics"
+      severity: critical
+      file: "template/.claude/hooks/utils.mjs"
+      line: 142
+      confirmations: 4
+      description: "startsWith fast-path for /* patterns allows nested subdirectories where glob /* means only direct children"
+
+    - id: "F-010"
+      title: "PROTECTED_PATHS bypassed by absolute filePath"
+      severity: high
+      file: "template/.claude/hooks/pre-edit.mjs"
+      line: 112
+      confirmations: 3
+      description: "normalizePath returns absolute path unchanged; relPath.startsWith('tests/contracts/') fails on absolute paths"
+
+    - id: "F-011"
+      title: "denyTool called without return in multiple hooks"
+      severity: high
+      file: "template/.claude/hooks/validate-spec-complete.mjs"
+      line: 42
+      confirmations: 3
+      description: "denyTool() exits process internally but no return statement — fragile for future changes"
+
+    - id: "F-012"
+      title: "checkSyncZone uses relative templatePath — breaks outside project root"
+      severity: high
+      file: "template/.claude/hooks/pre-edit.mjs"
+      line: 74
+      confirmations: 2
+      description: "existsSync(template/${relPath}) uses relative path resolving against cwd, not project root"
+
+    - id: "F-013"
+      title: "countLines off-by-one due to trailing newline"
+      severity: medium
+      file: "template/.claude/hooks/pre-edit.mjs"
+      line: 47
+      confirmations: 2
+      description: "split('\\n').length overcounts by 1 for files with trailing newline; effective limit 399 not 400"
+
+    - id: "F-014"
+      title: "isTestFile misses test_ prefix and .spec./.test. patterns"
+      severity: medium
+      file: "template/.claude/hooks/pre-edit.mjs"
+      line: 53
+      confirmations: 2
+      description: "Only checks _test. and /tests/; misses test_auth.py, auth.test.js, auth.spec.ts, /test/"
+
+    - id: "F-015"
+      title: "SYNC_ZONES missing template/.claude/ — edits there never trigger reminder"
+      severity: medium
+      file: "template/.claude/hooks/pre-edit.mjs"
+      line: 33
+      confirmations: 1
+      description: "SYNC_ZONES = ['.claude/', 'scripts/']; editing template/.claude/ does not trigger sync reminder"
+
+    - id: "F-016"
+      title: "Impact Tree regex stops at ## in code blocks"
+      severity: medium
+      file: "template/.claude/hooks/validate-spec-complete.mjs"
+      line: 39
+      confirmations: 1
+      description: "Regex stops at first \\n## even inside fenced code blocks; checkboxes after are missed"
+
+    - id: "F-017"
+      title: "git commit detection substring false-positives"
+      severity: medium
+      file: "template/.claude/hooks/validate-spec-complete.mjs"
+      line: 18
+      confirmations: 3
+      description: "command.includes('git commit') matches 'git commit-graph write' and quoted echo strings"
+
+    - id: "F-018"
+      title: "ruff format called without project boundary validation"
+      severity: medium
+      file: "template/.claude/hooks/post-edit.mjs"
+      line: 27
+      confirmations: 1
+      description: "filePath from hook input not validated against getProjectDir() before passing to ruff"
+
+    - id: "F-019"
+      title: "normalizePath does not strip ./ prefix — PROTECTED_PATHS bypass"
+      severity: medium
+      file: "template/.claude/hooks/pre-edit.mjs"
+      line: 57
+      confirmations: 1
+      description: "./tests/contracts/foo.py returned unchanged; relPath.startsWith('tests/contracts/') fails"
+
+    - id: "F-020"
+      title: "extractAllowedFiles drops paths with spaces/unicode"
+      severity: medium
+      file: "template/.claude/hooks/utils.mjs"
+      line: 182
+      confirmations: 1
+      description: "Character class [a-zA-Z0-9_./@-] excludes spaces, parens, colons, unicode chars"
+
+    - id: "F-021"
+      title: "pyproject.toml in ALWAYS_ALLOWED is root-only without docs"
+      severity: low
+      file: "template/.claude/hooks/utils.mjs"
+      line: 133
+      confirmations: 2
+      description: "Monorepo nested pyproject.toml not always-allowed; unclear if intentional"
+
+    - id: "F-022"
+      title: "Impact Tree false-positive on code block checkbox examples"
+      severity: low
+      file: "template/.claude/hooks/validate-spec-complete.mjs"
+      line: 41
+      confirmations: 1
+      description: "Plain substring includes('- [ ]') matches example checkboxes in code blocks"
+
+    - id: "F-023"
+      title: "Merge --ff-only check uses bare includes without word boundary"
+      severity: low
+      file: "template/.claude/hooks/pre-bash.mjs"
+      line: 94
+      confirmations: 1
+      description: "Inconsistent with regex-based checks elsewhere; no practical impact"

@@ -1,0 +1,34 @@
+decomposition:
+  target: "/Users/desperado/dev/dld/template/.claude/hooks/"
+  total_files: 8
+  zones:
+    - name: "Zone A: Foundation Layer"
+      zone_key: "zone-a"
+      description: "Shared utilities and hook runner entry point. All hooks depend on utils.mjs for I/O, path safety, allowed-file enforcement, spec parsing, and git branch inference. run-hook.mjs is the cross-platform entry point with worktree resolution and dynamic import."
+      focus: "Path traversal in getProjectDir/normalizePath, JSON injection in outputJson, stdin parsing edge cases, minimatch glob correctness, extractAllowedFiles regex fragility, inferSpecFromBranch git command injection, run-hook.mjs hookName validation bypass, silent failure modes, logHookError information leakage."
+      files:
+        - "/Users/desperado/dev/dld/template/.claude/hooks/utils.mjs"
+        - "/Users/desperado/dev/dld/template/.claude/hooks/run-hook.mjs"
+      file_count: 2
+
+    - name: "Zone B: Enforcement Hooks"
+      zone_key: "zone-b"
+      description: "Security-critical hooks that block or ask confirmation for dangerous operations. pre-bash.mjs uses regex patterns to block destructive git commands. pre-edit.mjs enforces LOC limits, protected paths, and allowed-file lists. validate-spec-complete.mjs blocks git commits with incomplete Impact Tree analysis."
+      focus: "Regex bypass/escape sequences in BLOCKED_PATTERNS, git push main bypass via whitespace or flag ordering, force-push lookahead correctness, isFileAllowed logic gaps, PROTECTED_PATHS prefix check exhaustiveness, LOC count off-by-one, SYNC_ZONES check gaps, validate-spec-complete git commit substring vs exact match, denyTool called without return."
+      files:
+        - "/Users/desperado/dev/dld/template/.claude/hooks/pre-bash.mjs"
+        - "/Users/desperado/dev/dld/template/.claude/hooks/pre-edit.mjs"
+        - "/Users/desperado/dev/dld/template/.claude/hooks/validate-spec-complete.mjs"
+      file_count: 3
+
+    - name: "Zone C: Passive Hooks"
+      zone_key: "zone-c"
+      description: "Hooks that observe activity and provide non-blocking feedback. post-edit.mjs auto-formats Python files via ruff. prompt-guard.mjs detects complex tasks and suggests /spark. session-end.mjs counts pending diary entries and appends reminder."
+      focus: "post-edit ruff shell injection via filePath, checkLintWarnings stderr vs stdout confusion, MAX_LINT_WARNINGS off-by-one, prompt-guard regex false positives/negatives, SKILL_INDICATORS case sensitivity, session-end systemMessage threshold correctness, Stop hook protocol compliance."
+      files:
+        - "/Users/desperado/dev/dld/template/.claude/hooks/post-edit.mjs"
+        - "/Users/desperado/dev/dld/template/.claude/hooks/prompt-guard.mjs"
+        - "/Users/desperado/dev/dld/template/.claude/hooks/session-end.mjs"
+      file_count: 3
+
+  total_zones: 3

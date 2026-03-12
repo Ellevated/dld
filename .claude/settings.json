@@ -1,0 +1,84 @@
+{
+  "model": "opus",
+  "alwaysThinkingEnabled": true,
+  "defaultMode": "bypassPermissions",
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Edit",
+      "Write",
+      "Read",
+      "Grep",
+      "Glob",
+      "WebSearch",
+      "WebFetch",
+      "Task",
+      "TodoWrite",
+      "NotebookEdit",
+      "mcp__*"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs post-edit",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs pre-bash",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs validate-spec-complete",
+            "timeout": 3000
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs pre-edit",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs prompt-guard",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs session-end",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
