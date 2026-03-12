@@ -24,6 +24,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source environment
 [[ -f "${SCRIPT_DIR}/.env" ]] && set -a && source "${SCRIPT_DIR}/.env" && set +a
 
+# Activate venv for python3 (notify.py, db.py need dotenv, telegram, etc.)
+[[ -d "${SCRIPT_DIR}/venv" ]] && export PATH="${SCRIPT_DIR}/venv/bin:$PATH"
+
 POLL_INTERVAL="${POLL_INTERVAL:-300}"
 PROJECTS_JSON="${PROJECTS_JSON:-${SCRIPT_DIR}/projects.json}"
 

@@ -19,6 +19,7 @@ SPEC_ID="${3:?Missing spec_id}"
 
 # Source environment
 [[ -f "${SCRIPT_DIR}/.env" ]] && set -a && source "${SCRIPT_DIR}/.env" && set +a
+[[ -d "${SCRIPT_DIR}/venv" ]] && export PATH="${SCRIPT_DIR}/venv/bin:$PATH"
 
 DB_EXEC="${SCRIPT_DIR}/db_exec.sh"
 CLAUDE_BIN="${CLAUDE_PATH:-claude}"

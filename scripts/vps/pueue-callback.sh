@@ -43,6 +43,7 @@ print(task.get('label', 'unknown'))
 # Environment
 # ---------------------------------------------------------------------------
 [[ -f "${SCRIPT_DIR}/.env" ]] && set -a && source "${SCRIPT_DIR}/.env" && set +a
+[[ -d "${SCRIPT_DIR}/venv" ]] && export PATH="${SCRIPT_DIR}/venv/bin:$PATH"
 
 # ---------------------------------------------------------------------------
 # Parse label: "project_id:SPEC-ID"
