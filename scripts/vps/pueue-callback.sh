@@ -203,11 +203,13 @@ elif [[ ! -f "$NOTIFY_PY" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 6.5: Council/Architect → Inbox feedback loop
-# When council or architect completes, write result_preview back to inbox
+# Step 6.5: Council/Architect/Reflect → Inbox feedback loop
+# When council, architect, or reflect completes, write result_preview back to inbox
 # with route=spark so the next orchestrator cycle creates a spec from it.
+# This is a FALLBACK — skills should write inbox files themselves (FTR-149 Tasks 5/6c),
+# but this ensures results aren't lost if the skill didn't write to inbox.
 # ---------------------------------------------------------------------------
-if [[ "$STATUS" == "done" && ( "$SKILL" == "council" || "$SKILL" == "architect" ) && -n "$PREVIEW" ]]; then
+if [[ "$STATUS" == "done" && ( "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "reflect" ) && -n "$PREVIEW" ]]; then
     FEEDBACK_PROJECT_PATH=$(python3 -c "
 import sys
 sys.path.insert(0, '${SCRIPT_DIR}')
@@ -219,22 +221,30 @@ print(state['path'] if state else '')
     if [[ -n "$FEEDBACK_PROJECT_PATH" ]]; then
         INBOX_DIR="${FEEDBACK_PROJECT_PATH}/ai/inbox"
         mkdir -p "$INBOX_DIR"
-        TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
-        INBOX_FILE="${INBOX_DIR}/${TIMESTAMP}-${SKILL}-result.md"
 
-        cat > "$INBOX_FILE" <<INBOX_EOF
+        # Check if skill already wrote inbox files (FTR-149: skills write their own)
+        # If recent inbox files from this skill exist, skip fallback to avoid duplicates
+        EXISTING_INBOX=$(find "$INBOX_DIR" -name "*-${SKILL}-*" -newer "$INBOX_DIR/.." -mmin -10 2>/dev/null | head -1 || true)
+        if [[ -n "$EXISTING_INBOX" ]]; then
+            echo "[callback] ${SKILL} already wrote inbox files — skipping fallback"
+        else
+            TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
+            INBOX_FILE="${INBOX_DIR}/${TIMESTAMP}-${SKILL}-result.md"
+
+            cat > "$INBOX_FILE" <<INBOX_EOF
 # ${SKILL^} result: ${TASK_LABEL}
 **Source:** ${SKILL}
 **Route:** spark
-**Context:** Результат ${SKILL} по запросу ${TASK_LABEL}
 **Status:** new
+**Context:** ai/diary/index.md
 ---
 ${PREVIEW}
 INBOX_EOF
 
-        echo "[callback] ${SKILL} result written to inbox: ${INBOX_FILE}"
+            echo "[callback] ${SKILL} result written to inbox: ${INBOX_FILE}"
+        fi
 
-        # Notify user that council result is queued for spark
+        # Notify user that skill result is queued for spark
         if [[ -f "$NOTIFY_PY" ]]; then
             python3 "$NOTIFY_PY" "$PROJECT_ID" \
                 "🧠 *${PROJECT_ID}*: ${SKILL} завершён. Результат отправлен в Spark." 2>/dev/null || true
