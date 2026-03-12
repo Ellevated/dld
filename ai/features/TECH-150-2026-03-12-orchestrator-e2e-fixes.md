@@ -112,6 +112,9 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 4. **Рекурсия в callbacks** — callback порождает задачи → те порождают callbacks → те порождают задачи. Фильтр по SKILL обязателен.
 5. **Single instance** — при перезапуске бота SIGKILL старые PID, иначе duplicate responses.
 6. **grep -c exit code** — возвращает 1 при 0 matches, `|| echo` даёт двойной output.
+7. **Template sync** — DLD-специфичный reflect skill устарел (создавал TECH-спеки вместо inbox файлов). Template-версия правильная.
+8. **Pueue daemon restart** — callback не выполняется без перезапуска pueued после изменения pueue.yml.
+9. **QA skill отсутствовал** — во всех 4 проектах не было `.claude/skills/qa/`. Callback Step 7 диспатчил QA → "Unknown skill".
 
 ## Acceptance Criteria
 
@@ -122,3 +125,5 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 - [ ] Council → result в inbox → Spark создаёт spec
 - [ ] Голосовые и фото обрабатываются корректно
 - [ ] Нет duplicate ответов
+- [ ] Reflect → inbox files (Route: spark) → Spark подхватывает
+- [ ] QA skill работает во всех проектах
