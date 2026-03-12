@@ -89,7 +89,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     try:
         text = transcribe_voice(ogg_bytes)
     except RuntimeError:
-        await update.message.reply_text("Voice not configured")
+        await update.message.reply_text("Голосовые не настроены (нет GROQ_API_KEY)")
         return
     except groq_module.RateLimitError:
         await asyncio.sleep(2)
@@ -97,15 +97,15 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             text = transcribe_voice(ogg_bytes)
         except Exception as exc:
             logger.error("Groq retry failed: %s", exc)
-            await update.message.reply_text("Transcription error")
+            await update.message.reply_text("Ошибка расшифровки, попробуй ещё раз")
             return
     except groq_module.InternalServerError:
-        await update.message.reply_text("Voice unavailable, send text")
+        await update.message.reply_text("Сервис распознавания недоступен, отправь текстом")
         return
     except Exception as exc:
         logger.error("Voice transcription error: %s", exc)
-        await update.message.reply_text("Transcription error")
+        await update.message.reply_text("Ошибка расшифровки")
         return
 
     _save_to_inbox(project, text)
-    await update.message.reply_text(f"Записано: {text[:100]}...")
+    await update.message.reply_text(f"🎙 Принято: {text[:150]}")

@@ -65,7 +65,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         route = "spark"
         text = (
             f"![screenshot](img/{img_filename})\n\n"
-            f"Screenshot without description. Analyze what is shown."
+            f"Скриншот без описания. Проанализируй что на нём."
         )
 
     # Create inbox file
@@ -80,7 +80,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         encoding="utf-8",
     )
     logger.info("Saved photo inbox: %s (route=%s)", filepath, route)
-    await update.message.reply_text(
-        f"Screenshot saved (route: `{route}`).",
-        parse_mode="Markdown",
-    )
+    _ROUTE_LABELS = {
+        "spark": "Создам спеку",
+        "spark_bug": "Разберу баг",
+        "architect": "Запущу архитектора",
+        "council": "Соберу консилиум",
+        "bughunt": "Охота на баги",
+    }
+    label = _ROUTE_LABELS.get(route, "Обработаю")
+    await update.message.reply_text(f"📸 Принято. {label} на следующем цикле.")
