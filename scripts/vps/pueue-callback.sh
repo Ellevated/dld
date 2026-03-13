@@ -71,6 +71,13 @@ case "$RESULT" in
     *)         STATUS="failed"; EXIT_CODE=1 ;;
 esac
 
+# Night-reviewer has its own notification logic — skip generic callback
+if [[ "$GROUP" == "night-reviewer" ]]; then
+    echo "[callback] Skipping generic callback for night-reviewer group (id=${PUEUE_ID})"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] callback skipped: night-reviewer id=${PUEUE_ID}" >> "$CALLBACK_LOG"
+    exit 0
+fi
+
 echo "[callback] pueue_id=${PUEUE_ID} project=${PROJECT_ID} task=${TASK_LABEL} result=${RESULT} status=${STATUS}"
 
 # ---------------------------------------------------------------------------
@@ -167,6 +174,8 @@ else
 fi
 
 if [[ -n "$CLEAN_PREVIEW" ]]; then
+    # Escape Markdown special chars to prevent "Can't parse entities" Telegram error
+    CLEAN_PREVIEW=$(echo "$CLEAN_PREVIEW" | sed 's/\*/\\*/g; s/_/\\_/g; s/\[/\\[/g; s/`/\\`/g')
     MSG="${MSG}
 ${CLEAN_PREVIEW}"
 fi
@@ -229,6 +238,10 @@ print(state['path'] if state else '')
             # Strip surrogates from summary
             SUMMARY=$(python3 -c "import sys; print(sys.stdin.read().encode('utf-8',errors='replace').decode('utf-8'),end='')" <<< "$SUMMARY" 2>/dev/null || echo "$SUMMARY")
 
+            # Dedup: skip if already notified (two sparks can finish simultaneously for same spec)
+            if grep -qxF "$SPEC_ID" "${SCRIPT_DIR}/.notified-drafts-${PROJECT_ID}" 2>/dev/null; then
+                echo "[callback] Skipping duplicate approval: ${SPEC_ID} already notified"
+            else
             # Mark as notified BEFORE sending — prevents scan_drafts race condition
             echo "$SPEC_ID" >> "${SCRIPT_DIR}/.notified-drafts-${PROJECT_ID}"
 
@@ -241,6 +254,7 @@ print(state['path'] if state else '')
             } || {
                 echo "[callback] WARN: spark approval notification failed" >&2
             }
+            fi  # end dedup check
         else
             echo "[callback] WARN: no draft spec found in backlog for spark result" >&2
         fi
@@ -331,11 +345,8 @@ INBOX_EOF
             echo "[callback] ${SKILL} result written to inbox: ${INBOX_FILE}"
         fi
 
-        # Notify user that skill result is queued for spark
-        if [[ -f "$NOTIFY_PY" ]]; then
-            python3 "$NOTIFY_PY" "$PROJECT_ID" \
-                "🧠 *${PROJECT_ID}*: ${SKILL_LABEL} завершена. Результат отправлен в Spark." 2>>"$CALLBACK_LOG" || true
-        fi
+        # No separate notification here — Step 6 already notifies about completion.
+        # Adding a second message ("результат отправлен в Spark") is noise.
     fi
 fi
 

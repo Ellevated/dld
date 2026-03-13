@@ -130,6 +130,36 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 **Root cause:** `head -c` считает байты, а не символы. Русский символ = 2 байта. Если обрезка попадает между байтами одного символа, получается невалидный UTF-8.
 **Fix:** Заменено `head -c N` на `python3 -c "import sys; print(sys.stdin.read()[:N], end='')"` — Python `[:N]` считает символы, не байты
 
+### 24. "Can't parse entities" — незакрытый Markdown в preview
+**File:** pueue-callback.sh Step 5 (CLEAN_PREVIEW)
+**Symptom:** Telegram API: `Can't parse entities: can't find end of the entity starting at byte offset 335` — notification не доходит
+**Root cause:** result_preview содержит `*`, `_`, `` ` ``, `[` из Markdown. Telegram parse_mode="Markdown" интерпретирует их как форматирование, но без закрывающих пар → ошибка
+**Fix:** Escape Markdown спецсимволов в CLEAN_PREVIEW перед добавлением в MSG: `sed 's/\*/\\*/g; s/_/\\_/g; s/\[/\\[/g; s/`/\\`/g'`
+
+### 25. Timeout при отправке уведомлений
+**File:** notify.py
+**Symptom:** `Timed out` — 5 случаев за 2 дня (tasks 163, 179, 186, 187, 188)
+**Root cause:** Telegram API отвечает медленно или сервер перегружен. Скорее всего rate limiting при нескольких уведомлениях подряд
+**Status:** Наблюдаем. Если частота > 10% → добавить retry с exponential backoff
+
+### 26. Двойной approval notification для одной спеки
+**File:** pueue-callback.sh Step 5.5
+**Symptom:** Tasks 193+194 оба отправили approval для TECH-246 (plpilot). Два одинаковых сообщения с кнопками
+**Root cause:** Два spark завершились почти одновременно, оба нашли одну и ту же draft спеку в backlog. `.notified-drafts` записывалась, но перед записью не проверялось наличие
+**Fix:** Добавлен `grep -qxF` check перед отправкой — если SPEC_ID уже в `.notified-drafts`, skip
+
+### 27. night-reviewer callback → "Project not found"
+**File:** pueue-callback.sh
+**Symptom:** Task 185 (night-reviewer group) → label=night-review:... → project "night-review" не найден в DB → notify.py ошибка
+**Root cause:** night-reviewer имеет свою логику нотификации внутри night-reviewer.sh. Generic callback не должен его обрабатывать
+**Fix:** Early exit для GROUP=="night-reviewer" в начале callback
+
+### 28. Двойное уведомление для reflect/qa/council с контентом
+**File:** pueue-callback.sh Step 6 + Step 6.5
+**Symptom:** Пользователь получает ДВА сообщения: (1) "✅ Рефлексия — готово" из Step 6 и (2) "🧠 Рефлексия завершена. Результат отправлен в Spark." из Step 6.5
+**Root cause:** Step 6 отправляет completion notification (правильно). Step 6.5 записывает в inbox (правильно) И отправляет своё уведомление (дубль)
+**Fix:** Убрана отдельная нотификация из Step 6.5. Inbox запись остаётся, Step 6 уже уведомляет
+
 ## Files Modified
 
 | File | Changes |
@@ -165,6 +195,10 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 14. **Race condition в dedup** — запись в dedup файл должна быть ДО отправки, не после. Иначе параллельный процесс может отправить дубль.
 15. **UX кнопок** — после нажатия пользователь должен видеть не просто "принято", а что произойдёт дальше и когда.
 16. **`head -c` vs символы** — `head -c N` считает байты, Python `[:N]` считает символы. В UTF-8 русские буквы = 2 байта. Всегда использовать character-aware truncation для текста, который пойдёт в API.
+17. **Markdown escape для Telegram** — result_preview содержит `*`, `_`, `` ` `` из LLM output. Telegram parse_mode="Markdown" считает их форматированием. Escape обязателен перед отправкой.
+18. **Dedup before send, not after** — `.notified-drafts` с записью ДО отправки предотвращает race только с orchestrator `scan_drafts()`. Параллельные callback тоже могут дублить — нужен CHECK перед записью.
+19. **Один callback — один уведомление** — Step 6 уведомляет о completion, Step 6.5 записывает в inbox. Две нотификации в одном callback = noise. Одно действие = одно уведомление.
+20. **Group-aware callback** — night-reviewer, cron, и другие не-agent группы имеют свою логику. Generic callback должен early-exit для чужих групп.
 
 ## Open Observations (не починено, наблюдаем)
 
