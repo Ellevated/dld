@@ -120,7 +120,7 @@ print(data.get('skill', ''))
     if [[ -z "$PREVIEW" ]]; then
         PREVIEW=$(pueue log "${PUEUE_ID}" --lines 3 2>/dev/null | \
             grep -o '"result_preview": *"[^"]*"' | head -1 | \
-            sed 's/"result_preview": *"//;s/"$//' | head -c 300 || true)
+            sed 's/"result_preview": *"//;s/"$//' | python3 -c "import sys; print(sys.stdin.read()[:300], end='')" || true)
     fi
 fi
 
@@ -153,7 +153,7 @@ if [[ -n "$PREVIEW" ]]; then
         sed '/отмечен.*выполнен/Id' | \
         sed '/функциональн.*чек/Id' | \
         sed '/^[[:space:]]*$/d' | \
-        head -c 200)
+        python3 -c "import sys; print(sys.stdin.read()[:200], end='')")
     # Trim to last complete sentence/line, add ellipsis if truncated
     if [[ ${#PREVIEW} -gt 200 ]]; then
         CLEAN_PREVIEW="${CLEAN_PREVIEW}…"
@@ -213,7 +213,7 @@ print(state['path'] if state else '')
             # Find spec file for title and task count
             SPEC_FILE=$(find "${SPARK_PROJECT_PATH}/ai/features/" -name "${SPEC_ID}*" -type f 2>/dev/null | head -1 || true)
             if [[ -n "$SPEC_FILE" ]]; then
-                SPEC_TITLE=$(grep -m1 '^# ' "$SPEC_FILE" 2>/dev/null | sed 's/^# //' | head -c 100 || true)
+                SPEC_TITLE=$(grep -m1 '^# ' "$SPEC_FILE" 2>/dev/null | sed 's/^# //' | python3 -c "import sys; print(sys.stdin.read()[:100], end='')" || true)
                 TASKS_COUNT=$(grep -c -E '^#{2,3} Task' "$SPEC_FILE" 2>/dev/null || true)
                 TASKS_COUNT=$(( TASKS_COUNT + 0 ))
             fi
@@ -223,7 +223,7 @@ print(state['path'] if state else '')
             SUMMARY="$PREVIEW"
             if [[ -z "$SUMMARY" && -n "$SPEC_FILE" ]]; then
                 SUMMARY=$(grep -A2 -E '^## (Why|Symptom|Problem|Root Cause|Что делаем)' "$SPEC_FILE" 2>/dev/null | \
-                    grep -v '^##' | head -3 | tr '\n' ' ' | head -c 300 || true)
+                    grep -v '^##' | head -3 | tr '\n' ' ' | python3 -c "import sys; print(sys.stdin.read()[:300], end='')" || true)
             fi
             SUMMARY="${SUMMARY:-—}"
             # Strip surrogates from summary

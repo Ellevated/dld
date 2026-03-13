@@ -124,6 +124,12 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 **Symptom:** Если result_preview от spark пуст, пользователь видит "—" вместо описания спеки
 **Fix:** Fallback на секцию Problem/Why/Что делаем из spec файла
 
+### 23. `head -c N` режет байты, не символы → surrogate при обрезке русского текста
+**File:** pueue-callback.sh (строки 123, 156, 216, 226)
+**Symptom:** `head -c 200` обрезает на середине 2-байтного UTF-8 символа (русские буквы) → половинка символа = surrogate → UnicodeEncodeError в Telegram API
+**Root cause:** `head -c` считает байты, а не символы. Русский символ = 2 байта. Если обрезка попадает между байтами одного символа, получается невалидный UTF-8.
+**Fix:** Заменено `head -c N` на `python3 -c "import sys; print(sys.stdin.read()[:N], end='')"` — Python `[:N]` считает символы, не байты
+
 ## Files Modified
 
 | File | Changes |
@@ -158,6 +164,7 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 13. **Surrogate fix — только на финале** — фиксить surrogates на парсинге недостаточно. Bash переменные и fallback пути могут внести surrogates заново. Финальная очистка перед Telegram API — единственно надёжный подход.
 14. **Race condition в dedup** — запись в dedup файл должна быть ДО отправки, не после. Иначе параллельный процесс может отправить дубль.
 15. **UX кнопок** — после нажатия пользователь должен видеть не просто "принято", а что произойдёт дальше и когда.
+16. **`head -c` vs символы** — `head -c N` считает байты, Python `[:N]` считает символы. В UTF-8 русские буквы = 2 байта. Всегда использовать character-aware truncation для текста, который пойдёт в API.
 
 ## Open Observations (не починено, наблюдаем)
 
