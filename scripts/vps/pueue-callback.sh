@@ -140,7 +140,7 @@ declare -A SKILL_LABELS=(
 )
 SKILL_LABEL="${SKILL_LABELS[$SKILL]:-$SKILL}"
 
-# Clean preview: strip markdown headers, bold markers, tables for Telegram
+# Clean preview: strip markdown, process noise, tables for Telegram
 CLEAN_PREVIEW=""
 if [[ -n "$PREVIEW" ]]; then
     CLEAN_PREVIEW=$(echo "$PREVIEW" | \
@@ -148,11 +148,20 @@ if [[ -n "$PREVIEW" ]]; then
         sed 's/\*\*//g' | \
         sed '/^|[-=]/d' | \
         sed '/^```/d' | \
-        head -c 300)
+        sed '/Definition of Done/d' | \
+        sed '/чекбокс/Id' | \
+        sed '/отмечен.*выполнен/Id' | \
+        sed '/функциональн.*чек/Id' | \
+        sed '/^[[:space:]]*$/d' | \
+        head -c 200)
+    # Trim to last complete sentence/line, add ellipsis if truncated
+    if [[ ${#PREVIEW} -gt 200 ]]; then
+        CLEAN_PREVIEW="${CLEAN_PREVIEW}…"
+    fi
 fi
 
 if [[ "$STATUS" == "done" ]]; then
-    MSG="✅ *${PROJECT_ID}*: ${SKILL_LABEL} завершена"
+    MSG="✅ *${PROJECT_ID}*: ${SKILL_LABEL} — готово"
 else
     MSG="❌ *${PROJECT_ID}*: ${SKILL_LABEL} — ошибка"
 fi
@@ -283,7 +292,7 @@ if echo "$PREVIEW" | grep -qiE 'analyzed: 0|inbox_files_created: 0|нечего 
     EMPTY_RESULT=true
 fi
 
-if [[ "$STATUS" == "done" && "$EMPTY_RESULT" == "false" && ( "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "reflect" ) && -n "$PREVIEW" ]]; then
+if [[ "$STATUS" == "done" && "$EMPTY_RESULT" == "false" && ( "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "reflect" || "$SKILL" == "qa" ) && -n "$PREVIEW" ]]; then
     FEEDBACK_PROJECT_PATH=$(python3 -c "
 import sys
 sys.path.insert(0, '${SCRIPT_DIR}')
@@ -305,10 +314,14 @@ print(state['path'] if state else '')
             TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
             INBOX_FILE="${INBOX_DIR}/${TIMESTAMP}-${SKILL}-result.md"
 
+            # QA findings route to spark_bug, others to spark
+            INBOX_ROUTE="spark"
+            [[ "$SKILL" == "qa" ]] && INBOX_ROUTE="spark_bug"
+
             cat > "$INBOX_FILE" <<INBOX_EOF
 # ${SKILL^} result: ${TASK_LABEL}
 **Source:** ${SKILL}
-**Route:** spark
+**Route:** ${INBOX_ROUTE}
 **Status:** new
 **Context:** ai/diary/index.md
 ---

@@ -17,7 +17,7 @@ Analyzes diary entries AND upstream signals, creates spec with proposals for CLA
 | Action | Triggers | What happens |
 |--------|----------|--------------|
 | **Diary entry** | "write to diary", "save to diary", "remember for diary" | New line in index.md + file |
-| **Synthesis (this skill)** | "/reflect", "reflection", "let's analyze the diary" | Analysis -> inbox -> spark |
+| **Synthesis (this skill)** | "/reflect", "reflection", "let's analyze the diary" | Analysis -> spec -> skill-creator |
 
 ---
 
@@ -195,3 +195,18 @@ Before completing reflect:
 - [ ] Findings written to inbox (not direct spec/edits)
 - [ ] Commit + push performed
 - [ ] Processed entries appended to .processed.log
+
+---
+
+## Notification Output Format
+
+Your final JSON `result_preview` is sent to the user via Telegram. Keep it concise:
+
+```
+Записей: {N} обработано
+Паттернов: {M} найдено, {K} → inbox
+{If K > 0: one-line top pattern}
+```
+
+**BAD:** "entries_analyzed: 5, patterns_found: [...], inbox_files_created: 2, next_action: ..."
+**GOOD:** "Записей: 5 обработано. Паттернов: 3 найдено, 2 → inbox. Топ: мок в интеграционных тестах (×4)"

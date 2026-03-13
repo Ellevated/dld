@@ -152,3 +152,17 @@ Quick checklist before creating spec:
 ## Output
 
 See `completion.md` for output format and handoff rules.
+
+---
+
+## Notification Output Format
+
+Your final JSON `result_preview` is sent to the user via Telegram. Keep it concise:
+
+```
+{1-2 sentence description of what the spec proposes}
+Задач: {N}
+```
+
+**BAD:** "Все 4 скаута завершились. Спека обновлена с учётом рекомендаций..."
+**GOOD:** "Кнопки управления кампаниями: отмена, пауза, удаление по статусу. Задач: 3"

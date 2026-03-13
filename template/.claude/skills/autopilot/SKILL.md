@@ -246,3 +246,18 @@ See: `./scripts/autopilot-loop.sh`
 - Agent roles: `.claude/agents/*.md`
 - Creating skills: `/skill-creator create` skill
 - Smart Testing: `.claude/agents/tester.md`
+
+---
+
+## Notification Output Format
+
+Your final JSON `result_preview` is sent to the user via Telegram. Keep it concise and actionable:
+
+```
+Что сделано: {1-2 sentence summary of actual changes}
+Файлы: {N} изменено
+Spec: {SPEC_ID} → done
+```
+
+**BAD:** "Все функциональные чекбоксы в Definition of Done отмечены как выполненные..."
+**GOOD:** "Добавлены кнопки отменить/пауза для кампаний. Файлы: 3 изменено. FTR-0063 → done"

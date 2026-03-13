@@ -556,3 +556,17 @@ If failures found:
 ## Reminder
 
 Source code is OUT OF SCOPE. You test the product, not the code. If you find yourself reading `src/` files or running `pytest` — you've drifted. Stop and refocus on user-facing behavior.
+
+---
+
+## Notification Output Format
+
+Your final JSON `result_preview` is sent to the user via Telegram. Keep it concise:
+
+```
+{N} сценариев: {PASS} ✓, {FAIL} ✗
+{If FAIL > 0: one-line description of most critical failure}
+```
+
+**BAD:** "E2E-фреймворк готов, но .env с credentials отсутствует. Мне нужен доступ..."
+**GOOD:** "8 сценариев: 6 ✓, 2 ✗. Кнопка 'Отмена' не появляется для активных кампаний"
