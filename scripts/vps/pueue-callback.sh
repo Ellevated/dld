@@ -162,6 +162,13 @@ if [[ -n "$CLEAN_PREVIEW" ]]; then
 ${CLEAN_PREVIEW}"
 fi
 
+# Final surrogate cleanup — Telegram API rejects surrogates with UnicodeEncodeError
+MSG=$(python3 -c "
+import sys
+text = sys.stdin.read()
+print(text.encode('utf-8', errors='replace').decode('utf-8'), end='')
+" <<< "$MSG" 2>/dev/null || echo "$MSG")
+
 # ---------------------------------------------------------------------------
 # Step 5.5: Spark approval notification with result_preview
 # When spark completes successfully, send approval buttons with the summary
@@ -203,16 +210,24 @@ print(state['path'] if state else '')
             fi
             SPEC_TITLE="${SPEC_TITLE:-$SPEC_ID}"
 
-            # Use result_preview as the summary (what spark plans to do)
-            SUMMARY="${PREVIEW:-—}"
+            # Use result_preview as the summary; fallback to spec Problem/Why section
+            SUMMARY="$PREVIEW"
+            if [[ -z "$SUMMARY" && -n "$SPEC_FILE" ]]; then
+                SUMMARY=$(grep -A2 -E '^## (Why|Symptom|Problem|Root Cause|Что делаем)' "$SPEC_FILE" 2>/dev/null | \
+                    grep -v '^##' | head -3 | tr '\n' ' ' | head -c 300 || true)
+            fi
+            SUMMARY="${SUMMARY:-—}"
+            # Strip surrogates from summary
+            SUMMARY=$(python3 -c "import sys; print(sys.stdin.read().encode('utf-8',errors='replace').decode('utf-8'),end='')" <<< "$SUMMARY" 2>/dev/null || echo "$SUMMARY")
+
+            # Mark as notified BEFORE sending — prevents scan_drafts race condition
+            echo "$SPEC_ID" >> "${SCRIPT_DIR}/.notified-drafts-${PROJECT_ID}"
 
             echo "[callback] Sending spark approval: project=${PROJECT_ID} spec=${SPEC_ID}"
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] spark approval: project=${PROJECT_ID} spec=${SPEC_ID} title=${SPEC_TITLE}" >> "$CALLBACK_LOG"
             python3 "$NOTIFY_PY" --spec-approval \
                 "$PROJECT_ID" "$SPEC_ID" "$SPEC_TITLE" "$SUMMARY" "$TASKS_COUNT" 2>>"$CALLBACK_LOG" && {
                 SENT_APPROVAL=true
-                # Mark as notified so scan_drafts won't re-notify
-                echo "$SPEC_ID" >> "${SCRIPT_DIR}/.notified-drafts-${PROJECT_ID}"
                 echo "[callback] Spark approval sent: ${PROJECT_ID}:${SPEC_ID}"
             } || {
                 echo "[callback] WARN: spark approval notification failed" >&2

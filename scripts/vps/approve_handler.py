@@ -248,7 +248,13 @@ async def handle_spec_approve(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     ok = _update_spec_status(project["path"], spec_id, "queued")
     if ok:
-        await query.edit_message_text(f"\u2705 {spec_id} принята → в очередь")
+        await query.edit_message_text(
+            f"\u2705 *{spec_id}* принята\n"
+            f"Проект: {project_id}\n\n"
+            f"Статус: в очереди на autopilot.\n"
+            f"Оркестратор подхватит на следующем цикле (~5 мин).",
+            parse_mode="Markdown",
+        )
     else:
         await query.edit_message_text(f"Не удалось обновить статус {spec_id}")
 
@@ -344,6 +350,11 @@ async def handle_spec_reject(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     ok = _update_spec_status(project["path"], spec_id, "rejected")
     if ok:
-        await query.edit_message_text(f"\u274c {spec_id} отклонена")
+        await query.edit_message_text(
+            f"\u274c *{spec_id}* отклонена\n"
+            f"Проект: {project_id}\n\n"
+            f"Спека сохранена, но autopilot её не тронет.",
+            parse_mode="Markdown",
+        )
     else:
         await query.edit_message_text(f"Не удалось отклонить {spec_id}")
