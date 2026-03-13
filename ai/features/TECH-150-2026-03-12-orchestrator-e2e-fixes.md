@@ -103,6 +103,27 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 **Symptom:** notify.py падает тихо, никто не знает что уведомления не доходят
 **Fix:** Все `2>/dev/null` заменены на `2>>"$CALLBACK_LOG"` + добавлен debug-трейс на входе/выходе callback
 
+### 19. Дубль approval notification (callback + scan_drafts race)
+**Files:** pueue-callback.sh Step 5.5, orchestrator.sh scan_drafts()
+**Symptom:** Два одинаковых approval сообщения в Telegram для одной спеки
+**Root cause:** Callback записывал spec_id в `.notified-drafts` ПОСЛЕ отправки. Orchestrator scan_drafts мог прочитать файл до записи и отправить повторно.
+**Fix:** `.notified-drafts` записывается ДО отправки в callback
+
+### 20. Surrogate fix не покрывал MSG и SUMMARY
+**File:** pueue-callback.sh
+**Symptom:** Surrogate fix стоял только в Step 4 (парсинг JSON), но surrogates проскакивали через fallback grep или bash variable passing
+**Fix:** Финальная очистка surrogates на MSG перед Step 6 и на SUMMARY перед Step 5.5
+
+### 21. Пустое подтверждение при нажатии кнопок
+**File:** approve_handler.py
+**Symptom:** После нажатия "В работу" кнопки исчезают и просто пишется "✅ FTR-0062 принята → в очередь" — непонятно что произошло
+**Fix:** Подробное сообщение с проектом, статусом и ETA (~5 мин до autopilot)
+
+### 22. Summary "—" в approval notification
+**File:** pueue-callback.sh Step 5.5
+**Symptom:** Если result_preview от spark пуст, пользователь видит "—" вместо описания спеки
+**Fix:** Fallback на секцию Problem/Why/Что делаем из spec файла
+
 ## Files Modified
 
 | File | Changes |
@@ -113,7 +134,7 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 | `scripts/vps/telegram-bot.py` | QA/reflect/scout routes, _kill_other_instances(), Russian localization |
 | `scripts/vps/notify.py` | send_spec_approval format with result_preview |
 | `scripts/vps/orchestrator.sh` | git_pull safety, reflect dedup, scan_drafts regex, venv activation |
-| `scripts/vps/approve_handler.py` | Russian localization |
+| `scripts/vps/approve_handler.py` | Russian localization, detailed approve/reject/rework confirmations |
 | `scripts/vps/voice_handler.py` | Russian localization |
 | `scripts/vps/photo_handler.py` | Russian localization |
 | `scripts/vps/qa-loop.sh` | venv activation |
@@ -134,6 +155,9 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 10. **venv в inbox-processor** — без venv notify.py падает на `import dotenv`, уведомления "Создаю спеку" не доходят.
 11. **Surrogate characters** — LLM output может содержать surrogate chars, Telegram API их отвергает. Нужна явная очистка.
 12. **`2>/dev/null` — враг отладки** — все stderr от notify.py уходили в /dev/null. Проблемы не видны. Заменено на debug log.
+13. **Surrogate fix — только на финале** — фиксить surrogates на парсинге недостаточно. Bash переменные и fallback пути могут внести surrogates заново. Финальная очистка перед Telegram API — единственно надёжный подход.
+14. **Race condition в dedup** — запись в dedup файл должна быть ДО отправки, не после. Иначе параллельный процесс может отправить дубль.
+15. **UX кнопок** — после нажатия пользователь должен видеть не просто "принято", а что произойдёт дальше и когда.
 
 ## Acceptance Criteria
 
