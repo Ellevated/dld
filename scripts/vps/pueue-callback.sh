@@ -194,12 +194,7 @@ if [[ -n "$CLEAN_PREVIEW" ]]; then
 ${CLEAN_PREVIEW}"
 fi
 
-# Final surrogate cleanup — Telegram API rejects surrogates with UnicodeEncodeError
-MSG=$(python3 -c "
-import sys
-text = sys.stdin.read()
-print(text.encode('utf-8', errors='replace').decode('utf-8'), end='')
-" <<< "$MSG" 2>/dev/null || echo "$MSG")
+# (surrogate cleanup moved after Step 5.9 — MSG gets modified there)
 
 # ---------------------------------------------------------------------------
 # Step 5.5: Spark approval notification with result_preview
@@ -276,6 +271,59 @@ print(state['path'] if state else '')
 fi
 
 # ---------------------------------------------------------------------------
+# Pre-compute inbox decision flags (used by Step 5.9, 6, and 6.5)
+# ---------------------------------------------------------------------------
+EMPTY_RESULT=false
+if echo "$PREVIEW" | grep -qiE 'analyzed: 0|inbox_files_created: 0|нечего обрабатывать|0 pending'; then
+    EMPTY_RESULT=true
+fi
+
+FEEDBACK_DEPTH_OK=true
+if [[ "$SKILL" == "qa" && "$TASK_LABEL" =~ ^qa-(qa-|inbox-.*-(reflect|qa)-result) ]]; then
+    FEEDBACK_DEPTH_OK=false
+    echo "[callback] Skipping QA→inbox: depth limit reached (label=${TASK_LABEL})"
+fi
+
+# ---------------------------------------------------------------------------
+# Step 5.9: Determine if this skill result will go to inbox (for Step 6 message)
+# ---------------------------------------------------------------------------
+WILL_WRITE_INBOX=false
+if [[ "$STATUS" == "done" && "$EMPTY_RESULT" == "false" && "$FEEDBACK_DEPTH_OK" == "true" && -n "$PREVIEW" ]]; then
+    if [[ "$SKILL" == "qa" || "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "reflect" ]]; then
+        WILL_WRITE_INBOX=true
+    fi
+fi
+
+# Append next-step hint to QA/reflect messages
+if [[ "$STATUS" == "done" && "$SKILL" == "qa" ]]; then
+    if [[ "$WILL_WRITE_INBOX" == "true" ]]; then
+        MSG="${MSG}
+→ Результат передан в Spark для оформления"
+    elif [[ "$EMPTY_RESULT" == "true" ]]; then
+        MSG="${MSG}
+→ Проблем не найдено"
+    elif [[ "$FEEDBACK_DEPTH_OK" == "false" ]]; then
+        MSG="${MSG}
+→ Цикл завершён (depth limit)"
+    fi
+fi
+
+# Spark from QA result — no new spec means cycle is closed
+if [[ "$STATUS" == "done" && "$SKILL" == "spark" && "$SENT_APPROVAL" == "false" ]]; then
+    if [[ "$TASK_LABEL" =~ inbox-.*-(qa|reflect)-result ]]; then
+        MSG="✅ *${PROJECT_ID}*: Spark просмотрел результат QA
+→ Новых спек нет. Цикл закрыт."
+    fi
+fi
+
+# Final surrogate cleanup — Telegram API rejects surrogates with UnicodeEncodeError
+MSG=$(python3 -c "
+import sys
+text = sys.stdin.read()
+print(text.encode('utf-8', errors='replace').decode('utf-8'), end='')
+" <<< "$MSG" 2>/dev/null || echo "$MSG")
+
+# ---------------------------------------------------------------------------
 # Step 6: Send Telegram completion notification (fail-safe)
 # Skip if we already sent approval notification (avoid double message).
 # Skip noise: empty reflect/qa results don't need user attention.
@@ -319,21 +367,7 @@ fi
 # with route=spark so the next orchestrator cycle creates a spec from it.
 # This is a FALLBACK — skills should write inbox files themselves (FTR-149 Tasks 5/6c),
 # but this ensures results aren't lost if the skill didn't write to inbox.
-# ---------------------------------------------------------------------------
-# Skip empty results (reflect with 0 findings shouldn't create inbox files)
-EMPTY_RESULT=false
-if echo "$PREVIEW" | grep -qiE 'analyzed: 0|inbox_files_created: 0|нечего обрабатывать|0 pending'; then
-    EMPTY_RESULT=true
-fi
-
-# Depth limit: don't create inbox from QA that was triggered by QA→Spark→Autopilot chain.
-# TASK_LABEL like "qa-BUG-680" = depth 1 (ok), "qa-inbox-*" from reflect/qa result = depth 2+ (stop).
-FEEDBACK_DEPTH_OK=true
-if [[ "$SKILL" == "qa" && "$TASK_LABEL" =~ ^qa-(qa-|inbox-.*-(reflect|qa)-result) ]]; then
-    FEEDBACK_DEPTH_OK=false
-    echo "[callback] Skipping QA→inbox: depth limit reached (label=${TASK_LABEL})"
-fi
-
+# (EMPTY_RESULT and FEEDBACK_DEPTH_OK computed above in Step 5.9 pre-compute)
 if [[ "$STATUS" == "done" && "$EMPTY_RESULT" == "false" && "$FEEDBACK_DEPTH_OK" == "true" && ( "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "reflect" || "$SKILL" == "qa" ) && -n "$PREVIEW" ]]; then
     FEEDBACK_PROJECT_PATH=$(python3 -c "
 import sys

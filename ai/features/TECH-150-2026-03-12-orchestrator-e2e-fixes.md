@@ -237,6 +237,7 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 21. **Phase deadlock** — если callback ставит phase но обнуляет current_task, а dispatch зависит от current_task → phase никогда не сбросится. Всегда проектировать phase transitions с fallback на idle.
 22. **Проверяй CLI флаги** — `--cwd` не существует в claude CLI. Всегда `tool --help | grep flag` перед использованием (уже в ADR, но night-reviewer.sh пропустили).
 23. **Shell metacharacters в pueue args** — pueue выполняет command через `sh -c`. Markdown `![img](url)` содержит `(` → shell syntax error. Передавать user content через env var, не через args.
+24. **Уведомления без next-step** — пользователь видит "готово" но не знает что дальше. QA должен говорить "→ передано в Spark" или "→ проблем нет". Spark-после-QA без новых спек — "цикл закрыт".
 
 ## Open Observations (не починено, наблюдаем)
 
