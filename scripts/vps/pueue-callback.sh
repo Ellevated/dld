@@ -167,10 +167,24 @@ if [[ -n "$PREVIEW" ]]; then
     fi
 fi
 
+# Extract spec ID from task label for context (e.g. "qa-BUG-680" → "BUG-680")
+CONTEXT_SPEC=""
+if [[ "$TASK_LABEL" =~ (TECH|FTR|BUG|ARCH)-[0-9]+ ]]; then
+    CONTEXT_SPEC="${BASH_REMATCH[0]}"
+fi
+
 if [[ "$STATUS" == "done" ]]; then
-    MSG="✅ *${PROJECT_ID}*: ${SKILL_LABEL} — готово"
+    if [[ -n "$CONTEXT_SPEC" ]]; then
+        MSG="✅ *${PROJECT_ID}*: ${SKILL_LABEL} по ${CONTEXT_SPEC} — готово"
+    else
+        MSG="✅ *${PROJECT_ID}*: ${SKILL_LABEL} — готово"
+    fi
 else
-    MSG="❌ *${PROJECT_ID}*: ${SKILL_LABEL} — ошибка"
+    if [[ -n "$CONTEXT_SPEC" ]]; then
+        MSG="❌ *${PROJECT_ID}*: ${SKILL_LABEL} по ${CONTEXT_SPEC} — ошибка"
+    else
+        MSG="❌ *${PROJECT_ID}*: ${SKILL_LABEL} — ошибка"
+    fi
 fi
 
 if [[ -n "$CLEAN_PREVIEW" ]]; then
@@ -283,6 +297,12 @@ if echo "$PREVIEW" | grep -qi 'Unknown skill'; then
     echo "[callback] Skipping notification: unknown skill error"
 fi
 
+# Don't notify about failed tasks without skill — uninformative "❌ — ошибка"
+if [[ "$STATUS" == "failed" && -z "$SKILL" ]]; then
+    SKIP_NOTIFY=true
+    echo "[callback] Skipping notification: failed task with no skill (noise)"
+fi
+
 if [[ "$SENT_APPROVAL" == "false" && "$SKIP_NOTIFY" == "false" && -f "$NOTIFY_PY" ]]; then
     echo "[callback] Sending notification: project=${PROJECT_ID} msg_len=${#MSG}" >> "$CALLBACK_LOG"
     python3 "$NOTIFY_PY" "$PROJECT_ID" "$MSG" 2>>"$CALLBACK_LOG" || {
@@ -306,7 +326,15 @@ if echo "$PREVIEW" | grep -qiE 'analyzed: 0|inbox_files_created: 0|нечего 
     EMPTY_RESULT=true
 fi
 
-if [[ "$STATUS" == "done" && "$EMPTY_RESULT" == "false" && ( "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "reflect" || "$SKILL" == "qa" ) && -n "$PREVIEW" ]]; then
+# Depth limit: don't create inbox from QA that was triggered by QA→Spark→Autopilot chain.
+# TASK_LABEL like "qa-BUG-680" = depth 1 (ok), "qa-inbox-*" from reflect/qa result = depth 2+ (stop).
+FEEDBACK_DEPTH_OK=true
+if [[ "$SKILL" == "qa" && "$TASK_LABEL" =~ ^qa-(qa-|inbox-.*-(reflect|qa)-result) ]]; then
+    FEEDBACK_DEPTH_OK=false
+    echo "[callback] Skipping QA→inbox: depth limit reached (label=${TASK_LABEL})"
+fi
+
+if [[ "$STATUS" == "done" && "$EMPTY_RESULT" == "false" && "$FEEDBACK_DEPTH_OK" == "true" && ( "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "reflect" || "$SKILL" == "qa" ) && -n "$PREVIEW" ]]; then
     FEEDBACK_PROJECT_PATH=$(python3 -c "
 import sys
 sys.path.insert(0, '${SCRIPT_DIR}')

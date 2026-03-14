@@ -177,7 +177,23 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 **File:** inbox-processor.sh строка 206, run-agent.sh строка 16
 **Symptom:** `sh: 1: Syntax error: "(" unexpected` — awardybot фото-задача упала мгновенно (exit 2)
 **Root cause:** Markdown ссылки `![screenshot](img/file.jpg)` содержат `(` и `)`. Pueue выполняет команду через `sh -c`, shell интерпретирует `(` как subshell
-**Fix:** Передавать TASK_CMD через env var `CLAUDE_TASK_CMD`, run-agent.sh читает fallback из env если позиционные args пусты
+**Fix:** Записывать TASK_CMD в temp файл `.task-cmd-{ts}.txt`, передавать путь к файлу как arg. run-agent.sh читает файл и удаляет.
+
+### 32. Мусорные уведомления "❌ — ошибка" без skill
+**File:** pueue-callback.sh Step 6
+**Symptom:** Failed задачи без распознанного skill отправляют "❌ project: — ошибка" — бессмысленный мусор
+**Fix:** `SKIP_NOTIFY=true` когда `status=failed && skill пустой`
+
+### 33. Уведомления без контекста — непонятно к какой спеке относится
+**File:** pueue-callback.sh Step 5
+**Symptom:** "✅ QA проверка — готово" — какое QA? по какой спеке? Пользователь не может связать уведомления в цепочку
+**Fix:** Извлечение SPEC_ID из TASK_LABEL (regex `(TECH|FTR|BUG|ARCH)-[0-9]+`). Теперь: "✅ QA проверка по BUG-680 — готово"
+
+### 34. Бесконечный цикл QA→Spark→Autopilot→QA
+**File:** pueue-callback.sh Step 6.5
+**Symptom:** QA создаёт inbox → Spark делает спеку → Autopilot → QA → inbox → бесконечно. awardybot получил 6+ сообщений за один цикл
+**Root cause:** Step 6.5 безусловно создаёт inbox из QA результата. Step 7 безусловно диспатчит QA после autopilot. Нет depth limit.
+**Fix:** Depth check по TASK_LABEL: если label начинается с `qa-(qa-|inbox-*-reflect|qa-result)`, не создавать inbox файл
 
 ## Files Modified
 
