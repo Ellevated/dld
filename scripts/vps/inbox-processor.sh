@@ -199,11 +199,14 @@ PUEUE_GROUP="${PROVIDER}-runner"
 export CLAUDE_PROJECT_DIR="$PROJECT_DIR"
 export CLAUDE_CURRENT_SPEC_PATH="$DONE_FILE"
 
+# TASK_CMD may contain shell metacharacters (parentheses from markdown links,
+# backticks, $, etc). Pass it via env var to avoid shell interpretation by pueue.
+export CLAUDE_TASK_CMD="$TASK_CMD"
 PUEUE_ID=$(pueue add \
     --group "$PUEUE_GROUP" \
     --label "$TASK_LABEL" \
     --print-task-id \
-    -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_DIR" "$PROVIDER" "$SKILL" "$TASK_CMD" 2>&1) || {
+    -- env CLAUDE_TASK_CMD="$TASK_CMD" "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_DIR" "$PROVIDER" "$SKILL" 2>&1) || {
     echo "[inbox] ERROR: pueue submission failed: ${PUEUE_ID}" >&2
     exit 1
 }

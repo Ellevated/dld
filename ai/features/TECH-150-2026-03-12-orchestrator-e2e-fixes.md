@@ -173,6 +173,12 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 **Root cause:** claude CLI не имеет флага `--cwd`. claude-runner.sh решает это через `cd "$PROJECT_DIR"`. night-reviewer.sh использовал несуществующий флаг.
 **Fix:** Заменено `--cwd "${PROJECT_PATH}"` на `cd "${PROJECT_PATH}" &&` перед flock/claude
 
+### 31. Shell metacharacters в TASK_CMD ломают pueue execution
+**File:** inbox-processor.sh строка 206, run-agent.sh строка 16
+**Symptom:** `sh: 1: Syntax error: "(" unexpected` — awardybot фото-задача упала мгновенно (exit 2)
+**Root cause:** Markdown ссылки `![screenshot](img/file.jpg)` содержат `(` и `)`. Pueue выполняет команду через `sh -c`, shell интерпретирует `(` как subshell
+**Fix:** Передавать TASK_CMD через env var `CLAUDE_TASK_CMD`, run-agent.sh читает fallback из env если позиционные args пусты
+
 ## Files Modified
 
 | File | Changes |
@@ -214,6 +220,7 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 20. **Group-aware callback** — night-reviewer, cron, и другие не-agent группы имеют свою логику. Generic callback должен early-exit для чужих групп.
 21. **Phase deadlock** — если callback ставит phase но обнуляет current_task, а dispatch зависит от current_task → phase никогда не сбросится. Всегда проектировать phase transitions с fallback на idle.
 22. **Проверяй CLI флаги** — `--cwd` не существует в claude CLI. Всегда `tool --help | grep flag` перед использованием (уже в ADR, но night-reviewer.sh пропустили).
+23. **Shell metacharacters в pueue args** — pueue выполняет command через `sh -c`. Markdown `![img](url)` содержит `(` → shell syntax error. Передавать user content через env var, не через args.
 
 ## Open Observations (не починено, наблюдаем)
 
