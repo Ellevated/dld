@@ -349,7 +349,18 @@ state = db.get_project_state('${project_id}')
 print(state['current_task'] if state and state['current_task'] else '')
 " 2>/dev/null || true)
 
-    [[ -z "$current_task" ]] && return
+    # QA+Reflect are already dispatched by pueue-callback.sh Step 7.
+    # If current_task is empty, callback already handled it — just reset to idle.
+    if [[ -z "$current_task" ]]; then
+        log_json "info" "qa_pending with no current_task — resetting to idle" "project" "$project_id"
+        python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+db.update_project_phase('${project_id}', 'idle')
+" 2>/dev/null || true
+        return
+    fi
 
     log_json "info" "dispatching QA" "project" "$project_id" "task" "$current_task"
     # qa-loop.sh created in Task 8 — background dispatch

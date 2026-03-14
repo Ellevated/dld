@@ -160,6 +160,13 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 **Root cause:** Step 6 отправляет completion notification (правильно). Step 6.5 записывает в inbox (правильно) И отправляет своё уведомление (дубль)
 **Fix:** Убрана отдельная нотификация из Step 6.5. Inbox запись остаётся, Step 6 уже уведомляет
 
+### 29. Phase застревает в qa_pending навсегда (CRITICAL)
+**File:** orchestrator.sh `dispatch_qa()`, db.py callback
+**Symptom:** Все проекты (plpilot, dowry, awardybot, dld) застряли в `qa_pending` → inbox не сканируется → новые задачи не подхватываются → pipeline мёртв
+**Root cause:** Callback в db.py (строка 330) вызывает `update_project_phase(project_id, new_phase)` БЕЗ `current_task`. Параметр `current_task=None` по умолчанию → обнуляется. `dispatch_qa()` в orchestrator проверяет `current_task` и делает `return` если пусто. Phase навсегда `qa_pending`.
+**Ирония:** QA+Reflect уже запускаются из pueue-callback.sh Step 7. `dispatch_qa()` в оркестраторе — дублирующий путь, который не работает.
+**Fix:** Если `qa_pending` и `current_task` пуст → сбросить phase в `idle`. QA уже запущен из callback.
+
 ## Files Modified
 
 | File | Changes |
@@ -199,6 +206,7 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 18. **Dedup before send, not after** — `.notified-drafts` с записью ДО отправки предотвращает race только с orchestrator `scan_drafts()`. Параллельные callback тоже могут дублить — нужен CHECK перед записью.
 19. **Один callback — один уведомление** — Step 6 уведомляет о completion, Step 6.5 записывает в inbox. Две нотификации в одном callback = noise. Одно действие = одно уведомление.
 20. **Group-aware callback** — night-reviewer, cron, и другие не-agent группы имеют свою логику. Generic callback должен early-exit для чужих групп.
+21. **Phase deadlock** — если callback ставит phase но обнуляет current_task, а dispatch зависит от current_task → phase никогда не сбросится. Всегда проектировать phase transitions с fallback на idle.
 
 ## Open Observations (не починено, наблюдаем)
 
