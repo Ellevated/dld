@@ -13,7 +13,13 @@ PROJECT_DIR="${1:?Usage: run-agent.sh <project_dir> <provider> <skill> <task...>
 PROVIDER="${2:?Missing provider argument (claude|codex|gemini)}"
 SKILL="${3:?Missing skill argument}"
 shift 3
-TASK="${*:-${CLAUDE_TASK_CMD:-}}"
+TASK="$*"
+# If single arg is a .task-cmd file, read task text from it (shell-safe)
+if [[ -f "$TASK" && "$TASK" == *.txt ]]; then
+    TASK_FILE="$TASK"
+    TASK=$(cat "$TASK_FILE")
+    rm -f "$TASK_FILE"
+fi
 [[ -z "$TASK" ]] && { echo '{"error":"missing_task"}' >&2; exit 1; }
 
 # Source environment if available

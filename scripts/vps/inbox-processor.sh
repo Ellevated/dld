@@ -200,13 +200,16 @@ export CLAUDE_PROJECT_DIR="$PROJECT_DIR"
 export CLAUDE_CURRENT_SPEC_PATH="$DONE_FILE"
 
 # TASK_CMD may contain shell metacharacters (parentheses from markdown links,
-# backticks, $, etc). Pass it via env var to avoid shell interpretation by pueue.
-export CLAUDE_TASK_CMD="$TASK_CMD"
+# backticks, $, etc). Write to a temp file — pueue executes via sh -c and
+# there's no safe way to pass arbitrary text as command-line args.
+TASK_FILE="${SCRIPT_DIR}/.task-cmd-${TIMESTAMP}.txt"
+printf '%s' "$TASK_CMD" > "$TASK_FILE"
+
 PUEUE_ID=$(pueue add \
     --group "$PUEUE_GROUP" \
     --label "$TASK_LABEL" \
     --print-task-id \
-    -- env CLAUDE_TASK_CMD="$TASK_CMD" "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_DIR" "$PROVIDER" "$SKILL" 2>&1) || {
+    -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_DIR" "$PROVIDER" "$SKILL" "$TASK_FILE" 2>&1) || {
     echo "[inbox] ERROR: pueue submission failed: ${PUEUE_ID}" >&2
     exit 1
 }
