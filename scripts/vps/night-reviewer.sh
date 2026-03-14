@@ -108,14 +108,14 @@ print(s['path'] if s else '')
     set -e
 
     # Run /audit night via claude with flock for OAuth safety
+    # claude CLI has no --cwd flag — use cd instead (same as claude-runner.sh)
     local claude_output
     set +e
-    claude_output=$(flock --timeout 120 /tmp/claude-oauth.lock \
+    claude_output=$(cd "${PROJECT_PATH}" && flock --timeout 120 /tmp/claude-oauth.lock \
         "${CLAUDE_PATH:-claude}" \
         --print \
         --output-format json \
         --max-turns 30 \
-        --cwd "${PROJECT_PATH}" \
         -p "/audit night" 2>/tmp/night-reviewer-claude-stderr-$$.txt)
     local claude_exit=$?
     set -e

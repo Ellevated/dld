@@ -167,6 +167,12 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 **Ирония:** QA+Reflect уже запускаются из pueue-callback.sh Step 7. `dispatch_qa()` в оркестраторе — дублирующий путь, который не работает.
 **Fix:** Если `qa_pending` и `current_task` пуст → сбросить phase в `idle`. QA уже запущен из callback.
 
+### 30. Ночной аудит: `--cwd` не существует в claude CLI
+**File:** night-reviewer.sh строка 118
+**Symptom:** Все 3 проекта (dowry-mc, nexus, plpilot) — `claude exited 1: error: unknown option '--cwd'`. Аудит не запустился ни разу.
+**Root cause:** claude CLI не имеет флага `--cwd`. claude-runner.sh решает это через `cd "$PROJECT_DIR"`. night-reviewer.sh использовал несуществующий флаг.
+**Fix:** Заменено `--cwd "${PROJECT_PATH}"` на `cd "${PROJECT_PATH}" &&` перед flock/claude
+
 ## Files Modified
 
 | File | Changes |
@@ -207,6 +213,7 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 19. **Один callback — один уведомление** — Step 6 уведомляет о completion, Step 6.5 записывает в inbox. Две нотификации в одном callback = noise. Одно действие = одно уведомление.
 20. **Group-aware callback** — night-reviewer, cron, и другие не-agent группы имеют свою логику. Generic callback должен early-exit для чужих групп.
 21. **Phase deadlock** — если callback ставит phase но обнуляет current_task, а dispatch зависит от current_task → phase никогда не сбросится. Всегда проектировать phase transitions с fallback на idle.
+22. **Проверяй CLI флаги** — `--cwd` не существует в claude CLI. Всегда `tool --help | grep flag` перед использованием (уже в ADR, но night-reviewer.sh пропустили).
 
 ## Open Observations (не починено, наблюдаем)
 
