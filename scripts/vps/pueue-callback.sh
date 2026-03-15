@@ -218,51 +218,30 @@ print(state['path'] if state else '')
         # Find newest draft spec in backlog
         BACKLOG="${SPARK_PROJECT_PATH}/ai/backlog.md"
         SPEC_ID=""
-        SPEC_TITLE=""
-        TASKS_COUNT=0
 
         if [[ -f "$BACKLOG" ]]; then
-            # Get the last (newest) draft spec ID
             SPEC_ID=$(grep -E '^\|\s*(TECH|FTR|BUG|ARCH)-[0-9]+\s*\|.*\|\s*draft\s*\|' "$BACKLOG" 2>/dev/null | \
                       grep -oE '(TECH|FTR|BUG|ARCH)-[0-9]+' | tail -1 || true)
         fi
 
         if [[ -n "$SPEC_ID" ]]; then
-            # Find spec file for title and task count
-            SPEC_FILE=$(find "${SPARK_PROJECT_PATH}/ai/features/" -name "${SPEC_ID}*" -type f 2>/dev/null | head -1 || true)
-            if [[ -n "$SPEC_FILE" ]]; then
-                SPEC_TITLE=$(grep -m1 '^# ' "$SPEC_FILE" 2>/dev/null | sed 's/^# //' | python3 -c "import sys; print(sys.stdin.read()[:100], end='')" || true)
-                TASKS_COUNT=$(grep -c -E '^#{2,3} Task' "$SPEC_FILE" 2>/dev/null || true)
-                TASKS_COUNT=$(( TASKS_COUNT + 0 ))
-            fi
-            SPEC_TITLE="${SPEC_TITLE:-$SPEC_ID}"
-
-            # Use result_preview as the summary; fallback to spec Problem/Why section
-            SUMMARY="$PREVIEW"
-            if [[ -z "$SUMMARY" && -n "$SPEC_FILE" ]]; then
-                SUMMARY=$(grep -A2 -E '^## (Why|Symptom|Problem|Root Cause|Что делаем)' "$SPEC_FILE" 2>/dev/null | \
-                    grep -v '^##' | head -3 | tr '\n' ' ' | python3 -c "import sys; print(sys.stdin.read()[:300], end='')" || true)
-            fi
-            SUMMARY="${SUMMARY:-—}"
-            # Strip surrogates from summary
-            SUMMARY=$(python3 -c "import sys; print(sys.stdin.read().encode('utf-8',errors='replace').decode('utf-8'),end='')" <<< "$SUMMARY" 2>/dev/null || echo "$SUMMARY")
-
             # Dedup: skip if already notified (two sparks can finish simultaneously for same spec)
             if grep -qxF "$SPEC_ID" "${SCRIPT_DIR}/.notified-drafts-${PROJECT_ID}" 2>/dev/null; then
                 echo "[callback] Skipping duplicate approval: ${SPEC_ID} already notified"
             else
-            # Mark as notified BEFORE sending — prevents scan_drafts race condition
-            echo "$SPEC_ID" >> "${SCRIPT_DIR}/.notified-drafts-${PROJECT_ID}"
+                # Mark as notified BEFORE sending — prevents scan_drafts race condition
+                echo "$SPEC_ID" >> "${SCRIPT_DIR}/.notified-drafts-${PROJECT_ID}"
 
-            echo "[callback] Sending spark approval: project=${PROJECT_ID} spec=${SPEC_ID}"
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] spark approval: project=${PROJECT_ID} spec=${SPEC_ID} title=${SPEC_TITLE}" >> "$CALLBACK_LOG"
-            python3 "$NOTIFY_PY" --spec-approval \
-                "$PROJECT_ID" "$SPEC_ID" "$SPEC_TITLE" "$SUMMARY" "$TASKS_COUNT" 2>>"$CALLBACK_LOG" && {
-                SENT_APPROVAL=true
-                echo "[callback] Spark approval sent: ${PROJECT_ID}:${SPEC_ID}"
-            } || {
-                echo "[callback] WARN: spark approval notification failed" >&2
-            }
+                echo "[callback] Sending spark approval: project=${PROJECT_ID} spec=${SPEC_ID}"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] spark approval: project=${PROJECT_ID} spec=${SPEC_ID}" >> "$CALLBACK_LOG"
+                # notify.py reads spec file directly — no need to pass summary/title/tasks
+                python3 "$NOTIFY_PY" --spec-approval \
+                    "$PROJECT_ID" "$SPEC_ID" 2>>"$CALLBACK_LOG" && {
+                    SENT_APPROVAL=true
+                    echo "[callback] Spark approval sent: ${PROJECT_ID}:${SPEC_ID}"
+                } || {
+                    echo "[callback] WARN: spark approval notification failed" >&2
+                }
             fi  # end dedup check
         else
             echo "[callback] WARN: no draft spec found in backlog for spark result" >&2
@@ -331,12 +310,17 @@ print(text.encode('utf-8', errors='replace').decode('utf-8'), end='')
 # ---------------------------------------------------------------------------
 SKIP_NOTIFY=false
 
-# Don't notify about empty reflect results (0 findings = nothing to report)
-if [[ "$SKILL" == "reflect" && "$STATUS" == "done" ]]; then
-    if echo "$PREVIEW" | grep -qiE 'analyzed: 0|inbox_files_created: 0|нечего обрабатывать|nothing to|0 pending'; then
-        SKIP_NOTIFY=true
-        echo "[callback] Skipping notification: reflect found 0 findings"
-    fi
+# Don't notify about reflect at all — it's internal housekeeping, not user-facing
+if [[ "$SKILL" == "reflect" ]]; then
+    SKIP_NOTIFY=true
+    echo "[callback] Skipping notification: reflect is internal (not user-facing)"
+fi
+
+# Don't notify about secondary QA (from inbox, not from autopilot)
+# Primary QA has label like "project:qa-SPEC-ID", secondary has "project:qa-inbox-..."
+if [[ "$SKILL" == "qa" && "$TASK_LABEL" =~ ^qa-inbox- ]]; then
+    SKIP_NOTIFY=true
+    echo "[callback] Skipping notification: secondary QA from inbox (noise)"
 fi
 
 # Don't notify about "Unknown skill" errors (skill not deployed yet)
@@ -368,7 +352,9 @@ fi
 # This is a FALLBACK — skills should write inbox files themselves (FTR-149 Tasks 5/6c),
 # but this ensures results aren't lost if the skill didn't write to inbox.
 # (EMPTY_RESULT and FEEDBACK_DEPTH_OK computed above in Step 5.9 pre-compute)
-if [[ "$STATUS" == "done" && "$EMPTY_RESULT" == "false" && "$FEEDBACK_DEPTH_OK" == "true" && ( "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "reflect" || "$SKILL" == "qa" ) && -n "$PREVIEW" ]]; then
+# Reflect excluded: its output (rule updates) doesn't need spark specs.
+# Including reflect caused QA→reflect→inbox→spark→QA infinite loops.
+if [[ "$STATUS" == "done" && "$EMPTY_RESULT" == "false" && "$FEEDBACK_DEPTH_OK" == "true" && ( "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "qa" ) && -n "$PREVIEW" ]]; then
     FEEDBACK_PROJECT_PATH=$(python3 -c "
 import sys
 sys.path.insert(0, '${SCRIPT_DIR}')
@@ -413,11 +399,11 @@ INBOX_EOF
 fi
 
 # ---------------------------------------------------------------------------
-# Step 7: Post-autopilot — dispatch QA + Reflect (FTR-149)
-# Only after successful autopilot completion.
-# Non-blocking: submitted to pueue, orchestrator tracks via phase.
+# Step 7: Post-autopilot — dispatch QA + Reflect
+# ONLY after autopilot completion. NOT after spark — spark doesn't change code,
+# so QA/reflect after spark creates infinite QA→inbox→spark→QA loops.
 # ---------------------------------------------------------------------------
-if [[ "$STATUS" == "done" && ( "$SKILL" == "autopilot" || "$SKILL" == "spark" || "$SKILL" == "spark_bug" ) ]]; then
+if [[ "$STATUS" == "done" && "$SKILL" == "autopilot" ]]; then
     # Resolve project path + provider from DB
     read -r PROJECT_PATH PROJECT_PROVIDER <<< "$(python3 -c "
 import sys

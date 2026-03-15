@@ -239,6 +239,11 @@ Orchestrator pipeline (FTR-148/149) was architecturally sound but had ~15 bugs p
 23. **Shell metacharacters в pueue args** — pueue выполняет command через `sh -c`. Markdown `![img](url)` содержит `(` → shell syntax error. Передавать user content через env var, не через args.
 24. **Уведомления без next-step** — пользователь видит "готово" но не знает что дальше. QA должен говорить "→ передано в Spark" или "→ проблем нет". Spark-после-QA без новых спек — "цикл закрыт".
 
+25. **Approval message бесполезен** — `send_spec_approval` передавал `result_preview` из stdout как summary. Часто пустое или мусор. Fix: notify.py сам читает спеку (`_parse_spec_for_approval`) и строит сообщение с Why, Scope, Task list. Callback упрощён — передаёт только project_id + spec_id.
+26. **QA→reflect→inbox→spark бесконечный цикл** — Step 7 диспатчил QA+reflect после `spark`, spark запускался из inbox (от QA результата), создавая петлю. Fix: Step 7 теперь ТОЛЬКО после autopilot. Reflect убран из inbox feedback (Step 6.5). Reflect notifications полностью подавлены (внутренний процесс).
+27. **3.5:1 QA/reflect overhead** — 57 QA + 60 reflect на 16 autopilot. Корень: spark и spark_bug в trigger list Step 7. Post-fix ожидаем ratio ~1:1 (1 QA + 1 reflect на autopilot).
+28. **13% notification failures** — 11 timeout + 7 surrogate + 3 parse errors. Timeout: слишком частые запросы при пиковой нагрузке. Surrogate: обрезка ломает UTF-8 codepoints. Parse: Markdown escape не покрывает все кейсы. Fix: retry без Markdown при parse error. TODO: rate limiting + surrogate source investigation.
+
 ## Open Observations (не починено, наблюдаем)
 
 - **Микрофон в подтверждении**: при approve голосовой задачи — сообщение "принято" приходит с иконкой микрофона, при текстовой — без. Гипотеза: Telegram наследует тип сообщения от оригинала.
