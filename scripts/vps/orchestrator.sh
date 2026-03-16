@@ -349,80 +349,19 @@ state = db.get_project_state('${project_id}')
 print(state['current_task'] if state and state['current_task'] else '')
 " 2>/dev/null || true)
 
-    # QA+Reflect are already dispatched by pueue-callback.sh Step 7.
-    # If current_task is empty, callback already handled it — just reset to idle.
+    # Callback owns QA/Reflect dispatch. Orchestrator only checks invariants here.
     if [[ -z "$current_task" ]]; then
-        log_json "info" "qa_pending with no current_task — resetting to idle" "project" "$project_id"
+        log_json "warn" "qa_pending invariant violation — resetting to idle" "project" "$project_id"
         python3 -c "
 import sys
 sys.path.insert(0, '${SCRIPT_DIR}')
 import db
-db.update_project_phase('${project_id}', 'idle')
+db.update_project_phase('${project_id}', 'idle', None)
 " 2>/dev/null || true
         return
     fi
 
-    log_json "info" "dispatching QA" "project" "$project_id" "task" "$current_task"
-    # qa-loop.sh created in Task 8 — background dispatch
-    "${SCRIPT_DIR}/qa-loop.sh" "$project_id" "$project_dir" "$current_task" &
-}
-
-# ---------------------------------------------------------------------------
-# Dispatch reflect after autopilot (parallel with QA)
-# ---------------------------------------------------------------------------
-
-dispatch_reflect() {
-    local project_id="$1" project_dir="$2"
-
-    local phase
-    phase=$(python3 -c "
-import sys; sys.path.insert(0, '${SCRIPT_DIR}'); import db
-s = db.get_project_state('${project_id}')
-print(s['phase'] if s else '')
-" 2>/dev/null || true)
-
-    # Reflect runs in parallel with QA on qa_pending or qa_running phase
-    [[ "$phase" != "qa_pending" && "$phase" != "qa_running" ]] && return
-
-    # Check if reflect is already running in pueue for this project
-    if pueue status --json 2>/dev/null | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for t in data.get('tasks', {}).values():
-    label = t.get('label', '')
-    status = t.get('status', '')
-    if '${project_id}:reflect' in label and isinstance(status, dict) and ('Running' in status or 'Queued' in status):
-        sys.exit(0)
-sys.exit(1)
-" 2>/dev/null; then
-        return
-    fi
-
-    # Check if diary has enough pending entries (min 3 for reflect)
-    local diary_index="${project_dir}/ai/diary/index.md"
-    [[ ! -f "$diary_index" ]] && return
-
-    local pending_count
-    pending_count=$(grep -c '| pending |' "$diary_index" 2>/dev/null || true)
-    pending_count=$(( pending_count + 0 ))  # sanitize to integer
-    (( pending_count < 3 )) && return
-
-    local provider
-    provider=$(python3 -c "
-import sys; sys.path.insert(0, '${SCRIPT_DIR}'); import db
-s = db.get_project_state('${project_id}')
-print(s['provider'] if s else 'claude')
-" 2>/dev/null || echo "claude")
-
-    local pueue_group="${provider}-runner"
-    local task_label="${project_id}:reflect-$(date '+%Y%m%d')"
-
-    log_json "info" "dispatching reflect" "project" "$project_id" "pending" "$pending_count"
-
-    pueue add --group "$pueue_group" --label "$task_label" \
-        -- "${SCRIPT_DIR}/run-agent.sh" "$project_dir" "$provider" "reflect" "/reflect" 2>/dev/null || {
-        log_json "warn" "reflect dispatch failed" "project" "$project_id"
-    }
+    log_json "info" "qa_pending observed — callback owns tail dispatch" "project" "$project_id" "task" "$current_task"
 }
 
 # ---------------------------------------------------------------------------
@@ -506,11 +445,8 @@ process_project() {
     # Step 4: scan backlog for queued specs → submit to autopilot
     scan_backlog "$project_id" "$project_dir"
 
-    # Step 5: dispatch QA if phase=qa_pending
+    # Step 5: check post-autopilot tail invariants (callback owns actual dispatch)
     dispatch_qa "$project_id" "$project_dir"
-
-    # Step 6: dispatch reflect (parallel with QA, needs 3+ diary entries)
-    dispatch_reflect "$project_id" "$project_dir"
 }
 
 # ---------------------------------------------------------------------------

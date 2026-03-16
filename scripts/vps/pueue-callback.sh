@@ -91,8 +91,15 @@ else
     NEW_PHASE="failed"
 fi
 
+CALLBACK_TASK_ARG=()
+if [[ "$NEW_PHASE" == "qa_pending" ]]; then
+    CALLBACK_TASK_ARG=("${TASK_LABEL}")
+else
+    CALLBACK_TASK_ARG=("")
+fi
+
 python3 "${SCRIPT_DIR}/db.py" callback \
-    "${PUEUE_ID}" "${STATUS}" "${EXIT_CODE}" "${PROJECT_ID}" "${NEW_PHASE}" || {
+    "${PUEUE_ID}" "${STATUS}" "${EXIT_CODE}" "${PROJECT_ID}" "${NEW_PHASE}" "${CALLBACK_TASK_ARG[@]}" || {
     echo "[callback] WARN: db.py callback failed for pueue_id=${PUEUE_ID}" >&2
 }
 
@@ -253,7 +260,7 @@ fi
 # Pre-compute inbox decision flags (used by Step 5.9, 6, and 6.5)
 # ---------------------------------------------------------------------------
 EMPTY_RESULT=false
-if echo "$PREVIEW" | grep -qiE 'analyzed: 0|inbox_files_created: 0|нечего обрабатывать|0 pending'; then
+if echo "$PREVIEW" | grep -qiE 'analyzed: 0|inbox_files_created: 0|нечего обрабатывать|0 pending|0 ✗|0 fail|0 FAIL|все проверки пройдены|all tests passed|QA PASSED'; then
     EMPTY_RESULT=true
 fi
 
@@ -419,23 +426,67 @@ else:
     RUNNER_GROUP="${PROJECT_PROVIDER}-runner"
 
     if [[ -n "$PROJECT_PATH" ]]; then
-        # Dispatch QA
-        pueue add --group "$RUNNER_GROUP" --label "${PROJECT_ID}:qa-${TASK_LABEL}" \
-            -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "$PROJECT_PROVIDER" "qa" \
-            "/qa Проверь изменения после ${TASK_LABEL}" 2>/dev/null && {
-            echo "[callback] QA dispatched for ${PROJECT_ID}:${TASK_LABEL} (group=${RUNNER_GROUP})"
-        } || {
-            echo "[callback] WARN: QA dispatch failed for ${PROJECT_ID}" >&2
-        }
+        QA_LABEL="${PROJECT_ID}:qa-${TASK_LABEL}"
+        REFLECT_LABEL="${PROJECT_ID}:reflect-${TASK_LABEL}"
 
-        # Dispatch Reflect
-        pueue add --group "$RUNNER_GROUP" --label "${PROJECT_ID}:reflect-${TASK_LABEL}" \
-            -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "$PROJECT_PROVIDER" "reflect" \
-            "/reflect" 2>/dev/null && {
-            echo "[callback] Reflect dispatched for ${PROJECT_ID}:${TASK_LABEL} (group=${RUNNER_GROUP})"
-        } || {
-            echo "[callback] WARN: Reflect dispatch failed for ${PROJECT_ID}" >&2
-        }
+        # Dispatch QA once per autopilot completion
+        if pueue status --json 2>/dev/null | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+for t in data.get('tasks', {}).values():
+    label = t.get('label', '')
+    status = t.get('status', {})
+    if label == '${QA_LABEL}' and isinstance(status, dict) and ('Running' in status or 'Queued' in status):
+        sys.exit(0)
+sys.exit(1)
+" 2>/dev/null; then
+            echo "[callback] Skipping duplicate QA dispatch for ${QA_LABEL}"
+        else
+            pueue add --group "$RUNNER_GROUP" --label "$QA_LABEL" \
+                -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "$PROJECT_PROVIDER" "qa" \
+                "/qa Проверь изменения после ${TASK_LABEL}" 2>/dev/null && {
+                echo "[callback] QA dispatched for ${PROJECT_ID}:${TASK_LABEL} (group=${RUNNER_GROUP})"
+            } || {
+                echo "[callback] WARN: QA dispatch failed for ${PROJECT_ID}" >&2
+            }
+        fi
+
+        # Dispatch Reflect only when there is pending diary work and no duplicate queued/running task
+        DIARY_INDEX="${PROJECT_PATH}/ai/diary/index.md"
+        PENDING_COUNT=0
+        if [[ -f "$DIARY_INDEX" ]]; then
+            PENDING_COUNT=$(grep -c '| pending |' "$DIARY_INDEX" 2>/dev/null || true)
+            PENDING_COUNT=$(( PENDING_COUNT + 0 ))
+        fi
+
+        if (( PENDING_COUNT < 1 )); then
+            echo "[callback] Skipping reflect: no pending diary entries for ${PROJECT_ID}"
+        elif pueue status --json 2>/dev/null | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+for t in data.get('tasks', {}).values():
+    label = t.get('label', '')
+    status = t.get('status', {})
+    if label == '${REFLECT_LABEL}' and isinstance(status, dict) and ('Running' in status or 'Queued' in status):
+        sys.exit(0)
+sys.exit(1)
+" 2>/dev/null; then
+            echo "[callback] Skipping duplicate reflect dispatch for ${REFLECT_LABEL}"
+        else
+            pueue add --group "$RUNNER_GROUP" --label "$REFLECT_LABEL" \
+                -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "$PROJECT_PROVIDER" "reflect" \
+                "/reflect" 2>/dev/null && {
+                echo "[callback] Reflect dispatched for ${PROJECT_ID}:${TASK_LABEL} (group=${RUNNER_GROUP})"
+            } || {
+                echo "[callback] WARN: Reflect dispatch failed for ${PROJECT_ID}" >&2
+            }
+        fi
     fi
 fi
 

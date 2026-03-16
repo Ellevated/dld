@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent / "orchestrator.db"))
+_UNSET = object()
 
 
 @contextmanager
@@ -119,15 +120,29 @@ def get_all_projects() -> list[dict]:
         return [dict(r) for r in rows]
 
 
-def update_project_phase(project_id: str, phase: str, current_task: str = None) -> None:
-    """Update project phase and optional current_task."""
+def update_project_phase(project_id: str, phase: str, current_task=_UNSET) -> None:
+    """Update project phase and optionally current_task.
+
+    current_task behavior:
+    - omitted     -> preserve existing current_task
+    - None        -> explicitly clear current_task
+    - str value   -> set current_task to that value
+    """
     with get_db() as conn:
-        conn.execute(
-            "UPDATE project_state SET phase = ?, current_task = ?, "
-            "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
-            "WHERE project_id = ?",
-            (phase, current_task, project_id),
-        )
+        if current_task is _UNSET:
+            conn.execute(
+                "UPDATE project_state SET phase = ?, "
+                "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                "WHERE project_id = ?",
+                (phase, project_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE project_state SET phase = ?, current_task = ?, "
+                "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                "WHERE project_id = ?",
+                (phase, current_task, project_id),
+            )
 
 
 def log_task(
@@ -313,10 +328,10 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
 
     if cmd == "callback":
-        # Args: pueue_id status exit_code project_id new_phase
-        if len(sys.argv) != 7:
+        # Args: pueue_id status exit_code project_id new_phase [current_task]
+        if len(sys.argv) not in (7, 8):
             print(
-                "Usage: python3 db.py callback <pueue_id> <status> <exit_code> <project_id> <new_phase>",
+                "Usage: python3 db.py callback <pueue_id> <status> <exit_code> <project_id> <new_phase> [current_task]",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -325,9 +340,10 @@ if __name__ == "__main__":
         exit_code = int(sys.argv[4])
         project_id = sys.argv[5]
         new_phase = sys.argv[6]
+        current_task = sys.argv[7] if len(sys.argv) == 8 else _UNSET
         release_slot(pueue_id)
         finish_task(pueue_id, status, exit_code)
-        update_project_phase(project_id, new_phase)
+        update_project_phase(project_id, new_phase, current_task)
         print(
             f"callback: pueue_id={pueue_id} status={status} project={project_id} phase={new_phase}"
         )
