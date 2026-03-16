@@ -112,6 +112,7 @@
 | FTR-148 | Multi-Project Orchestrator Phase 3: Functionality & Multi-Provider | done | P1 | [spec](features/FTR-148-2026-03-10-multi-project-orchestrator-phase3.md) |
 | FTR-149 | Orchestrator Cycle v2: Inbox-Centric Architecture | done | P0 | [spec](features/FTR-149-2026-03-12-orchestrator-cycle-v2.md) |
 | TECH-150 | Reflect Synthesis: Shell Script Safety Rules + Process ADRs | done | P2 | [spec](features/TECH-150-2026-03-12-reflect-synthesis.md) |
+| BUG-121 | Orchestrator Post-Autopilot Tail Duplication + Broken Phase Ownership | queued | P0 | [spec](features/BUG-121-2026-03-16-orchestrator-post-autopilot-phase-ownership.md) |
 
 ---
 
