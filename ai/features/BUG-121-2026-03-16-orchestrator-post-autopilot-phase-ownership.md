@@ -1,352 +1,278 @@
 # Bug: [BUG-121] Orchestrator Post-Autopilot Tail Duplication + Broken Phase Ownership
 
-**Status:** queued | **Priority:** P0 | **Date:** 2026-03-16
+**Status:** draft | **Priority:** P0 | **Date:** 2026-03-16
+
+---
 
 ## Symptom
 
-На AwardyBot и других проектах post-autopilot хвост оркестрации местами гоняет воздух:
+На AwardyBot и других проектах post-autopilot хвост оркестрации дублируется:
 
-- один и тот же spec/task получает повторные хвосты после уже успешного autopilot
-- после успешного autopilot повторно стартуют QA и reflect
-- reflect часто запускается впустую и сам пишет `pending = 0`, `новых паттернов нет`
-- state machine допускает полусостояние `phase = qa_pending` + `current_task = NULL`
-- из-за этого цикл становится непредсказуемым и тратит токены без полезной работы
+- Один и тот же spec/task получает повторные QA и reflect после уже успешного autopilot
+- Reflect запускается впустую (`pending = 0`, `новых паттернов нет`)
+- State machine допускает полусостояние `phase = qa_pending` + `current_task = NULL`
+- QA PASS результат попадает обратно в Spark через inbox — бесконечный цикл
+- Цикл тратит токены без полезной работы ($0.83 на пустые runs в одном BUG-685 цикле)
 
-### Evidence
+### Evidence (AwardyBot 2026-03-16)
 
-**AwardyBot logs (2026-03-16):**
-- `awardybot-20260316-205604.log` — QA по `BUG-685` завершён успешно
-- `awardybot-20260316-205729.log` — reflect сразу после этого: `Pending = 0`, `Паттернов новых: 0`
-- `awardybot-20260316-205812.log` — QA по `BUG-685` снова завершён успешно
-- `awardybot-20260316-205813.log` — reflect снова: `Pending = 0`, `Паттернов новых: 0`
-- `awardybot-20260316-205847.log` — spark получил QA PASS как новый inbox/headless input и ещё раз обработал уже закрытый `BUG-685`
+| Timestamp | Skill | Содержание | Cost |
+|-----------|-------|------------|------|
+| 205604 | qa | BUG-685: 6/6 PASS | $0.36 |
+| 205729 | reflect | `Pending = 0, Паттернов: 0` | $0.10 |
+| 205812 | qa | BUG-685: 6/6 PASS повторно | $0.30 |
+| 205813 | reflect | `Pending = 0` повторно | $0.09 |
+| 205847 | spark | Получил QA PASS как inbox, обработал уже закрытый BUG-685 | $0.29 |
 
-**callback-debug.log:**
-- AwardyBot уже раньше показывал паттерн `autopilot -> reflect -> qa -> spark`, а также повторные хвосты у других проектов
-- repeated `skill=qa` / `skill=reflect` completion callbacks after same work unit indicate non-canonical post-autopilot ownership
+**callback-debug.log:** repeated `skill=qa` / `skill=reflect` completion callbacks после одного autopilot run.
 
-**DB / runtime state:**
-- `project_state` historically could be left as `qa_pending + current_task=NULL`
-- current code in `db.py callback` still calls `update_project_phase(project_id, new_phase)` without preserving `current_task`
-- current orchestrator contains recovery hack: if `qa_pending` and `current_task` is empty, force-reset to `idle`
+**DB state:** `project_state` может оставаться `qa_pending + current_task=NULL` — нелегальное полусостояние.
 
-## Why / Root Cause
+---
 
-Это не один баг, а два связанных бага сразу:
+## Why / Root Cause (5 Whys)
 
-### 1. Phase ownership bug
+### Why 1: Почему QA запускается дважды?
+Два независимых диспатчера оба реагируют на autopilot completion:
+- `pueue-callback.sh` Step 7 (строка 406) — сразу после completion event
+- `orchestrator.sh` `dispatch_qa()` (строка 330) — на следующем polling cycle по phase `qa_pending`
 
-Post-autopilot phase transition logic сейчас размазана по нескольким владельцам:
+### Why 2: Почему orchestrator видит `qa_pending` если callback уже обработал?
+Callback ставит `phase = qa_pending` через `db.py callback` (строка 330), но QA dispatched callback'ом ещё не завершился. Orchestrator на следующем цикле видит `qa_pending` и диспатчит свой QA через `qa-loop.sh`.
 
-- `pueue-callback.sh`
-- `db.py callback`
-- `orchestrator.sh dispatch_qa()`
-- `orchestrator.sh dispatch_reflect()`
-- `qa-loop.sh`
+### Why 3: Почему reflect запускается с `pending = 0`?
+`dispatch_reflect()` (строка 374) проверяет diary pending count >= 3, но `pueue-callback.sh` Step 7 (строка 432) диспатчит reflect безусловно. Callback-reflect не проверяет наличие работы.
 
-В результате нет одного canonical owner для переходов:
+### Why 4: Почему QA PASS попадает обратно в Spark?
+`pueue-callback.sh` Step 6.5 (строка 357) записывает QA result в inbox с `Route: spark_bug`. QA PASS с 6/6 зелёных тестов — это не баг, но код не различает PASS и FAIL при записи в inbox.
 
-- callback ставит `qa_pending`
-- `db.py callback` при этом обнуляет `current_task`, потому что `update_project_phase()` по умолчанию пишет `current_task = NULL`
-- `dispatch_qa()` зависит от `current_task`, но часто получает пустое значение
-- orchestrator вынужден держать recovery-ветку `qa_pending with no current_task -> idle`
+### Why 5: Почему `current_task` обнуляется?
+`db.py` `update_project_phase()` (строка 122) имеет `current_task: str = None` по умолчанию. Callback path (строка 330) вызывает `update_project_phase(project_id, new_phase)` без передачи current_task — SQL пишет `current_task = NULL`.
 
-Это уже само по себе показывает, что state machine сломана: она зависит от неявного поля, которое другой участок кода стирает.
+### Root Cause Summary
 
-### 2. Duplication bug
+Два связанных бага:
 
-После autopilot хвост запускается не из одной точки, а фактически из двух параллельных контуров:
+1. **Phase ownership bug** — post-autopilot phase transitions размазаны по 5 компонентам без единого владельца
+2. **Duplication bug** — callback-контур и orchestrator-контур оба диспатчат QA/reflect на одно completion event
 
-- callback-контур (`pueue-callback.sh`) инициирует post-autopilot действия сразу после completion
-- orchestrator-контур (`dispatch_qa()` / `dispatch_reflect()`) тоже реагирует на `qa_pending` / `qa_running`
-
-Из-за этого возможны:
-
-- повторный QA на тот же spec
-- повторный reflect на тот же project state
-- повторная обработка уже завершённого результата через inbox/spark
-
-### Concrete code-level causes
-
-1. **`db.py` erases `current_task` during callback phase update**
-   - `db.py` CLI path `callback` -> `update_project_phase(project_id, new_phase)`
-   - `update_project_phase()` default argument is `current_task=None`
-   - SQL blindly writes `current_task = NULL`
-   - this creates illegal / half-broken state for downstream dispatchers
-
-2. **`orchestrator.sh dispatch_qa()` still exists as active fallback owner**
-   - it dispatches QA on `qa_pending`
-   - but code comment already says QA+Reflect are “already dispatched by pueue-callback.sh Step 7”
-   - this means current implementation already has split ownership
-
-3. **`orchestrator.sh dispatch_reflect()` reacts to phase instead of canonical completion event**
-   - it runs on `qa_pending` or `qa_running`
-   - its dedup guard only checks queued/running pueue tasks, not whether reflect for the same autopilot completion was already consumed
-   - reflect can therefore re-run later on phase-based re-entry even when there is nothing to process
-
-4. **`qa-loop.sh` and inbox feedback can re-open the cycle even on PASS-like/no-op outcomes**
-   - logs show `spark` got `/spark [headless] Source: qa ... BUG-685 ... 6/6 PASS`
-   - this means QA success content was treated as new Spark work instead of terminal completion
-   - that is a second duplication vector: even if QA itself is single-run, its success result can still re-enter the loop
-
-5. **State machine is phase-based, but tail execution is event-based**
-   - autopilot completion is an event
-   - QA/reflect tail should run exactly once per autopilot completion event
-   - current code partly models it as “phase says qa_pending”, which is too weak and allows re-entry, resets, and orphan states
+---
 
 ## Reproduction
 
-### Real reproduction from AwardyBot
+### Из логов AwardyBot (реальный кейс)
 
-1. Run autopilot for a spec (`BUG-685` observed in logs)
-2. Wait for post-autopilot tail
-3. Observe:
-   - first QA pass
-   - reflect run with `pending=0`
-   - second QA pass for same spec
-   - second reflect run with `pending=0`
-   - spark re-processing QA success text as new work
+1. Autopilot завершает BUG-685
+2. `pueue-callback.sh` Step 7 диспатчит QA + Reflect
+3. `db.py callback` ставит `phase=qa_pending`, обнуляет `current_task`
+4. Orchestrator cycle видит `qa_pending` → `dispatch_qa()` диспатчит второй QA через `qa-loop.sh`
+5. Первый QA PASS → callback Step 6.5 пишет результат в inbox → Spark обрабатывает PASS
+6. Reflect запускается дважды с `pending=0`
 
-### Minimal deterministic reproduction
+### Минимальное воспроизведение
 
-1. Seed project with valid `project_state.current_task = BUG-XYZ`
-2. Complete autopilot via callback path
-3. Let `db.py callback` set `phase = qa_pending`
-4. Observe that `current_task` becomes `NULL`
-5. Let orchestrator cycle run
-6. Depending on timing:
-   - `dispatch_qa()` sees broken state and resets to idle
-   - or callback-owned tail and orchestrator-owned tail overlap
-   - or reflect runs again because phase still matches its dispatch condition
+1. Seed project с `current_task = BUG-XYZ`
+2. Autopilot completion через callback path
+3. `db.py callback` → `phase = qa_pending`, `current_task = NULL`
+4. Orchestrator cycle: `dispatch_qa()` видит `qa_pending + current_task = empty` → force-reset to idle
+5. Тем временем callback-dispatched QA + reflect уже running → их результаты попадают в inbox
 
-### What to log during repro
-
-- callback invocation / completion in `callback-debug.log`
-- project state snapshots before and after callback
-- pueue labels for autopilot / qa / reflect tasks
-- exact phase/current_task transitions in SQLite
+---
 
 ## Impact
 
-### User impact
+| Тип | Описание |
+|-----|----------|
+| **Токены** | ~$0.83 wasted на один BUG-685 цикл (повторные QA + пустые reflect + spark на PASS) |
+| **UX** | Лишние Telegram уведомления, непонятно — живой цикл или шум |
+| **State machine** | Нарушен инвариант: `qa_pending + current_task=NULL` — нелегальное состояние |
+| **Масштаб** | Каждый autopilot completion у каждого проекта потенциально дублирует tail |
+| **Архитектура** | Без единого owner любые локальные фиксы дают временное улучшение |
 
-- лишние Telegram хвосты после уже завершённой задачи
-- непредсказуемый pipeline: непонятно, живой это цикл или уже шум
-- в логах/чатах тяжело отличить реальную работу от дубликатов
+---
 
-### System impact
+## Scope
 
-- лишние вызовы QA и reflect
-- лишние Spark headless runs на уже закрытые PASS-результаты
-- потеря инварианта state machine
-- wasted Claude/Codex/Gemini turns, tokens and queue capacity
+**In scope:**
+- Централизация post-autopilot ownership в `pueue-callback.sh`
+- Fix `update_project_phase()` API (не стирать `current_task` по умолчанию)
+- Удаление дублирующих dispatch из orchestrator
+- Guard: reflect не запускается при отсутствии работы
+- Guard: QA PASS не попадает в inbox/Spark
+- Invariant checks в orchestrator (warning-only)
 
-### Architectural impact
+**Out of scope:**
+- Новая таблица `post_autopilot_tail` (можно в следующей итерации)
+- Полный redesign state machine phases
+- Night reviewer flow
+- Telegram notification changes (кроме устранения дублей)
 
-Главная проблема не только в дублях, а в том, что у post-autopilot transitions нет единственного владельца.
-Пока ownership не централизован, любые локальные фиксы будут давать только временное улучшение.
+---
 
-## Proposed Fix
-
-## Design decision
+## Design Decision
 
 Сделать **одного canonical owner** для post-autopilot transitions.
 
-### Recommended owner
+**Canonical owner: `pueue-callback.sh`** — именно callback обладает фактом завершения конкретного pueue task и может принять exactly-once решение.
 
-**Canonical owner: `pueue-callback.sh` for completion-triggered transitions.**
+| Компонент | Новая роль |
+|-----------|-----------|
+| `pueue-callback.sh` | Owns: post-autopilot dispatch (QA + reflect), dedup, phase transition |
+| `orchestrator.sh` | Owns: polling, inbox, backlog, drafts. **NOT** QA/reflect dispatch |
+| `qa-loop.sh` | Owns: single QA execution. PASS → terminal. FAIL → inbox |
+| `db.py` | Owns: primitive state mutations, no hidden side effects |
 
-Почему:
-- именно callback обладает фактом завершения конкретного pueue task
-- callback видит `PUEUE_ID`, `LABEL`, `SKILL`, `RESULT`
-- callback может принять exactly-once решение на основании completion event
-- orchestrator должен заниматься polling / inbox / backlog, но не вторично разруливать completion tails
+---
 
-### New ownership model
+## Task 1: Fix `update_project_phase()` — не стирать `current_task` по умолчанию
 
-#### `pueue-callback.sh` owns:
-- autopilot completion -> decide whether to launch QA tail
-- autopilot completion -> decide whether to launch reflect tail
-- exact-once tail dedup / correlation
-- post-autopilot phase transition into a terminal or explicit tail state
+**File:** `scripts/vps/db.py`
 
-#### `orchestrator.sh` owns:
-- polling projects
-- inbox scan
-- backlog scan
-- draft notification scan
-- **NOT** QA/reflect dispatch for autopilot completion
+**Что сделать:**
+- Изменить `update_project_phase()` — использовать sentinel `_UNSET` вместо `None` по умолчанию
+- Если `current_task` не передан явно — сохранить текущее значение в DB (не перезаписывать)
+- Если передан `None` явно — только тогда стирать
+- Обновить CLI path `callback` (строка 330) — передавать `current_task=None` явно (terminal transition для `failed`) или сохранять task (для `qa_pending`)
+- Обновить CLI path `update-phase` (строка 386) — без изменений (не трогает current_task)
 
-#### `qa-loop.sh` owns:
-- only QA execution for a single explicit spec
-- PASS -> terminal state update
-- FAIL -> write inbox bug and terminal state update
-- it must not be a second owner of generic phase routing
+**Acceptance:**
+- `update_project_phase(pid, 'qa_pending')` НЕ стирает `current_task`
+- `update_project_phase(pid, 'idle', current_task=None)` стирает `current_task`
+- Orchestrator `scan_backlog()` (строка 295) продолжает работать — передаёт `current_task` явно
 
-#### `db.py` owns:
-- primitive state mutations only
-- no hidden destructive side effects on `current_task`
+---
 
-## Required changes
+## Task 2: Fix callback phase transition — сохранять current_task для qa_pending
 
-### 1. Remove split ownership from orchestrator
+**File:** `scripts/vps/pueue-callback.sh`, `scripts/vps/db.py`
 
-- retire `dispatch_qa()` as active dispatcher for autopilot tails
-- retire `dispatch_reflect()` as active dispatcher for autopilot tails
-- if they remain as safety code, they must only detect broken state and log warnings, never enqueue new work
+**Что сделать:**
+- Step 1-3 (строка 88-97): при `STATUS=done`, передавать `TASK_LABEL` как current_task в `db.py callback`
+- Обновить `db.py` CLI `callback` — принять 7-й аргумент `current_task`
+  - При `new_phase=qa_pending` → `update_project_phase(project_id, new_phase)` (current_task сохраняется — Task 1)
+  - При `new_phase=failed` → `update_project_phase(project_id, new_phase, current_task=None)`
 
-### 2. Make callback exactly-once per autopilot completion
+**Acceptance:**
+- После autopilot success: `phase=qa_pending`, `current_task` сохранён (не NULL)
+- После autopilot failure: `phase=failed`, `current_task=NULL`
 
-For every completed autopilot task, callback must create one correlation unit:
+---
 
-- `project_id`
-- `spec_id`
-- `autopilot_pueue_id`
-- `tail_id` / completion fingerprint
+## Task 3: Удалить дублирующие dispatcher'ы из orchestrator
 
-And before dispatching QA/reflect, callback must check whether tail already exists.
+**File:** `scripts/vps/orchestrator.sh`
 
-Recommended options:
-- add `post_autopilot_tail` table in SQLite
-- or add fields to `task_log` linking child QA/reflect tasks to parent autopilot task
+**Что сделать:**
+- `dispatch_qa()` (строка 330): превратить из dispatcher в invariant checker
+  - Если `qa_pending + current_task` существует — log info, не диспатчить (callback уже dispatched)
+  - Если `qa_pending + current_task = NULL` — log warning, reset to `idle` (recovery)
+  - Удалить вызов `qa-loop.sh`
+- `dispatch_reflect()` (строка 374): удалить полностью
+  - Reflect уже диспатчится callback Step 7, orchestrator — дублирующий owner
+- Обновить `process_project()`: убрать Step 6 (dispatch_reflect), переименовать Step 5 в invariant check
 
-### 3. Fix phase state machine
+**Acceptance:**
+- Orchestrator НЕ диспатчит QA/reflect
+- Orchestrator логирует invariant violations
+- `qa_pending + current_task=NULL` → recovery reset to idle с warning
 
-Replace ambiguous `qa_pending` semantics with explicit states, for example:
+---
 
-- `autopilot_running`
-- `tail_pending`
-- `qa_running`
-- `tail_done`
-- `tail_failed`
-- `idle`
+## Task 4: Добавить guards в pueue-callback.sh
 
-Critical invariant:
-- if phase implies spec-bound tail work, `current_task` must be non-null
-- `db.py` must not null out `current_task` unless transition explicitly wants terminal idle/done state
+**File:** `scripts/vps/pueue-callback.sh`
 
-### 4. Fix `update_project_phase()` API
+**Что сделать:**
+- **Step 7 reflect guard** (строка 432): перед dispatch reflect — проверить diary pending count
+  - Получить project path из DB, проверить `grep -c '| pending |' diary/index.md`
+  - Если pending < 1 → skip reflect, log: `[callback] Skipping reflect: no pending diary entries`
+- **Step 6.5 QA PASS guard** (строка 357): не писать в inbox если QA PASS
+  - Добавить в `EMPTY_RESULT` check паттерн: `'0 ✗|0 fail|все.*пройден|all.*pass'`
+  - Или явно: если `$SKILL == "qa"` и preview содержит `0 ✗` → `EMPTY_RESULT=true`
+- **Step 7 dedup guard**: перед dispatch QA — проверить что QA для этого label ещё не в pueue
+  - `pueue status --json` → check label contains `qa-${TASK_LABEL}` → skip if queued/running
 
-Current API is unsafe because omitted `current_task` means “erase it”.
+**Acceptance:**
+- Reflect не запускается если diary `pending = 0`
+- QA PASS не создаёт inbox файл
+- Второй QA на тот же spec не диспатчится
 
-Change contract to one of:
-
-- preserve current value unless explicitly overridden
-- or split into two functions:
-  - `update_phase(project_id, phase)`
-  - `update_phase_and_task(project_id, phase, current_task)`
-
-But do **not** silently null `current_task` on callback path.
-
-### 5. Reflect should be gated by work, not by phase only
-
-Reflect dispatch must require actual work signal, e.g.:
-
-- pending diary entries >= threshold
-- or new upstream signals since last processed cursor
-- and no existing reflect task for same parent autopilot completion
-
-If `pending = 0`, reflect must not enqueue at all.
-Not “run and discover nothing”; simply not run.
-
-### 6. QA success must not re-enter Spark
-
-QA PASS / no-op summaries must be terminal notifications only.
-They must not generate inbox files or headless Spark tasks.
-
-Add explicit guard:
-- only QA FAIL with actionable findings may produce inbox feedback
-- QA PASS must close tail and stop
-
-### 7. Add invariants and repair path
-
-On each orchestrator cycle, add invariant checks:
-
-- `phase=qa_pending && current_task IS NULL` => log violation
-- `phase in tail states && no matching parent autopilot task` => log violation
-- if auto-repair is needed, it should reset to `idle` and annotate the reason in logs
-
-But repair must be a fallback, not normal control flow.
+---
 
 ## Allowed Files
 
-**Modify only:**
-1. `/home/dld/projects/dld/scripts/vps/pueue-callback.sh`
-2. `/home/dld/projects/dld/scripts/vps/orchestrator.sh`
-3. `/home/dld/projects/dld/scripts/vps/qa-loop.sh`
-4. `/home/dld/projects/dld/scripts/vps/db.py`
-5. `/home/dld/projects/dld/scripts/vps/schema.sql` *(if new tail-tracking table/index is needed)*
-6. `/home/dld/projects/dld/scripts/vps/notify.py` *(only if terminal notification semantics need adjustment)*
+**Modify:**
+1. `scripts/vps/db.py` — Task 1, 2
+2. `scripts/vps/orchestrator.sh` — Task 3
+3. `scripts/vps/pueue-callback.sh` — Task 2, 4
 
-**Read-only evidence sources:**
-1. `/home/dld/projects/dld/scripts/vps/callback-debug.log`
-2. `/home/dld/projects/dld/scripts/vps/logs/awardybot-*.log`
-3. `/home/dld/projects/dld/ai/features/FTR-146-2026-03-10-multi-project-orchestrator-phase1.md`
-4. `/home/dld/projects/dld/ai/features/FTR-149-2026-03-12-orchestrator-cycle-v2.md`
-5. `/home/dld/projects/dld/ai/features/TECH-150-2026-03-12-orchestrator-e2e-fixes.md`
+**Read-only evidence:**
+- `scripts/vps/callback-debug.log`
+- `scripts/vps/logs/awardybot-*.log`
+- `scripts/vps/qa-loop.sh`
+- `scripts/vps/schema.sql`
 
-## Tests
+---
 
-### Deterministic assertions
+## Eval Criteria
 
-1. **Callback must not erase current_task implicitly**
-   - given `project_state.current_task = BUG-685`
-   - when callback updates phase after autopilot success
-   - then `current_task` is preserved unless explicitly cleared by terminal transition
+### Deterministic
 
-2. **Exactly one QA dispatch per autopilot completion**
-   - given one autopilot task completion event
-   - when callback runs twice or orchestrator cycle overlaps
-   - then only one QA child task exists in pueue/task_log
+1. **current_task preserved on qa_pending**
+   - Given: `project_state.current_task = 'BUG-685'`
+   - When: `db.py callback` sets `phase = qa_pending`
+   - Then: `current_task = 'BUG-685'` (not NULL)
 
-3. **Exactly one reflect dispatch per autopilot completion**
-   - given one autopilot completion and eligible diary work
-   - then only one reflect child task exists
+2. **Exactly one QA per autopilot completion**
+   - Given: one autopilot completion event
+   - When: callback runs AND orchestrator cycle overlaps
+   - Then: only one QA task exists in pueue for that spec
 
-4. **Reflect skip on empty work**
-   - given `pending = 0` and no new upstream signals
-   - then reflect is not enqueued at all
+3. **Reflect skipped on empty work**
+   - Given: diary `pending = 0`
+   - When: callback Step 7 runs
+   - Then: reflect is NOT dispatched
+
+4. **QA PASS is terminal**
+   - Given: QA result with 0 failures
+   - When: callback Step 6.5 runs
+   - Then: no inbox file is created
 
 5. **Illegal half-state cannot persist**
-   - `phase=qa_pending && current_task IS NULL` must never be produced by normal flow
+   - Given: `phase=qa_pending && current_task IS NULL`
+   - When: orchestrator cycle runs
+   - Then: state reset to `idle` with warning log
 
-6. **QA PASS is terminal**
-   - given QA result with 0 actionable failures
-   - then no inbox file is created and no Spark task is spawned
+### Integration
 
-### Integration assertions
+6. **AwardyBot replay**
+   - Replay BUG-685 path: `autopilot -> qa (once) -> reflect (0 or 1) -> idle`
+   - Forbidden: second QA, second reflect, Spark on QA PASS
 
-1. **AwardyBot replay**
-   - replay/log-driven test of BUG-685 path
-   - expected sequence: `autopilot -> qa (once) -> reflect (0 or 1 depending on work) -> idle`
-   - forbidden: second QA, second reflect, Spark on QA PASS
+7. **DB invariant after full cycle**
+   - After cycle: `project_state` ends in valid terminal state
+   - Either `idle` with `current_task = NULL`, or running state with non-null task
 
-2. **Overlap tolerance**
-   - trigger orchestrator cycle while callback is running
-   - expected: no duplicate tail dispatches
-
-3. **DB invariant check**
-   - after full cycle, `project_state` ends in valid terminal state:
-     - `idle` with `current_task = NULL`, or
-     - explicit running state with non-null task
+---
 
 ## Definition of Done
 
-- [ ] There is one canonical owner for post-autopilot tail dispatch
-- [ ] QA tail runs at most once per autopilot completion
-- [ ] Reflect tail runs at most once per autopilot completion
-- [ ] Reflect does not start when there is no new work (`pending = 0` / no new signals)
-- [ ] `qa_pending + current_task = NULL` is eliminated as normal state
-- [ ] `db.py` no longer nulls `current_task` as an implicit side effect of phase update
-- [ ] QA PASS cannot loop back into Spark
-- [ ] AwardyBot reproduction no longer shows repeated QA/reflect tails
-- [ ] Logs clearly show parent autopilot task and child tail ownership/correlation
+- [ ] `update_project_phase()` не стирает `current_task` по умолчанию (sentinel pattern)
+- [ ] Callback сохраняет `current_task` при transition на `qa_pending`
+- [ ] Orchestrator НЕ диспатчит QA/reflect (только invariant checks)
+- [ ] `dispatch_reflect()` удалён из orchestrator
+- [ ] Reflect не запускается при `pending = 0` (callback guard)
+- [ ] QA PASS не создаёт inbox файл (terminal guard)
+- [ ] `qa_pending + current_task = NULL` не возникает в нормальном flow
+- [ ] Логи AwardyBot: нет повторных QA/reflect хвостов
+
+---
 
 ## Summary
 
-This is **both bugs at once**:
+Это **оба бага одновременно:**
 
-1. **duplication bug** — QA/reflect tails can be launched more than once for the same work unit
-2. **phase ownership bug** — phase transitions are owned by multiple components, and `current_task` can be destroyed mid-transition
+1. **Duplication bug** — QA/reflect tails запускаются из двух параллельных контуров (callback + orchestrator), что приводит к повторным runs и wasted tokens (~$0.83/цикл)
+2. **Phase ownership bug** — `current_task` стирается callback'ом при phase update, создавая нелегальное полусостояние `qa_pending + current_task=NULL`
 
-Primary architectural fix: **centralize post-autopilot ownership in `pueue-callback.sh` and downgrade orchestrator tail dispatchers from owners to observers/repair guards.**
+**Architectural fix:** централизовать post-autopilot ownership в `pueue-callback.sh`, понизить orchestrator dispatch до invariant observer / recovery guard.
