@@ -37,7 +37,7 @@ Read Business Blueprint. Extract:
 - Domains implied by business ("subscriptions + billing + Telegram → 3 domains min")
 - Data needs ("money → Money type, subscriptions → lifecycle states")
 - Integration needs ("Telegram API, payment provider, email")
-- Constraints from Board ("budget X, team Y, deadline Z")
+- Constraints from Board ("budget X, compute capacity Y agents, deadline Z")
 - Open questions ("Board decided 'subscriptions' — but what type? Stripe? Internal?")
 
 Assign each persona their focus.
