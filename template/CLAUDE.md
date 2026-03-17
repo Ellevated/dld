@@ -249,6 +249,49 @@ If a tool returns "content filtering policy" error — retry with alternative to
 
 ---
 
+## AI-First Economic Model
+
+When using AI coding agents, implementation effort is near-zero. Prioritize by impact, not effort.
+
+### Cost Reference (AI agents)
+
+| Scope | Compute cost | Wall-clock |
+|-------|-------------|------------|
+| Simple change (1-3 files) | ~$1 | 15 min |
+| Medium change (5-10 files) | ~$5 | 1-2 hours |
+| Large change (20+ files) | ~$15 | 3-4 hours |
+| Full domain extraction | ~$50 | 1 day |
+
+For human teams, adjust these estimates to your team's velocity. The key principle remains: **prioritize by business impact, not implementation cost.**
+
+### Priority = Impact (Cost of Delay)
+
+| Priority | Definition |
+|----------|-----------|
+| **P0** | Blocks revenue, users, or security RIGHT NOW |
+| **P1** | High impact on product quality (features, refactoring, testing, tech debt) |
+| **P2** | Nice-to-have, doesn't affect metrics this week |
+
+### Risk Classification (R0/R1/R2)
+
+Use Risk as the second decision axis (instead of effort):
+
+| Risk | Definition | Examples |
+|------|-----------|----------|
+| **R0** | Irreversible | Data loss, schema migration, security exposure, public API break |
+| **R1** | High blast radius | 3+ files, cross-domain, external dependency, state machine change |
+| **R2** | Contained | 1-2 files, single domain, internal, trivially rollbackable |
+
+### Impact x Risk Routing
+
+| Impact \ Risk | R0 (Irreversible) | R1 (Blast radius) | R2 (Contained) |
+|---|---|---|---|
+| **P0** | COUNCIL | HUMAN | AUTO |
+| **P1** | COUNCIL | AUTO | AUTO |
+| **P2** | HUMAN | AUTO | AUTO |
+
+---
+
 ## Task Statuses
 
 | Status | Owner | Description |

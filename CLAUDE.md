@@ -256,6 +256,54 @@ If a tool returns "content filtering policy" error — retry with alternative to
 
 ---
 
+## AI-First Economic Model
+
+Implementation effort is near-zero for AI agents. **Never deprioritize a task based on implementation effort.**
+
+### Cost Reference
+
+| Scope | Compute cost | Wall-clock |
+|-------|-------------|------------|
+| Simple change (1-3 files) | ~$1 | 15 min |
+| Medium change (5-10 files) | ~$5 | 1-2 hours |
+| Large change (20+ files) | ~$15 | 3-4 hours |
+| Full domain extraction | ~$50 | 1 day |
+
+**Capacity:** 5 parallel autopilot slots. No "team is busy" — slots are always available.
+
+### Priority = Pure Impact (Cost of Delay)
+
+| Priority | Definition | Cost of Delay |
+|----------|-----------|---------------|
+| **P0** | Blocks revenue, users, or security RIGHT NOW | Immediate |
+| **P1** | High impact on product quality (features, refactoring, testing, tech debt) | This week |
+| **P2** | Nice-to-have, doesn't affect metrics this week | Low |
+
+**Key rules:**
+- Refactoring and testing are **P1 by default** — they cost $5-10 and maintain the harness
+- Maximum 5 P0 tasks in backlog simultaneously (priority inflation gate)
+- "Too expensive" means risk, not compute cost
+
+### Risk Classification (R0/R1/R2)
+
+Risk replaces effort as the second axis of decision-making:
+
+| Risk | Definition | Examples |
+|------|-----------|----------|
+| **R0** | Irreversible | Data loss, schema migration, security exposure, public API break |
+| **R1** | High blast radius | 3+ files, cross-domain, external dependency, state machine change |
+| **R2** | Contained | 1-2 files, single domain, internal, trivially rollbackable |
+
+### Impact x Risk Routing
+
+| Impact \ Risk | R0 (Irreversible) | R1 (Blast radius) | R2 (Contained) |
+|---|---|---|---|
+| **P0** | COUNCIL | HUMAN | AUTO |
+| **P1** | COUNCIL | AUTO | AUTO |
+| **P2** | HUMAN | AUTO | AUTO |
+
+---
+
 ## Task Statuses
 
 | Status | Owner | Description |
