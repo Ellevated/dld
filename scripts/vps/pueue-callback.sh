@@ -280,6 +280,44 @@ fi
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
+# Step 6.8: Write durable OpenClaw wake event
+# Hybrid model: callback writes event artifacts, OpenClaw wakes via cron fallback
+# and reads these files idempotently.
+# ---------------------------------------------------------------------------
+if [[ "$STATUS" == "done" || ( "$STATUS" == "failed" && "$SKILL" == "qa" ) ]]; then
+    PROJECT_PATH_FOR_EVENT=$(python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPT_DIR}')
+import db
+state = db.get_project_state('${PROJECT_ID}')
+print(state['path'] if state else '')
+" 2>/dev/null || true)
+
+    if [[ -n "$PROJECT_PATH_FOR_EVENT" && ( "$SKILL" == "autopilot" || "$SKILL" == "qa" || "$SKILL" == "reflect" ) ]]; then
+        EVENT_DIR="${PROJECT_PATH_FOR_EVENT}/ai/openclaw/pending-events"
+        mkdir -p "$EVENT_DIR"
+        EVENT_TS=$(date '+%Y%m%d-%H%M%S')
+        EVENT_FILE="${EVENT_DIR}/${EVENT_TS}-${SKILL}.json"
+        ARTIFACT_REL=""
+        if [[ "$SKILL" == "qa" ]]; then
+            ARTIFACT_REL=$(find "${PROJECT_PATH_FOR_EVENT}/ai/qa" -maxdepth 1 -type f -name "*.md" | sort | tail -1 | sed "s#^${PROJECT_PATH_FOR_EVENT}/##" || true)
+        elif [[ "$SKILL" == "reflect" ]]; then
+            ARTIFACT_REL=$(find "${PROJECT_PATH_FOR_EVENT}/ai/reflect" -maxdepth 1 -type f -name "findings-*.md" | sort | tail -1 | sed "s#^${PROJECT_PATH_FOR_EVENT}/##" || true)
+        fi
+        cat > "$EVENT_FILE" <<EOF
+{
+  "project_id": "${PROJECT_ID}",
+  "skill": "${SKILL}",
+  "status": "${STATUS}",
+  "task_label": "${TASK_LABEL}",
+  "artifact_rel": "${ARTIFACT_REL}",
+  "created_at": "${EVENT_TS}"
+}
+EOF
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Step 7: Post-autopilot — dispatch QA + Reflect
 # ONLY after autopilot completion. NOT after spark — spark doesn't change code,
 # so QA/reflect after spark creates infinite QA→inbox→spark→QA loops.
