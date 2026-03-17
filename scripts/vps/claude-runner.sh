@@ -31,10 +31,10 @@ LOG_FILE="${LOG_DIR}/$(basename "$PROJECT_DIR")-$(date '+%Y%m%d-%H%M%S').log"
 
 set +e
 timeout 1800 "$CLAUDE_BIN" \
-    -p "$PROMPT" \
-    --dangerously-skip-permissions \
+    --print \
+    --permission-mode bypassPermissions \
     --max-turns 30 \
-    --output-format stream-json \
+    "$PROMPT" \
     2>&1 | tee -a "$LOG_FILE"
 EXIT_CODE=${PIPESTATUS[0]}
 set -e

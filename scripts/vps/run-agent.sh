@@ -51,10 +51,19 @@ fi
 # Dispatch to provider-specific runner
 case "$PROVIDER" in
     claude)
-        # Agent SDK (Python) — native Skill support, structured output
+        # Prefer Agent SDK when the installed package exposes the expected API.
+        # Otherwise fall back to the legacy bash runner that was already used as a safety path.
         VENV_PY="${SCRIPT_DIR}/venv/bin/python3"
         [[ -x "$VENV_PY" ]] || { echo '{"error":"venv python not found"}' >&2; exit 1; }
-        exec "$VENV_PY" "${SCRIPT_DIR}/claude-runner.py" "$PROJECT_DIR" "$TASK" "$SKILL"
+        if "$VENV_PY" - <<'PY' >/dev/null 2>&1
+from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage, TaskNotificationMessage, query
+from claude_agent_sdk._errors import CLIConnectionError, ProcessError
+PY
+        then
+            exec "$VENV_PY" "${SCRIPT_DIR}/claude-runner.py" "$PROJECT_DIR" "$TASK" "$SKILL"
+        else
+            exec "${SCRIPT_DIR}/claude-runner.sh" "$PROJECT_DIR" "$TASK" "$SKILL"
+        fi
         ;;
     codex)
         exec "${SCRIPT_DIR}/codex-runner.sh" "$PROJECT_DIR" "$TASK" "$SKILL"
