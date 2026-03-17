@@ -260,8 +260,8 @@ If a tool returns "content filtering policy" error — retry with alternative to
 
 | Status | Owner | Description |
 |--------|-------|-------------|
-| `draft` | Spark | Spec incomplete |
-| `queued` | Spark | Ready for autopilot |
+| `draft` | Manual | Spec incomplete (manual override only, not normal Spark output) |
+| `queued` | Spark | Ready for autopilot (Spark always creates specs in this status) |
 | `in_progress` | Autopilot | Currently executing |
 | `blocked` | Autopilot | Needs human (see ACTION REQUIRED in spec) |
 | `resumed` | Human | Problem resolved, continue |

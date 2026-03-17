@@ -42,7 +42,7 @@ Sequential ID assignment is NOT atomic. If two spark instances run concurrently:
 2. [ ] **Uniqueness check** — grep backlog didn't find this ID
 3. [ ] **Spec file created** — ai/features/TYPE-XXX-YYYY-MM-DD-name.md
 4. [ ] **Entry added to backlog** — in active tasks table
-5. [ ] **Status = draft** — spec awaits human approval via Telegram!
+5. [ ] **Status = queued** — spec ready for orchestrator pickup!
 6. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
 7. [ ] **Auto-commit done** — `git add ai/ && git commit` (no push!)
@@ -79,9 +79,9 @@ Autopilot reads ONLY backlog — orphan spec files are invisible to it.
 When setting status in spec, **verbally confirm**:
 
 ```
-"Setting spec file: Status → draft"        [Write/Edit spec]
-"Setting backlog entry: Status → draft"    [Edit backlog]
-"Both set? ✓"                              [Verify match]
+"Setting spec file: Status → queued"        [Write/Edit spec]
+"Setting backlog entry: Status → queued"    [Edit backlog]
+"Both set? ✓"                               [Verify match]
 ```
 
 ⛔ **One place only = desync = orchestrator won't find the task!**
@@ -90,15 +90,15 @@ When setting status in spec, **verbally confirm**:
 ```
 | ID | Task | Status | Priority | Feature.md |
 |----|------|--------|----------|------------|
-| FTR-XXX | Task name | draft | P1 | [FTR-XXX](features/FTR-XXX-YYYY-MM-DD-name.md) |
+| FTR-XXX | Task name | queued | P1 | [FTR-XXX](features/FTR-XXX-YYYY-MM-DD-name.md) |
 ```
 
 ### Status on Spark exit:
 | Situation | Status | Reason |
 |-----------|--------|--------|
-| Spark completed fully | `draft` | Awaits human approval via Telegram |
-| Spec created but interrupted | `draft` | Awaits completion or approval |
-| Needs discussion/postponed | `draft` | Left for refinement |
+| Spark completed fully | `queued` | Ready for orchestrator pickup |
+| Spec created but interrupted | `queued` | Orchestrator will pick up on next cycle |
+| Needs discussion/postponed | `queued` | Left for refinement, orchestrator holds until slot available |
 
 ---
 
@@ -152,9 +152,9 @@ File naming: `BUG-XXX-bughunt.md` (the XXX is the report ID, not a task ID).
 Each group gets its OWN sequential ID and its OWN backlog entry:
 
 ```
-| BUG-085 | Hook safety fixes | draft | P0 | [BUG-085](features/BUG-085.md) |
-| BUG-086 | Missing references | draft | P1 | [BUG-086](features/BUG-086.md) |
-| BUG-087 | Prompt injection | draft | P1 | [BUG-087](features/BUG-087.md) |
+| BUG-085 | Hook safety fixes | queued | P0 | [BUG-085](features/BUG-085.md) |
+| BUG-086 | Missing references | queued | P1 | [BUG-086](features/BUG-086.md) |
+| BUG-087 | Prompt injection | queued | P1 | [BUG-087](features/BUG-087.md) |
 ```
 
 ### ID Protocol for Grouped Specs
@@ -257,6 +257,6 @@ Write spec file when spec is complete, then ask about autopilot handoff.
 ```yaml
 status: complete | needs_discussion | blocked
 spec_path: ai/features/TYPE-XXX-YYYY-MM-DD-name.md  # file MUST exist
-spec_status: draft  # always draft — human approves via Telegram
+spec_status: queued  # always queued — orchestrator picks up on next cycle
 pushed: true | false
 ```

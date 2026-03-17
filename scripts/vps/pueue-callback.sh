@@ -204,101 +204,20 @@ fi
 # (surrogate cleanup moved after Step 5.9 — MSG gets modified there)
 
 # ---------------------------------------------------------------------------
-# Step 5.5: Spark approval notification with result_preview
-# When spark completes successfully, send approval buttons with the summary
-# so the user sees WHAT spark plans to do, not dry spec headers.
+# Pre-compute result flags (used by Step 6 notification hints)
 # ---------------------------------------------------------------------------
 NOTIFY_PY="${SCRIPT_DIR}/notify.py"
-SENT_APPROVAL=false
 
-if [[ "$STATUS" == "done" && "$SKILL" == "spark" && -f "$NOTIFY_PY" ]]; then
-    # Resolve project path for spec file lookup
-    SPARK_PROJECT_PATH=$(python3 -c "
-import sys
-sys.path.insert(0, '${SCRIPT_DIR}')
-import db
-state = db.get_project_state('${PROJECT_ID}')
-print(state['path'] if state else '')
-" 2>/dev/null || true)
-
-    if [[ -n "$SPARK_PROJECT_PATH" ]]; then
-        # Find newest draft spec in backlog
-        BACKLOG="${SPARK_PROJECT_PATH}/ai/backlog.md"
-        SPEC_ID=""
-
-        if [[ -f "$BACKLOG" ]]; then
-            SPEC_ID=$(grep -E '^\|\s*(TECH|FTR|BUG|ARCH)-[0-9]+\s*\|.*\|\s*draft\s*\|' "$BACKLOG" 2>/dev/null | \
-                      grep -oE '(TECH|FTR|BUG|ARCH)-[0-9]+' | tail -1 || true)
-        fi
-
-        if [[ -n "$SPEC_ID" ]]; then
-            # Dedup: skip if already notified (two sparks can finish simultaneously for same spec)
-            if grep -qxF "$SPEC_ID" "${SCRIPT_DIR}/.notified-drafts-${PROJECT_ID}" 2>/dev/null; then
-                echo "[callback] Skipping duplicate approval: ${SPEC_ID} already notified"
-            else
-                # Mark as notified BEFORE sending — prevents scan_drafts race condition
-                echo "$SPEC_ID" >> "${SCRIPT_DIR}/.notified-drafts-${PROJECT_ID}"
-
-                echo "[callback] Sending spark approval: project=${PROJECT_ID} spec=${SPEC_ID}"
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] spark approval: project=${PROJECT_ID} spec=${SPEC_ID}" >> "$CALLBACK_LOG"
-                # notify.py reads spec file directly — no need to pass summary/title/tasks
-                python3 "$NOTIFY_PY" --spec-approval \
-                    "$PROJECT_ID" "$SPEC_ID" 2>>"$CALLBACK_LOG" && {
-                    SENT_APPROVAL=true
-                    echo "[callback] Spark approval sent: ${PROJECT_ID}:${SPEC_ID}"
-                } || {
-                    echo "[callback] WARN: spark approval notification failed" >&2
-                }
-            fi  # end dedup check
-        else
-            echo "[callback] WARN: no draft spec found in backlog for spark result" >&2
-        fi
-    fi
-fi
-
-# ---------------------------------------------------------------------------
-# Pre-compute inbox decision flags (used by Step 5.9, 6, and 6.5)
-# ---------------------------------------------------------------------------
 EMPTY_RESULT=false
-if echo "$PREVIEW" | grep -qiE 'analyzed: 0|inbox_files_created: 0|нечего обрабатывать|0 pending|0 ✗|0 fail|0 FAIL|все проверки пройдены|all tests passed|QA PASSED'; then
+if echo "$PREVIEW" | grep -qiE 'analyzed: 0|findings_written: 0|нечего обрабатывать|0 pending|0 ✗|0 fail|0 FAIL|все проверки пройдены|all tests passed|QA PASSED'; then
     EMPTY_RESULT=true
 fi
 
-FEEDBACK_DEPTH_OK=true
-if [[ "$SKILL" == "qa" && "$TASK_LABEL" =~ ^qa-(qa-|inbox-.*-(reflect|qa)-result) ]]; then
-    FEEDBACK_DEPTH_OK=false
-    echo "[callback] Skipping QA→inbox: depth limit reached (label=${TASK_LABEL})"
-fi
-
-# ---------------------------------------------------------------------------
-# Step 5.9: Determine if this skill result will go to inbox (for Step 6 message)
-# ---------------------------------------------------------------------------
-WILL_WRITE_INBOX=false
-if [[ "$STATUS" == "done" && "$EMPTY_RESULT" == "false" && "$FEEDBACK_DEPTH_OK" == "true" && -n "$PREVIEW" ]]; then
-    if [[ "$SKILL" == "qa" || "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "reflect" ]]; then
-        WILL_WRITE_INBOX=true
-    fi
-fi
-
-# Append next-step hint to QA/reflect messages
+# Append next-step hint to QA messages
 if [[ "$STATUS" == "done" && "$SKILL" == "qa" ]]; then
-    if [[ "$WILL_WRITE_INBOX" == "true" ]]; then
-        MSG="${MSG}
-→ Результат передан в Spark для оформления"
-    elif [[ "$EMPTY_RESULT" == "true" ]]; then
+    if [[ "$EMPTY_RESULT" == "true" ]]; then
         MSG="${MSG}
 → Проблем не найдено"
-    elif [[ "$FEEDBACK_DEPTH_OK" == "false" ]]; then
-        MSG="${MSG}
-→ Цикл завершён (depth limit)"
-    fi
-fi
-
-# Spark from QA result — no new spec means cycle is closed
-if [[ "$STATUS" == "done" && "$SKILL" == "spark" && "$SENT_APPROVAL" == "false" ]]; then
-    if [[ "$TASK_LABEL" =~ inbox-.*-(qa|reflect)-result ]]; then
-        MSG="✅ *${PROJECT_ID}*: Spark просмотрел результат QA
-→ Новых спек нет. Цикл закрыт."
     fi
 fi
 
@@ -311,7 +230,6 @@ print(text.encode('utf-8', errors='replace').decode('utf-8'), end='')
 
 # ---------------------------------------------------------------------------
 # Step 6: Send Telegram completion notification (fail-safe)
-# Skip if we already sent approval notification (avoid double message).
 # Skip noise: empty reflect/qa results don't need user attention.
 # notify.py handles topic routing by project_id.
 # ---------------------------------------------------------------------------
@@ -342,7 +260,7 @@ if [[ "$STATUS" == "failed" && -z "$SKILL" ]]; then
     echo "[callback] Skipping notification: failed task with no skill (noise)"
 fi
 
-if [[ "$SENT_APPROVAL" == "false" && "$SKIP_NOTIFY" == "false" && -f "$NOTIFY_PY" ]]; then
+if [[ "$SKIP_NOTIFY" == "false" && -f "$NOTIFY_PY" ]]; then
     echo "[callback] Sending notification: project=${PROJECT_ID} msg_len=${#MSG}" >> "$CALLBACK_LOG"
     python3 "$NOTIFY_PY" "$PROJECT_ID" "$MSG" 2>>"$CALLBACK_LOG" || {
         echo "[callback] WARN: notify.py failed for project=${PROJECT_ID}" >&2
@@ -447,4 +365,4 @@ fi
 echo "[callback] done pueue_id=${PUEUE_ID} project=${PROJECT_ID} task=${TASK_LABEL} status=${STATUS}"
 
 # Debug trace — log completion
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] callback done: id=${PUEUE_ID} project=${PROJECT_ID} skill=${SKILL} status=${STATUS} sent_approval=${SENT_APPROVAL} skip_notify=${SKIP_NOTIFY}" >> "$CALLBACK_LOG"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] callback done: id=${PUEUE_ID} project=${PROJECT_ID} skill=${SKILL} status=${STATUS} skip_notify=${SKIP_NOTIFY}" >> "$CALLBACK_LOG"

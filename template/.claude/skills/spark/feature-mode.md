@@ -640,7 +640,7 @@ Before marking spec `queued`, run 6 structural validation gates.
 
 **GATE RESULT:** pass / reject with reasons
 
-**If any gate fails →** spec stays `draft`, return to Phase 3 (re-synthesize with feedback).
+**If any gate fails →** spec stays in current state, return to Phase 3 (re-synthesize with feedback).
 
 <HARD-GATE>
 DO NOT proceed to Phase 7 until:

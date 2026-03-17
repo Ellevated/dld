@@ -365,66 +365,6 @@ db.update_project_phase('${project_id}', 'idle', None)
 }
 
 # ---------------------------------------------------------------------------
-# Scan backlog for draft specs and send Telegram approval notifications
-# ---------------------------------------------------------------------------
-
-scan_drafts() {
-    local project_id="$1" project_dir="$2"
-    local backlog="${project_dir}/ai/backlog.md"
-
-    [[ ! -f "$backlog" ]] && return
-
-    # Find all draft spec IDs (exclude status documentation table)
-    local draft_ids
-    draft_ids=$(grep -E '^\|\s*(TECH|FTR|BUG|ARCH)-[0-9]+\s*\|.*\|\s*draft\s*\|' "$backlog" 2>/dev/null | \
-                grep -oE '(TECH|FTR|BUG|ARCH)-[0-9]+' || true)
-
-    [[ -z "$draft_ids" ]] && return
-
-    # Track which drafts we've already notified about (avoid spam)
-    local notified_file="${SCRIPT_DIR}/.notified-drafts-${project_id}"
-    touch "$notified_file"
-
-    while IFS= read -r spec_id; do
-        [[ -z "$spec_id" ]] && continue
-
-        # Skip if already notified
-        if grep -qF "$spec_id" "$notified_file" 2>/dev/null; then
-            continue
-        fi
-
-        # Find spec file
-        local spec_file
-        spec_file=$(find "${project_dir}/ai/features/" -name "${spec_id}*" -type f 2>/dev/null | head -1 || true)
-        [[ -z "$spec_file" ]] && continue
-
-        # Extract title and problem from spec (flexible: handles Symptom, Why, Root Cause, Problem)
-        local title problem tasks_count
-        title=$(grep -m1 '^# ' "$spec_file" 2>/dev/null | sed 's/^# //' | head -c 100 || true)
-        title="${title:-$spec_id}"
-        # Try multiple section names for problem description
-        problem=$(grep -A1 -E '^## (Why|Symptom|Problem|Root Cause)' "$spec_file" 2>/dev/null | tail -1 | head -c 200 || true)
-        problem="${problem:-—}"
-        # Count tasks: try "### Task" and "## Task" patterns
-        tasks_count=$(grep -c -E '^#{2,3} Task' "$spec_file" 2>/dev/null || true)
-        tasks_count=$(( tasks_count + 0 ))
-
-        log_json "info" "sending draft approval" "project" "$project_id" "spec" "$spec_id"
-
-        # Send approval notification via notify.py
-        python3 "${SCRIPT_DIR}/notify.py" --spec-approval \
-            "$project_id" "$spec_id" "$title" "$problem" "$tasks_count" 2>/dev/null && {
-            # Mark as notified
-            echo "$spec_id" >> "$notified_file"
-            log_json "info" "draft notification sent" "project" "$project_id" "spec" "$spec_id"
-        } || {
-            log_json "error" "draft notification failed" "project" "$project_id" "spec" "$spec_id"
-        }
-
-    done <<< "$draft_ids"
-}
-
-# ---------------------------------------------------------------------------
 # Process a single project (all steps)
 # ---------------------------------------------------------------------------
 

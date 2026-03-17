@@ -103,41 +103,39 @@ Compare entries with CLAUDE.md:
 - Rule helped? -> Keep
 - Rule outdated? -> Update or remove
 
-### Step 5: Write to Inbox (NOT direct spec creation!)
+### Step 5: Write Findings to Diary/Reflect
 
-**CRITICAL:** Reflect does NOT create TECH specs directly. It writes findings to inbox.
-Spark will create specs from reflect findings.
+**CRITICAL:** Reflect does NOT write to inbox. Only OpenClaw writes to inbox.
+Findings are written as durable entries in `ai/reflect/` for later review.
 
 For each pattern found (frequency >= 3):
 
-**Location:** `ai/inbox/{timestamp}-reflect-{N}.md`
+**Location:** `ai/reflect/findings-{date}.md` (single file per session, not one per pattern)
 
 **Format:**
 ```markdown
-# Idea: {timestamp}
-**Source:** reflect
-**Route:** spark
-**Status:** new
-**Context:** ai/diary/index.md
+# Reflect Findings — {date}
+
+## {Pattern Name}
+**Frequency:** {N} occurrences. **Evidence:** {task_ids}.
+**Type:** {user_preference | failure_pattern | design_decision | tool_workflow}
+**Proposed action:** {what should change}
+
 ---
-Reflect finding: {description of pattern and recommendation}
-Frequency: {N} occurrences. Evidence: {task_ids}.
-Pattern type: {user_preference | failure_pattern | design_decision | tool_workflow}
-Proposed action: {what should change}
 ```
 
 **Rules:**
-- Only patterns with frequency >= 3 get inbox files
-- Patterns with frequency 2 are noted in diary but NOT sent to inbox
-- Max 5 inbox files per reflect session (prioritize by frequency)
-- One inbox file per pattern (not per diary entry)
-- Context links to diary index for full evidence
+- Only patterns with frequency >= 3 are included
+- Patterns with frequency 2 are noted in diary but NOT included in findings file
+- Max 5 findings per reflect session (prioritize by frequency)
+- All findings for a session go into a single file (not one per pattern)
+- No `Route: spark` — OpenClaw decides next steps from reflect findings
 
 ### Step 5.5: Commit + Push
 
 ```bash
-git add ai/diary/ ai/inbox/ ai/reflect/ 2>/dev/null
-git diff --cached --quiet || git commit -m "docs: reflect synthesis + inbox findings"
+git add ai/diary/ ai/reflect/ 2>/dev/null
+git diff --cached --quiet || git commit -m "docs: reflect synthesis + findings"
 git push origin develop 2>/dev/null || true
 ```
 
@@ -168,8 +166,8 @@ entries_analyzed: N
 patterns_found:
   - "Pattern 1 (frequency: N)"
   - "Pattern 2 (frequency: N)"
-inbox_files_created: M
-next_action: "Orchestrator will dispatch Spark for each finding"
+findings_written: M
+next_action: "Findings saved to ai/reflect/findings-{date}.md — OpenClaw decides next step"
 ```
 
 ---
@@ -178,10 +176,11 @@ next_action: "Orchestrator will dispatch Spark for each finding"
 
 | Wrong | Correct |
 |-------|---------|
-| Create TECH spec directly | Write to inbox -> Spark creates spec |
-| Edit CLAUDE.md directly | Write to inbox -> Spark -> skill-creator |
+| Create TECH spec directly | Write to ai/reflect/ -> OpenClaw decides next step |
+| Edit CLAUDE.md directly | Write to ai/reflect/ -> OpenClaw -> Spark -> skill-creator |
 | Skip marking entries done | MUST mark diary entries `pending → done` in Step 5.6 |
-| Write all patterns to inbox | Only frequency >= 3, max 5 files |
+| Write all patterns to ai/reflect/ | Only frequency >= 3, max 5 findings |
+| Write to ai/inbox/ | Only OpenClaw writes to inbox |
 
 ---
 
@@ -192,7 +191,7 @@ Before completing reflect:
 - [ ] All pending entries analyzed
 - [ ] Exa research performed for patterns with frequency >= 2
 - [ ] Patterns counted correctly (frequency threshold)
-- [ ] Findings written to inbox (not direct spec/edits)
+- [ ] Findings written to ai/reflect/ (not inbox, not direct spec/edits)
 - [ ] Commit + push performed
 - [ ] Processed entries appended to .processed.log
 
@@ -204,9 +203,9 @@ Your final JSON `result_preview` is sent to the user via Telegram. Keep it conci
 
 ```
 Записей: {N} обработано
-Паттернов: {M} найдено, {K} → inbox
+Паттернов: {M} найдено, {K} → ai/reflect/
 {If K > 0: one-line top pattern}
 ```
 
-**BAD:** "entries_analyzed: 5, patterns_found: [...], inbox_files_created: 2, next_action: ..."
-**GOOD:** "Записей: 5 обработано. Паттернов: 3 найдено, 2 → inbox. Топ: мок в интеграционных тестах (×4)"
+**BAD:** "entries_analyzed: 5, patterns_found: [...], findings_written: 2, next_action: ..."
+**GOOD:** "Записей: 5 обработано. Паттернов: 3 найдено, 2 → ai/reflect/. Топ: мок в интеграционных тестах (×4)"

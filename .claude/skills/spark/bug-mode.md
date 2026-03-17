@@ -194,8 +194,8 @@ Task tool:
 5. [ ] Allowed Files exact (no placeholders)
 6. [ ] Regression test in DoD
 7. [ ] ID determined by protocol (completion.md)
-8. [ ] Spec file created (status: draft)
-9. [ ] Backlog entry added (status: draft)
+8. [ ] Spec file created (status: queued)
+9. [ ] Backlog entry added (status: queued)
 10. [ ] Auto-commit + push done
 
 ---
@@ -208,6 +208,6 @@ mode: quick
 bug_id: BUG-XXX
 root_cause: "[1-line summary]"
 spec_path: "ai/features/BUG-XXX.md"
-spec_status: draft
+spec_status: queued
 pushed: true | false
 ```

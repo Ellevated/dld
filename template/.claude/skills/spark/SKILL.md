@@ -56,11 +56,11 @@ When running from orchestrator (automated pipeline), Spark detects headless cont
 - If `Context:` field present — READ the linked document for full context before designing
 - If data is insufficient — make a reasonable decision independently or escalate via `/council`
 - PRESERVE ability to invoke council, scout, and other skills when genuinely needed
-- Create spec in `draft` status (orchestrator handles approval via Telegram)
+- Create spec in `queued` status (orchestrator picks it up on next cycle)
 
 **Behavior in interactive mode (default):**
 - Normal Socratic dialogue, questions, user interaction
-- Create spec in `draft` status (user approves via Telegram or directly)
+- Create spec in `queued` status (orchestrator picks it up on next cycle)
 
 ---
 
