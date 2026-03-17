@@ -223,11 +223,10 @@ on:
 After spec is committed and pushed, Spark is DONE. No autopilot handoff.
 
 **Flow:**
-1. Spec saved to `ai/features/TYPE-XXX-YYYY-MM-DD-name.md` with status `draft`
+1. Spec saved to `ai/features/TYPE-XXX-YYYY-MM-DD-name.md` with status `queued`
 2. Committed + pushed to develop
-3. Orchestrator detects new draft spec on next cycle
-4. Telegram sends spec summary with [Approve / Rework / Cancel] buttons
-5. Human approves → status changes to `queued` → autopilot picks up
+3. Orchestrator detects queued spec on next cycle
+4. Autopilot picks it up
 
 **Announcement format (interactive mode only):**
 ```
@@ -236,7 +235,7 @@ Spec ready: `ai/features/TYPE-XXX-YYYY-MM-DD-name.md`
 **Summary:**
 - [2-3 bullet points what will be done]
 
-Spec is in `draft` status. Approve via Telegram to start autopilot.
+Spec is queued. Orchestrator will hand it to autopilot.
 ```
 
 **DO NOT invoke `/autopilot`.** Orchestrator manages the lifecycle.

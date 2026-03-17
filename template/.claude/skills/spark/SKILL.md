@@ -40,8 +40,8 @@ Transforms raw ideas into specs via 4 parallel scouts + research + structured di
 
 **See CLAUDE.md#Task-Statuses** for canonical status definitions.
 
-**Key point:** Spark creates specs in `draft` status. Human approves via Telegram → `queued`.
-Orchestrator manages the `draft → queued` transition. Spark NEVER sets `queued` directly.
+**Key point:** Spark creates specs directly in `queued` status when intake is already complete.
+There is no approval gate between Spark and Autopilot in the orchestrator north-star flow.
 
 ---
 

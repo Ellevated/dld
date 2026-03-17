@@ -7,8 +7,8 @@
 #   qa_pending → qa_running → idle       (PASS)
 #   qa_pending → qa_running → qa_failed  (FAIL)
 #
-# On FAIL: writes bug report to {project_dir}/ai/inbox/ so the
-# orchestrator cycle picks it up and repeats autopilot.
+# QA always writes file reports. OpenClaw reviews those reports and,
+# if needed, writes follow-up inbox items itself.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -68,35 +68,47 @@ QA_EXIT=$?
 set -e
 
 # ---------------------------------------------------------------------------
-# Evaluate result and transition phase
+# Persist QA report and transition phase
 # ---------------------------------------------------------------------------
 
-if (( QA_EXIT == 0 )); then
-    # QA passed — reset phase to idle
-    "$DB_EXEC" "UPDATE project_state SET phase = 'idle', current_task = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE project_id = '${PROJECT_ID}';"
-    python3 "${SCRIPT_DIR}/notify.py" "$PROJECT_ID" "QA PASSED for ${SPEC_ID}" 2>/dev/null || true
-    echo "[qa] PASSED: ${SPEC_ID}"
-else
-    # QA failed — write bug to inbox so the cycle repeats
-    "$DB_EXEC" "UPDATE project_state SET phase = 'qa_failed', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE project_id = '${PROJECT_ID}';"
+TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
+QA_DIR="${PROJECT_DIR}/ai/qa"
+mkdir -p "$QA_DIR"
+SPEC_REL="${SPEC_FILE#${PROJECT_DIR}/}"
+REPORT_FILE="${QA_DIR}/${TIMESTAMP}-${SPEC_ID}.md"
 
-    TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
-    INBOX_DIR="${PROJECT_DIR}/ai/inbox"
-    mkdir -p "$INBOX_DIR"
+STATUS_LABEL="passed"
+NOTIFY_TEXT="QA PASSED for ${SPEC_ID}"
+if (( QA_EXIT != 0 )); then
+    STATUS_LABEL="failed"
+    NOTIFY_TEXT="QA FAILED for ${SPEC_ID}. Report saved to ai/qa/."
+fi
 
-    # Write QA failure as new inbox item (standardized format with Context)
-    SPEC_REL="${SPEC_FILE#${PROJECT_DIR}/}"
-    cat > "${INBOX_DIR}/${TIMESTAMP}-qa-fail.md" << EOF
-# Idea: ${TIMESTAMP}
-**Source:** qa
-**Route:** spark_bug
-**Status:** new
-**Context:** ${SPEC_REL}
+cat > "$REPORT_FILE" << EOF
+# QA Report: ${SPEC_ID}
+
+**Status:** ${STATUS_LABEL}
+**Project:** ${PROJECT_ID}
+**Spec:** ${SPEC_ID}
+**SpecPath:** ${SPEC_REL}
+**ExitCode:** ${QA_EXIT}
+**Timestamp:** ${TIMESTAMP}
+
 ---
-QA failed for ${SPEC_ID}. Exit code: ${QA_EXIT}.
-Please investigate and fix the issues found during QA.
+
+auto-generated from qa-loop.sh
+
+## Raw Output
+
+${QA_OUTPUT}
 EOF
 
-    python3 "${SCRIPT_DIR}/notify.py" "$PROJECT_ID" "QA FAILED for ${SPEC_ID}. Bugs written to inbox." 2>/dev/null || true
-    echo "[qa] FAILED: ${SPEC_ID} (exit=${QA_EXIT})"
+if (( QA_EXIT == 0 )); then
+    "$DB_EXEC" "UPDATE project_state SET phase = 'idle', current_task = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE project_id = '${PROJECT_ID}';"
+    python3 "${SCRIPT_DIR}/notify.py" "$PROJECT_ID" "$NOTIFY_TEXT" 2>/dev/null || true
+    echo "[qa] PASSED: ${SPEC_ID} report=${REPORT_FILE}"
+else
+    "$DB_EXEC" "UPDATE project_state SET phase = 'qa_failed', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE project_id = '${PROJECT_ID}';"
+    python3 "${SCRIPT_DIR}/notify.py" "$PROJECT_ID" "$NOTIFY_TEXT" 2>/dev/null || true
+    echo "[qa] FAILED: ${SPEC_ID} (exit=${QA_EXIT}) report=${REPORT_FILE}"
 fi

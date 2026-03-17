@@ -307,7 +307,7 @@ Write spec using selected approach from Phase 4:
 
 ```markdown
 # Feature: [FTR-XXX] Title
-**Status:** draft | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
+**Status:** queued | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
 
 ## Why
 [Problem statement from Socratic Dialogue]

@@ -5,7 +5,7 @@
 #
 # Each cycle:
 #   1. Hot-reloads projects.json → SQLite via db.py seed_projects_from_json
-#   2. Per project: git pull, scan ai/inbox/, scan ai/backlog.md, dispatch QA
+#   2. Per project: git pull, scan ai/inbox/, scan ai/backlog.md, verify tail invariants
 #
 # Env vars:
 #   POLL_INTERVAL   — seconds between full cycles (default: 300)
@@ -439,13 +439,10 @@ process_project() {
     # Step 2: scan inbox
     scan_inbox "$project_id" "$project_dir"
 
-    # Step 3: scan backlog for draft specs → send approval notifications
-    scan_drafts "$project_id" "$project_dir"
-
-    # Step 4: scan backlog for queued specs → submit to autopilot
+    # Step 3: scan backlog for queued specs → submit to autopilot
     scan_backlog "$project_id" "$project_dir"
 
-    # Step 5: check post-autopilot tail invariants (callback owns actual dispatch)
+    # Step 4: check post-autopilot tail invariants (callback owns actual dispatch)
     dispatch_qa "$project_id" "$project_dir"
 }
 

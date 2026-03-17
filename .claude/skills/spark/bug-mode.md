@@ -80,7 +80,7 @@ Only after root cause is found → create BUG-XXX spec:
 ```markdown
 # Bug Fix: [BUG-XXX] Title
 
-**Status:** draft | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
+**Status:** queued | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
 
 ## Symptom
 [What user sees / test failure]

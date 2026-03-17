@@ -353,57 +353,11 @@ elif [[ ! -f "$NOTIFY_PY" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 6.5: Council/Architect/Reflect → Inbox feedback loop
-# When council, architect, or reflect completes, write result_preview back to inbox
-# with route=spark so the next orchestrator cycle creates a spec from it.
-# This is a FALLBACK — skills should write inbox files themselves (FTR-149 Tasks 5/6c),
-# but this ensures results aren't lost if the skill didn't write to inbox.
-# (EMPTY_RESULT and FEEDBACK_DEPTH_OK computed above in Step 5.9 pre-compute)
-# Reflect excluded: its output (rule updates) doesn't need spark specs.
-# Including reflect caused QA→reflect→inbox→spark→QA infinite loops.
-if [[ "$STATUS" == "done" && "$EMPTY_RESULT" == "false" && "$FEEDBACK_DEPTH_OK" == "true" && ( "$SKILL" == "council" || "$SKILL" == "architect" || "$SKILL" == "qa" ) && -n "$PREVIEW" ]]; then
-    FEEDBACK_PROJECT_PATH=$(python3 -c "
-import sys
-sys.path.insert(0, '${SCRIPT_DIR}')
-import db
-state = db.get_project_state('${PROJECT_ID}')
-print(state['path'] if state else '')
-" 2>/dev/null || true)
-
-    if [[ -n "$FEEDBACK_PROJECT_PATH" ]]; then
-        INBOX_DIR="${FEEDBACK_PROJECT_PATH}/ai/inbox"
-        mkdir -p "$INBOX_DIR"
-
-        # Check if skill already wrote inbox files (FTR-149: skills write their own)
-        # If recent inbox files from this skill exist, skip fallback to avoid duplicates
-        EXISTING_INBOX=$(find "$INBOX_DIR" -name "*-${SKILL}-*" -newer "$INBOX_DIR/.." -mmin -10 2>/dev/null | head -1 || true)
-        if [[ -n "$EXISTING_INBOX" ]]; then
-            echo "[callback] ${SKILL} already wrote inbox files — skipping fallback"
-        else
-            TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
-            INBOX_FILE="${INBOX_DIR}/${TIMESTAMP}-${SKILL}-result.md"
-
-            # QA findings route to spark_bug, others to spark
-            INBOX_ROUTE="spark"
-            [[ "$SKILL" == "qa" ]] && INBOX_ROUTE="spark_bug"
-
-            cat > "$INBOX_FILE" <<INBOX_EOF
-# ${SKILL^} result: ${TASK_LABEL}
-**Source:** ${SKILL}
-**Route:** ${INBOX_ROUTE}
-**Status:** new
-**Context:** ai/diary/index.md
----
-${PREVIEW}
-INBOX_EOF
-
-            echo "[callback] ${SKILL} result written to inbox: ${INBOX_FILE}"
-        fi
-
-        # No separate notification here — Step 6 already notifies about completion.
-        # Adding a second message ("результат отправлен в Spark") is noise.
-    fi
-fi
+# Step 6.5: No automatic feedback → inbox
+# North star: only OpenClaw writes inbox items after reviewing artifacts.
+# Skills may write their own durable files (QA reports, diaries, etc), but the
+# callback must not enqueue new work automatically.
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Step 7: Post-autopilot — dispatch QA + Reflect
