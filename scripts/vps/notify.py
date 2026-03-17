@@ -9,45 +9,77 @@ Usage: python3 notify.py <project_id> <message>
 """
 
 import asyncio
+import json
 import os
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 # Add script dir to path for db import
 sys.path.insert(0, str(Path(__file__).parent))
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except Exception:
+    def load_dotenv(path: Path) -> None:
+        try:
+            for raw in path.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+        except FileNotFoundError:
+            pass
 
 load_dotenv(Path(__file__).parent / ".env")
 
 import db
 
 
-async def _send_message(text: str, thread_id: int | None = None) -> bool:
-    """Send a Telegram message to TELEGRAM_CHAT_ID, optionally in a forum thread."""
-    from telegram import Bot
-
+def _telegram_api(method: str, payload: dict) -> tuple[bool, str]:
+    """Call Telegram Bot API via stdlib urllib."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        return False, "Missing TELEGRAM_BOT_TOKEN"
+
+    url = f"https://api.telegram.org/bot{token}/{method}"
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            parsed = json.loads(body)
+            return bool(parsed.get("ok")), body
+    except Exception as e:
+        return False, str(e)
+
+
+async def _send_message(text: str, thread_id: int | None = None, reply_markup: dict | None = None, parse_mode: str | None = "Markdown") -> bool:
+    """Send a Telegram message to TELEGRAM_CHAT_ID, optionally in a forum thread."""
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-    if not token or not chat_id:
+    if not os.environ.get("TELEGRAM_BOT_TOKEN") or not chat_id:
         print("[notify] Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID", file=sys.stderr)
         return False
 
-    bot = Bot(token=token)
-    try:
-        await bot.send_message(
-            chat_id=int(chat_id),
-            message_thread_id=thread_id,
-            text=text,
-            parse_mode="Markdown",
-        )
+    payload = {
+        "chat_id": int(chat_id),
+        "text": text,
+    }
+    if thread_id:
+        payload["message_thread_id"] = thread_id
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+
+    ok, detail = _telegram_api("sendMessage", payload)
+    if ok:
         return True
-    except Exception as e:
-        print(f"[notify] Failed to send: {e}", file=sys.stderr)
-        return False
-    finally:
-        await bot.shutdown()
+    print(f"[notify] Failed to send: {detail}", file=sys.stderr)
+    return False
 
 
 async def send_to_project(project_id: str, text: str) -> bool:
@@ -200,8 +232,6 @@ async def send_spec_approval(
     - Task list with names
     Falls back to passed args if spec file is unreadable.
     """
-    from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
-
     project = db.get_project_state(project_id)
     if not project:
         print(f"[notify] Project not found: {project_id}", file=sys.stderr)
@@ -274,42 +304,20 @@ async def send_spec_approval(
 
     text = "\n".join(parts).strip()
 
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("\u2705 В работу", callback_data=f"spec_approve:{project_id}:{spec_id}"),
-            InlineKeyboardButton("\u270f\ufe0f Доработать", callback_data=f"spec_rework:{project_id}:{spec_id}"),
-            InlineKeyboardButton("\u274c Отклонить", callback_data=f"spec_reject:{project_id}:{spec_id}"),
-        ]
-    ])
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ В работу", "callback_data": f"spec_approve:{project_id}:{spec_id}"},
+            {"text": "✏️ Доработать", "callback_data": f"spec_rework:{project_id}:{spec_id}"},
+            {"text": "❌ Отклонить", "callback_data": f"spec_reject:{project_id}:{spec_id}"},
+        ]]
+    }
 
-    bot = Bot(token=token)
-    try:
-        await bot.send_message(
-            chat_id=int(chat_id),
-            message_thread_id=thread_id,
-            text=text,
-            reply_markup=keyboard,
-            parse_mode="Markdown",
-        )
+    success = await _send_message(text, thread_id=thread_id, reply_markup=keyboard, parse_mode="Markdown")
+    if success:
         return True
-    except Exception as e:
-        print(f"[notify] Failed to send spec approval: {e}", file=sys.stderr)
-        # Retry without Markdown on parse error
-        if "parse entities" in str(e).lower():
-            try:
-                plain = text.replace("*", "").replace("_", "").replace("`", "")
-                await bot.send_message(
-                    chat_id=int(chat_id),
-                    message_thread_id=thread_id,
-                    text=plain,
-                    reply_markup=keyboard,
-                )
-                return True
-            except Exception as e2:
-                print(f"[notify] Retry without Markdown also failed: {e2}", file=sys.stderr)
-        return False
-    finally:
-        await bot.shutdown()
+
+    plain = text.replace("*", "").replace("_", "").replace("`", "")
+    return await _send_message(plain, thread_id=thread_id, reply_markup=keyboard, parse_mode=None)
 
 
 def main() -> None:

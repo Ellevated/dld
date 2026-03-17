@@ -201,13 +201,12 @@ if [[ -n "$CLEAN_PREVIEW" ]]; then
 ${CLEAN_PREVIEW}"
 fi
 
-# (surrogate cleanup moved after Step 5.9 — MSG gets modified there)
+# (surrogate cleanup moved after result-flag messaging)
 
 # ---------------------------------------------------------------------------
-# Pre-compute result flags (used by Step 6 notification hints)
+# Pre-compute completion/result flags for messaging
 # ---------------------------------------------------------------------------
 NOTIFY_PY="${SCRIPT_DIR}/notify.py"
-
 EMPTY_RESULT=false
 if echo "$PREVIEW" | grep -qiE 'analyzed: 0|findings_written: 0|нечего обрабатывать|0 pending|0 ✗|0 fail|0 FAIL|все проверки пройдены|all tests passed|QA PASSED'; then
     EMPTY_RESULT=true
@@ -218,6 +217,9 @@ if [[ "$STATUS" == "done" && "$SKILL" == "qa" ]]; then
     if [[ "$EMPTY_RESULT" == "true" ]]; then
         MSG="${MSG}
 → Проблем не найдено"
+    else
+        MSG="${MSG}
+→ Отчёт сохранён в файлы. Дальше решение за OpenClaw."
     fi
 fi
 

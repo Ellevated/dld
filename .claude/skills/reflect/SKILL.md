@@ -103,12 +103,11 @@ Compare entries with CLAUDE.md:
 - Rule helped? -> Keep
 - Rule outdated? -> Update or remove
 
-### Step 5: Write Findings to Diary/Reflect
+### Step 5: Write durable reflect artifacts (NOT inbox)
 
-**CRITICAL:** Reflect does NOT write to inbox. Only OpenClaw writes to inbox.
-Findings are written as durable entries in `ai/reflect/` for later review.
-
-For each pattern found (frequency >= 3):
+**CRITICAL:** Reflect does NOT create TECH specs and does NOT write to inbox.
+It writes durable findings to its own reflect artifacts and diary context.
+OpenClaw reviews those artifacts later and decides whether to create an inbox item.
 
 **Location:** `ai/reflect/findings-{date}.md` (single file per session, not one per pattern)
 

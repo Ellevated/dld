@@ -1,5 +1,5 @@
 # Tech: [TECH-151] Orchestrator North-Star Alignment
-**Status:** queued | **Priority:** P0 | **Date:** 2026-03-17
+**Status:** in_progress | **Priority:** P0 | **Date:** 2026-03-17
 
 ## Why
 Текущее поведение оркестратора расходится с north-star моделью из `ai/architect/orchestrator-final-state.md`. Spark создаёт `draft` спеки вместо `queued`, callback шлёт approval-уведомления с кнопками, `scan_drafts()` — мёртвый код, messaging в callback ссылается на устаревший inbox-writing flow, а `reflect/SKILL.md` пишет findings в `ai/inbox/` вместо дневника. 10 инвариантов north-star должны быть реализованы в коде и документации.
