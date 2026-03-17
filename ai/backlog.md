@@ -113,7 +113,8 @@
 | FTR-149 | Orchestrator Cycle v2: Inbox-Centric Architecture | done | P0 | [spec](features/FTR-149-2026-03-12-orchestrator-cycle-v2.md) |
 | TECH-150 | Reflect Synthesis: Shell Script Safety Rules + Process ADRs | done | P2 | [spec](features/TECH-150-2026-03-12-reflect-synthesis.md) |
 | BUG-121 | Orchestrator Post-Autopilot Tail Duplication + Broken Phase Ownership | draft | P0 | [spec](features/BUG-121-2026-03-16-orchestrator-post-autopilot-phase-ownership.md) |
-| TECH-151 | Orchestrator North-Star Alignment (draft→queued, remove dead code, inbox invariant) | queued | P0 | [spec](features/TECH-151-2026-03-17-orchestrator-north-star-alignment.md) |
+| BUG-152 | Agent SDK venv сломан — fake bash wrapper вместо реального venv | done | P0 | [spec](features/BUG-152-2026-03-17-venv-sdk-broken.md) |
+| TECH-151 | Orchestrator North-Star Alignment (draft→queued, remove dead code, inbox invariant) | in_progress | P0 | [spec](features/TECH-151-2026-03-17-orchestrator-north-star-alignment.md) |
 
 ---
 
