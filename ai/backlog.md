@@ -115,6 +115,7 @@
 | BUG-121 | Orchestrator Post-Autopilot Tail Duplication + Broken Phase Ownership | draft | P0 | [spec](features/BUG-121-2026-03-16-orchestrator-post-autopilot-phase-ownership.md) |
 | BUG-152 | Agent SDK venv сломан — fake bash wrapper вместо реального venv | done | P0 | [spec](features/BUG-152-2026-03-17-venv-sdk-broken.md) |
 | TECH-151 | Orchestrator North-Star Alignment (draft→queued, remove dead code, inbox invariant) | done | P0 | [spec](features/TECH-151-2026-03-17-orchestrator-north-star-alignment.md) |
+| TECH-153 | AI-First Economic Model — replace human-centric effort with Impact+Risk | queued | P1 | [spec](features/TECH-153-2026-03-17-ai-first-economic-model.md) |
 
 ---
 

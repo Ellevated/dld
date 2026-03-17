@@ -1,0 +1,15 @@
+{
+  "spec_id": "TECH-153",
+  "title": "AI-first economic model for DLD framework",
+  "created": "2026-03-17T12:00:00Z",
+  "phases": {
+    "collect": { "status": "done", "timestamp": "2026-03-17T12:00:00Z" },
+    "research": { "status": "done", "timestamp": "2026-03-17T12:15:00Z", "files": ["research-external.md", "research-codebase.md", "research-patterns.md", "research-devil.md"] },
+    "synthesize": { "status": "done", "timestamp": "2026-03-17T12:25:00Z" },
+    "decide": { "status": "done", "timestamp": "2026-03-17T12:26:00Z", "approach": 2 },
+    "write": { "status": "done", "timestamp": "2026-03-17T12:35:00Z" },
+    "validate": { "status": "done", "timestamp": "2026-03-17T12:36:00Z" },
+    "reflect": { "status": "done", "timestamp": "2026-03-17T12:37:00Z" },
+    "completion": { "status": "done", "timestamp": "2026-03-17T12:38:00Z" }
+  }
+}
