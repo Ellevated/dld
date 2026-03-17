@@ -179,7 +179,7 @@ next_action: "Findings saved to ai/reflect/findings-{date}.md — OpenClaw decid
 | Edit CLAUDE.md directly | Write to ai/reflect/ -> OpenClaw -> Spark -> skill-creator |
 | Skip marking entries done | MUST mark diary entries `pending → done` in Step 5.6 |
 | Write all patterns to ai/reflect/ | Only frequency >= 3, max 5 findings |
-| Write to ai/inbox/ | Only OpenClaw writes to inbox |
+| Write findings directly into inbox | Only OpenClaw writes to inbox |
 
 ---
 

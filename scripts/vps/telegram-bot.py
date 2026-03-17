@@ -36,9 +36,6 @@ from approve_handler import (
     handle_project_toggle,
     handle_reject_all,
     handle_rework_comment,
-    handle_spec_approve,
-    handle_spec_reject,
-    handle_spec_rework,
     register_evening_job,
 )
 from photo_handler import handle_photo
@@ -497,9 +494,6 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(handle_finding_reject, pattern=r"^reject_finding:"))
     application.add_handler(CallbackQueryHandler(handle_approve_all, pattern=r"^approve_all:"))
     application.add_handler(CallbackQueryHandler(handle_reject_all, pattern=r"^reject_all:"))
-    application.add_handler(CallbackQueryHandler(handle_spec_approve, pattern=r"^spec_approve:"))
-    application.add_handler(CallbackQueryHandler(handle_spec_rework, pattern=r"^spec_rework:"))
-    application.add_handler(CallbackQueryHandler(handle_spec_reject, pattern=r"^spec_reject:"))
     application.add_handler(CallbackQueryHandler(handle_confirm_heavy, pattern=r"^confirm_heavy:"))
     application.add_handler(CallbackQueryHandler(handle_approve, pattern=r"^approve:"))
     application.add_handler(CallbackQueryHandler(handle_cancel, pattern=r"^cancel:"))

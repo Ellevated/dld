@@ -1,41 +1,13 @@
 # Bug Hunt Completion
 
-Read after pipeline Steps 0-5 complete. Creates inbox files and pushes.
+Read after pipeline Steps 0-5 complete. Saves durable bughunt artifacts and pushes.
 
 ---
 
-## Step 6: Create Inbox Files
+## Step 6: Save Durable Report Only
 
-For each finding group from validator-output.yaml, create an inbox file.
-
-**Limit:** Max 10 inbox files. If more groups exist, include only top 10 by severity.
-Remaining findings stay in the report for manual review.
-
-### Inbox File Format
-
-For each group (index i):
-
-```markdown
-# Idea: {timestamp}-bughunt-{i}
-**Source:** bughunt
-**Route:** spark_bug
-**Status:** new
-**Context:** ai/.bughunt/{session}/report.md
----
-{finding group description: what's broken, where, severity, evidence from validator}
-```
-
-### Write to disk
-
-```python
-inbox_dir = Path(project_dir) / "ai" / "inbox"
-inbox_dir.mkdir(parents=True, exist_ok=True)
-
-for i, group in enumerate(groups[:10]):
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    filepath = inbox_dir / f"{ts}-bughunt-{i+1}.md"
-    filepath.write_text(content)
-```
+Bughunt does **not** create inbox items directly.
+It saves durable findings to its own report artifact. OpenClaw reviews that report and decides whether to create inbox items.
 
 ---
 
@@ -47,19 +19,18 @@ Save the full report (NOT in `ai/features/`, NOT in backlog):
 ai/bughunt/{YYYY-MM-DD}-report.md
 ```
 
-The report is a READ-ONLY reference document. Spark will read it via the `Context:` field
-in inbox files when creating specs.
+The report is a READ-ONLY reference document. OpenClaw may later use it as context when creating inbox items.
 
 ---
 
 ## Auto-Commit + Push
 
 ```bash
-# Stage report + inbox files
-git add ai/bughunt/ ai/inbox/ 2>/dev/null
+# Stage report artifacts
+git add ai/bughunt/ 2>/dev/null
 
 # Commit
-git diff --cached --quiet || git commit -m "docs: bughunt report + ${N} inbox findings"
+git diff --cached --quiet || git commit -m "docs: bughunt report"
 
 # Push to develop (orchestrator pulls from remote)
 git push origin develop
@@ -85,8 +56,8 @@ Keep the report file (`ai/bughunt/`) — it serves as Context for Spark.
 ```
 Bug Hunt complete.
 Report: ai/bughunt/{date}-report.md
-Findings: {N} groups → {M} inbox files created.
-Spark will process findings on next orchestrator cycle.
+Findings: {N} groups saved to report.
+OpenClaw will review and decide next action.
 ```
 
 **Headless mode:** Same info in return format.
@@ -100,8 +71,8 @@ status: completed | degraded
 mode: bughunt
 findings_count: N
 groups_count: M
-inbox_files_created: M  # max 10
 report_path: ai/bughunt/{date}-report.md
+openclaw_review_needed: true
 pushed: true | false
 ```
 
@@ -109,7 +80,8 @@ pushed: true | false
 
 ## What Bughunt Does NOT Do
 
-- Does NOT create specs (Spark does that from inbox)
+- Does NOT create inbox items directly
+- Does NOT create specs directly
 - Does NOT add backlog entries (Spark does that)
 - Does NOT invoke autopilot
 - Does NOT modify source code

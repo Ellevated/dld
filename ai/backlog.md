@@ -114,7 +114,7 @@
 | TECH-150 | Reflect Synthesis: Shell Script Safety Rules + Process ADRs | done | P2 | [spec](features/TECH-150-2026-03-12-reflect-synthesis.md) |
 | BUG-121 | Orchestrator Post-Autopilot Tail Duplication + Broken Phase Ownership | draft | P0 | [spec](features/BUG-121-2026-03-16-orchestrator-post-autopilot-phase-ownership.md) |
 | BUG-152 | Agent SDK venv сломан — fake bash wrapper вместо реального venv | done | P0 | [spec](features/BUG-152-2026-03-17-venv-sdk-broken.md) |
-| TECH-151 | Orchestrator North-Star Alignment (draft→queued, remove dead code, inbox invariant) | in_progress | P0 | [spec](features/TECH-151-2026-03-17-orchestrator-north-star-alignment.md) |
+| TECH-151 | Orchestrator North-Star Alignment (draft→queued, remove dead code, inbox invariant) | done | P0 | [spec](features/TECH-151-2026-03-17-orchestrator-north-star-alignment.md) |
 
 ---
 

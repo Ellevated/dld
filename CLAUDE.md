@@ -267,7 +267,8 @@ If a tool returns "content filtering policy" error — retry with alternative to
 | `resumed` | Human | Problem resolved, continue |
 | `done` | Autopilot | Completed |
 
-**Flow:** `draft → queued → in_progress → done`
+**Default Flow:** `queued → in_progress → done`
+**Manual Override Flow:** `draft → queued → in_progress → done`
 **Recovery:** `in_progress → blocked → resumed → in_progress`
 
 ---
