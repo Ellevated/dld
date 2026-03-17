@@ -173,7 +173,7 @@ Write to: `ai/audit/deep-audit-report.md`
 ### Top 10 Debt Items (Prioritized)
 | # | Item | Category | Source Persona | Evidence | Effort |
 |---|------|----------|---------------|----------|--------|
-| 1 | {item} | {category} | {persona(s)} | {file:line} | small/medium/large |
+| 1 | {item} | {category} | {persona(s)} | {file:line} | ~$1 / ~$5 / ~$15 |
 
 ---
 

@@ -211,6 +211,49 @@ Brownfield:   /retrofit → /audit deep → /architect → /board → stabilize 
 
 ---
 
+## AI-First Economic Model
+
+This project is maintained by AI agents. All cost/effort assessments MUST reflect compute reality, not human-team estimates.
+
+### Cost Reference
+
+| Change Size | Time | Cost | Example |
+|-------------|------|------|---------|
+| Simple (1-3 files) | 15 min | ~$1 | Fix typo, add field, update config |
+| Medium (5-10 files) | 1-2 hours | ~$5 | New endpoint, refactor module |
+| Large (20+ files) | 3-4 hours | ~$15 | Cross-domain change, new feature |
+| Domain extraction | 1 day | ~$50 | Split monolith, new bounded context |
+
+### Priority = Impact, NOT Effort
+
+```
+P0 = Blocks revenue, users, or security RIGHT NOW (Cost of Delay: immediate)
+P1 = High impact on product quality, including refactoring and testing (Cost of Delay: this week)
+P2 = Nice-to-have, doesn't affect metrics this week (Cost of Delay: low)
+```
+
+**Rule:** Implementation cost ($1-50) is NEVER a factor in priority. Priority = pure Impact / Cost of Delay.
+**Rule:** Refactoring and testing = P1 by default. Never deprioritize because "effort is high" — effort is always low in AI-first.
+**Rule:** Max 5 P0 tasks in backlog simultaneously (priority inflation gate).
+
+### Risk Classification
+
+```
+R0 = Irreversible: data loss, schema migration, security exposure, public API break
+R1 = High blast radius: 3+ files, cross-domain, external dependency, state machine change
+R2 = Contained: 1-2 files, single domain, internal, trivially rollbackable
+```
+
+### Routing Matrix (Impact x Risk)
+
+| Impact \ Risk | R0 (Irreversible) | R1 (Blast radius) | R2 (Contained) |
+|---|---|---|---|
+| P0 | COUNCIL | HUMAN | AUTO |
+| P1 | COUNCIL | AUTO | AUTO |
+| P2 | HUMAN | AUTO | AUTO |
+
+---
+
 ## Key Rules
 
 ### Imports Direction

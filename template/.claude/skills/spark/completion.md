@@ -88,9 +88,9 @@ When setting status in spec, **verbally confirm**:
 
 ### Backlog entry format:
 ```
-| ID | Task | Status | Priority | Feature.md |
-|----|------|--------|----------|------------|
-| FTR-XXX | Task name | queued | P1 | [FTR-XXX](features/FTR-XXX-YYYY-MM-DD-name.md) |
+| ID | Task | Status | Priority | Risk | Feature.md |
+|----|------|--------|----------|------|------------|
+| FTR-XXX | Task name | queued | P1 | R2 | [FTR-XXX](features/FTR-XXX-YYYY-MM-DD-name.md) |
 ```
 
 ### Status on Spark exit:

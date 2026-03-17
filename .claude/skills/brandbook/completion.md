@@ -47,7 +47,7 @@ Create `checklist.md`:
 # Brand Launch Checklist: {App Name}
 Generated: {date}
 
-## Day 1: Foundation (2-3 hours)
+## Day 1: Foundation (~$3-5 compute or 2-3 hours manual)
 - [ ] Review brand-dna.md, adjust if needed
 - [ ] Download fonts: {Google Fonts links}
 - [ ] Test color contrast: webaim.org/resources/contrastchecker
@@ -56,14 +56,14 @@ Generated: {date}
   - Add HEX codes: {list}
   - Upload font files
 
-## Day 2: Visual Core (3-4 hours)
+## Day 2: Visual Core (~$5-10 compute or 3-4 hours manual)
 - [ ] Generate logo variants using prompts.md
 - [ ] Select best, vectorize (Vectorizer.ai) if needed
 - [ ] Export app icon: iOS 1024x1024 (no alpha) + Android adaptive
 - [ ] Create favicon: 32x32 + 16x16
 - [ ] Create OG image: 1200x630
 
-## Day 3: Store & Marketing (2-3 hours)
+## Day 3: Store & Marketing (~$3-5 compute or 2-3 hours manual)
 - [ ] Take app screenshots (emulator or device, no status bar)
 - [ ] Create store mockups (Previewed.app): 5 slides
 - [ ] Add headline copy per screenshot (from store-assets.md)

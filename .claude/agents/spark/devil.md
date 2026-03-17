@@ -204,7 +204,7 @@ Facilitator maps these to EC-IDs in the spec's `## Eval Criteria` section.
 **Cons:** Not flexible per user.
 **Viability:** Medium — works for MVP if all users have same tier
 
-**Verdict:** Alternative 1 (soft warning) might solve 80% of need with 5% of effort. Validate with user first.
+**Verdict:** Alternative 1 (soft warning) might solve 80% of need with ~$1 compute (~5% of full implementation cost). Validate with user first.
 
 ---
 

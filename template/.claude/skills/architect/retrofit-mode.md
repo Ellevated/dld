@@ -281,8 +281,8 @@ Format:
 **Target state:** {From blueprint — what it should become}
 **Files likely affected:** {rough list}
 **Depends on:** none
-**Risk:** low | medium | high
-**Effort estimate:** small | medium | large
+**Risk:** R0 | R1 | R2
+**Effort estimate:** small (~$1) | medium (~$5) | large (~$15)
 
 ### MP-002: {Title}
 ...

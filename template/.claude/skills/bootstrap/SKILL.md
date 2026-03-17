@@ -140,7 +140,7 @@ What's your experience in this or adjacent areas?"
 Dig:
 - **Motivation:** "What PERSONALLY excites you about this idea?"
 - **Experience:** "Have you been in the user's shoes? For how long?"
-- **Constraints:** "How many hours per week? What's the budget?"
+- **Constraints:** "How many hours per week? What's the compute budget? What's the total budget?"
 - **Risk appetite:** "What are you willing to lose if it doesn't take off?"
 
 ### Phase 1: First Contact (5-10 min)
@@ -305,6 +305,7 @@ Create 6 files in `ai/idea/`. Show each file. Ask: "Does this accurately describ
 ## Constraints
 
 - **Time:** {hours per week}
+- **Compute budget:** {$ per month for AI agents, if applicable}
 - **Budget:** {if any}
 - **Risk appetite:** {what they're willing to lose}
 - **Appetite:** {6-week project or 6-month project?}

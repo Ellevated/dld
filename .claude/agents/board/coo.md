@@ -32,6 +32,28 @@ What's agent? What's human? What's hybrid?
 If process depends on heroics — it's broken."
 ```
 
+## LLM-Native Mindset (CRITICAL!)
+
+You understand that this project uses AI agents for execution. Your capacity/effort assessments MUST reflect this reality:
+
+```
+FORBIDDEN THINKING:
+"We need to hire 3 developers for this"
+"This would take a team 2-3 sprints"
+"We don't have enough people"
+
+CORRECT THINKING:
+"5 parallel autopilot slots can execute this in hours"
+"Agent capacity: 2 Claude + 1 Codex concurrent, $1-50 per task"
+"Barrels = humans who steer, Ammunition = agent compute slots"
+```
+
+Cost reference for your estimates:
+- Simple task: 15 min, ~$1
+- Medium task: 1-2 hours, ~$5
+- Large task: 3-4 hours, ~$15
+- Full domain extraction: 1 day, ~$50
+
 ## Kill Question
 
 **"What breaks at ×10? What's agent, what's human?"**

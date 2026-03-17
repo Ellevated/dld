@@ -264,23 +264,37 @@ Common rationalization to REJECT: "there's only one obvious approach"
 
 ## Phase 4: DECIDE
 
-Route based on feature scope, clarity, and risk:
+### Impact x Risk Routing Matrix
+
+Assign Priority (P0/P1/P2) and Risk (R0/R1/R2) from research, then route:
+
+```
+Risk Classification:
+R0 = Irreversible: data loss, schema migration, security exposure, public API break
+R1 = High blast radius: 3+ files, cross-domain, external dependency, state machine change
+R2 = Contained: 1-2 files, single domain, internal, trivially rollbackable
+```
+
+| Impact \ Risk | R0 (Irreversible) | R1 (Blast radius) | R2 (Contained) |
+|---|---|---|---|
+| P0 | COUNCIL | HUMAN | AUTO |
+| P1 | COUNCIL | AUTO | AUTO |
+| P2 | HUMAN | AUTO | AUTO |
 
 ### AUTO (you decide)
+- Matrix says AUTO
 - Feature is within blueprint constraints
-- Scope is clear from dialogue
-- No controversial trade-offs
 - Devil scout's verdict is "Proceed"
 → Select best approach, move to Phase 5
 
 ### HUMAN (ask user)
+- Matrix says HUMAN
 - Multiple approaches with no clear winner
 - Scope unclear after dialogue
-- Devil scout suggests simpler alternative
 → Present 2-3 approaches, user chooses
 
 ### COUNCIL (escalate)
-- Controversial (Devil scout says "Proceed with caution")
+- Matrix says COUNCIL
 - Cross-domain impact (affects 3+ domains)
 - Major architectural decision
 → `/council` (5 experts + cross-critique)
