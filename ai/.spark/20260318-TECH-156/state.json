@@ -1,0 +1,22 @@
+{
+  "spec_id": "TECH-156",
+  "title": "Silence intermediate Telegram notifications during DLD cycle",
+  "created_at": "2026-03-18",
+  "phases": {
+    "collect": "done",
+    "research": "done",
+    "synthesize": "done",
+    "decide": "done",
+    "write": "done",
+    "validate": "done",
+    "reflect": "done",
+    "completion": "done"
+  },
+  "research_files": [
+    "research-codebase.md",
+    "research-external.md",
+    "research-patterns.md",
+    "research-devil.md"
+  ],
+  "approach": 1
+}
