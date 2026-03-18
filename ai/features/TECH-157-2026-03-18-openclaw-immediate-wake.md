@@ -1,5 +1,5 @@
 # Feature: [TECH-157] Immediate OpenClaw wake after pending-event write
-**Status:** queued | **Priority:** P1 | **Date:** 2026-03-18
+**Status:** done | **Priority:** P1 | **Date:** 2026-03-18
 
 ## Why
 After autopilot/qa/reflect completion, pueue-callback.sh writes a JSON event file to `ai/openclaw/pending-events/`. OpenClaw only picks these up via cron scan (every 5 minutes). This creates up to 5 minutes of lag before cycle completion is reported to the user. With 3 sequential skills (autopilot -> QA -> reflect), total cron lag can reach 15 minutes.
@@ -143,28 +143,200 @@ N/A -- no UI elements.
 
 ---
 
-## Implementation Plan
+## Drift Log
+
+**Checked:** 2026-03-18 20:30 UTC
+**Result:** no_drift
+
+### Changes Detected
+| File | Change Type | Action Taken |
+|------|-------------|--------------|
+| `scripts/vps/pueue-callback.sh` | no changes | None required |
+
+### References Updated
+- No updates needed — all line references in spec match current file state exactly.
+
+---
+
+## Detailed Implementation Plan
 
 ### Research Sources
 - [Shell Scripting Best Practices](https://oneuptime.com/blog/post/2026-02-13-shell-scripting-best-practices/view) -- fail-safe `|| true` pattern
 - [Timeout Handling in Bash](https://coderlegion.com/12372/timeout-handling-in-bash-preventing-hanging-scripts-in-production) -- bounding synchronous CLI calls
+- `ai/.spark/20260318-TECH-157/research-codebase.md` -- verified `openclaw system event --mode now` is the correct subcommand
 
-### Task 1: Add OpenClaw wake call to pueue-callback.sh
-**Type:** code
+### Task 1: Add OpenClaw immediate wake call after event file write in pueue-callback.sh
+
 **Files:**
-  - modify: `scripts/vps/pueue-callback.sh`
-**Pattern:** [Timeout + fail-safe pattern](https://coderlegion.com/12372/timeout-handling-in-bash-preventing-hanging-scripts-in-production)
-**Acceptance:**
-  - Wake call is placed AFTER `cat > "$EVENT_FILE"` heredoc (line 324) and BEFORE closing `fi` (line 325)
-  - Uses full path `${HOME}/.npm-global/bin/openclaw` (not bare `openclaw`)
-  - Wrapped with `timeout 5` to prevent hang
-  - Guarded with `[[ -x "$OPENCLAW_BIN" ]]` to handle missing binary gracefully
-  - Logged to `$CALLBACK_LOG`
-  - `|| true` ensures callback never fails due to wake
-  - File stays under 420 LOC (currently 411, adding ~5 lines)
+- Modify: `scripts/vps/pueue-callback.sh:324-325`
+
+**Context:**
+Step 6.8 (lines 290-326) writes a JSON event file to `ai/openclaw/pending-events/` after autopilot/qa/reflect completion. Currently OpenClaw only picks these up via cron (every 5 minutes). This task adds an immediate `openclaw system event --mode now` call right after the file write to eliminate cron lag, keeping cron as fallback if the wake fails.
+
+**Step 1: Verify current insertion point**
+
+```bash
+sed -n '314,326p' scripts/vps/pueue-callback.sh
+```
+
+Expected output (confirms insertion point is intact):
+```
+        fi
+        cat > "$EVENT_FILE" <<EOF
+{
+  "project_id": "${PROJECT_ID}",
+  "skill": "${SKILL}",
+  "status": "${STATUS}",
+  "task_label": "${TASK_LABEL}",
+  "artifact_rel": "${ARTIFACT_REL}",
+  "created_at": "${EVENT_TS}"
+}
+EOF
+    fi
+fi
+```
+
+**Step 2: Insert wake call after heredoc EOF (line 324), before inner fi (line 325)**
+
+In `scripts/vps/pueue-callback.sh`, find the exact text block and replace it. The old text is the closing of the heredoc followed immediately by the inner `fi`:
+
+```
+OLD (lines 324-325):
+EOF
+    fi
+
+NEW (lines 324-331):
+EOF
+
+        # Wake OpenClaw immediately so it reports cycle completion without cron lag
+        OPENCLAW_BIN="${HOME}/.npm-global/bin/openclaw"
+        if [[ -x "$OPENCLAW_BIN" ]]; then
+            timeout 5 "$OPENCLAW_BIN" system event --mode now 2>>"$CALLBACK_LOG" || true
+            echo "[callback] OpenClaw wake sent for ${SKILL} event (project=${PROJECT_ID})" >> "$CALLBACK_LOG"
+        fi
+    fi
+```
+
+The complete edit uses `old_string` / `new_string` replacement:
+
+**old_string** (unique in file -- the EOF+fi sequence inside Step 6.8):
+```
+EOF
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Step 7: Post-autopilot — dispatch QA + Reflect
+```
+
+**new_string:**
+```
+EOF
+
+        # Wake OpenClaw immediately so it reports cycle completion without cron lag
+        OPENCLAW_BIN="${HOME}/.npm-global/bin/openclaw"
+        if [[ -x "$OPENCLAW_BIN" ]]; then
+            timeout 5 "$OPENCLAW_BIN" system event --mode now 2>>"$CALLBACK_LOG" || true
+            echo "[callback] OpenClaw wake sent for ${SKILL} event (project=${PROJECT_ID})" >> "$CALLBACK_LOG"
+        fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Step 7: Post-autopilot — dispatch QA + Reflect
+```
+
+**Step 3: Verify syntax and LOC**
+
+```bash
+bash -n scripts/vps/pueue-callback.sh && echo "SYNTAX OK" || echo "SYNTAX FAIL"
+```
+
+Expected:
+```
+SYNTAX OK
+```
+
+```bash
+wc -l scripts/vps/pueue-callback.sh | awk '{if ($1 <= 420) print "LOC OK: "$1; else print "LOC EXCEEDED: "$1}'
+```
+
+Expected:
+```
+LOC OK: 417
+```
+
+**Step 4: Verify functional correctness**
+
+```bash
+grep -n "system event --mode now" scripts/vps/pueue-callback.sh
+```
+
+Expected:
+```
+328:            timeout 5 "$OPENCLAW_BIN" system event --mode now 2>>"$CALLBACK_LOG" || true
+```
+
+```bash
+grep -n "npm-global/bin/openclaw" scripts/vps/pueue-callback.sh
+```
+
+Expected:
+```
+327:        OPENCLAW_BIN="${HOME}/.npm-global/bin/openclaw"
+328:            timeout 5 "$OPENCLAW_BIN" system event --mode now 2>>"$CALLBACK_LOG" || true
+```
+
+```bash
+grep -n "\-x.*OPENCLAW_BIN" scripts/vps/pueue-callback.sh
+```
+
+Expected:
+```
+329:        if [[ -x "$OPENCLAW_BIN" ]]; then
+```
+
+```bash
+grep -n "timeout 5" scripts/vps/pueue-callback.sh
+```
+
+Expected:
+```
+328:            timeout 5 "$OPENCLAW_BIN" system event --mode now 2>>"$CALLBACK_LOG" || true
+```
+
+**Step 5: Run full acceptance verification**
+
+```bash
+# Smoke
+bash -n scripts/vps/pueue-callback.sh && echo "syntax OK"
+wc -l scripts/vps/pueue-callback.sh | awk '{if ($1 <= 420) print "LOC OK: "$1; else print "LOC EXCEEDED: "$1}'
+# Functional
+grep -n "system event --mode now" scripts/vps/pueue-callback.sh
+grep -n "timeout 5" scripts/vps/pueue-callback.sh
+grep -n "npm-global/bin/openclaw" scripts/vps/pueue-callback.sh
+grep -n "\-x.*OPENCLAW_BIN" scripts/vps/pueue-callback.sh
+grep -n "|| true" scripts/vps/pueue-callback.sh | grep openclaw
+```
+
+**Acceptance Criteria:**
+- [ ] New code is between `EOF` (line 324) and inner `fi` -- inside the Step 6.8 `if` block
+- [ ] Uses full path `${HOME}/.npm-global/bin/openclaw` (not bare `openclaw`)
+- [ ] Wrapped with `timeout 5` to prevent hang
+- [ ] Guarded with `[[ -x "$OPENCLAW_BIN" ]]` to handle missing binary gracefully
+- [ ] `|| true` ensures callback never exits non-zero due to wake failure
+- [ ] Logged to `$CALLBACK_LOG` with skill and project context
+- [ ] `bash -n` syntax check passes
+- [ ] File stays at 417 LOC (under 420 limit)
+- [ ] No other lines in the file are modified
 
 ### Execution Order
-1
+
+Task 1 (only task)
+
+### Dependencies
+
+- None (single task, additive change)
 
 ---
 

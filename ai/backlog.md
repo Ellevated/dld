@@ -119,7 +119,7 @@
 | TECH-154 | DLD Cycle E2E Reliability — First Full Pass (QA spec path, reflect, artifact-scan) | done | P0 | [spec](features/TECH-154-2026-03-18-cycle-e2e-reliability.md) |
 | BUG-155 | DLD Cycle E2E Reliability v2 — Three Gap Closure + Smoke Test | done | P0 | [spec](features/BUG-155-2026-03-18-cycle-e2e-reliability-v2.md) |
 | TECH-156 | Silence intermediate Telegram notifications during cycle (OpenClaw handles) | done | P1 | [spec](features/TECH-156-2026-03-18-silence-intermediate-notifications.md) |
-| TECH-157 | Immediate OpenClaw wake after pending-event write (eliminate 5-min cron lag) | queued | P1 | [spec](features/TECH-157-2026-03-18-openclaw-immediate-wake.md) |
+| TECH-157 | Immediate OpenClaw wake after pending-event write (eliminate 5-min cron lag) | done | P1 | [spec](features/TECH-157-2026-03-18-openclaw-immediate-wake.md) |
 
 ---
 

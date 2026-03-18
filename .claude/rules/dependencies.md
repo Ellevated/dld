@@ -162,6 +162,7 @@ Dependency map between project components.
 |------|-------|----------|
 | db.py | scripts/vps/db.py | python3 db.py callback (parameterized SQL via release_slot, finish_task, update_project_phase) |
 | notify.py | scripts/vps/notify.py | send Telegram notification by project_id |
+| openclaw CLI | ${HOME}/.npm-global/bin/openclaw | system event --mode now (immediate wake after pending-event write) |
 | pueue CLI | PATH | pueue log (optional summary) |
 
 ### Used by (←)
@@ -551,3 +552,4 @@ Dependency map between project components.
 | 2026-03-10 | Added approve_handler.py + evening prompt + approve/reject handlers (FTR-147 Task 5) | coder |
 | 2026-03-10 | Added gemini-runner.sh, admin_handler.py, nexus-cache-refresh.sh (FTR-148) | coder |
 | 2026-03-12 | Added photo_handler.py + registered PHOTO handler in telegram-bot.py | coder |
+| 2026-03-18 | Added openclaw CLI dependency to pueue-callback.sh (TECH-157) | coder |

@@ -322,6 +322,13 @@ print(state['path'] if state else '')
   "created_at": "${EVENT_TS}"
 }
 EOF
+
+        # Wake OpenClaw immediately so it reports cycle completion without cron lag
+        OPENCLAW_BIN="${HOME}/.npm-global/bin/openclaw"
+        if [[ -x "$OPENCLAW_BIN" ]]; then
+            timeout 5 "$OPENCLAW_BIN" system event --mode now 2>>"$CALLBACK_LOG" || true
+            echo "[callback] OpenClaw wake sent for ${SKILL} event (project=${PROJECT_ID})" >> "$CALLBACK_LOG"
+        fi
     fi
 fi
 
