@@ -9,6 +9,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS project_state (
     project_id   TEXT PRIMARY KEY,
     path         TEXT NOT NULL,
+    chat_id      INTEGER,
     topic_id     INTEGER,
     provider     TEXT NOT NULL DEFAULT 'claude',
     phase        TEXT NOT NULL DEFAULT 'idle',
@@ -17,6 +18,10 @@ CREATE TABLE IF NOT EXISTS project_state (
     enabled      INTEGER NOT NULL DEFAULT 1,
     updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_project_state_chat_topic_unique
+ON project_state(chat_id, topic_id)
+WHERE topic_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS compute_slots (
     slot_number  INTEGER PRIMARY KEY,

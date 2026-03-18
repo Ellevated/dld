@@ -95,25 +95,40 @@ def get_topic_id(update: Update) -> int | None:
     return None if thread_id == 1 else thread_id  # DA-4: thread_id=1 is General topic
 
 
+def get_chat_id(update: Update) -> int | None:
+    chat = update.effective_chat
+    return int(chat.id) if chat else None
+
+
 def _resolve_project(update: Update, context: ContextTypes.DEFAULT_TYPE) -> dict | None:
     args = context.args or []
     if args:
         return db.get_project_state(args[0])
     topic_id = get_topic_id(update)
-    return db.get_project_by_topic(topic_id) if topic_id else None
+    chat_id = get_chat_id(update)
+    return db.get_project_by_topic(topic_id, chat_id=chat_id) if topic_id else None
 
 
-def _save_to_inbox(project: dict, text: str) -> Path:
+def _save_to_inbox(project: dict, text: str, *, chat_id: int | None = None, topic_id: int | None = None) -> Path:
     inbox_dir = Path(project["path"]) / "ai" / "inbox"
     inbox_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     route = detect_route(text)
     filepath = inbox_dir / f"{timestamp}-telegram.md"
-    filepath.write_text(
-        f"# Idea: {timestamp}\n**Source:** telegram\n**Route:** {route}\n**Status:** new\n---\n{text}\n",
-        encoding="utf-8",
-    )
-    logger.info("Saved to inbox: %s (route=%s)", filepath, route)
+    lines = [
+        f"# Idea: {timestamp}",
+        "**Source:** telegram",
+        f"**Project:** {project['project_id']}",
+        f"**Route:** {route}",
+        "**Status:** new",
+    ]
+    if chat_id is not None:
+        lines.append(f"**ChatID:** {chat_id}")
+    if topic_id is not None:
+        lines.append(f"**TopicID:** {topic_id}")
+    lines.extend(["---", text])
+    filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    logger.info("Saved to inbox: %s (route=%s project=%s)", filepath, route, project["project_id"])
     return filepath
 
 
@@ -223,7 +238,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             return
         await _send_project_status(update, project)
     elif topic_id:
-        project = db.get_project_by_topic(topic_id)
+        project = db.get_project_by_topic(topic_id, chat_id=get_chat_id(update))
         if project:
             await _send_project_status(update, project)
         else:
@@ -293,14 +308,14 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
         task_text = " ".join(args[1:]) if len(args) > 1 else None
     elif topic_id:
-        project = db.get_project_by_topic(topic_id)
+        project = db.get_project_by_topic(topic_id, chat_id=get_chat_id(update))
     if not project:
         await update.message.reply_text(
             "Укажи проект: `/run <project>` или пиши в топик проекта.", parse_mode="Markdown"
         )
         return
     if task_text:
-        _save_to_inbox(project, task_text)
+        _save_to_inbox(project, task_text, chat_id=get_chat_id(update), topic_id=topic_id)
         await update.message.reply_text(f"Принято. Запускаю цикл для `{project['project_id']}`.", parse_mode="Markdown")
     trigger_file = SCRIPT_DIR / f".run-now-{project['project_id']}"
     trigger_file.touch()
@@ -308,6 +323,40 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(
             f"Запускаю цикл для `{project['project_id']}`.", parse_mode="Markdown"
         )
+
+
+async def cmd_bindtopic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update.effective_user.id):
+        return
+    topic_id = get_topic_id(update)
+    chat_id = get_chat_id(update)
+    args = context.args or []
+    if not topic_id or chat_id is None:
+        await update.message.reply_text("Эту команду нужно запускать внутри project topic.")
+        return
+    if len(args) != 1:
+        await update.message.reply_text("Использование: `/bindtopic <project_id>`", parse_mode="Markdown")
+        return
+
+    project_id = args[0]
+    project = db.get_project_state(project_id)
+    if not project:
+        await update.message.reply_text(f"Проект `{project_id}` не найден.", parse_mode="Markdown")
+        return
+
+    existing = db.get_project_by_topic(topic_id, chat_id=chat_id)
+    if existing and existing["project_id"] != project_id:
+        await update.message.reply_text(
+            f"Этот topic уже привязан к `{existing['project_id']}`.",
+            parse_mode="Markdown",
+        )
+        return
+
+    db.set_project_topic(project_id, topic_id, chat_id=chat_id)
+    await update.message.reply_text(
+        f"Привязал topic `{topic_id}` к проекту `{project_id}`.",
+        parse_mode="Markdown",
+    )
 
 
 async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -381,19 +430,18 @@ async def handle_confirm_heavy(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(f"Проект {project_id} не найден.")
         return
 
+    current_chat_id = get_chat_id(update)
+    current_topic_id = get_topic_id(update)
+
     if action == "yes":
-        _save_to_inbox(project, pending["text"])
+        _save_to_inbox(project, pending["text"], chat_id=current_chat_id, topic_id=current_topic_id)
         await query.edit_message_text(f"Принято. Запускаю `{pending['route']}`.")
     elif action == "spark":
-        # Override route: save as spark instead
+        _save_to_inbox(project, pending["text"], chat_id=current_chat_id, topic_id=current_topic_id)
         inbox_dir = Path(project["path"]) / "ai" / "inbox"
-        inbox_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        filepath = inbox_dir / f"{ts}-telegram.md"
-        filepath.write_text(
-            f"# Idea: {ts}\n**Source:** telegram\n**Route:** spark\n**Status:** new\n---\n{pending['text']}\n",
-            encoding="utf-8",
-        )
+        latest = sorted(inbox_dir.glob("*-telegram.md"))[-1]
+        content = latest.read_text(encoding="utf-8")
+        latest.write_text(content.replace("**Route:** architect", "**Route:** spark").replace("**Route:** council", "**Route:** spark").replace("**Route:** bughunt", "**Route:** spark"), encoding="utf-8")
         await query.edit_message_text("Перенаправлено в Spark.")
     else:  # no
         await query.edit_message_text("Отменено.")
@@ -410,7 +458,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if context.bot_data.get(pending_key):
         await handle_rework_comment(update, context)
         return
-    project = db.get_project_by_topic(topic_id)
+    project = db.get_project_by_topic(topic_id, chat_id=get_chat_id(update))
     if not project:
         return
     text = update.message.text
@@ -447,7 +495,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
-    _save_to_inbox(project, text)
+    _save_to_inbox(project, text, chat_id=get_chat_id(update), topic_id=topic_id)
     _ROUTE_LABELS = {
         "spark": "Создам спеку",
         "spark_bug": "Разберу баг",
@@ -485,6 +533,7 @@ def main() -> None:
     application.add_handler(CommandHandler("nexussync", cmd_nexussync))
     application.add_handler(CommandHandler("status", cmd_status))
     application.add_handler(CommandHandler("run", cmd_run))
+    application.add_handler(CommandHandler("bindtopic", cmd_bindtopic))
     application.add_handler(CommandHandler("pause", cmd_pause))
     application.add_handler(CommandHandler("resume", cmd_resume))
     # fmt: off

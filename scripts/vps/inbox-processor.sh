@@ -57,6 +57,7 @@ ROUTE=$(grep -oE '^\*\*Route:\*\* [^ ]+' "$INBOX_FILE" 2>/dev/null | sed 's/\*\*
 ROUTE="${ROUTE:-spark}"
 
 SOURCE=$(grep -oE '^\*\*Source:\*\* [^ ]+' "$INBOX_FILE" 2>/dev/null | sed 's/\*\*Source:\*\* //' || echo "telegram")
+FILE_PROJECT_ID=$(grep -oE '^\*\*Project:\*\* .+' "$INBOX_FILE" 2>/dev/null | sed 's/\*\*Project:\*\* //' || true)
 
 # Context: optional link to detailed document (synthesis.md, report.md, spec file)
 CONTEXT=$(grep -oE '^\*\*Context:\*\* .+' "$INBOX_FILE" 2>/dev/null | sed 's/\*\*Context:\*\* //' || true)
@@ -67,6 +68,11 @@ IDEA_TEXT=$(sed -n '/^---$/,$ { /^---$/d; p; }' "$INBOX_FILE" 2>/dev/null | head
 # Fallback: if no separator, use entire file body (skip metadata header lines)
 if [[ -z "$IDEA_TEXT" ]]; then
     IDEA_TEXT=$(grep -vE '^\*\*(Source|Route|Status|Context):\*\*|^#' "$INBOX_FILE" | head -20 | tr '\n' ' ' | xargs)
+fi
+
+if [[ -n "$FILE_PROJECT_ID" && "$FILE_PROJECT_ID" != "$PROJECT_ID" ]]; then
+    echo "[inbox] ERROR: project mismatch in inbox file: header=${FILE_PROJECT_ID} arg=${PROJECT_ID} file=${INBOX_FILE}" >&2
+    exit 1
 fi
 
 echo "[inbox] route=${ROUTE} project=${PROJECT_ID} file=$(basename "$INBOX_FILE")"

@@ -54,6 +54,21 @@ class TestSeedProjects:
         assert db.get_project_state("a")["provider"] == "claude"
         assert db.get_project_state("b")["provider"] == "codex"
 
+    def test_seed_preserves_existing_topic_binding_when_json_omits_it(self, isolated_db):
+        """Reseed must not erase topic/chat binding if projects.json omits it."""
+        db.seed_projects_from_json([
+            {"project_id": "proj1", "path": "/old/path", "chat_id": -1001, "topic_id": 42, "provider": "claude"},
+        ])
+        db.seed_projects_from_json([
+            {"project_id": "proj1", "path": "/new/path", "provider": "claude"},
+        ])
+
+        state = db.get_project_state("proj1")
+        assert state is not None
+        assert state["path"] == "/new/path"
+        assert state["chat_id"] == -1001
+        assert state["topic_id"] == 42
+
 
 # --- EC-12: log_task creates DB entry ---
 

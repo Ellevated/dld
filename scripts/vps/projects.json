@@ -1,0 +1,45 @@
+[
+  {
+    "project_id": "awardybot",
+    "path": "/home/dld/projects/awardybot",
+    "chat_id": -1003730735152,
+    "provider": "claude",
+    "auto_approve_timeout": 30
+  },
+  {
+    "project_id": "dld",
+    "path": "/home/dld/projects/dld",
+    "chat_id": -1003730735152,
+    "topic_id": 7,
+    "provider": "claude",
+    "auto_approve_timeout": 30
+  },
+  {
+    "project_id": "dowry",
+    "path": "/home/dld/projects/dowry",
+    "chat_id": -1003730735152,
+    "provider": "claude",
+    "auto_approve_timeout": 30
+  },
+  {
+    "project_id": "dowry-mc",
+    "path": "/home/dld/projects/dowry-mc",
+    "chat_id": -1003730735152,
+    "provider": "claude",
+    "auto_approve_timeout": 30
+  },
+  {
+    "project_id": "nexus",
+    "path": "/home/dld/projects/nexus",
+    "chat_id": -1003730735152,
+    "provider": "claude",
+    "auto_approve_timeout": 30
+  },
+  {
+    "project_id": "plpilot",
+    "path": "/home/dld/projects/plpilot",
+    "chat_id": -1003730735152,
+    "provider": "claude",
+    "auto_approve_timeout": 30
+  }
+]

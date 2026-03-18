@@ -153,10 +153,17 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     except ProcessError as e:
         logger.error("CLI process error: %s", e)
         exit_code = 3
-        result_text = f"Process error: {e}"
+        stderr = getattr(e, "stderr", None)
+        if stderr:
+            result_text = f"Process error: {e}\nSTDERR:\n{stderr}"
+        else:
+            result_text = f"Process error: {e}"
     except Exception as e:
         # Catch SDK init timeouts ("Control request timeout: initialize")
         err_str = str(e)
+        stderr = getattr(e, "stderr", None)
+        if stderr:
+            err_str = f"{err_str}\nSTDERR:\n{stderr}"
         if "timeout" in err_str.lower():
             logger.error("SDK init timeout: %s", e)
             exit_code = 124

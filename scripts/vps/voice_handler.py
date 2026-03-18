@@ -70,13 +70,15 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     is_authorized = tb.is_authorized
     get_topic_id = tb.get_topic_id
+    get_chat_id = tb.get_chat_id
     _save_to_inbox = tb._save_to_inbox
 
     if not is_authorized(update.effective_user.id):
         return
 
     topic_id = get_topic_id(update)
-    project = db.get_project_by_topic(topic_id) if topic_id else None
+    chat_id = get_chat_id(update)
+    project = db.get_project_by_topic(topic_id, chat_id=chat_id) if topic_id else None
     if not project:
         return
 
@@ -107,5 +109,5 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("Ошибка расшифровки")
         return
 
-    _save_to_inbox(project, text)
+    _save_to_inbox(project, text, chat_id=chat_id, topic_id=topic_id)
     await update.message.reply_text(f"🎙 Принято: {text[:150]}")

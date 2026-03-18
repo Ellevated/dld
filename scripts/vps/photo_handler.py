@@ -30,13 +30,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     tb = sys.modules.get("telegram_bot") or sys.modules.get("__main__")
     is_authorized = tb.is_authorized
     get_topic_id = tb.get_topic_id
+    get_chat_id = tb.get_chat_id
     detect_route = tb.detect_route
 
     if not is_authorized(update.effective_user.id):
         return
 
     topic_id = get_topic_id(update)
-    project = db.get_project_by_topic(topic_id) if topic_id else None
+    chat_id = get_chat_id(update)
+    project = db.get_project_by_topic(topic_id, chat_id=chat_id) if topic_id else None
     if not project:
         return
 
@@ -73,8 +75,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     filepath.write_text(
         f"# Idea: {timestamp}\n"
         f"**Source:** telegram\n"
+        f"**Project:** {project['project_id']}\n"
         f"**Route:** {route}\n"
         f"**Status:** new\n"
+        f"**ChatID:** {chat_id}\n"
+        f"**TopicID:** {topic_id}\n"
         f"---\n"
         f"{text}\n",
         encoding="utf-8",

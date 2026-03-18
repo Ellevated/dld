@@ -85,8 +85,7 @@ async def _send_message(text: str, thread_id: int | None = None, reply_markup: d
 async def send_to_project(project_id: str, text: str) -> bool:
     """Send a message to a project's Telegram topic.
 
-    Looks up topic_id from SQLite, sends via Bot API.
-    Falls back to General topic (no thread_id) if topic_id is None.
+    Fail closed: if project has no explicit topic binding, do NOT send to General.
     """
     project = db.get_project_state(project_id)
     if project is None:
@@ -94,9 +93,14 @@ async def send_to_project(project_id: str, text: str) -> bool:
         return False
 
     topic_id = project.get("topic_id")
-    # DA-4: message_thread_id=1 is General topic bug. Pass None instead.
-    thread_id = topic_id if topic_id and topic_id != 1 else None
-    return await _send_message(text, thread_id=thread_id)
+    if not topic_id or topic_id == 1:
+        print(
+            f"[notify] Refusing to send for project '{project_id}': missing explicit topic_id binding",
+            file=sys.stderr,
+        )
+        return False
+
+    return await _send_message(text, thread_id=topic_id)
 
 
 async def send_to_general(text: str) -> bool:

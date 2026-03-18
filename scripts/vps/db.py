@@ -16,7 +16,34 @@ from pathlib import Path
 from typing import Optional
 
 DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent / "orchestrator.db"))
+DEFAULT_CHAT_ID = int(os.environ.get("TELEGRAM_CHAT_ID", "0") or "0")
 _UNSET = object()
+_SCHEMA_READY = False
+
+
+def _ensure_runtime_schema(conn: sqlite3.Connection) -> None:
+    """Best-effort runtime migration for older VPS DBs.
+
+    Keeps the bot/orchestrator working even if schema.sql was not re-applied yet.
+    """
+    global _SCHEMA_READY
+    if _SCHEMA_READY:
+        return
+
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(project_state)")}
+    if "chat_id" not in cols:
+        conn.execute("ALTER TABLE project_state ADD COLUMN chat_id INTEGER")
+        if DEFAULT_CHAT_ID:
+            conn.execute(
+                "UPDATE project_state SET chat_id = ? WHERE chat_id IS NULL",
+                (DEFAULT_CHAT_ID,),
+            )
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_project_state_chat_topic_unique "
+        "ON project_state(chat_id, topic_id) WHERE topic_id IS NOT NULL"
+    )
+    _SCHEMA_READY = True
 
 
 @contextmanager
@@ -36,6 +63,7 @@ def get_db(immediate: bool = False):
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
+    _ensure_runtime_schema(conn)
     begin = "BEGIN IMMEDIATE" if immediate else "BEGIN"
     conn.execute(begin)
     try:
@@ -101,9 +129,16 @@ def get_project_state(project_id: str) -> Optional[dict]:
         return dict(row) if row else None
 
 
-def get_project_by_topic(topic_id: int) -> Optional[dict]:
-    """Look up project by Telegram topic_id. Returns None if not found."""
+def get_project_by_topic(topic_id: int, chat_id: int | None = None) -> Optional[dict]:
+    """Look up project by Telegram topic_id, scoped by chat_id when available."""
     with get_db() as conn:
+        if chat_id is not None:
+            row = conn.execute(
+                "SELECT * FROM project_state WHERE topic_id = ? AND chat_id = ?",
+                (topic_id, chat_id),
+            ).fetchone()
+            return dict(row) if row else None
+
         row = conn.execute(
             "SELECT * FROM project_state WHERE topic_id = ?",
             (topic_id,),
@@ -184,19 +219,26 @@ def get_available_slots(provider: str) -> int:
 
 
 def seed_projects_from_json(projects: list[dict]) -> None:
-    """Upsert projects from projects.json into project_state table."""
+    """Upsert projects from projects.json into project_state table.
+
+    Important: preserve existing chat/topic bindings when JSON omits them.
+    This prevents accidental routing loss on reseed.
+    """
     with get_db() as conn:
         for p in projects:
             conn.execute(
-                "INSERT INTO project_state (project_id, path, topic_id, provider, auto_approve_timeout) "
-                "VALUES (?, ?, ?, ?, ?) "
+                "INSERT INTO project_state (project_id, path, chat_id, topic_id, provider, auto_approve_timeout) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(project_id) DO UPDATE SET "
-                "path = excluded.path, topic_id = excluded.topic_id, "
+                "path = excluded.path, "
+                "chat_id = COALESCE(excluded.chat_id, project_state.chat_id), "
+                "topic_id = COALESCE(excluded.topic_id, project_state.topic_id), "
                 "provider = excluded.provider, "
                 "auto_approve_timeout = excluded.auto_approve_timeout",
                 (
                     p["project_id"],
                     p["path"],
+                    p.get("chat_id", DEFAULT_CHAT_ID or None),
                     p.get("topic_id"),
                     p.get("provider", "claude"),
                     p.get("auto_approve_timeout", 30),
@@ -210,14 +252,33 @@ def add_project(
     topic_id: int,
     provider: str = "claude",
     auto_approve_timeout: int = 30,
+    chat_id: int | None = None,
 ) -> None:
     """Register a new project from Telegram wizard. INSERT OR IGNORE (idempotent)."""
     with get_db(immediate=True) as conn:
         conn.execute(
             "INSERT OR IGNORE INTO project_state "
-            "(project_id, path, topic_id, provider, auto_approve_timeout) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (project_id, path, topic_id, provider, auto_approve_timeout),
+            "(project_id, path, chat_id, topic_id, provider, auto_approve_timeout) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                project_id,
+                path,
+                chat_id if chat_id is not None else (DEFAULT_CHAT_ID or None),
+                topic_id,
+                provider,
+                auto_approve_timeout,
+            ),
+        )
+
+
+def set_project_topic(project_id: str, topic_id: int, chat_id: int | None = None) -> None:
+    """Bind an existing project to a Telegram chat/topic."""
+    with get_db(immediate=True) as conn:
+        conn.execute(
+            "UPDATE project_state SET chat_id = ?, topic_id = ?, "
+            "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+            "WHERE project_id = ?",
+            (chat_id if chat_id is not None else (DEFAULT_CHAT_ID or None), topic_id, project_id),
         )
 
 
