@@ -27,16 +27,44 @@ def read_text(path: Path) -> str:
 
 
 def extract_status(text: str) -> str:
+    """Extract status from QA report.
+
+    Supports two formats:
+    1. qa-loop.sh generated: '**Status:** passed' header line
+    2. Hand-written/agent: no Status header (returns 'no_status_header')
+    """
     for line in text.splitlines():
         if line.startswith("**Status:**"):
-            return line.split(":", 1)[1].strip()
-    return "unknown"
+            val = line[len("**Status:**"):].strip().rstrip("*").strip()
+            return val if val else "no_status_header"
+    return "no_status_header"
 
 
 def extract_spec(text: str) -> str:
+    """Extract spec ID from QA report.
+
+    Supports two formats:
+    1. qa-loop.sh generated: '**Spec:** TECH-153' header line
+    2. Hand-written/agent: '# QA Report: TECH-151 — description' title
+    """
+    import re
+
+    # Primary: explicit **Spec:** header
     for line in text.splitlines():
         if line.startswith("**Spec:**"):
-            return line.split(":", 1)[1].strip()
+            return line[len("**Spec:**"):].strip()
+
+    # Fallback: extract from title '# QA Report: SPEC-ID ...'
+    for line in text.splitlines():
+        m = re.match(r"^#\s+QA Report:\s*(\S+)", line)
+        if m:
+            spec_id = m.group(1).rstrip(" —-")
+            # Normalize: tech-151 → TECH-151
+            prefix_match = re.match(r"^(tech|ftr|bug|arch)(-\d+)$", spec_id, re.IGNORECASE)
+            if prefix_match:
+                spec_id = prefix_match.group(1).upper() + prefix_match.group(2)
+            return spec_id
+
     return ""
 
 

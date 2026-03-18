@@ -336,6 +336,7 @@ else:
 " 2>/dev/null || echo '' 'claude')"
     PROJECT_PROVIDER="${PROJECT_PROVIDER:-claude}"
     RUNNER_GROUP="${PROJECT_PROVIDER}-runner"
+    echo "[callback] Post-autopilot tail: TASK_LABEL=${TASK_LABEL} (used as QA spec_id)" >> "$CALLBACK_LOG"
 
     if [[ -n "$PROJECT_PATH" ]]; then
         QA_LABEL="${PROJECT_ID}:qa-${TASK_LABEL}"
@@ -359,24 +360,16 @@ sys.exit(1)
         else
             pueue add --group "$RUNNER_GROUP" --label "$QA_LABEL" \
                 -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "$PROJECT_PROVIDER" "qa" \
-                "/qa Проверь изменения после ${TASK_LABEL}" 2>/dev/null && {
+                "/qa ${TASK_LABEL}" 2>/dev/null && {
                 echo "[callback] QA dispatched for ${PROJECT_ID}:${TASK_LABEL} (group=${RUNNER_GROUP})"
             } || {
                 echo "[callback] WARN: QA dispatch failed for ${PROJECT_ID}" >&2
             }
         fi
 
-        # Dispatch Reflect only when there is pending diary work and no duplicate queued/running task
-        DIARY_INDEX="${PROJECT_PATH}/ai/diary/index.md"
-        PENDING_COUNT=0
-        if [[ -f "$DIARY_INDEX" ]]; then
-            PENDING_COUNT=$(grep -c '| pending |' "$DIARY_INDEX" 2>/dev/null || true)
-            PENDING_COUNT=$(( PENDING_COUNT + 0 ))
-        fi
-
-        if (( PENDING_COUNT < 1 )); then
-            echo "[callback] Skipping reflect: no pending diary entries for ${PROJECT_ID}"
-        elif pueue status --json 2>/dev/null | python3 -c "
+        # Dispatch Reflect after every autopilot completion (unconditional — agents own diary writes)
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] reflect dispatch attempt: project=${PROJECT_ID} task=${TASK_LABEL}" >> "$CALLBACK_LOG"
+        if pueue status --json 2>/dev/null | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -395,6 +388,7 @@ sys.exit(1)
                 -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "$PROJECT_PROVIDER" "reflect" \
                 "/reflect" 2>/dev/null && {
                 echo "[callback] Reflect dispatched for ${PROJECT_ID}:${TASK_LABEL} (group=${RUNNER_GROUP})"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] reflect dispatched OK: project=${PROJECT_ID} task=${TASK_LABEL}" >> "$CALLBACK_LOG"
             } || {
                 echo "[callback] WARN: Reflect dispatch failed for ${PROJECT_ID}" >&2
             }
