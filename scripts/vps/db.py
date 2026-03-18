@@ -3,10 +3,10 @@
 Module: db
 Role: SQLite WAL helpers for orchestrator state management.
 Uses: sqlite3 (stdlib)
-Used by: telegram-bot.py, notify.py, pueue-callback.sh (via CLI: python3 db.py callback),
-         night-reviewer.sh (via CLI: python3 db.py save-finding / get-new-findings),
-         approve_handler.py (update_finding_status, get_finding_by_id),
-         admin_handler.py (add_project, get_project_state, get_project_by_topic, get_nexus_cache)
+Used by: orchestrator.py (get_all_projects, seed_projects_from_json, try_acquire_slot, log_task,
+             update_project_phase, get_available_slots),
+         callback.py (release_slot, finish_task, update_project_phase),
+         night-reviewer.sh (via CLI: python3 db.py save-finding / get-new-findings / update-phase)
 """
 
 import os
@@ -16,34 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent / "orchestrator.db"))
-DEFAULT_CHAT_ID = int(os.environ.get("TELEGRAM_CHAT_ID", "0") or "0")
 _UNSET = object()
-_SCHEMA_READY = False
-
-
-def _ensure_runtime_schema(conn: sqlite3.Connection) -> None:
-    """Best-effort runtime migration for older VPS DBs.
-
-    Keeps the bot/orchestrator working even if schema.sql was not re-applied yet.
-    """
-    global _SCHEMA_READY
-    if _SCHEMA_READY:
-        return
-
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(project_state)")}
-    if "chat_id" not in cols:
-        conn.execute("ALTER TABLE project_state ADD COLUMN chat_id INTEGER")
-        if DEFAULT_CHAT_ID:
-            conn.execute(
-                "UPDATE project_state SET chat_id = ? WHERE chat_id IS NULL",
-                (DEFAULT_CHAT_ID,),
-            )
-
-    conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_project_state_chat_topic_unique "
-        "ON project_state(chat_id, topic_id) WHERE topic_id IS NOT NULL"
-    )
-    _SCHEMA_READY = True
 
 
 @contextmanager
@@ -63,7 +36,6 @@ def get_db(immediate: bool = False):
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
-    _ensure_runtime_schema(conn)
     begin = "BEGIN IMMEDIATE" if immediate else "BEGIN"
     conn.execute(begin)
     try:
@@ -128,22 +100,6 @@ def get_project_state(project_id: str) -> Optional[dict]:
         ).fetchone()
         return dict(row) if row else None
 
-
-def get_project_by_topic(topic_id: int, chat_id: int | None = None) -> Optional[dict]:
-    """Look up project by Telegram topic_id, scoped by chat_id when available."""
-    with get_db() as conn:
-        if chat_id is not None:
-            row = conn.execute(
-                "SELECT * FROM project_state WHERE topic_id = ? AND chat_id = ?",
-                (topic_id, chat_id),
-            ).fetchone()
-            return dict(row) if row else None
-
-        row = conn.execute(
-            "SELECT * FROM project_state WHERE topic_id = ?",
-            (topic_id,),
-        ).fetchone()
-        return dict(row) if row else None
 
 
 def get_all_projects() -> list[dict]:
@@ -219,78 +175,26 @@ def get_available_slots(provider: str) -> int:
 
 
 def seed_projects_from_json(projects: list[dict]) -> None:
-    """Upsert projects from projects.json into project_state table.
-
-    Important: preserve existing chat/topic bindings when JSON omits them.
-    This prevents accidental routing loss on reseed.
-    """
+    """Upsert projects from projects.json into project_state table."""
     with get_db() as conn:
         for p in projects:
             conn.execute(
-                "INSERT INTO project_state (project_id, path, chat_id, topic_id, provider, auto_approve_timeout) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
+                "INSERT INTO project_state (project_id, path, topic_id, provider, auto_approve_timeout) "
+                "VALUES (?, ?, ?, ?, ?) "
                 "ON CONFLICT(project_id) DO UPDATE SET "
                 "path = excluded.path, "
-                "chat_id = COALESCE(excluded.chat_id, project_state.chat_id), "
                 "topic_id = COALESCE(excluded.topic_id, project_state.topic_id), "
                 "provider = excluded.provider, "
                 "auto_approve_timeout = excluded.auto_approve_timeout",
                 (
                     p["project_id"],
                     p["path"],
-                    p.get("chat_id", DEFAULT_CHAT_ID or None),
                     p.get("topic_id"),
                     p.get("provider", "claude"),
                     p.get("auto_approve_timeout", 30),
                 ),
             )
 
-
-def add_project(
-    project_id: str,
-    path: str,
-    topic_id: int,
-    provider: str = "claude",
-    auto_approve_timeout: int = 30,
-    chat_id: int | None = None,
-) -> None:
-    """Register a new project from Telegram wizard. INSERT OR IGNORE (idempotent)."""
-    with get_db(immediate=True) as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO project_state "
-            "(project_id, path, chat_id, topic_id, provider, auto_approve_timeout) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                project_id,
-                path,
-                chat_id if chat_id is not None else (DEFAULT_CHAT_ID or None),
-                topic_id,
-                provider,
-                auto_approve_timeout,
-            ),
-        )
-
-
-def set_project_topic(project_id: str, topic_id: int, chat_id: int | None = None) -> None:
-    """Bind an existing project to a Telegram chat/topic."""
-    with get_db(immediate=True) as conn:
-        conn.execute(
-            "UPDATE project_state SET chat_id = ?, topic_id = ?, "
-            "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
-            "WHERE project_id = ?",
-            (chat_id if chat_id is not None else (DEFAULT_CHAT_ID or None), topic_id, project_id),
-        )
-
-
-def get_nexus_cache(project_id: str) -> dict:
-    """Read cached Nexus context for a project. Returns empty dict if not found."""
-    import json
-
-    cache_file = Path("/var/dld/nexus-cache") / f"{project_id}.json"
-    try:
-        return json.loads(cache_file.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
 
 
 def save_finding(
@@ -388,28 +292,7 @@ if __name__ == "__main__":
 
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
 
-    if cmd == "callback":
-        # Args: pueue_id status exit_code project_id new_phase [current_task]
-        if len(sys.argv) not in (7, 8):
-            print(
-                "Usage: python3 db.py callback <pueue_id> <status> <exit_code> <project_id> <new_phase> [current_task]",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        pueue_id = int(sys.argv[2])
-        status = sys.argv[3]
-        exit_code = int(sys.argv[4])
-        project_id = sys.argv[5]
-        new_phase = sys.argv[6]
-        current_task = sys.argv[7] if len(sys.argv) == 8 else _UNSET
-        release_slot(pueue_id)
-        finish_task(pueue_id, status, exit_code)
-        update_project_phase(project_id, new_phase, current_task)
-        print(
-            f"callback: pueue_id={pueue_id} status={status} project={project_id} phase={new_phase}"
-        )
-
-    elif cmd == "seed":
+    if cmd == "seed":
         import json
 
         if len(sys.argv) != 3:
@@ -469,7 +352,7 @@ if __name__ == "__main__":
 
     else:
         print(
-            "Usage: python3 db.py <callback|seed|save-finding|get-new-findings"
+            "Usage: python3 db.py <seed|save-finding|get-new-findings"
             "|update-finding-status|update-phase> [args...]",
             file=sys.stderr,
         )

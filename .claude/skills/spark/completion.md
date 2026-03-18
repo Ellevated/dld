@@ -187,7 +187,7 @@ After spec is created and BEFORE auto-commit:
 1. Check env var: `CLAUDE_CURRENT_SPEC_PATH`
 2. If set and file exists at that path:
    - Append line: `**SpecID:** {TASK_ID}` to the file
-   - This enables pueue-callback.sh to resolve real spec_id for QA dispatch
+   - This enables callback.py to resolve real spec_id for QA dispatch
 
 Example:
 ```bash

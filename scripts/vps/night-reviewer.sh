@@ -8,8 +8,8 @@
 #
 # Module: night-reviewer
 # Role: Nightly /audit night scan per project; dedup findings via SQLite fingerprinting.
-# Uses: db.py (update-phase, save-finding, get-new-findings), notify.py, claude CLI, flock
-# Used by: orchestrator.sh (via pueue night-reviewer group)
+# Uses: db.py (update-phase, save-finding, get-new-findings), event_writer.py, claude CLI, flock
+# Used by: orchestrator.py (via pueue night-reviewer group)
 
 set -uo pipefail
 # NOTE: -e intentionally omitted — each step has its own error handling for fail-safe behavior
@@ -212,7 +212,7 @@ ${nf_desc}
 Suggestion: ${nf_sugg}"
 
             set +e
-            python3 "${SCRIPT_DIR}/notify.py" "${PROJECT_ID}" "${msg}" 2>/dev/null
+            python3 "${SCRIPT_DIR}/event_writer.py" "${PROJECT_PATH}" "night-review" "done" "${msg}" 2>/dev/null
             set -e
 
         done < <(printf '%s' "$new_findings_json" | jq -c '.[]' 2>/dev/null)

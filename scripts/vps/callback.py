@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+"""
+Module: callback
+Role: Pueue completion callback — release slot, update phase, dispatch QA/Reflect, write events.
+Uses: db (import), event_writer (import), subprocess (pueue CLI)
+Used by: Pueue daemon (via pueue.yml callback config)
+
+Replaces pueue-callback.sh + qa-loop.sh (ARCH-161).
+
+CLI: python3 callback.py <pueue_id> '<group>' '<result>'
+Pueue v4.0.4 callback template: callback.py {{ id }} '{{ group }}' '{{ result }}'
+
+INVARIANT: Always exit 0. Every step in try/except.
+"""
+
+import json
+import logging
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
+import db  # noqa: E402
+import event_writer  # noqa: E402
+
+log = logging.getLogger("callback")
+
+
+def _load_env() -> None:
+    """Load .env from SCRIPT_DIR. Manual parser."""
+    env_file = SCRIPT_DIR / ".env"
+    if not env_file.is_file():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        os.environ.setdefault(key.strip(), val.strip().strip("'\""))
+
+
+def _setup_logging() -> None:
+    """Append-mode file + stderr logging."""
+    log_file = SCRIPT_DIR / "callback-debug.log"
+    handler = logging.FileHandler(str(log_file), mode="a")
+    formatter = logging.Formatter(
+        "[%(asctime)s] %(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    handler.setFormatter(formatter)
+    stderr_handler = logging.StreamHandler()
+    stderr_handler.setFormatter(formatter)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
+    root.addHandler(stderr_handler)
+
+
+def resolve_label(pueue_id: str) -> str:
+    """Get task label from pueue status --json."""
+    try:
+        result = subprocess.run(
+            ["pueue", "status", "--json"],
+            capture_output=True, text=True, timeout=10,
+        )
+        data = json.loads(result.stdout)
+        task = data.get("tasks", {}).get(pueue_id, {})
+        return task.get("label", "unknown") or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def parse_label(label: str) -> tuple:
+    """Split label into (project_id, task_label)."""
+    if ":" in label:
+        project_id, _, task_label = label.partition(":")
+        return project_id, task_label
+    log.warning("label '%s' has no colon", label)
+    return label, label
+
+
+def map_result(result: str) -> tuple:
+    """Map pueue result string to (status, exit_code)."""
+    if "Success" in result:
+        return "done", 0
+    return "failed", 1
+
+
+def extract_agent_output(pueue_id: str) -> tuple:
+    """Extract skill and result_preview from agent JSON output."""
+    try:
+        result = subprocess.run(
+            ["pueue", "log", pueue_id, "--json"],
+            capture_output=True, text=True, timeout=15,
+        )
+        data = json.loads(result.stdout)
+        task_data = data.get("tasks", {}).get(pueue_id, {})
+        output = task_data.get("output", "")
+        if not output:
+            output = result.stdout
+
+        for line in output.splitlines():
+            line = line.strip()
+            if line.startswith("{") and '"skill"' in line:
+                try:
+                    obj = json.loads(line)
+                    skill = obj.get("skill", "")
+                    preview = str(obj.get("result_preview", ""))[:500]
+                    return skill, preview
+                except json.JSONDecodeError:
+                    continue
+
+        m = re.search(r'"result_preview":\s*"([^"]*)"', output)
+        if m:
+            return "", m.group(1)[:300]
+    except Exception:
+        pass
+    return "", ""
+
+
+def resolve_spec_id(task_label: str, preview: str, project_path: str) -> str | None:
+    """Multi-layer spec_id resolution."""
+    spec_re = re.compile(r"(TECH|FTR|BUG|ARCH)-\d+")
+
+    # Layer 1: from task label
+    m = spec_re.search(task_label)
+    if m:
+        return m.group(0)
+
+    # Layer 2: from preview text
+    if preview:
+        m = spec_re.search(preview)
+        if m:
+            return m.group(0)
+
+    # Layer 3: from inbox done files
+    if task_label.startswith("inbox-") and project_path:
+        done_dir = Path(project_path) / "ai" / "inbox" / "done"
+        if done_dir.is_dir():
+            for f in sorted(done_dir.glob("*.md"), reverse=True):
+                text = f.read_text(errors="replace")
+                m = re.search(r"\*\*SpecID:\*\*\s*(\S+)", text)
+                if m:
+                    sm = spec_re.search(m.group(1))
+                    if sm:
+                        return sm.group(0)
+    return None
+
+
+def is_already_queued(label: str) -> bool:
+    """Check if a task with this label is Running or Queued."""
+    try:
+        result = subprocess.run(
+            ["pueue", "status", "--json"],
+            capture_output=True, text=True, timeout=10,
+        )
+        data = json.loads(result.stdout)
+        for task in data.get("tasks", {}).values():
+            if task.get("label") == label:
+                status = task.get("status", {})
+                if isinstance(status, dict) and ("Running" in status or "Queued" in status):
+                    return True
+        return False
+    except Exception:
+        return False
+
+
+def _pueue_add(group: str, label: str, cmd: list) -> int | None:
+    """Submit task to pueue. Returns task ID or None."""
+    try:
+        pueue_cmd = [
+            "pueue", "add", "--group", group,
+            "--label", label, "--print-task-id", "--",
+        ] + cmd
+        result = subprocess.run(
+            pueue_cmd, capture_output=True, text=True, timeout=30,
+        )
+        for line in result.stdout.strip().splitlines():
+            m = re.search(r"(\d+)", line.strip())
+            if m:
+                return int(m.group(1))
+        return None
+    except Exception:
+        return None
+
+
+def dispatch_qa(project_id: str, project_path: str, spec_id: str, provider: str) -> None:
+    """Dispatch QA task via pueue."""
+    qa_label = f"{project_id}:qa-{spec_id}"
+    if is_already_queued(qa_label):
+        log.info("skip duplicate QA: %s", qa_label)
+        return
+    runner_group = f"{provider}-runner"
+    pueue_id = _pueue_add(
+        runner_group, qa_label,
+        [str(SCRIPT_DIR / "run-agent.sh"), project_path, provider, "qa", f"/qa {spec_id}"],
+    )
+    if pueue_id:
+        log.info("QA dispatched: %s pueue_id=%d", qa_label, pueue_id)
+    else:
+        log.warning("QA dispatch failed: %s", qa_label)
+
+
+def dispatch_reflect(project_id: str, project_path: str, task_label: str, provider: str) -> None:
+    """Dispatch reflect task via pueue."""
+    reflect_label = f"{project_id}:reflect-{task_label}"
+    if is_already_queued(reflect_label):
+        log.info("skip duplicate reflect: %s", reflect_label)
+        return
+    runner_group = f"{provider}-runner"
+    pueue_id = _pueue_add(
+        runner_group, reflect_label,
+        [str(SCRIPT_DIR / "run-agent.sh"), project_path, provider, "reflect", "/reflect"],
+    )
+    if pueue_id:
+        log.info("reflect dispatched: %s pueue_id=%d", reflect_label, pueue_id)
+    else:
+        log.warning("reflect dispatch failed: %s", reflect_label)
+
+
+def write_event_for_skill(project_path: str, skill: str, status: str, task_label: str) -> None:
+    """Write OpenClaw event for applicable skills."""
+    if skill not in ("autopilot", "qa", "reflect"):
+        return
+    if status != "done" and not (status == "failed" and skill == "qa"):
+        return
+
+    artifact_rel = ""
+    p = Path(project_path)
+    if skill == "qa":
+        qa_files = sorted(p.glob("ai/qa/[0-9]*-*.md"))
+        if qa_files:
+            artifact_rel = str(qa_files[-1].relative_to(p))
+    elif skill == "reflect":
+        reflect_files = sorted(p.glob("ai/reflect/findings-*.md"))
+        if reflect_files:
+            artifact_rel = str(reflect_files[-1].relative_to(p))
+
+    event_writer.notify(
+        project_path, skill, status,
+        f"{skill} {status} for {task_label}", artifact_rel,
+    )
+
+
+def main() -> None:
+    """Main callback entry point. ALWAYS exits 0."""
+    try:
+        _load_env()
+        _setup_logging()
+
+        pueue_id = sys.argv[1] if len(sys.argv) > 1 else "0"
+        group = sys.argv[2] if len(sys.argv) > 2 else "unknown"
+        result = sys.argv[3] if len(sys.argv) > 3 else "unknown"
+
+        log.info("callback: id=%s group=%s result=%s", pueue_id, group, result)
+
+        # Skip night-reviewer group
+        if group == "night-reviewer":
+            log.info("skip night-reviewer callback")
+            sys.exit(0)
+
+        label = resolve_label(pueue_id)
+        project_id, task_label = parse_label(label)
+        status, exit_code = map_result(result)
+
+        log.info("parsed: project=%s task=%s status=%s", project_id, task_label, status)
+
+        # Step 1: Release slot (ALWAYS)
+        try:
+            db.release_slot(pueue_id)
+        except Exception as exc:
+            log.warning("release_slot failed: %s", exc)
+
+        # Step 2: Finish task
+        try:
+            db.finish_task(pueue_id, status, exit_code)
+        except Exception as exc:
+            log.warning("finish_task failed: %s", exc)
+
+        # Step 3: Update phase
+        try:
+            if status == "done":
+                if task_label.startswith("inbox-"):
+                    new_phase = "idle"
+                else:
+                    new_phase = "qa_pending"
+            else:
+                new_phase = "failed"
+
+            current_task = task_label if new_phase == "qa_pending" else None
+            db.update_project_phase(project_id, new_phase, current_task)
+            log.info("phase updated: %s -> %s", project_id, new_phase)
+        except Exception as exc:
+            log.warning("update_phase failed: %s", exc)
+
+        # Step 4: Extract agent output
+        skill, preview = "", ""
+        try:
+            skill, preview = extract_agent_output(pueue_id)
+            log.info("agent output: skill=%s preview_len=%d", skill, len(preview))
+        except Exception as exc:
+            log.warning("extract_agent_output failed: %s", exc)
+
+        # Step 5: Write OpenClaw event
+        try:
+            project_path = ""
+            state = db.get_project_state(project_id)
+            if state:
+                project_path = state.get("path", "")
+            if project_path:
+                write_event_for_skill(project_path, skill, status, task_label)
+        except Exception as exc:
+            log.warning("write_event failed: %s", exc)
+
+        # Step 6: Post-autopilot tail — dispatch QA + Reflect
+        if skill == "autopilot" and status == "done":
+            try:
+                state = db.get_project_state(project_id)
+                if state:
+                    project_path = state.get("path", "")
+                    provider = state.get("provider", "claude") or "claude"
+                    if project_path:
+                        spec_id = resolve_spec_id(task_label, preview, project_path)
+                        if spec_id:
+                            dispatch_qa(project_id, project_path, spec_id, provider)
+                        else:
+                            log.info("skip QA: no spec_id resolved for %s", task_label)
+                        dispatch_reflect(project_id, project_path, task_label, provider)
+            except Exception as exc:
+                log.warning("post-autopilot dispatch failed: %s", exc)
+
+    except Exception:
+        log.exception("callback fatal error")
+    finally:
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
