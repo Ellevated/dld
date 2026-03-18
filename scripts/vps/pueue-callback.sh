@@ -235,15 +235,31 @@ print(text.encode('utf-8', errors='replace').decode('utf-8'), end='')
 # Skip noise: empty reflect/qa results don't need user attention.
 # notify.py handles topic routing by project_id.
 # ---------------------------------------------------------------------------
-# North-star: DLD-bot is silent during the full cycle.
-# OpenClaw reads pending-events and delivers the single final report.
-# Only surface hard failures to avoid silent breakage.
-SKIP_NOTIFY=true
+SKIP_NOTIFY=false
 
-# Surface hard failures so they don't silently disappear
-if [[ "$STATUS" == "failed" && -n "$SKILL" ]]; then
-    SKIP_NOTIFY=false
-    echo "[callback] Sending notification: hard failure skill=${SKILL}"
+# Don't notify about reflect at all — it's internal housekeeping, not user-facing
+if [[ "$SKILL" == "reflect" ]]; then
+    SKIP_NOTIFY=true
+    echo "[callback] Skipping notification: reflect is internal (not user-facing)"
+fi
+
+# Don't notify about secondary QA (from inbox, not from autopilot)
+# Primary QA has label like "project:qa-SPEC-ID", secondary has "project:qa-inbox-..."
+if [[ "$SKILL" == "qa" && "$TASK_LABEL" =~ ^qa-inbox- ]]; then
+    SKIP_NOTIFY=true
+    echo "[callback] Skipping notification: secondary QA from inbox (noise)"
+fi
+
+# Don't notify about "Unknown skill" errors (skill not deployed yet)
+if echo "$PREVIEW" | grep -qi 'Unknown skill'; then
+    SKIP_NOTIFY=true
+    echo "[callback] Skipping notification: unknown skill error"
+fi
+
+# Don't notify about failed tasks without skill — uninformative "❌ — ошибка"
+if [[ "$STATUS" == "failed" && -z "$SKILL" ]]; then
+    SKIP_NOTIFY=true
+    echo "[callback] Skipping notification: failed task with no skill (noise)"
 fi
 
 if [[ "$SKIP_NOTIFY" == "false" && -f "$NOTIFY_PY" ]]; then
