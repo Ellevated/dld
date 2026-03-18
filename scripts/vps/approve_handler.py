@@ -45,6 +45,9 @@ def register_evening_job(app) -> None:
     Parses REVIEW_TIME (HH:MM) and REVIEW_TZ env vars.
     Uses app.job_queue.run_daily with zoneinfo timezone.
     """
+    if app.job_queue is None:
+        logger.warning("JobQueue not available (install python-telegram-bot[job-queue]). Evening prompt disabled.")
+        return
     hour, minute = (int(x) for x in REVIEW_TIME.split(":"))
     tz = ZoneInfo(REVIEW_TZ)
     app.job_queue.run_daily(
