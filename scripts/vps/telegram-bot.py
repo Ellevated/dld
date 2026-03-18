@@ -137,7 +137,8 @@ def _submit_to_pueue(project: dict, task_id: str) -> bool:
     """Submit task to Pueue. Returns True on success."""
     pid = project["project_id"]
     task_cmd = [str(SCRIPT_DIR / "run-agent.sh"), project["path"],
-                f"claude -p /autopilot {task_id}", project.get("provider", "claude"), "autopilot"]
+                project.get("provider", "claude"), "autopilot",
+                f"/autopilot {task_id}"]
     r = subprocess.run(
         ["pueue", "add", "--group", pid, "--label", f"{pid}:{task_id}", "--print-task-id", "--"] + task_cmd,
         capture_output=True, text=True, timeout=10,

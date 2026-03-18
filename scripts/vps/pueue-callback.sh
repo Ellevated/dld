@@ -300,7 +300,7 @@ print(state['path'] if state else '')
         EVENT_FILE="${EVENT_DIR}/${EVENT_TS}-${SKILL}.json"
         ARTIFACT_REL=""
         if [[ "$SKILL" == "qa" ]]; then
-            ARTIFACT_REL=$(find "${PROJECT_PATH_FOR_EVENT}/ai/qa" -maxdepth 1 -type f -name "*.md" | sort | tail -1 | sed "s#^${PROJECT_PATH_FOR_EVENT}/##" || true)
+            ARTIFACT_REL=$(find "${PROJECT_PATH_FOR_EVENT}/ai/qa" -maxdepth 1 -type f -name "[0-9]*-*.md" | sort | tail -1 | sed "s#^${PROJECT_PATH_FOR_EVENT}/##" || true)
         elif [[ "$SKILL" == "reflect" ]]; then
             ARTIFACT_REL=$(find "${PROJECT_PATH_FOR_EVENT}/ai/reflect" -maxdepth 1 -type f -name "findings-*.md" | sort | tail -1 | sed "s#^${PROJECT_PATH_FOR_EVENT}/##" || true)
         fi

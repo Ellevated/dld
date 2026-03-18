@@ -85,7 +85,10 @@ async def _send_message(text: str, thread_id: int | None = None, reply_markup: d
 async def send_to_project(project_id: str, text: str) -> bool:
     """Send a message to a project's Telegram topic.
 
-    Fail closed: if project has no explicit topic binding, do NOT send to General.
+    Routing priority:
+    1. Project's explicit topic_id binding
+    2. OPS_TOPIC_ID env var (operations fallback)
+    3. Fail closed (return False)
     """
     project = db.get_project_state(project_id)
     if project is None:
@@ -93,14 +96,25 @@ async def send_to_project(project_id: str, text: str) -> bool:
         return False
 
     topic_id = project.get("topic_id")
-    if not topic_id or topic_id == 1:
+    if topic_id and topic_id != 1:
+        return await _send_message(text, thread_id=topic_id)
+
+    # Fallback: OPS_TOPIC_ID for projects without explicit topic binding
+    ops_topic = os.environ.get("OPS_TOPIC_ID", "")
+    if ops_topic:
         print(
-            f"[notify] Refusing to send for project '{project_id}': missing explicit topic_id binding",
+            f"[notify] WARN: project '{project_id}' has no topic_id, "
+            f"falling back to OPS_TOPIC_ID={ops_topic}",
             file=sys.stderr,
         )
-        return False
+        return await _send_message(text, thread_id=int(ops_topic))
 
-    return await _send_message(text, thread_id=topic_id)
+    print(
+        f"[notify] Refusing to send for project '{project_id}': "
+        "missing topic_id and no OPS_TOPIC_ID fallback",
+        file=sys.stderr,
+    )
+    return False
 
 
 async def send_to_general(text: str) -> bool:
