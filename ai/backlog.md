@@ -120,7 +120,8 @@
 | BUG-155 | DLD Cycle E2E Reliability v2 — Three Gap Closure + Smoke Test | done | P0 | [spec](features/BUG-155-2026-03-18-cycle-e2e-reliability-v2.md) |
 | TECH-156 | Silence intermediate Telegram notifications during cycle (OpenClaw handles) | done | P1 | [spec](features/TECH-156-2026-03-18-silence-intermediate-notifications.md) |
 | TECH-157 | Immediate OpenClaw wake after pending-event write (eliminate 5-min cron lag) | done | P1 | [spec](features/TECH-157-2026-03-18-openclaw-immediate-wake.md) |
-| BUG-158 | QA dispatch fails for inbox tasks (no spec file) — add TASK_LABEL guard | queued | P1 | [spec](features/BUG-158-2026-03-18-qa-skip-inbox-tasks.md) |
+| BUG-158 | QA dispatch fails for inbox tasks (no spec file) — add TASK_LABEL guard | done | P1 | closed: band-aid, superseded by BUG-159 |
+| BUG-159 | QA resolves real spec_id for inbox tasks (multi-layer resolution) | queued | P1 | [spec](features/BUG-159-2026-03-18-qa-inbox-spec-id-resolution.md) |
 
 ---
 
