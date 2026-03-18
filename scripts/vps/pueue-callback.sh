@@ -250,6 +250,14 @@ if [[ "$SKILL" == "qa" && "$TASK_LABEL" =~ ^qa-inbox- ]]; then
     echo "[callback] Skipping notification: secondary QA from inbox (noise)"
 fi
 
+# Don't notify about intermediate cycle steps (spark, autopilot, qa) on success.
+# OpenClaw reads pending-events and reports results itself.
+# Only suppress SUCCESS — failures must still notify for debugging.
+if [[ "$STATUS" == "done" && ("$SKILL" == "spark" || "$SKILL" == "autopilot" || "$SKILL" == "qa") ]]; then
+    SKIP_NOTIFY=true
+    echo "[callback] Skipping notification: ${SKILL} success (OpenClaw handles reporting)"
+fi
+
 # Don't notify about "Unknown skill" errors (skill not deployed yet)
 if echo "$PREVIEW" | grep -qi 'Unknown skill'; then
     SKIP_NOTIFY=true

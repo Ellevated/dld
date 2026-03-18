@@ -1,5 +1,5 @@
 # Feature: [TECH-156] Silence Intermediate Telegram Notifications During Cycle
-**Status:** queued | **Priority:** P1 | **Date:** 2026-03-18
+**Status:** done | **Priority:** P1 | **Date:** 2026-03-18
 
 ## Why
 DLD-бот отправляет Telegram уведомления за каждый шаг цикла: spark, autopilot, QA. Это засоряет чат. OpenClaw читает `ai/openclaw/pending-events/` и сам формирует финальный отчёт. Промежуточные уведомления от DLD-бота — шум.
@@ -258,24 +258,24 @@ DEPLOY_URL=local-only
 ## Definition of Done
 
 ### Functional
-- [ ] Spark/autopilot/qa success → no Telegram notification
-- [ ] Spark/autopilot/qa failure → Telegram notification sent
-- [ ] Reflect → still silenced (regression check)
-- [ ] Pending-events → still written for all skills
-- [ ] inbox pre-dispatch → silenced for spark/autopilot/qa
+- [x] Spark/autopilot/qa success → no Telegram notification
+- [x] Spark/autopilot/qa failure → Telegram notification sent
+- [x] Reflect → still silenced (regression check)
+- [x] Pending-events → still written for all skills
+- [x] inbox pre-dispatch → silenced for spark/autopilot/qa
 
 ### Tests
-- [ ] All eval criteria pass (EC-1 through EC-7)
-- [ ] bash -n syntax check passes for both files
+- [x] All eval criteria pass (EC-1 through EC-7)
+- [x] bash -n syntax check passes for both files
 
 ### Acceptance Verification
-- [ ] All Smoke checks (AV-S1, AV-S2) pass
-- [ ] All Functional checks (AV-F1, AV-F2, AV-F3) pass
-- [ ] Verify Command runs without errors
+- [x] All Smoke checks (AV-S1, AV-S2) pass
+- [x] All Functional checks (AV-F1, AV-F2, AV-F3) pass
+- [x] Verify Command runs without errors
 
 ### Technical
-- [ ] No regressions in existing notification logic
-- [ ] Callback log shows skip reasons for debugging
+- [x] No regressions in existing notification logic
+- [x] Callback log shows skip reasons for debugging
 
 ---
 

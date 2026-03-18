@@ -178,16 +178,22 @@ _SKILL_LABELS_qa="QA проверка"
 SKILL_LABEL_VAR="_SKILL_LABELS_${SKILL}"
 SKILL_LABEL="${!SKILL_LABEL_VAR:-Обработка}"
 
-IDEA_SHORT="${IDEA_TEXT:0:100}"
-[[ ${#IDEA_TEXT} -gt 100 ]] && IDEA_SHORT="${IDEA_SHORT}…"
-NOTIFY_MSG="🚀 *${PROJECT_ID}*: ${SKILL_LABEL}
+# Skip pre-dispatch notification for cycle skills — OpenClaw handles reporting
+SILENT_SKILLS="spark autopilot qa reflect"
+if [[ " $SILENT_SKILLS " =~ " $SKILL " ]]; then
+    echo "[inbox] Skipping pre-dispatch notification: ${SKILL} (OpenClaw handles)"
+else
+    IDEA_SHORT="${IDEA_TEXT:0:100}"
+    [[ ${#IDEA_TEXT} -gt 100 ]] && IDEA_SHORT="${IDEA_SHORT}…"
+    NOTIFY_MSG="🚀 *${PROJECT_ID}*: ${SKILL_LABEL}
 ${IDEA_SHORT}"
 
-NOTIFY_PY="${SCRIPT_DIR}/notify.py"
-if [[ -f "$NOTIFY_PY" ]]; then
-    python3 "$NOTIFY_PY" "$PROJECT_ID" "$NOTIFY_MSG" 2>/dev/null || {
-        echo "[inbox] WARN: notify.py failed for project=${PROJECT_ID}" >&2
-    }
+    NOTIFY_PY="${SCRIPT_DIR}/notify.py"
+    if [[ -f "$NOTIFY_PY" ]]; then
+        python3 "$NOTIFY_PY" "$PROJECT_ID" "$NOTIFY_MSG" 2>/dev/null || {
+            echo "[inbox] WARN: notify.py failed for project=${PROJECT_ID}" >&2
+        }
+    fi
 fi
 
 # ---------------------------------------------------------------------------
