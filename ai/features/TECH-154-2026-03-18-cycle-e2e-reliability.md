@@ -1,6 +1,6 @@
 # Tech: [TECH-154] DLD Cycle E2E Reliability — First Full Pass
 
-**Status:** queued | **Priority:** P0 | **Date:** 2026-03-18
+**Status:** done | **Priority:** P0 | **Date:** 2026-03-18
 
 ## Why
 
@@ -514,12 +514,12 @@ Task 3 is independent (different file). Task 4 is read-only verification.
 
 ## Acceptance Criteria
 
-- [ ] `pueue-callback.sh` QA dispatch sends `/qa ${TASK_LABEL}` (clean spec ID, not Russian text)
-- [ ] Reflect dispatch has debug logging in callback-debug.log
-- [ ] `openclaw-artifact-scan.py` returns `"no_status_header"` for reports without `**Status:**` line
-- [ ] `openclaw-artifact-scan.py` extracts spec ID from `# QA Report: TECH-151` title fallback
-- [ ] `notify.py` fail-closed guard verified (existing tests pass)
-- [ ] All 4 breaks documented as closed or won't-fix
+- [x] `pueue-callback.sh` QA dispatch sends `/qa ${TASK_LABEL}` (clean spec ID, not Russian text)
+- [x] Reflect dispatch has debug logging in callback-debug.log
+- [x] `openclaw-artifact-scan.py` returns `"no_status_header"` for reports without `**Status:**` line
+- [x] `openclaw-artifact-scan.py` extracts spec ID from `# QA Report: TECH-151` title fallback
+- [x] `notify.py` fail-closed guard verified (existing tests pass)
+- [x] All 4 breaks documented as closed or won't-fix
 
 ---
 
