@@ -117,6 +117,7 @@
 | TECH-151 | Orchestrator North-Star Alignment (draft→queued, remove dead code, inbox invariant) | done | P0 | [spec](features/TECH-151-2026-03-17-orchestrator-north-star-alignment.md) |
 | TECH-153 | AI-First Economic Model — replace human-centric effort with Impact+Risk | done | P1 | [spec](features/TECH-153-2026-03-17-ai-first-economic-model.md) |
 | TECH-154 | DLD Cycle E2E Reliability — First Full Pass (QA spec path, reflect, artifact-scan) | done | P0 | [spec](features/TECH-154-2026-03-18-cycle-e2e-reliability.md) |
+| BUG-155 | DLD Cycle E2E Reliability v2 — Three Gap Closure + Smoke Test | queued | P0 | [spec](features/BUG-155-2026-03-18-cycle-e2e-reliability-v2.md) |
 
 ---
 
