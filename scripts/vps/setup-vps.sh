@@ -223,7 +223,7 @@ ok "Pueue groups configured (claude-runner=2, codex-runner=1, night-reviewer=1)"
 PUEUE_CONFIG_DIR="${HOME}/.config/pueue"
 mkdir -p "$PUEUE_CONFIG_DIR"
 PUEUE_CONFIG="${PUEUE_CONFIG_DIR}/pueue.yml"
-CALLBACK_LINE="${SCRIPT_DIR}/pueue-callback.sh {{ id }} '{{ label }}' '{{ group }}' '{{ result }}'"
+CALLBACK_LINE="${SCRIPT_DIR}/venv/bin/python3 ${SCRIPT_DIR}/callback.py {{ id }} '{{ group }}' '{{ result }}'"
 
 if [[ -f "$PUEUE_CONFIG" ]]; then
     # Patch existing file — update callback line if present, otherwise append to daemon section
@@ -283,7 +283,7 @@ echo "--- Environment check ---"
 if [[ ! -f "${SCRIPT_DIR}/.env" ]]; then
     warn ".env not found. Create it from the template:"
     echo "  cp ${SCRIPT_DIR}/.env.example ${SCRIPT_DIR}/.env"
-    echo "  # Then fill in TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID"
+    echo "  # Then fill in your API keys and project paths"
 else
     ok ".env exists"
 fi
@@ -364,7 +364,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${SCRIPT_DIR}/orchestrator.sh
+ExecStart=${SCRIPT_DIR}/venv/bin/python3 ${SCRIPT_DIR}/orchestrator.py
 WorkingDirectory=${SCRIPT_DIR}
 EnvironmentFile=${SCRIPT_DIR}/.env
 MemoryMax=27G
@@ -384,30 +384,6 @@ SyslogIdentifier=dld-orchestrator
 WantedBy=default.target
 EOF
 
-cat > "${SYSTEMD_DIR}/dld-telegram-bot.service" << EOF
-[Unit]
-Description=DLD Telegram Bot
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=${SCRIPT_DIR}/venv/bin/python ${SCRIPT_DIR}/telegram-bot.py
-WorkingDirectory=${SCRIPT_DIR}
-EnvironmentFile=${SCRIPT_DIR}/.env
-Restart=on-failure
-RestartSec=1s
-RestartMaxDelaySec=60s
-RestartSteps=5
-StartLimitBurst=10
-StartLimitIntervalSec=300s
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=dld-bot
-
-[Install]
-WantedBy=default.target
-EOF
-
 systemctl --user daemon-reload 2>/dev/null \
     && ok "systemd units installed and daemon reloaded" \
     || warn "systemctl daemon-reload failed — units written but not loaded (no systemd?)"
@@ -421,9 +397,7 @@ echo "  2. Fill in projects:   ${SCRIPT_DIR}/projects.json"
 echo ""
 echo "Enable services:"
 echo "  systemctl --user enable --now dld-orchestrator"
-echo "  systemctl --user enable --now dld-telegram-bot"
 echo ""
 echo "Check status:"
 echo "  systemctl --user status dld-orchestrator"
-echo "  systemctl --user status dld-telegram-bot"
 echo "  journalctl --user -u dld-orchestrator -f"

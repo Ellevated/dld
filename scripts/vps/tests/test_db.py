@@ -55,9 +55,9 @@ class TestSeedProjects:
         assert db.get_project_state("b")["provider"] == "codex"
 
     def test_seed_preserves_existing_topic_binding_when_json_omits_it(self, isolated_db):
-        """Reseed must not erase topic/chat binding if projects.json omits it."""
+        """Reseed must not erase topic binding if projects.json omits it."""
         db.seed_projects_from_json([
-            {"project_id": "proj1", "path": "/old/path", "chat_id": -1001, "topic_id": 42, "provider": "claude"},
+            {"project_id": "proj1", "path": "/old/path", "topic_id": 42, "provider": "claude"},
         ])
         db.seed_projects_from_json([
             {"project_id": "proj1", "path": "/new/path", "provider": "claude"},
@@ -66,7 +66,6 @@ class TestSeedProjects:
         state = db.get_project_state("proj1")
         assert state is not None
         assert state["path"] == "/new/path"
-        assert state["chat_id"] == -1001
         assert state["topic_id"] == 42
 
 
@@ -190,41 +189,4 @@ class TestProjectState:
         assert state["current_task"] == "task-label-1"
 
 
-# --- EC-6: callback CLI mode ---
-
-class TestCallbackCLI:
-    def test_callback_cli_path(self, seed_project):
-        """EC-6: callback Failed path -- release_slot + finish_task + update_phase."""
-        # Setup: acquire slot and log task
-        db.try_acquire_slot("testproject", "claude", pueue_id=50)
-        db.log_task("testproject", "task-label", "spark", "running", pueue_id=50)
-
-        # Simulate the callback CLI: python3 db.py callback <pueue_id> <status> <exit_code> <project_id> <new_phase>
-        result = subprocess.run(
-            [
-                sys.executable, str(Path(VPS_DIR) / "db.py"),
-                "callback", "50", "Failed", "1", "testproject", "failed",
-            ],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "DB_PATH": str(db.DB_PATH)},
-            timeout=10,
-        )
-        assert result.returncode == 0, f"CLI failed: {result.stderr}"
-
-        # Verify: slot released
-        assert db.get_available_slots("claude") == 2
-
-        # Verify: task finished
-        conn = sqlite3.connect(str(db.DB_PATH))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT * FROM task_log WHERE pueue_id = 50"
-        ).fetchone()
-        conn.close()
-        assert row["status"] == "Failed"
-        assert row["exit_code"] == 1
-
-        # Verify: phase updated
-        state = db.get_project_state("testproject")
-        assert state["phase"] == "failed"
+# --- Note: callback CLI removed in ARCH-161 (moved to standalone callback.py) ---
