@@ -114,8 +114,10 @@ async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         )
         return TOPIC
 
-    # Check topic not already bound
-    existing = db.get_project_by_topic(topic_id)
+    # Check topic not already bound within this chat
+    chat = update.effective_chat
+    chat_id = int(chat.id) if chat else None
+    existing = db.get_project_by_topic(topic_id, chat_id=chat_id)
     if existing:
         await update.message.reply_text(
             f"Topic {topic_id} already bound to `{existing['project_id']}`. Choose another topic:",
@@ -180,7 +182,9 @@ async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     provider = data.get("provider", "claude")
 
     # Insert into SQLite
-    db.add_project(pid, path, topic_id, provider)
+    chat = update.effective_chat
+    chat_id = int(chat.id) if chat else None
+    db.add_project(pid, path, topic_id, provider, chat_id=chat_id)
 
     # Create pueue group for the project
     try:
