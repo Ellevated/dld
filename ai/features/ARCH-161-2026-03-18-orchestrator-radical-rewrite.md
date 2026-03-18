@@ -1,5 +1,5 @@
 # Arch: [ARCH-161] Orchestrator Radical Rewrite — Python + North Star
-**Status:** in_progress | **Priority:** P1 | **Date:** 2026-03-18
+**Status:** done | **Priority:** P1 | **Date:** 2026-03-18
 
 ## Why
 Текущий оркестратор — 20 файлов, 4422 строки, смесь bash и Python. Legacy Telegram UI, draft approval flows, shell SQL injection (ADR-017), системная хрупкость bash (6 багфиксов за один день 2026-03-18). Нужно переписать на чистый Python, следуя North Star (`ai/architect/orchestrator-final-state.md`): линейный пайплайн inbox → Spark → Autopilot → QA → Reflect → STOP. Telegram заменён OpenClaw.

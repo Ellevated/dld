@@ -121,9 +121,9 @@
 | TECH-156 | Silence intermediate Telegram notifications during cycle (OpenClaw handles) | done | P1 | [spec](features/TECH-156-2026-03-18-silence-intermediate-notifications.md) |
 | TECH-157 | Immediate OpenClaw wake after pending-event write (eliminate 5-min cron lag) | done | P1 | [spec](features/TECH-157-2026-03-18-openclaw-immediate-wake.md) |
 | BUG-158 | QA dispatch fails for inbox tasks (no spec file) — add TASK_LABEL guard | done | P1 | closed: band-aid, superseded by BUG-159 |
-| BUG-159 | QA resolves real spec_id for inbox tasks (multi-layer resolution) | in_progress | P1 | [spec](features/BUG-159-2026-03-18-qa-inbox-spec-id-resolution.md) |
-| BUG-160 | Fix broken OpenClaw wake in pueue-callback.sh (timeout + missing --text) | queued | P1 | [spec](features/BUG-160-2026-03-18-openclaw-wake-fix.md) |
-| ARCH-161 | Orchestrator Radical Rewrite — Python + North Star (delete Telegram, rewrite bash→Python) | in_progress | P1 | [spec](features/ARCH-161-2026-03-18-orchestrator-radical-rewrite.md) |
+| BUG-159 | QA resolves real spec_id for inbox tasks (multi-layer resolution) | done | P1 | closed: superseded by ARCH-161 (callback.py has multi-layer resolution) |
+| BUG-160 | Fix broken OpenClaw wake in pueue-callback.sh (timeout + missing --text) | done | P1 | closed: superseded by ARCH-161 (event_writer.py has 30s timeout + --text) |
+| ARCH-161 | Orchestrator Radical Rewrite — Python + North Star (delete Telegram, rewrite bash→Python) | done | P1 | [spec](features/ARCH-161-2026-03-18-orchestrator-radical-rewrite.md) |
 
 ---
 
