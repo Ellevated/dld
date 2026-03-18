@@ -116,6 +116,7 @@
 | BUG-152 | Agent SDK venv сломан — fake bash wrapper вместо реального venv | done | P0 | [spec](features/BUG-152-2026-03-17-venv-sdk-broken.md) |
 | TECH-151 | Orchestrator North-Star Alignment (draft→queued, remove dead code, inbox invariant) | done | P0 | [spec](features/TECH-151-2026-03-17-orchestrator-north-star-alignment.md) |
 | TECH-153 | AI-First Economic Model — replace human-centric effort with Impact+Risk | done | P1 | [spec](features/TECH-153-2026-03-17-ai-first-economic-model.md) |
+| TECH-154 | DLD Cycle E2E Reliability — First Full Pass (QA spec path, reflect, artifact-scan) | queued | P0 | [spec](features/TECH-154-2026-03-18-cycle-e2e-reliability.md) |
 
 ---
 
