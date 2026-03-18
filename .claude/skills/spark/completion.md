@@ -177,6 +177,29 @@ Each spec is fully independent. User can run autopilot on any single spec.
 
 ---
 
+## Headless Mode: Write SpecID to Inbox File (MANDATORY)
+
+When running in headless mode (inbox-originated), write the spec ID back to the
+originating inbox file so the pipeline can map inbox labels to real spec IDs.
+
+After spec is created and BEFORE auto-commit:
+
+1. Check env var: `CLAUDE_CURRENT_SPEC_PATH`
+2. If set and file exists at that path:
+   - Append line: `**SpecID:** {TASK_ID}` to the file
+   - This enables pueue-callback.sh to resolve real spec_id for QA dispatch
+
+Example:
+```bash
+# The inbox done file at CLAUDE_CURRENT_SPEC_PATH gets:
+**SpecID:** TECH-157
+```
+
+**Why:** Without this, QA dispatch after autopilot can't find the spec file
+because the pueue task label contains the inbox filename, not the spec ID.
+
+---
+
 ## Auto-Commit + Push (MANDATORY)
 
 After spec file is created and backlog updated — commit and push:

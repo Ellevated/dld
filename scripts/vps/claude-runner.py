@@ -97,6 +97,9 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         env={
             "PROJECT_DIR": str(project_path),
             "CLAUDE_PROJECT_DIR": str(project_path),
+            "CLAUDE_CURRENT_SPEC_PATH": os.environ.get(
+                "CLAUDE_CURRENT_SPEC_PATH", ""
+            ),
         },
     )
 

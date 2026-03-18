@@ -81,12 +81,62 @@ fi
 echo "[callback] pueue_id=${PUEUE_ID} project=${PROJECT_ID} task=${TASK_LABEL} result=${RESULT} status=${STATUS}"
 
 # ---------------------------------------------------------------------------
+# Resolve spec_id for QA dispatch (multi-layer)
+# Layer 1: From TASK_LABEL regex (orchestrator sets label = spec_id)
+# Layer 2: From agent output PREVIEW (spec_id appears in result text)
+# Layer 3: From inbox done file (SpecID metadata written by Spark)
+# ---------------------------------------------------------------------------
+resolve_spec_id() {
+    local task_label="$1" preview="$2" project_path="$3"
+
+    # Layer 1: From TASK_LABEL (orchestrator sets label = spec_id)
+    if [[ "$task_label" =~ (TECH|FTR|BUG|ARCH)-[0-9]+ ]]; then
+        echo "${BASH_REMATCH[0]}"
+        return 0
+    fi
+
+    # Layer 2: From agent output preview (spec_id appears in result text)
+    if [[ -n "$preview" ]]; then
+        local from_preview
+        from_preview=$(echo "$preview" | grep -oE '(TECH|FTR|BUG|ARCH)-[0-9]+' | head -1 || true)
+        if [[ -n "$from_preview" ]]; then
+            echo "$from_preview"
+            return 0
+        fi
+    fi
+
+    # Layer 3: From inbox done file (SpecID metadata written by Spark)
+    if [[ -n "$project_path" && "$task_label" =~ ^inbox- ]]; then
+        local inbox_done_dir="${project_path}/ai/inbox/done"
+        if [[ -d "$inbox_done_dir" ]]; then
+            local spec_from_inbox
+            spec_from_inbox=$(grep -rh '\*\*SpecID:\*\*' "$inbox_done_dir"/*.md 2>/dev/null | \
+                tail -1 | grep -oE '(TECH|FTR|BUG|ARCH)-[0-9]+' || true)
+            if [[ -n "$spec_from_inbox" ]]; then
+                echo "$spec_from_inbox"
+                return 0
+            fi
+        fi
+    fi
+
+    return 1  # No spec_id resolved
+}
+
+# ---------------------------------------------------------------------------
 # Step 1-3: Release slot + finish task + update project phase via db.py
 # All SQL is parameterized inside db.py — no injection risk here.
 # This block MUST execute even if notify fails, so errors are logged but not fatal.
 # ---------------------------------------------------------------------------
 if [[ "$STATUS" == "done" ]]; then
-    NEW_PHASE="qa_pending"
+    # Try to resolve spec_id for QA — inbox tasks without resolvable spec skip QA
+    QA_SPEC_ID_EARLY=$(resolve_spec_id "$TASK_LABEL" "" "" || true)
+    if [[ -n "$QA_SPEC_ID_EARLY" || ! "$TASK_LABEL" =~ ^inbox- ]]; then
+        NEW_PHASE="qa_pending"
+    else
+        # Inbox task with no spec_id resolvable yet (PREVIEW not available here)
+        # Defer to Step 7 where PREVIEW is available for Layer 2 resolution
+        NEW_PHASE="qa_pending"
+    fi
 else
     NEW_PHASE="failed"
 fi
@@ -354,11 +404,20 @@ else:
     echo "[callback] Post-autopilot tail: TASK_LABEL=${TASK_LABEL} (used as QA spec_id)" >> "$CALLBACK_LOG"
 
     if [[ -n "$PROJECT_PATH" ]]; then
-        QA_LABEL="${PROJECT_ID}:qa-${TASK_LABEL}"
         REFLECT_LABEL="${PROJECT_ID}:reflect-${TASK_LABEL}"
 
-        # Dispatch QA once per autopilot completion
-        if pueue status --json 2>/dev/null | python3 -c "
+        # Resolve spec_id using all available signals (PREVIEW available now)
+        QA_SPEC_ID=$(resolve_spec_id "$TASK_LABEL" "$PREVIEW" "$PROJECT_PATH" || true)
+
+        if [[ -z "$QA_SPEC_ID" ]]; then
+            echo "[callback] Skipping QA: no spec_id resolved from task_label='${TASK_LABEL}' or agent output"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] QA skip: no spec_id task=${TASK_LABEL}" >> "$CALLBACK_LOG"
+        else
+            QA_LABEL="${PROJECT_ID}:qa-${QA_SPEC_ID}"
+            echo "[callback] Resolved QA spec_id=${QA_SPEC_ID} (task_label=${TASK_LABEL})" >> "$CALLBACK_LOG"
+
+            # Dispatch QA once per autopilot completion
+            if pueue status --json 2>/dev/null | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -371,15 +430,16 @@ for t in data.get('tasks', {}).values():
         sys.exit(0)
 sys.exit(1)
 " 2>/dev/null; then
-            echo "[callback] Skipping duplicate QA dispatch for ${QA_LABEL}"
-        else
-            pueue add --group "$RUNNER_GROUP" --label "$QA_LABEL" \
-                -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "$PROJECT_PROVIDER" "qa" \
-                "/qa ${TASK_LABEL}" 2>/dev/null && {
-                echo "[callback] QA dispatched for ${PROJECT_ID}:${TASK_LABEL} (group=${RUNNER_GROUP})"
-            } || {
-                echo "[callback] WARN: QA dispatch failed for ${PROJECT_ID}" >&2
-            }
+                echo "[callback] Skipping duplicate QA dispatch for ${QA_LABEL}"
+            else
+                pueue add --group "$RUNNER_GROUP" --label "$QA_LABEL" \
+                    -- "${SCRIPT_DIR}/run-agent.sh" "$PROJECT_PATH" "$PROJECT_PROVIDER" "qa" \
+                    "/qa ${QA_SPEC_ID}" 2>/dev/null && {
+                    echo "[callback] QA dispatched for ${PROJECT_ID}:${QA_SPEC_ID} (group=${RUNNER_GROUP})"
+                } || {
+                    echo "[callback] WARN: QA dispatch failed for ${PROJECT_ID}" >&2
+                }
+            fi
         fi
 
         # Dispatch Reflect after every autopilot completion (unconditional — agents own diary writes)
