@@ -1,6 +1,6 @@
 # Bug Fix: [BUG-159] QA dispatch resolves real spec_id for inbox-originated tasks
 
-**Status:** queued | **Priority:** P1 | **Risk:** R1 | **Date:** 2026-03-18
+**Status:** done | **Priority:** P1 | **Risk:** R1 | **Date:** 2026-03-18
 
 **Supersedes:** BUG-158 (band-aid: skip QA for inbox tasks entirely)
 
@@ -261,13 +261,13 @@ because the pueue task label contains the inbox filename, not the spec ID.
 
 ## Definition of Done
 
-- [ ] Multi-layer spec_id resolution in pueue-callback.sh
-- [ ] Old `^inbox-` band-aid guard removed
-- [ ] CLAUDE_CURRENT_SPEC_PATH passed through claude-runner.py
-- [ ] Spark completion writes SpecID to inbox done file
-- [ ] Inbox-originated autopilot tasks get QA with correct spec_id
-- [ ] Orchestrator-dispatched tasks work unchanged (regression check)
-- [ ] Reflect still dispatches unconditionally for all tasks
+- [x] Multi-layer spec_id resolution in pueue-callback.sh
+- [x] Old `^inbox-` band-aid guard removed
+- [x] CLAUDE_CURRENT_SPEC_PATH passed through claude-runner.py
+- [x] Spark completion writes SpecID to inbox done file
+- [x] Inbox-originated autopilot tasks get QA with correct spec_id
+- [x] Orchestrator-dispatched tasks work unchanged (regression check)
+- [x] Reflect still dispatches unconditionally for all tasks
 
 ## Blueprint Reference
 
