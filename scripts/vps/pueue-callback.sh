@@ -366,17 +366,8 @@ sys.exit(1)
             }
         fi
 
-        # Dispatch Reflect only when there is pending diary work and no duplicate queued/running task
-        DIARY_INDEX="${PROJECT_PATH}/ai/diary/index.md"
-        PENDING_COUNT=0
-        if [[ -f "$DIARY_INDEX" ]]; then
-            PENDING_COUNT=$(grep -c '| pending |' "$DIARY_INDEX" 2>/dev/null || true)
-            PENDING_COUNT=$(( PENDING_COUNT + 0 ))
-        fi
-
-        if (( PENDING_COUNT < 1 )); then
-            echo "[callback] Skipping reflect: no pending diary entries for ${PROJECT_ID}"
-        elif pueue status --json 2>/dev/null | python3 -c "
+        # Dispatch Reflect after every autopilot completion (unconditional — agents own diary writes)
+        if pueue status --json 2>/dev/null | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
