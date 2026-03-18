@@ -1,6 +1,6 @@
 # Bug Fix: [BUG-160] Fix broken OpenClaw wake in pueue-callback.sh
 
-**Status:** queued | **Priority:** P1 | **Date:** 2026-03-18
+**Status:** done | **Priority:** P1 | **Date:** 2026-03-18
 
 ## Symptom
 
@@ -109,5 +109,5 @@ timeout 30 "$OPENCLAW_BIN" system event --mode now --text "cycle-event: ${SKILL}
 ## Definition of Done
 
 - [x] Root cause fixed (timeout + missing --text)
-- [ ] callback-debug.log confirms wake succeeds
-- [ ] No regression — callback still completes even if openclaw binary missing/gateway down
+- [x] callback-debug.log confirms wake succeeds
+- [x] No regression — callback still completes even if openclaw binary missing/gateway down
