@@ -1,7 +1,7 @@
 # Idea: 20260318-195300
 **Source:** openclaw
 **Route:** spark
-**Status:** new
+**Status:** processing
 ---
 
 После записи pending-event файла в `ai/openclaw/pending-events/` немедленно будить

@@ -1,7 +1,7 @@
 # Idea: 20260318-201500
 **Source:** openclaw
 **Route:** spark
-**Status:** new
+**Status:** processing
 ---
 
 QA dispatch падает с "spec file not found" когда autopilot обрабатывает inbox-задачу

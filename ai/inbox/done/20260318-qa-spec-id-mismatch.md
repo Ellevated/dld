@@ -1,7 +1,7 @@
 # Idea: 20260318-202000
 **Source:** openclaw
 **Route:** spark
-**Status:** new
+**Status:** processing
 ---
 
 QA получает `inbox-20260318-XXXXXX` как SPEC_ID вместо реального TECH/BUG ID который

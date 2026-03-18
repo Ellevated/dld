@@ -1,7 +1,7 @@
 # Idea: 20260318-202400
 **Source:** openclaw
 **Route:** spark
-**Status:** new
+**Status:** processing
 ---
 
 TECH-157 wake не работает: два бага в `pueue-callback.sh`.

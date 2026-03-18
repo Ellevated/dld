@@ -1,0 +1,15 @@
+{
+  "spec_id": "TECH-151",
+  "title": "Orchestrator North-Star Alignment",
+  "mode": "headless",
+  "phases": {
+    "collect": { "status": "done", "ts": "2026-03-17T00:00:00Z" },
+    "research": { "status": "done", "ts": "2026-03-17T00:10:00Z", "files": ["research-external.md", "research-codebase.md", "research-patterns.md", "research-devil.md"] },
+    "synthesize": { "status": "done", "ts": "2026-03-17T00:15:00Z" },
+    "decide": { "status": "done", "ts": "2026-03-17T00:16:00Z", "approach": 1 },
+    "write": { "status": "done", "ts": "2026-03-17T00:20:00Z" },
+    "validate": { "status": "done", "ts": "2026-03-17T00:21:00Z" },
+    "reflect": { "status": "done", "ts": "2026-03-17T00:22:00Z" },
+    "completion": { "status": "done", "ts": "2026-03-17T00:25:00Z" }
+  }
+}

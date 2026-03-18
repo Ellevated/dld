@@ -1,6 +1,6 @@
 # Bug Fix: [BUG-158] QA dispatch fails for inbox tasks (no spec file)
 
-**Status:** queued | **Priority:** P1 | **Risk:** R2 | **Date:** 2026-03-18
+**Status:** done | **Priority:** P1 | **Risk:** R2 | **Date:** 2026-03-18
 
 ## Symptom
 
@@ -83,6 +83,8 @@ Reflect dispatch (lines 385-410) stays OUTSIDE the guard — it doesn't depend o
 ## Definition of Done
 
 - [x] Root cause fixed (TASK_LABEL guard added)
-- [ ] No "spec file not found" for inbox tasks
-- [ ] Reflect still dispatches for inbox tasks
-- [ ] Spec-based tasks still get QA dispatch
+- [x] No "spec file not found" for inbox tasks
+- [x] Reflect still dispatches for inbox tasks
+- [x] Spec-based tasks still get QA dispatch
+
+**Note:** Fix was already applied in prior commits (TECH-151 north-star alignment + BUG-155 e2e reliability). Lines 90-94 skip `qa_pending` phase for inbox tasks, lines 365-394 skip QA dispatch for `^inbox-` labels, reflect dispatch (lines 396-421) remains unconditional.

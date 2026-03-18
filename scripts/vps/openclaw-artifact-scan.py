@@ -30,7 +30,7 @@ def extract_status(text: str) -> str:
     """Extract status from QA report.
 
     Supports two formats:
-    1. qa-loop.sh generated: '**Status:** passed' header line
+    1. Structured: '**Status:** passed' header line
     2. Hand-written/agent: no Status header (returns 'no_status_header')
     """
     for line in text.splitlines():
@@ -44,7 +44,7 @@ def extract_spec(text: str) -> str:
     """Extract spec ID from QA report.
 
     Supports two formats:
-    1. qa-loop.sh generated: '**Spec:** TECH-153' header line
+    1. Structured: '**Spec:** TECH-153' header line
     2. Hand-written/agent: '# QA Report: TECH-151 — description' title
     """
     import re

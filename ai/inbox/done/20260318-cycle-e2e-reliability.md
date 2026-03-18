@@ -1,7 +1,7 @@
 # Idea: 20260318-183600
 **Source:** openclaw
 **Route:** spark
-**Status:** new
+**Status:** processing
 ---
 
 DLD цикл никогда не проходил полный прогон от начала до конца.

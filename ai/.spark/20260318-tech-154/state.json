@@ -1,0 +1,16 @@
+{
+  "spec_id": "TECH-154",
+  "title": "DLD Cycle E2E Reliability — First Full Pass",
+  "mode": "feature",
+  "headless": true,
+  "phases": {
+    "collect": { "status": "done", "timestamp": "2026-03-18T12:00:00Z" },
+    "research": { "status": "done", "files": ["research-codebase.md", "research-external.md", "research-patterns.md"], "note": "devil scout degraded (3/4)" },
+    "synthesize": { "status": "done" },
+    "decide": { "status": "done", "approach": 1 },
+    "write": { "status": "done" },
+    "validate": { "status": "done" },
+    "reflect": { "status": "done" },
+    "completion": { "status": "done" }
+  }
+}

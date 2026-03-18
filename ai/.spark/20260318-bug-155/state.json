@@ -1,0 +1,17 @@
+{
+  "spec_id": "BUG-155",
+  "title": "DLD Cycle E2E Reliability v2 — Three Gap Closure + Smoke Test",
+  "mode": "feature",
+  "headless": true,
+  "source": "openclaw",
+  "phases": {
+    "collect": {"status": "done", "timestamp": "2026-03-18T12:00:00Z"},
+    "research": {"status": "done", "timestamp": "2026-03-18T12:05:00Z", "files": ["research-codebase.md", "research-devil.md", "research-patterns.md", "research-external.md"]},
+    "synthesize": {"status": "done", "timestamp": "2026-03-18T12:10:00Z"},
+    "decide": {"status": "done", "timestamp": "2026-03-18T12:10:00Z", "approach": 1},
+    "write": {"status": "done", "timestamp": "2026-03-18T12:15:00Z"},
+    "validate": {"status": "done", "timestamp": "2026-03-18T12:16:00Z"},
+    "reflect": {"status": "done", "timestamp": "2026-03-18T12:17:00Z"},
+    "completion": {"status": "done", "timestamp": "2026-03-18T12:18:00Z"}
+  }
+}
