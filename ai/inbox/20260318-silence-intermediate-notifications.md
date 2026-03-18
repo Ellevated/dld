@@ -1,21 +1,9 @@
-# Idea: 20260318-192300
-**Source:** openclaw
-**Route:** spark
-**Status:** new
+
 ---
+**Update:** Прямой коммит откатан. Задача идёт через Spark.
 
-Заглушить промежуточные Telegram уведомления от DLD-бота во время цикла.
-
-Сейчас `pueue-callback.sh` шлёт уведомления за каждый шаг: spark, autopilot, QA —
-это засоряет чат. Нужно чтобы DLD-бот молчал весь цикл.
-
-**Требуемое поведение:**
-- `SKIP_NOTIFY=true` для skills: spark, autopilot, qa (все промежуточные шаги)
-- Reflect уже заглушён — оставить как есть
-- DLD-бот не шлёт ничего во время цикла
-- OpenClaw читает `ai/openclaw/pending-events/` и сам собирает финальный отчёт
-
-**Что НЕ трогать:**
-- pending-events файлы — они остаются, OpenClaw их читает
-- Логику dispatch QA + Reflect — не менять
-- Ошибки (failed tasks) — можно оставить, обсудить отдельно
+**Детали для реализации:**
+- В `pueue-callback.sh` Step 6: `SKIP_NOTIFY=true` по умолчанию для всех skills
+- Исключение: hard failure (`STATUS=failed` + непустой `SKILL`) — оставить уведомление
+- Убрать все существующие частные `SKIP_NOTIFY=true` блоки (reflect, secondary qa, unknown skill, no-skill failed) — они становятся лишними
+- Сохранить логику записи в `CALLBACK_LOG` — она нужна для дебага
