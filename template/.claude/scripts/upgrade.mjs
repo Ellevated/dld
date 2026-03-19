@@ -42,7 +42,7 @@ const GROUP_PATTERNS = {
   settings:         (p) => p === '.claude/settings.json',
 };
 
-const SAFE_GROUPS = new Set(['agents', 'hooks', 'hook-tests', 'rules', 'scripts-claude', 'scripts-bash']);
+const SAFE_GROUPS = new Set(['agents', 'hooks', 'hook-tests', 'rules']);
 
 // Upgrade only touches DLD framework files. Scaffolding (pyproject.toml, ai/, etc.) is excluded.
 const UPGRADE_SCOPE = (f) => f.startsWith('.claude/') || f.startsWith('scripts/');

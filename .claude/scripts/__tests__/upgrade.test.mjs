@@ -258,6 +258,40 @@ describe('upgrade.mjs safety invariants', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Scripts require review (not auto-applied)
+  // ---------------------------------------------------------------------------
+
+  describe('scripts require manual review', () => {
+    it('scripts-claude is NOT in safe groups — custom project scripts survive', () => {
+      // Add a custom script in template that differs from project
+      const tplScript = join(projectDir, 'template/.claude/scripts/spark-state.mjs');
+      const projScript = join(projectDir, '.claude/scripts/spark-state.mjs');
+      writeFileSync(tplScript, '// template v2\n');
+      writeFileSync(projScript, '// project custom v1\n');
+      execSync('git add -A && git commit -m "add differing script"', { cwd: projectDir, stdio: 'pipe' });
+
+      let result;
+      try {
+        result = runUpgrade(projectDir, '--apply --groups safe');
+      } catch (e) {
+        result = { applied: [] };
+      }
+
+      const applied = result.applied || [];
+      assert.ok(
+        !applied.some(f => f.includes('scripts-claude') || f.endsWith('.mjs') && f.includes('scripts/')),
+        'scripts-claude files must NOT be auto-applied via safe groups',
+      );
+
+      // Verify project script was NOT overwritten
+      const content = readFileSync(projScript, 'utf-8');
+      assert.ok(content.includes('project custom v1'), 'project script must survive safe upgrade');
+
+      execSync('git checkout -- .', { cwd: projectDir, stdio: 'pipe' });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Deprecation detection
   // ---------------------------------------------------------------------------
 
