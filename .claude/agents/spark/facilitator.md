@@ -260,7 +260,7 @@ status: completed
 mode: feature
 decision_mode: auto | human | council | architect
 spec_created: ai/features/{TASK-ID}-{slug}.md
-spec_status: queued | draft
+spec_status: queued  # always queued — orchestrator picks up on next cycle
 research_files:
   - ai/features/research-external.md
   - ai/features/research-codebase.md

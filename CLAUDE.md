@@ -308,7 +308,7 @@ Risk replaces effort as the second axis of decision-making:
 
 | Status | Owner | Description |
 |--------|-------|-------------|
-| `draft` | Manual | Spec incomplete (manual override only, not normal Spark output) |
+| `draft` | Manual | Legacy — manual override only, Spark never outputs this |
 | `queued` | Spark | Ready for autopilot (Spark always creates specs in this status) |
 | `in_progress` | Autopilot | Currently executing |
 | `blocked` | Autopilot | Needs human (see ACTION REQUIRED in spec) |

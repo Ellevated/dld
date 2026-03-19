@@ -198,7 +198,7 @@
 
 | Status | Owner | Description |
 |--------|-------|-------------|
-| `draft` | Spark | Spec incomplete |
+| `draft` | Manual | Legacy — manual override only, Spark never outputs this |
 | `queued` | Spark | Ready for execution |
 | `in_progress` | Autopilot | Currently executing |
 | `blocked` | Autopilot | Needs human |

@@ -296,14 +296,15 @@ Use Risk as the second decision axis (instead of effort):
 
 | Status | Owner | Description |
 |--------|-------|-------------|
-| `draft` | Spark | Spec incomplete |
+| `draft` | Manual | Legacy — manual override only, Spark never outputs this |
 | `queued` | Spark | Ready for autopilot |
 | `in_progress` | Autopilot | Currently executing |
 | `blocked` | Autopilot | Needs human (see ACTION REQUIRED in spec) |
 | `resumed` | Human | Problem resolved, continue |
 | `done` | Autopilot | Completed |
 
-**Flow:** `draft → queued → in_progress → done`
+**Default Flow:** `queued → in_progress → done`
+**Manual Override Flow:** `draft → queued → in_progress → done`
 **Recovery:** `in_progress → blocked → resumed → in_progress`
 
 ---
