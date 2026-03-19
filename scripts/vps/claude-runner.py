@@ -36,7 +36,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-MAX_TURNS = 30
+MAX_TURNS = 80
 TIMEOUT_SECONDS = 1800  # 30 min hard limit
 
 LOG_DIR = Path(__file__).parent / "logs"
