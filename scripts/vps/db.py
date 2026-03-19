@@ -4,7 +4,7 @@ Module: db
 Role: SQLite WAL helpers for orchestrator state management.
 Uses: sqlite3 (stdlib)
 Used by: orchestrator.py (get_all_projects, seed_projects_from_json, try_acquire_slot, log_task,
-             update_project_phase, get_available_slots),
+             update_project_phase, get_available_slots, get_occupied_slots),
          callback.py (release_slot, finish_task, update_project_phase),
          night-reviewer.sh (via CLI: python3 db.py save-finding / get-new-findings / update-phase)
 """
@@ -172,6 +172,20 @@ def get_available_slots(provider: str) -> int:
             (provider,),
         ).fetchone()
         return row["cnt"]
+
+
+def get_occupied_slots() -> list[dict]:
+    """Return all compute_slots with non-NULL pueue_id.
+
+    Used by orphan slot watchdog (BUG-162) to cross-reference
+    occupied slots against live pueue tasks.
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT slot_number, provider, project_id, pueue_id, acquired_at "
+            "FROM compute_slots WHERE pueue_id IS NOT NULL"
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def seed_projects_from_json(projects: list[dict]) -> None:

@@ -124,7 +124,7 @@
 | BUG-159 | QA resolves real spec_id for inbox tasks (multi-layer resolution) | done | P1 | closed: superseded by ARCH-161 (callback.py has multi-layer resolution) |
 | BUG-160 | Fix broken OpenClaw wake in pueue-callback.sh (timeout + missing --text) | done | P1 | closed: superseded by ARCH-161 (event_writer.py has 30s timeout + --text) |
 | ARCH-161 | Orchestrator Radical Rewrite — Python + North Star (delete Telegram, rewrite bash→Python) | done | P1 | [spec](features/ARCH-161-2026-03-18-orchestrator-radical-rewrite.md) |
-| BUG-162 | Orphan Slot Watchdog — release stale compute_slots after crash/restart | queued | P1 | [spec](features/BUG-162-2026-03-19-orphan-slot-watchdog.md) |
+| BUG-162 | Orphan Slot Watchdog — release stale compute_slots after crash/restart | done | P1 | [spec](features/BUG-162-2026-03-19-orphan-slot-watchdog.md) |
 
 ---
 

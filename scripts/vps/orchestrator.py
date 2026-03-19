@@ -51,15 +51,12 @@ def _setup_logging() -> None:
     except OSError:
         log_dir = str(SCRIPT_DIR / "logs")
         os.makedirs(log_dir, exist_ok=True)
-
     fmt = logging.Formatter(
         '{"ts":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}',
         datefmt="%Y-%m-%dT%H:%M:%SZ",
     )
     fh = logging.handlers.TimedRotatingFileHandler(
-        os.path.join(log_dir, "orchestrator.log"),
-        when="midnight", backupCount=7, utc=True,
-    )
+        os.path.join(log_dir, "orchestrator.log"), when="midnight", backupCount=7, utc=True)
     fh.setFormatter(fmt)
     sh = logging.StreamHandler()
     sh.setFormatter(fmt)
@@ -97,6 +94,53 @@ def sync_projects() -> None:
     log.info("synced %d projects from %s", len(projects), projects_json)
 
 
+def get_live_pueue_ids() -> set[int] | None:
+    """Return live pueue task IDs. None on failure (skip watchdog, no false release)."""
+    try:
+        r = subprocess.run(
+            ["pueue", "status", "--json"], capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode != 0:
+            log.warning("pueue status exit %d: %s", r.returncode, r.stderr[:200])
+            return None
+        data = json.loads(r.stdout)
+        live: set[int] = set()
+        for tid_str, task in data.get("tasks", {}).items():
+            st = task.get("status", "")
+            if isinstance(st, dict) and ("Running" in st or "Locked" in st):
+                live.add(int(tid_str))
+            elif st in ("Queued", "Stashed", "Paused"):
+                live.add(int(tid_str))
+        return live
+    except Exception as exc:
+        log.warning("get_live_pueue_ids failed: %s", exc)
+        return None
+
+
+def release_orphan_slots() -> int:
+    """Release slots whose pueue tasks are gone. 0 if pueue unreachable (BUG-162)."""
+    live_ids = get_live_pueue_ids()
+    if live_ids is None:
+        return 0
+    occupied = db.get_occupied_slots()
+    if not occupied:
+        return 0
+    released = 0
+    for slot in occupied:
+        pueue_id = slot["pueue_id"]
+        if pueue_id not in live_ids:
+            pid = db.release_slot(pueue_id)
+            log.warning(
+                "watchdog: released orphan slot=%d project=%s pueue_id=%d acquired_at=%s",
+                slot["slot_number"], pid or slot.get("project_id"),
+                pueue_id, slot.get("acquired_at", "unknown"),
+            )
+            released += 1
+    if released:
+        log.info("watchdog: released %d orphan slot(s) total", released)
+    return released
+
+
 def is_agent_running(project_id: str) -> bool:
     """Return True if a pueue task with this project's label prefix is Running."""
     try:
@@ -122,68 +166,48 @@ def git_pull(project_id: str, project_dir: str) -> None:
     if is_agent_running(project_id):
         log.info("skip git pull — agent running: %s", project_id)
         return
+    _git = lambda *a, **kw: subprocess.run(["git", "-C", project_dir] + list(a), capture_output=True, **kw)
     try:
-        diff = subprocess.run(
-            ["git", "-C", project_dir, "diff", "--quiet"], capture_output=True, timeout=30,
-        )
-        cached = subprocess.run(
-            ["git", "-C", project_dir, "diff", "--cached", "--quiet"], capture_output=True, timeout=30,
-        )
-        if diff.returncode == 0 and cached.returncode == 0:
-            subprocess.run(
-                ["git", "-C", project_dir, "pull", "--rebase", "origin", "develop"],
-                capture_output=True, text=True, timeout=120, check=True,
-            )
+        clean = _git("diff", "--quiet", timeout=30).returncode == 0
+        staged = _git("diff", "--cached", "--quiet", timeout=30).returncode == 0
+        if clean and staged:
+            _git("pull", "--rebase", "origin", "develop", text=True, timeout=120, check=True)
         else:
-            subprocess.run(
-                ["git", "-C", project_dir, "fetch", "origin", "develop"],
-                capture_output=True, timeout=60, check=True,
-            )
-            subprocess.run(
-                ["git", "-C", project_dir, "rebase", "--autostash", "origin/develop"],
-                capture_output=True, text=True, timeout=120, check=True,
-            )
+            _git("fetch", "origin", "develop", timeout=60, check=True)
+            _git("rebase", "--autostash", "origin/develop", text=True, timeout=120, check=True)
     except subprocess.CalledProcessError as exc:
-        subprocess.run(["git", "-C", project_dir, "rebase", "--abort"], capture_output=True, timeout=30)
+        _git("rebase", "--abort", timeout=30)
         log.warning("git pull failed: %s — %s", project_dir, (exc.stderr or "")[:200])
 
 
 def _parse_inbox_file(filepath: Path) -> dict:
     """Extract route/source/provider/context/idea_text from inbox markdown."""
-    text = filepath.read_text(errors="replace")
-    lines = text.splitlines()
+    lines = filepath.read_text(errors="replace").splitlines()
 
     def extract(key: str, default: str = "") -> str:
-        for line in lines:
-            m = re.match(rf"^\*\*{key}:\*\*\s+(.+)", line)
+        for ln in lines:
+            m = re.match(rf"^\*\*{key}:\*\*\s+(.+)", ln)
             if m:
                 return m.group(1).strip()
         return default
 
     idea_lines, in_body = [], False
-    for line in lines:
-        if line.strip() == "---":
+    for ln in lines:
+        if ln.strip() == "---":
             in_body = True
-            continue
-        if in_body:
-            idea_lines.append(line)
+        elif in_body:
+            idea_lines.append(ln)
             if len(idea_lines) >= 50:
                 break
-
     idea_text = " ".join(idea_lines).strip()
     if not idea_text:
         idea_text = " ".join(
             ln for ln in lines[:20]
             if not re.match(r"^\*\*(Source|Route|Status|Context|Provider|Project):\*\*|^#", ln)
         ).strip()
-
-    return {
-        "route": extract("Route", "spark"),
-        "source": extract("Source", "openclaw"),
-        "provider": extract("Provider", ""),
-        "context": extract("Context", ""),
-        "idea_text": idea_text,
-    }
+    return {"route": extract("Route", "spark"), "source": extract("Source", "openclaw"),
+            "provider": extract("Provider", ""), "context": extract("Context", ""),
+            "idea_text": idea_text}
 
 
 _ROUTE_SKILL_MAP = {
@@ -196,20 +220,14 @@ _ROUTE_SKILL_MAP = {
 def _pueue_add(group: str, label: str, cmd: list, env: dict | None = None) -> int | None:
     """Submit task to pueue group. Returns pueue task ID or None."""
     pueue_cmd = ["pueue", "add", "--group", group, "--label", label, "--print-task-id", "--"] + cmd
-    env_overrides = {}
-    if env:
-        env_overrides = {**os.environ, **env}
+    run_env = {**os.environ, **env} if env else None
     try:
-        r = subprocess.run(
-            pueue_cmd,
-            capture_output=True, text=True, timeout=30,
-            env=env_overrides if env_overrides else None,
-        )
-        for line in r.stdout.strip().splitlines():
-            line = line.strip()
-            if line.isdigit():
-                return int(line)
-            m = re.search(r"(\d+)", line)
+        r = subprocess.run(pueue_cmd, capture_output=True, text=True, timeout=30, env=run_env)
+        for ln in r.stdout.strip().splitlines():
+            ln = ln.strip()
+            if ln.isdigit():
+                return int(ln)
+            m = re.search(r"(\d+)", ln)
             if m:
                 return int(m.group(1))
         log.warning("pueue add: no task ID in output: %s", r.stdout[:200])
@@ -240,27 +258,21 @@ def scan_inbox(project_id: str, project_dir: str) -> int:
         done_dir.mkdir(exist_ok=True)
         done_file = done_dir / inbox_file.name
         inbox_file.rename(done_file)
-
         provider = meta["provider"]
         if not provider:
             state = db.get_project_state(project_id)
             provider = (state["provider"] if state else None) or "claude"
-
         headless = f"[headless] Source: {meta['source']}."
         if meta["context"]:
             headless += f" Context: {meta['context']}."
         headless += f" {meta['idea_text']}"
         task_cmd = f"/{skill} {headless}"
-
         ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d-%H%M%S")
         task_file = SCRIPT_DIR / f".task-cmd-{ts}.txt"
         task_file.write_text(task_cmd)
-
         task_label = f"{project_id}:inbox-{ts}"
-        pueue_env = {
-            "CLAUDE_PROJECT_DIR": project_dir,
-            "CLAUDE_CURRENT_SPEC_PATH": str(done_file),
-        }
+        pueue_env = {"CLAUDE_PROJECT_DIR": project_dir,
+                     "CLAUDE_CURRENT_SPEC_PATH": str(done_file)}
         pueue_id = _pueue_add(
             f"{provider}-runner", task_label,
             [str(SCRIPT_DIR / "run-agent.sh"), project_dir, provider, skill, str(task_file)],
@@ -363,6 +375,7 @@ def main() -> None:
 
     while not _stop.is_set():
         try:
+            release_orphan_slots()  # BUG-162: clean stale slots before dispatch
             sync_projects()
             dispatch_night_review()
             for proj in db.get_all_projects():

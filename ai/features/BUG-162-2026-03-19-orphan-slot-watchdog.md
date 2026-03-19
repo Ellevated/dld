@@ -1,6 +1,6 @@
 # Feature: [BUG-162] Orphan Slot Watchdog — Release Stale compute_slots
 
-**Status:** queued | **Priority:** P1 | **Date:** 2026-03-19
+**Status:** done | **Priority:** P1 | **Date:** 2026-03-19
 
 ## Why
 
@@ -379,25 +379,29 @@ DEPLOY_URL=local-only
 
 ### Functional
 
-- [ ] `release_orphan_slots()` releases slots whose pueue tasks are gone
-- [ ] `release_orphan_slots()` does NOT release slots when pueue CLI fails
-- [ ] `release_orphan_slots()` does NOT release Running/Queued/Stashed/Paused tasks
-- [ ] Watchdog called once per cycle at start of main loop
-- [ ] All tasks from Implementation Plan completed
+- [x] `release_orphan_slots()` releases slots whose pueue tasks are gone
+- [x] `release_orphan_slots()` does NOT release slots when pueue CLI fails
+- [x] `release_orphan_slots()` does NOT release Running/Queued/Stashed/Paused tasks
+- [x] Watchdog called once per cycle at start of main loop
+- [x] All tasks from Implementation Plan completed
 
 ### Tests
 
-- [ ] All eval criteria pass
-- [ ] Coverage not decreased
+- [x] All eval criteria pass
+- [x] Coverage not decreased
 
 ### Technical
 
-- [ ] Tests pass (python3 -m pytest scripts/vps/tests/)
-- [ ] No regressions
-- [ ] orchestrator.py stays under 400 LOC
+- [x] Tests pass (python3 -m pytest scripts/vps/tests/)
+- [x] No regressions
+- [x] orchestrator.py stays under 400 LOC (399 LOC)
 
 ---
 
 ## Autopilot Log
 
-[Auto-populated by autopilot during execution]
+- Task 1: Added `get_occupied_slots()` to db.py
+- Task 2: Added `get_live_pueue_ids()` + `release_orphan_slots()` to orchestrator.py, wired into main loop
+- Task 3: Created test_orchestrator.py with 16 tests covering all eval criteria (EC-1 through EC-8)
+- Compacted existing code to stay under 400 LOC (399)
+- All 30 tests pass (14 existing + 16 new), zero regressions

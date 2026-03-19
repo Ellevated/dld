@@ -345,3 +345,4 @@ Dependency map between project components.
 | 2026-03-10 | Added night-reviewer.sh (FTR-147 Task 4) | coder |
 | 2026-03-10 | Added gemini-runner.sh, nexus-cache-refresh.sh (FTR-148) | coder |
 | 2026-03-18 | Radical rewrite: orchestrator.py, callback.py, event_writer.py replace bash scripts (ARCH-161) | coder |
+| 2026-03-19 | Orphan slot watchdog: get_occupied_slots (db.py), get_live_pueue_ids + release_orphan_slots (orchestrator.py) (BUG-162) | coder |
