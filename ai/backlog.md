@@ -126,6 +126,7 @@
 | ARCH-161 | Orchestrator Radical Rewrite — Python + North Star (delete Telegram, rewrite bash→Python) | done | P1 | [spec](features/ARCH-161-2026-03-18-orchestrator-radical-rewrite.md) |
 | BUG-162 | Orphan Slot Watchdog — release stale compute_slots after crash/restart | done | P1 | [spec](features/BUG-162-2026-03-19-orphan-slot-watchdog.md) |
 | BUG-163 | Fix event_writer wake_openclaw() blocking callback 23s (timeout 30→5, log DEBUG) | done | P1 | [spec](features/BUG-163-2026-03-19-event-writer-wake-timeout.md) |
+| BUG-164 | Fix callback.py pueue socket mismatch — read agent output from log files + DB | queued | P0 | [spec](features/BUG-164-2026-03-20-callback-pueue-socket-mismatch.md) |
 
 ---
 
