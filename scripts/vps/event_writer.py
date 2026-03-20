@@ -63,7 +63,7 @@ def wake_openclaw() -> bool:
     """Wake OpenClaw via CLI. Returns True on success.
 
     Looks for openclaw binary at ~/.npm-global/bin/openclaw.
-    Timeout 30s to match BUG-160 fix. Fails silently if binary missing.
+    Timeout 5s. Best-effort wake, non-critical (BUG-163).
     """
     openclaw_bin = os.path.expanduser("~/.npm-global/bin/openclaw")
     if not os.path.isfile(openclaw_bin):
@@ -73,16 +73,16 @@ def wake_openclaw() -> bool:
         subprocess.run(
             [openclaw_bin, "system", "event", "--mode", "now",
              "--text", "pipeline event"],
-            timeout=30,
+            timeout=5,
             capture_output=True,
         )
         log.info("openclaw wake sent")
         return True
     except subprocess.TimeoutExpired:
-        log.warning("openclaw wake timed out")
+        log.debug("openclaw wake timed out (non-critical)")
         return False
     except (FileNotFoundError, OSError) as exc:
-        log.warning("openclaw wake failed: %s", exc)
+        log.debug("openclaw wake failed (non-critical): %s", exc)
         return False
 
 
