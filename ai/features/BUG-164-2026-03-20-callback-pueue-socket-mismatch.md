@@ -1,6 +1,6 @@
 # Bug Fix: [BUG-164] callback.py pueue socket mismatch — empty agent output
 
-**Status:** queued | **Priority:** P0 | **Risk:** R1 | **Date:** 2026-03-20
+**Status:** done | **Priority:** P0 | **Risk:** R1 | **Date:** 2026-03-20
 
 ## Symptom
 

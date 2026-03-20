@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 """
 Module: callback
-Role: Pueue completion callback — release slot, update phase, dispatch QA/Reflect, write events.
-Uses: db (import), event_writer (import), subprocess (pueue CLI)
-Used by: Pueue daemon (via pueue.yml callback config)
-
-Replaces pueue-callback.sh + qa-loop.sh (ARCH-161).
-
+Role: Pueue completion callback — release slot, update phase, dispatch QA/Reflect.
+Uses: db, event_writer, subprocess (pueue CLI fallback)
+Used by: Pueue daemon (pueue.yml callback config)
 CLI: python3 callback.py <pueue_id> '<group>' '<result>'
-Pueue v4.0.4 callback template: callback.py {{ id }} '{{ group }}' '{{ result }}'
-
 INVARIANT: Always exit 0. Every step in try/except.
 """
 
@@ -60,7 +55,20 @@ def _setup_logging() -> None:
 
 
 def resolve_label(pueue_id: str) -> str:
-    """Get task label from pueue status --json."""
+    """Get task label. DB-first, pueue CLI fallback."""
+    # Layer 1: DB (reliable — no socket dependency)
+    try:
+        row = db.get_task_by_pueue_id(int(pueue_id))
+        if row:
+            project_id = row["project_id"]
+            task_label = row["task_label"]
+            label = f"{project_id}:{task_label}"
+            log.info("resolve_label from DB: %s", label)
+            return label
+    except Exception as exc:
+        log.warning("resolve_label DB failed: %s", exc)
+
+    # Layer 2: pueue CLI (fallback — may fail due to socket mismatch)
     try:
         result = subprocess.run(
             ["pueue", "status", "--json"],
@@ -68,7 +76,10 @@ def resolve_label(pueue_id: str) -> str:
         )
         data = json.loads(result.stdout)
         task = data.get("tasks", {}).get(pueue_id, {})
-        return task.get("label", "unknown") or "unknown"
+        label = task.get("label", "unknown") or "unknown"
+        if label != "unknown":
+            log.info("resolve_label from pueue: %s", label)
+        return label
     except Exception:
         return "unknown"
 
@@ -89,8 +100,55 @@ def map_result(result: str) -> tuple:
     return "failed", 1
 
 
-def extract_agent_output(pueue_id: str) -> tuple:
-    """Extract skill and result_preview from agent JSON output."""
+def _find_log_file(project_name: str) -> Path | None:
+    """Find most recent log file for project in logs/ dir."""
+    log_dir = SCRIPT_DIR / "logs"
+    if not log_dir.is_dir():
+        return None
+    pattern = f"{project_name}-*.log"
+    files = sorted(log_dir.glob(pattern), key=lambda f: f.stat().st_mtime, reverse=True)
+    return files[0] if files else None
+
+
+def _parse_log_file(log_path: Path) -> tuple:
+    """Parse JSON log file → (skill, result_preview)."""
+    try:
+        data = json.loads(log_path.read_text())
+        skill = data.get("skill", "")
+        preview = str(data.get("result_preview", ""))[:500]
+        return skill, preview
+    except Exception:
+        return "", ""
+
+
+def extract_agent_output(pueue_id: str, project_id: str = "") -> tuple:
+    """Extract skill and result_preview. Log file → DB → pueue log → ("", "")."""
+    # Layer 1: Read from log file (reliable — written by claude-runner.py)
+    if project_id:
+        try:
+            state = db.get_project_state(project_id)
+            if state:
+                project_name = Path(state.get("path", "")).name
+                if project_name:
+                    log_path = _find_log_file(project_name)
+                    if log_path:
+                        skill, preview = _parse_log_file(log_path)
+                        if skill:
+                            log.info("extract_agent_output from log: %s", log_path.name)
+                            return skill, preview
+        except Exception as exc:
+            log.warning("extract_agent_output log file failed: %s", exc)
+
+    # Layer 1b: Try DB task_log for skill (if no log file found)
+    try:
+        row = db.get_task_by_pueue_id(int(pueue_id))
+        if row and row.get("skill"):
+            log.info("extract_agent_output skill from DB: %s", row["skill"])
+            return row["skill"], ""
+    except Exception as exc:
+        log.warning("extract_agent_output DB failed: %s", exc)
+
+    # Layer 2: pueue log (fallback — may fail due to socket mismatch)
     try:
         result = subprocess.run(
             ["pueue", "log", pueue_id, "--json"],
@@ -112,12 +170,9 @@ def extract_agent_output(pueue_id: str) -> tuple:
                     return skill, preview
                 except json.JSONDecodeError:
                     continue
-
-        m = re.search(r'"result_preview":\s*"([^"]*)"', output)
-        if m:
-            return "", m.group(1)[:300]
     except Exception:
         pass
+
     return "", ""
 
 
@@ -299,7 +354,7 @@ def main() -> None:
         # Step 4: Extract agent output
         skill, preview = "", ""
         try:
-            skill, preview = extract_agent_output(pueue_id)
+            skill, preview = extract_agent_output(pueue_id, project_id)
             log.info("agent output: skill=%s preview_len=%d", skill, len(preview))
         except Exception as exc:
             log.warning("extract_agent_output failed: %s", exc)

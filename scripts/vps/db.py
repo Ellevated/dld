@@ -188,6 +188,17 @@ def get_occupied_slots() -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def get_task_by_pueue_id(pueue_id: int) -> Optional[dict]:
+    """Get task_log entry by pueue_id. Returns dict with project_id, task_label, skill."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT project_id, task_label, skill FROM task_log "
+            "WHERE pueue_id = ? ORDER BY id DESC LIMIT 1",
+            (pueue_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
 def seed_projects_from_json(projects: list[dict]) -> None:
     """Upsert projects from projects.json into project_state table."""
     with get_db() as conn:
