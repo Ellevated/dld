@@ -239,9 +239,10 @@ git push origin develop || {
 ### 5.5 Cleanup
 
 ```bash
+rm -f "${WORKTREE_DIR}/${TASK_ID}/.claude" 2>/dev/null  # remove symlink first
 git worktree remove "${WORKTREE_DIR}/${TASK_ID}" --force
-git branch -D ${BRANCH_PREFIX}/${TASK_ID}
-git worktree list  # verify
+git branch -d ${BRANCH_PREFIX}/${TASK_ID}  # safe delete (-d not -D)
+git worktree prune
 ```
 
 ---
