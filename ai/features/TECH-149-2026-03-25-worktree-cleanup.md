@@ -26,6 +26,7 @@ Autopilot's PHASE 3 describes worktree cleanup in `finishing.md` step 9 — but 
 **In scope:**
 - Layer 1: Post-run cleanup guard in `autopilot-loop.sh` (bash, outside LLM)
 - Layer 2: Standalone `scripts/cleanup-worktrees.sh` for sweeping all orphans
+- Stash cleanup: drop orphaned `autopilot-*` stashes left by crashed PHASE 3
 - Fix existing inconsistencies in `finishing.md` and `autopilot-git.md`
 - VPS integration: cleanup call in `pueue-callback.sh`
 - Template sync (all changes are universal)
@@ -160,6 +161,7 @@ Layer 2 (sweep, standalone):
   ├─ for each: safety check → remove if merged
   ├─ prune local branches tracking [gone] remotes
   ├─ [--remote] prune merged remote branches
+  ├─ drop orphaned autopilot-* stashes (git stash list → grep autopilot → drop)
   └─ git worktree prune
 
 VPS (post-task):
@@ -270,9 +272,10 @@ VPS (post-task):
 | EC-8 | `--remote` flag removes remote branches | Merged remote branch `origin/feature/FTR-XXX` exists | `git push origin --delete` executed only with --remote flag | deterministic | devil | P1 |
 | EC-9 | `.claude` symlink removed before worktree removal | Symlink exists at `.worktrees/{ID}/.claude` | `rm -f` removes symlink before `git worktree remove` | deterministic | devil | P1 |
 | EC-10 | VPS pueue-callback triggers cleanup | Task completes in pueue, callback fires | Cleanup function called, never blocks slot release (`\|\| true`) | deterministic | codebase | P1 |
+| EC-11 | Orphaned autopilot stash cleaned up | `git stash list` shows `autopilot-phase3-*` or `autopilot-temp` entries | Sweep script drops matching stashes, preserves non-autopilot stashes | deterministic | user | P1 |
 
 ### Coverage Summary
-- Deterministic: 10 | Integration: 0 | LLM-Judge: 0 | Total: 10 (min 3)
+- Deterministic: 11 | Integration: 0 | LLM-Judge: 0 | Total: 11 (min 3)
 
 ### TDD Order
 1. EC-1 (core: crash → cleanup)
