@@ -76,6 +76,46 @@ python3 "${SCRIPT_DIR}/db.py" callback \
 echo "[callback] db updated pueue_id=${PUEUE_ID} phase=${NEW_PHASE}"
 
 # ---------------------------------------------------------------------------
+# Step 3.5: Worktree cleanup (TECH-149: deterministic cleanup after merge)
+# Clean up worktree + branch left behind by crashed/completed agent.
+# Fail-safe: never blocks slot release or notification.
+# ---------------------------------------------------------------------------
+if [[ -n "${PROJECT_DIR:-}" && -n "$TASK_LABEL" && "$TASK_LABEL" != "unknown" ]]; then
+    SPEC_ID="$TASK_LABEL"
+    # Derive branch prefix
+    case "$SPEC_ID" in
+        FTR-*)  _CB_PREFIX="feature" ;;
+        BUG-*)  _CB_PREFIX="fix" ;;
+        TECH-*) _CB_PREFIX="tech" ;;
+        ARCH-*) _CB_PREFIX="arch" ;;
+        *)      _CB_PREFIX="task" ;;
+    esac
+    _CB_BRANCH="${_CB_PREFIX}/${SPEC_ID}"
+
+    # Try .worktrees/ and worktrees/ directories
+    _CB_WT=""
+    for _d in ".worktrees/${SPEC_ID}" "worktrees/${SPEC_ID}"; do
+        [[ -d "${PROJECT_DIR}/${_d}" ]] && _CB_WT="${PROJECT_DIR}/${_d}" && break
+    done
+
+    if [[ -n "$_CB_WT" ]]; then
+        # Safety: only clean if no uncommitted changes and branch merged
+        if [[ -z "$(git -C "$_CB_WT" status --porcelain 2>/dev/null)" ]] && \
+           git -C "$PROJECT_DIR" branch --merged develop 2>/dev/null | grep -q "$_CB_BRANCH"; then
+            rm -f "${_CB_WT}/.claude" 2>/dev/null || true
+            git -C "$PROJECT_DIR" worktree remove "$_CB_WT" --force 2>/dev/null || true
+            git -C "$PROJECT_DIR" branch -d "$_CB_BRANCH" 2>/dev/null || true
+            git -C "$PROJECT_DIR" worktree prune 2>/dev/null || true
+            echo "[callback] cleaned up worktree ${_CB_WT} + branch ${_CB_BRANCH}"
+        else
+            echo "[callback] SKIP worktree cleanup: dirty or unmerged"
+        fi
+    fi
+fi || {
+    echo "[callback] WARN: worktree cleanup failed (non-fatal)" >&2
+}
+
+# ---------------------------------------------------------------------------
 # Step 4: Collect a brief log summary to include in Telegram message
 # ---------------------------------------------------------------------------
 SUMMARY=""

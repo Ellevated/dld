@@ -59,7 +59,7 @@ Final verification, status update, merge, and cleanup.
    **Safety check:** Verify no uncommitted changes before force-removal
    ```bash
    cd ".worktrees/{ID}"
-   if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+   if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
      echo "ERROR: Worktree has uncommitted changes! Aborting cleanup."
      git status --short
      exit 1
@@ -67,8 +67,10 @@ Final verification, status update, merge, and cleanup.
    cd -
    ```
 
+   rm -f ".worktrees/{ID}/.claude" 2>/dev/null  # remove symlink first
    git worktree remove ".worktrees/{ID}" --force
    git branch -d {type}/{ID}
+   git worktree prune
 
 10. Loop Mode Exit Check:
     If SPEC_ID was provided (loop mode):
