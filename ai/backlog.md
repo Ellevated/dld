@@ -127,7 +127,7 @@
 | BUG-162 | Orphan Slot Watchdog — release stale compute_slots after crash/restart | done | P1 | [spec](features/BUG-162-2026-03-19-orphan-slot-watchdog.md) |
 | BUG-163 | Fix event_writer wake_openclaw() blocking callback 23s (timeout 30→5, log DEBUG) | done | P1 | [spec](features/BUG-163-2026-03-19-event-writer-wake-timeout.md) |
 | BUG-164 | Fix callback.py pueue socket mismatch — read agent output from log files + DB | done | P0 | [spec](features/BUG-164-2026-03-20-callback-pueue-socket-mismatch.md) |
-| TECH-149 | Deterministic Worktree Cleanup After Merge | queued | P1 | [spec](features/TECH-149-2026-03-25-worktree-cleanup.md) |
+| TECH-149 | Deterministic Worktree Cleanup After Merge | done | P1 | [spec](features/TECH-149-2026-03-25-worktree-cleanup.md) |
 
 ---
 

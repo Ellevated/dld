@@ -1,5 +1,5 @@
 # Feature: [TECH-149] Deterministic Worktree Cleanup After Merge
-**Status:** queued | **Priority:** P1 | **Date:** 2026-03-25
+**Status:** done | **Priority:** P1 | **Date:** 2026-03-25
 
 ## Why
 Autopilot's PHASE 3 describes worktree cleanup in `finishing.md` step 9 — but this is markdown that the LLM agent executes. When the agent crashes, times out, or gets context-compacted before reaching step 9, cleanup never happens. Result: orphaned worktree directories and stale branches accumulate.
@@ -344,4 +344,17 @@ DEPLOY_URL=local-only
 ---
 
 ## Autopilot Log
-[Auto-populated by autopilot during execution]
+
+### Task 1/2: PHASE 0 sweep + backup cleanup — 2026-03-25 03:25
+- Coder: completed (4 files: template worktree-setup.md, worktree-setup.md, template autopilot-loop.sh, autopilot-loop.sh)
+- Tester: skipped (no tests for .md/.sh infra — bash syntax validated)
+- Spec Reviewer: approved
+- Code Quality Reviewer: approved
+- Commit: e591e77
+
+### Task 2/2: Fix doc inconsistencies + VPS cleanup — 2026-03-25 03:30
+- Coder: completed (5 files: template finishing.md, template autopilot-git.md, finishing.md, autopilot-git.md, pueue-callback.sh)
+- Tester: skipped (no tests for .md/.sh infra — bash syntax validated)
+- Spec Reviewer: approved
+- Code Quality Reviewer: approved
+- Commit: 0064b44
