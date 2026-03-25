@@ -23,6 +23,133 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# ---------------------------------------------------------------------------
+# Worktree cleanup functions (TECH-149: deterministic cleanup after merge)
+# ---------------------------------------------------------------------------
+
+# Derive branch prefix from SPEC_ID
+_branch_prefix() {
+    local spec_id="$1"
+    case "$spec_id" in
+        FTR-*)  echo "feature" ;;
+        BUG-*)  echo "fix" ;;
+        TECH-*) echo "tech" ;;
+        ARCH-*) echo "arch" ;;
+        *)      echo "task" ;;
+    esac
+}
+
+# Clean up a single worktree + branch for a given SPEC_ID.
+# Safe: skips if uncommitted changes or branch not merged.
+# Idempotent: running twice is harmless.
+cleanup_worktree() {
+    local spec_id="${1:-}"
+    [[ -z "$spec_id" ]] && return 0
+
+    local prefix
+    prefix=$(_branch_prefix "$spec_id")
+    local branch="${prefix}/${spec_id}"
+    local wt_dir
+
+    # Find worktree directory
+    for candidate in ".worktrees/${spec_id}" "worktrees/${spec_id}"; do
+        [[ -d "${BASE_DIR}/${candidate}" ]] && wt_dir="${BASE_DIR}/${candidate}" && break
+    done
+
+    # No worktree found — nothing to clean
+    [[ -z "${wt_dir:-}" ]] && return 0
+
+    # Safety: skip if uncommitted changes
+    if [[ -n "$(git -C "$wt_dir" status --porcelain 2>/dev/null)" ]]; then
+        echo -e "${YELLOW}[cleanup] SKIP: $wt_dir has uncommitted changes${NC}"
+        return 0
+    fi
+
+    # Safety: skip if branch not merged to develop
+    if ! git -C "${BASE_DIR}" branch --merged develop 2>/dev/null | grep -q "$branch"; then
+        echo -e "${YELLOW}[cleanup] SKIP: $branch not merged to develop${NC}"
+        return 0
+    fi
+
+    # Remove .claude symlink first (prevent hook resolution race)
+    rm -f "${wt_dir}/.claude" 2>/dev/null || true
+
+    # Remove worktree
+    git -C "${BASE_DIR}" worktree remove "$wt_dir" --force 2>/dev/null || true
+
+    # Delete local branch (safe -d, not -D)
+    git -C "${BASE_DIR}" branch -d "$branch" 2>/dev/null || true
+
+    # Prune stale worktree references
+    git -C "${BASE_DIR}" worktree prune 2>/dev/null || true
+
+    echo -e "${GREEN}[cleanup] Removed worktree $wt_dir + branch $branch${NC}"
+}
+
+# Sweep ALL orphaned worktrees + branches + stashes.
+# Called once before main loop starts.
+sweep_all_orphans() {
+    echo -e "${BLUE}[sweep] Checking for orphaned worktrees...${NC}"
+    local found=0
+
+    # 1. Remove orphaned worktrees (merged to develop)
+    while IFS= read -r wt; do
+        [[ -z "$wt" ]] && continue
+        # Skip main repo worktree
+        local toplevel
+        toplevel=$(git -C "${BASE_DIR}" rev-parse --show-toplevel 2>/dev/null || echo "")
+        [[ "$wt" == "$toplevel" ]] && continue
+
+        local wt_branch
+        wt_branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+        [[ -z "$wt_branch" ]] && continue
+
+        # Skip protected branches
+        [[ "$wt_branch" =~ ^(main|master|develop)$ ]] && continue
+
+        # Skip if uncommitted changes
+        if [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then
+            echo -e "${YELLOW}[sweep] SKIP: $wt has uncommitted changes${NC}"
+            continue
+        fi
+
+        # Only remove if merged to develop
+        if git -C "${BASE_DIR}" branch --merged develop 2>/dev/null | grep -q "$wt_branch"; then
+            rm -f "$wt/.claude" 2>/dev/null || true
+            git -C "${BASE_DIR}" worktree remove "$wt" --force 2>/dev/null || true
+            git -C "${BASE_DIR}" branch -d "$wt_branch" 2>/dev/null || true
+            echo -e "${GREEN}[sweep] Removed orphan worktree: $wt ($wt_branch)${NC}"
+            found=$((found + 1))
+        fi
+    done < <(git -C "${BASE_DIR}" worktree list --porcelain 2>/dev/null | grep '^worktree ' | awk '{print $2}')
+
+    # 2. Prune merged local branches without worktrees
+    while IFS= read -r branch; do
+        branch=$(echo "$branch" | tr -d ' ')
+        [[ -z "$branch" ]] && continue
+        [[ "$branch" =~ ^(main|master|develop)$ ]] && continue
+        git -C "${BASE_DIR}" branch -d "$branch" 2>/dev/null || true
+        echo -e "${GREEN}[sweep] Pruned merged branch: $branch${NC}"
+        found=$((found + 1))
+    done < <(git -C "${BASE_DIR}" branch --merged develop 2>/dev/null | grep -E '^\s+(feature|fix|tech|arch)/')
+
+    # 3. Drop orphaned autopilot stashes
+    git -C "${BASE_DIR}" stash list 2>/dev/null | grep -E 'autopilot-(phase3|temp)' | \
+        grep -oE 'stash@\{[0-9]+\}' | sort -t'{' -k2 -rn | \
+        while read -r stash_ref; do
+            git -C "${BASE_DIR}" stash drop "$stash_ref" 2>/dev/null || true
+            echo -e "${GREEN}[sweep] Dropped stash: $stash_ref${NC}"
+            found=$((found + 1))
+        done
+
+    # 4. Prune stale worktree references
+    git -C "${BASE_DIR}" worktree prune 2>/dev/null || true
+
+    if [[ $found -eq 0 ]]; then
+        echo -e "${GREEN}[sweep] No orphans found — clean state${NC}"
+    fi
+}
+
 # Parse arguments
 if [[ "${1:-}" == "--check" ]]; then
     echo -e "${BLUE}DLD Autopilot Loop - Check Mode${NC}"
@@ -81,6 +208,9 @@ echo "DLD Autopilot Loop - Fresh Context per Spec"
 echo "Max iterations: $MAX_ITERATIONS"
 echo ""
 
+# Sweep orphans from previous crashed runs before starting
+sweep_all_orphans
+
 ITERATION=0
 
 while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
@@ -119,6 +249,9 @@ while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
     OUTPUT=$(claude --print "autopilot $SPEC_ID" 2>&1 | tee /dev/stderr)
     EXIT_CODE=$?
     set -e
+
+    # 3.5. Backup cleanup: remove worktree if agent left it behind
+    cleanup_worktree "$SPEC_ID"
 
     # 4. Log result
     echo "Exit code: $EXIT_CODE" >> "$PROGRESS_FILE"
