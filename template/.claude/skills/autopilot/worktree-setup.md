@@ -10,6 +10,48 @@ Git worktree isolation for safe parallel development.
 ## Setup Flow
 
 ```
+0. Sweep old orphans (from previous crashed runs):
+
+   # 0a. Remove orphaned worktrees (merged to develop)
+   for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{print $2}'); do
+     # Skip main repo worktree
+     [[ "$wt" == "$(git rev-parse --show-toplevel)" ]] && continue
+     wt_branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+     [[ -z "$wt_branch" ]] && continue
+     # Skip protected branches
+     [[ "$wt_branch" =~ ^(main|master|develop)$ ]] && continue
+     # Safety: skip if uncommitted changes
+     if [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then
+       echo "SWEEP SKIP: $wt has uncommitted changes"
+       continue
+     fi
+     # Only remove if branch is merged to develop
+     if git branch --merged develop | grep -q "$wt_branch"; then
+       rm -f "$wt/.claude" 2>/dev/null  # remove symlink first
+       git worktree remove "$wt" --force 2>/dev/null || true
+       git branch -d "$wt_branch" 2>/dev/null || true
+       echo "SWEEP: removed orphan worktree $wt (branch $wt_branch)"
+     fi
+   done
+
+   # 0b. Prune merged local branches without worktrees
+   for branch in $(git branch --merged develop | grep -E '^\s+(feature|fix|tech|arch)/' | tr -d ' '); do
+     [[ "$branch" =~ ^(main|master|develop)$ ]] && continue
+     git branch -d "$branch" 2>/dev/null || true
+     echo "SWEEP: pruned merged branch $branch"
+   done
+
+   # 0c. Drop orphaned autopilot stashes
+   git stash list | grep -E 'autopilot-(phase3|temp)' | \
+     grep -oE 'stash@\{[0-9]+\}' | sort -t'{' -k2 -rn | \
+     while read -r stash_ref; do
+       git stash drop "$stash_ref" 2>/dev/null || true
+       echo "SWEEP: dropped stash $stash_ref"
+     done
+
+   # 0d. Prune stale worktree references
+   git worktree prune
+
 1. CI health check: ./scripts/ci-status.sh
    └─ exit 0 → continue
    └─ exit 2 → DEPLOY ERROR PROTOCOL (see below)
@@ -94,7 +136,7 @@ cd "$MAIN_REPO"
 
 # 2. Safety check: verify no uncommitted changes before force-removal
 cd ".worktrees/{ID}"
-if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
   echo "ERROR: Worktree has uncommitted changes! Aborting cleanup."
   git status --short
   exit 1
