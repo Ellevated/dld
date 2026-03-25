@@ -110,6 +110,7 @@
 | FTR-146 | Multi-Project Orchestrator Phase 1 (Pueue + Telegram Bot + SQLite) | done | P0 | [spec](features/FTR-146-2026-03-10-multi-project-orchestrator-phase1.md) |
 | FTR-147 | Multi-Project Orchestrator Phase 2: Architecture & Reliability | done | P0 | [spec](features/FTR-147-2026-03-10-multi-project-orchestrator-phase2.md) |
 | FTR-148 | Multi-Project Orchestrator Phase 3: Functionality & Multi-Provider | done | P1 | [spec](features/FTR-148-2026-03-10-multi-project-orchestrator-phase3.md) |
+| TECH-149 | Deterministic Worktree Cleanup After Merge | queued | P1 | [spec](features/TECH-149-2026-03-25-worktree-cleanup.md) |
 
 ---
 

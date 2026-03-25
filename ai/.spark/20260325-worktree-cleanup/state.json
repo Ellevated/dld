@@ -1,0 +1,15 @@
+{
+  "spec_id": "TECH-149",
+  "title": "Worktree cleanup after merge",
+  "session_dir": "ai/.spark/20260325-worktree-cleanup",
+  "phases": {
+    "collect": { "status": "done", "timestamp": "2026-03-25T12:00:00Z" },
+    "research": { "status": "done", "timestamp": "2026-03-25T12:15:00Z", "files": ["research-external.md", "research-codebase.md", "research-patterns.md", "research-devil.md"] },
+    "synthesize": { "status": "done", "timestamp": "2026-03-25T12:20:00Z" },
+    "decide": { "status": "done", "timestamp": "2026-03-25T12:20:00Z", "approach": 2 },
+    "write": { "status": "done", "timestamp": "2026-03-25T12:25:00Z" },
+    "validate": { "status": "done", "timestamp": "2026-03-25T12:26:00Z" },
+    "reflect": { "status": "in_progress", "timestamp": "2026-03-25T12:27:00Z" },
+    "completion": { "status": "pending" }
+  }
+}
