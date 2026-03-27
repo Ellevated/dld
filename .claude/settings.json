@@ -1,8 +1,8 @@
 {
   "model": "opus",
   "alwaysThinkingEnabled": true,
-  "defaultMode": "bypassPermissions",
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash",
       "Edit",

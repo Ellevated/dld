@@ -2,6 +2,7 @@
   "model": "opus",
   "alwaysThinkingEnabled": true,
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash",
       "Edit",
