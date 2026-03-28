@@ -1,7 +1,8 @@
 # Orchestrator Final State (North Star)
 
-**Status:** north-star draft  
+**Status:** north-star (implemented)
 **Date:** 2026-03-17
+**Last verified:** 2026-03-28
 
 ## Goal
 
@@ -214,13 +215,53 @@ This avoids both:
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. Exact QA report path and format
-2. Exact detection mechanism for OpenClaw artifact monitoring
-3. Exact callback/wake integration path
-4. Exact Spark prompt contract for "intake complete / do not ask questions"
-5. Whether OpenClaw should summarize every completed cycle automatically in chat
+| # | Question | Resolution | Where |
+|---|----------|-----------|-------|
+| 1 | QA report path/format | `ai/qa/{YYYY-MM-DD}-{slug}.md` | `.claude/skills/qa/SKILL.md` |
+| 2 | OpenClaw artifact monitoring | `ai/openclaw/pending-events/*.json` | `scripts/vps/event_writer.py` |
+| 3 | Callback/wake integration | `event_writer.wake_openclaw()` → `openclaw system event --mode now` | `scripts/vps/event_writer.py:62` |
+| 4 | Spark prompt contract | `[headless]` marker + `Source:` field in prompt | `.claude/skills/spark/SKILL.md` (Headless Mode) |
+| 5 | OpenClaw cycle summary | OpenClaw reads pending-events, decides format | OpenClaw bot logic |
+
+---
+
+## Direct Mode vs Orchestrator Mode
+
+QA + Reflect tail is dispatched by `callback.py`, which is triggered by pueue task completion.
+
+| Mode | How | QA + Reflect? |
+|------|-----|---------------|
+| **Orchestrator (VPS)** | inbox → Spark → backlog → pueue → Autopilot → pueue callback | ✅ Full tail |
+| **Direct (Claude Code)** | User runs `/autopilot SPEC-ID` locally | ❌ No tail |
+| **Hybrid** | User creates spec + push → orchestrator picks from backlog | ✅ Full tail |
+
+**Direct mode** has only inline reflect (finishing.md Step 3: upstream signals).
+For full QA + Reflect after direct `/autopilot`, run `/qa SPEC-ID` and `/reflect` manually.
+
+---
+
+## Implementation Status (2026-03-28)
+
+| Component | File | Status |
+|-----------|------|--------|
+| Orchestrator poll loop | `scripts/vps/orchestrator.py` | ✅ Deployed |
+| Pueue callback (QA/Reflect dispatch) | `scripts/vps/callback.py` | ✅ Fixed: slot+log+phase |
+| OpenClaw event writer | `scripts/vps/event_writer.py` | ✅ Deployed |
+| Agent runner (SDK) | `scripts/vps/claude-runner.py` | ✅ Agent SDK v0.1.48 |
+| Provider dispatcher | `scripts/vps/run-agent.sh` | ✅ claude/codex/gemini |
+| DB state management | `scripts/vps/db.py` + `schema.sql` | ✅ SQLite WAL |
+| Orphan slot watchdog | `orchestrator.py:release_orphan_slots()` | ✅ BUG-162 |
+
+### Fixes applied 2026-03-28
+
+| Fix | Issue | Where |
+|-----|-------|-------|
+| Phase deadlock | QA/Reflect set `qa_pending` → stuck | `callback.py:367` — `qa-*/reflect-*` → `idle` |
+| QA/Reflect invisible | No slot/log for tail tasks | `callback.py:276-297` — `try_acquire_slot` + `log_task` |
+| Spark event missing | OpenClaw unaware of new specs | `callback.py:305` — added `spark` to event skills |
+| resolve_label double-prefix | DB path produced `pid:pid:task` | `callback.py:65` — `startswith` guard |
 
 ---
 

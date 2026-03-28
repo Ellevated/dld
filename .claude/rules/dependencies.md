@@ -185,7 +185,7 @@ Dependency map between project components.
 
 | What | Where | Function |
 |------|-------|----------|
-| db.py | scripts/vps/db.py | release_slot(), finish_task(), update_project_phase(), get_project_state() |
+| db.py | scripts/vps/db.py | release_slot(), finish_task(), update_project_phase(), get_project_state(), try_acquire_slot(), log_task(), get_task_by_pueue_id() |
 | event_writer.py | scripts/vps/event_writer.py | notify() — send OpenClaw event |
 | run-agent.sh | scripts/vps/run-agent.sh | pueue add for QA/Reflect dispatch |
 | pueue CLI | PATH | pueue status --json, pueue log --json, pueue add |
@@ -346,3 +346,4 @@ Dependency map between project components.
 | 2026-03-10 | Added gemini-runner.sh, nexus-cache-refresh.sh (FTR-148) | coder |
 | 2026-03-18 | Radical rewrite: orchestrator.py, callback.py, event_writer.py replace bash scripts (ARCH-161) | coder |
 | 2026-03-19 | Orphan slot watchdog: get_occupied_slots (db.py), get_live_pueue_ids + release_orphan_slots (orchestrator.py) (BUG-162) | coder |
+| 2026-03-28 | callback.py: QA/Reflect slot+log, phase fix, spark events, resolve_label dedup | manual |

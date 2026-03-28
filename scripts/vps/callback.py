@@ -62,7 +62,10 @@ def resolve_label(pueue_id: str) -> str:
         if row:
             project_id = row["project_id"]
             task_label = row["task_label"]
-            label = f"{project_id}:{task_label}"
+            if task_label.startswith(f"{project_id}:"):
+                label = task_label
+            else:
+                label = f"{project_id}:{task_label}"
             log.info("resolve_label from DB: %s", label)
             return label
     except Exception as exc:
@@ -72,7 +75,9 @@ def resolve_label(pueue_id: str) -> str:
     try:
         result = subprocess.run(
             ["pueue", "status", "--json"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         data = json.loads(result.stdout)
         task = data.get("tasks", {}).get(pueue_id, {})
@@ -152,7 +157,9 @@ def extract_agent_output(pueue_id: str, project_id: str = "") -> tuple:
     try:
         result = subprocess.run(
             ["pueue", "log", pueue_id, "--json"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         data = json.loads(result.stdout)
         task_data = data.get("tasks", {}).get(pueue_id, {})
@@ -210,7 +217,9 @@ def is_already_queued(label: str) -> bool:
     try:
         result = subprocess.run(
             ["pueue", "status", "--json"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         data = json.loads(result.stdout)
         for task in data.get("tasks", {}).values():
@@ -227,11 +236,20 @@ def _pueue_add(group: str, label: str, cmd: list) -> int | None:
     """Submit task to pueue. Returns task ID or None."""
     try:
         pueue_cmd = [
-            "pueue", "add", "--group", group,
-            "--label", label, "--print-task-id", "--",
+            "pueue",
+            "add",
+            "--group",
+            group,
+            "--label",
+            label,
+            "--print-task-id",
+            "--",
         ] + cmd
         result = subprocess.run(
-            pueue_cmd, capture_output=True, text=True, timeout=30,
+            pueue_cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         for line in result.stdout.strip().splitlines():
             m = re.search(r"(\d+)", line.strip())
@@ -250,10 +268,13 @@ def dispatch_qa(project_id: str, project_path: str, spec_id: str, provider: str)
         return
     runner_group = f"{provider}-runner"
     pueue_id = _pueue_add(
-        runner_group, qa_label,
+        runner_group,
+        qa_label,
         [str(SCRIPT_DIR / "run-agent.sh"), project_path, provider, "qa", f"/qa {spec_id}"],
     )
     if pueue_id:
+        db.try_acquire_slot(project_id, provider, pueue_id)
+        db.log_task(project_id, qa_label, "qa", "running", pueue_id)
         log.info("QA dispatched: %s pueue_id=%d", qa_label, pueue_id)
     else:
         log.warning("QA dispatch failed: %s", qa_label)
@@ -267,10 +288,13 @@ def dispatch_reflect(project_id: str, project_path: str, task_label: str, provid
         return
     runner_group = f"{provider}-runner"
     pueue_id = _pueue_add(
-        runner_group, reflect_label,
+        runner_group,
+        reflect_label,
         [str(SCRIPT_DIR / "run-agent.sh"), project_path, provider, "reflect", "/reflect"],
     )
     if pueue_id:
+        db.try_acquire_slot(project_id, provider, pueue_id)
+        db.log_task(project_id, reflect_label, "reflect", "running", pueue_id)
         log.info("reflect dispatched: %s pueue_id=%d", reflect_label, pueue_id)
     else:
         log.warning("reflect dispatch failed: %s", reflect_label)
@@ -278,7 +302,7 @@ def dispatch_reflect(project_id: str, project_path: str, task_label: str, provid
 
 def write_event_for_skill(project_path: str, skill: str, status: str, task_label: str) -> None:
     """Write OpenClaw event for applicable skills."""
-    if skill not in ("autopilot", "qa", "reflect"):
+    if skill not in ("autopilot", "qa", "reflect", "spark"):
         return
     if status != "done" and not (status == "failed" and skill == "qa"):
         return
@@ -295,8 +319,11 @@ def write_event_for_skill(project_path: str, skill: str, status: str, task_label
             artifact_rel = str(reflect_files[-1].relative_to(p))
 
     event_writer.notify(
-        project_path, skill, status,
-        f"{skill} {status} for {task_label}", artifact_rel,
+        project_path,
+        skill,
+        status,
+        f"{skill} {status} for {task_label}",
+        artifact_rel,
     )
 
 
@@ -337,7 +364,9 @@ def main() -> None:
 
         # Step 3: Update phase
         try:
-            if status == "done":
+            if task_label.startswith(("qa-", "reflect-")):
+                new_phase = "idle"  # non-blocking tail tasks
+            elif status == "done":
                 if task_label.startswith("inbox-"):
                     new_phase = "idle"
                 else:

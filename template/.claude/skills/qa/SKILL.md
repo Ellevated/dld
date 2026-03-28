@@ -64,6 +64,63 @@ STOP. Ask: "Would a real user do this?" If no → don't do it. Test the product 
 
 ## Pre-flight
 
+### 0. Verify CI + Deploy readiness (GATE)
+
+Before testing the product, verify the latest code actually reached the environment.
+
+**Step 0a: Identify project infrastructure**
+
+Read `CLAUDE.md` for project name. Then query infrastructure dynamically:
+
+```
+ToolSearch: "nexus"
+→ if available:
+  mcp__nexus__get_deploy_targets(project: "<project_name>")
+  mcp__nexus__get_infrastructure(project: "<project_name>")
+→ extract: deploy URL, CI provider, deploy method
+```
+
+If Nexus unavailable — fall back to CLAUDE.md entry points and `gh` CLI.
+
+**Step 0b: Check deploy readiness (GATE)**
+
+Compare local HEAD with what's actually running:
+
+```bash
+LOCAL_SHA=$(git rev-parse --short HEAD)
+```
+
+Check deployed version using info from Step 0a:
+- **Web/API with health endpoint:** `curl -s {DEPLOY_URL}/api/health | jq .version`
+- **Vercel:** `curl -sI {DEPLOY_URL} | grep x-vercel-deployment`
+- **VPS:** Check systemd service or process status from infrastructure info
+- **Telegram bot:** Send `/version` or `/status` command if supported
+- **No version endpoint:** Check deploy URL responds (HTTP 200) — skip version comparison
+
+| Deploy check | QA action |
+|-------------|-----------|
+| Deployed SHA matches local HEAD | ✅ Proceed |
+| Deployed SHA is behind | ❌ **BLOCKED** — "Deploy is stale, testing old code". Report deploy lag |
+| Deploy URL unreachable | ❌ **BLOCKED** — report as Critical infra bug |
+| No deploy info / local-only | ⚠️ WARN — note in report, proceed |
+
+**Step 0c: Check CI status (informational)**
+
+```bash
+gh run list --branch develop --limit 1 --json conclusion,headSha,event,name 2>/dev/null
+```
+
+| CI result | QA action |
+|-----------|-----------|
+| `conclusion: "success"` | ✅ Note in report |
+| `conclusion: "failure"` | ⚠️ WARN — note in report. If deploy is live, test anyway (CI may fail on unrelated check) |
+| `conclusion: "in_progress"` | ⚠️ WARN — deploy may be incomplete |
+| No CI runs / `gh` unavailable | Skip silently |
+
+**Gate summary:** Deploy not reached = BLOCKED. CI failure = WARN. QA tests the **running product**, not the pipeline.
+
+---
+
 ### 1. Validate target & detect type
 
 Read `CLAUDE.md` for entry points, URLs, bot handles. Then validate the target URL resolves:
@@ -520,12 +577,44 @@ Save report to `ai/qa/{YYYY-MM-DD}-{area-slug}.md`:
 ### B1: {Scenario name}
 **Reason:** {service not running, credentials missing, feature not deployed}
 
+## Fixes Applied
+
+| # | What | File | Commit |
+|---|------|------|--------|
+| 1 | {description} | {file:line} | {short sha} |
+
 ## Passed
 
 | # | Scenario | Notes |
 |---|----------|-------|
 | 1 | {name} | {brief confirmation} |
 ```
+
+### Phase 5.5: LIGHT FIXES (optional)
+
+During testing, QA may encounter trivial issues that block scenarios or pollute results.
+QA is allowed to fix them **in place** — but MUST log every fix in the report.
+
+**Allowed (< 5 LOC each):**
+- Lint / format errors that break CI
+- Forgotten CLAUDE.md / config updates
+- Typos in UI text, labels, error messages
+- Broken import or missing `__init__.py` export
+- Stale test assertion (e.g., expected count changed by the feature)
+
+**NOT allowed:**
+- Feature work or new logic
+- Refactoring or architecture changes
+- Anything requiring more than 5 LOC
+- Anything outside the tested feature's scope
+
+**Protocol:**
+1. Fix the issue
+2. `git add <file> && git commit -m "fix: {description} [qa]"`
+3. Log in report's "Fixes Applied" section (file, description, commit SHA)
+4. Continue testing
+
+If the issue is too big for a light fix → log as a Failure in the report and move on.
 
 ### Phase 6: HANDOFF
 
