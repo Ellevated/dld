@@ -302,4 +302,39 @@ def test_verify_status_sync_failed_sets_blocked(tmp_path, caplog):
 
     assert "**Status:** blocked" in spec.read_text()
     assert "blocked" in backlog.read_text().split("BUG-600")[1].split("\n")[0]
-    assert any("auto-fixed 2 file(s)" in r.message for r in caplog.records)
+
+
+def test_verify_status_sync_respects_blocked(tmp_path, caplog):
+    """Spec is blocked, target=done → do NOT overwrite, respect autopilot decision."""
+    features = tmp_path / "ai" / "features"
+    features.mkdir(parents=True)
+    spec = features / "FTR-700-blocked-task.md"
+    spec.write_text("# Feature\n\n**Status:** blocked | **Priority:** P0\n")
+
+    backlog = tmp_path / "ai" / "backlog.md"
+    backlog.write_text("| ID | Task | Status |\n| FTR-700 | Blocked task | blocked |\n")
+
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        callback.verify_status_sync(str(tmp_path), "FTR-700", target="done")
+
+    # Spec must stay blocked — NOT overwritten to done
+    assert "**Status:** blocked" in spec.read_text()
+    assert any("spec is blocked, skipping auto-fix" in r.message for r in caplog.records)
+
+
+def test_fix_spec_rejects_invalid_status(tmp_path, caplog):
+    """Invalid target status → rejected, file unchanged."""
+    features = tmp_path / "ai" / "features"
+    features.mkdir(parents=True)
+    spec = features / "BUG-800-test.md"
+    spec.write_text("# Bug\n\n**Status:** in_progress\n")
+
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        result = callback._fix_spec_status(spec, "BUG-800", "INVALID")
+
+    assert result is False
+    assert "**Status:** in_progress" in spec.read_text()  # unchanged

@@ -56,7 +56,8 @@ def _setup_logging() -> None:
         datefmt="%Y-%m-%dT%H:%M:%SZ",
     )
     fh = logging.handlers.TimedRotatingFileHandler(
-        os.path.join(log_dir, "orchestrator.log"), when="midnight", backupCount=7, utc=True)
+        os.path.join(log_dir, "orchestrator.log"), when="midnight", backupCount=7, utc=True
+    )
     fh.setFormatter(fmt)
     sh = logging.StreamHandler()
     sh.setFormatter(fmt)
@@ -98,7 +99,10 @@ def get_live_pueue_ids() -> set[int] | None:
     """Return live pueue task IDs. None on failure (skip watchdog, no false release)."""
     try:
         r = subprocess.run(
-            ["pueue", "status", "--json"], capture_output=True, text=True, timeout=10,
+            ["pueue", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if r.returncode != 0:
             log.warning("pueue status exit %d: %s", r.returncode, r.stderr[:200])
@@ -132,8 +136,10 @@ def release_orphan_slots() -> int:
             pid = db.release_slot(pueue_id)
             log.warning(
                 "watchdog: released orphan slot=%d project=%s pueue_id=%d acquired_at=%s",
-                slot["slot_number"], pid or slot.get("project_id"),
-                pueue_id, slot.get("acquired_at", "unknown"),
+                slot["slot_number"],
+                pid or slot.get("project_id"),
+                pueue_id,
+                slot.get("acquired_at", "unknown"),
             )
             released += 1
     if released:
@@ -146,13 +152,19 @@ def is_agent_running(project_id: str) -> bool:
     try:
         r = subprocess.run(
             ["pueue", "status", "--json"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         data = json.loads(r.stdout)
         for task in data.get("tasks", {}).values():
             label = task.get("label", "")
             status = task.get("status", "")
-            if label.startswith(f"{project_id}:") and isinstance(status, dict) and "Running" in status:
+            if (
+                label.startswith(f"{project_id}:")
+                and isinstance(status, dict)
+                and "Running" in status
+            ):
                 return True
     except Exception:
         pass
@@ -166,7 +178,9 @@ def git_pull(project_id: str, project_dir: str) -> None:
     if is_agent_running(project_id):
         log.info("skip git pull — agent running: %s", project_id)
         return
-    _git = lambda *a, **kw: subprocess.run(["git", "-C", project_dir] + list(a), capture_output=True, **kw)
+    _git = lambda *a, **kw: subprocess.run(
+        ["git", "-C", project_dir] + list(a), capture_output=True, **kw
+    )
     try:
         clean = _git("diff", "--quiet", timeout=30).returncode == 0
         staged = _git("diff", "--cached", "--quiet", timeout=30).returncode == 0
@@ -202,18 +216,28 @@ def _parse_inbox_file(filepath: Path) -> dict:
     idea_text = " ".join(idea_lines).strip()
     if not idea_text:
         idea_text = " ".join(
-            ln for ln in lines[:20]
+            ln
+            for ln in lines[:20]
             if not re.match(r"^\*\*(Source|Route|Status|Context|Provider|Project):\*\*|^#", ln)
         ).strip()
-    return {"route": extract("Route", "spark"), "source": extract("Source", "openclaw"),
-            "provider": extract("Provider", ""), "context": extract("Context", ""),
-            "idea_text": idea_text}
+    return {
+        "route": extract("Route", "spark"),
+        "source": extract("Source", "openclaw"),
+        "provider": extract("Provider", ""),
+        "context": extract("Context", ""),
+        "idea_text": idea_text,
+    }
 
 
 _ROUTE_SKILL_MAP = {
-    "spark": "spark", "architect": "architect", "council": "council",
-    "spark_bug": "spark", "bughunt": "bughunt", "qa": "qa",
-    "reflect": "reflect", "scout": "scout",
+    "spark": "spark",
+    "architect": "architect",
+    "council": "council",
+    "spark_bug": "spark",
+    "bughunt": "bughunt",
+    "qa": "qa",
+    "reflect": "reflect",
+    "scout": "scout",
 }
 
 
@@ -271,10 +295,10 @@ def scan_inbox(project_id: str, project_dir: str) -> int:
         task_file = SCRIPT_DIR / f".task-cmd-{ts}.txt"
         task_file.write_text(task_cmd)
         task_label = f"{project_id}:inbox-{ts}"
-        pueue_env = {"CLAUDE_PROJECT_DIR": project_dir,
-                     "CLAUDE_CURRENT_SPEC_PATH": str(done_file)}
+        pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": str(done_file)}
         pueue_id = _pueue_add(
-            f"{provider}-runner", task_label,
+            f"{provider}-runner",
+            task_label,
             [str(SCRIPT_DIR / "run-agent.sh"), project_dir, provider, skill, str(task_file)],
             env=pueue_env,
         )
@@ -297,7 +321,7 @@ def scan_backlog(project_id: str, project_dir: str) -> bool:
 
     spec_id = None
     for line in backlog.read_text().splitlines():
-        if re.search(r"\|\s*queued\s*\|", line):
+        if re.search(r"\|\s*(queued|resumed)\s*\|", line, re.IGNORECASE):
             m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+", line)
             if m:
                 spec_id = m.group(0)
@@ -311,7 +335,9 @@ def scan_backlog(project_id: str, project_dir: str) -> bool:
     features_dir = Path(project_dir) / "ai" / "features"
     spec_files = list(features_dir.glob(f"{spec_id}*"))
     if spec_files:
-        m = re.search(r"^provider:\s+(\w+)", spec_files[0].read_text(errors="replace"), re.MULTILINE)
+        m = re.search(
+            r"^provider:\s+(\w+)", spec_files[0].read_text(errors="replace"), re.MULTILINE
+        )
         if m and db.get_available_slots(m.group(1)) >= 0:
             provider = m.group(1)
 
@@ -321,8 +347,15 @@ def scan_backlog(project_id: str, project_dir: str) -> bool:
 
     task_label = f"{project_id}:{spec_id}"
     pueue_id = _pueue_add(
-        f"{provider}-runner", task_label,
-        [str(SCRIPT_DIR / "run-agent.sh"), project_dir, provider, "autopilot", f"/autopilot {spec_id}"],
+        f"{provider}-runner",
+        task_label,
+        [
+            str(SCRIPT_DIR / "run-agent.sh"),
+            project_dir,
+            provider,
+            "autopilot",
+            f"/autopilot {spec_id}",
+        ],
     )
     if pueue_id is None:
         log.error("pueue submission failed: %s/%s", project_id, spec_id)
@@ -346,7 +379,8 @@ def dispatch_night_review() -> None:
         return
     log.info("dispatching night review: %s", project_ids)
     _pueue_add(
-        "night-reviewer", "night-review",
+        "night-reviewer",
+        "night-review",
         [str(SCRIPT_DIR / "night-reviewer.sh")] + project_ids.split(),
     )
 

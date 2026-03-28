@@ -300,8 +300,14 @@ def dispatch_reflect(project_id: str, project_path: str, task_label: str, provid
         log.warning("reflect dispatch failed: %s", reflect_label)
 
 
+_VALID_STATUSES = frozenset({"draft", "queued", "in_progress", "blocked", "resumed", "done"})
+
+
 def _fix_spec_status(spec_path: Path, spec_id: str, target: str) -> bool:
     """Replace **Status:** <anything> with **Status:** <target> in spec file."""
+    if target not in _VALID_STATUSES:
+        log.warning("STATUS_FIX: invalid target status '%s' for %s", target, spec_id)
+        return False
     text = spec_path.read_text(errors="replace")
     new_text, count = re.subn(
         r"(\*\*Status:\*\*)\s*\S+",
@@ -318,6 +324,9 @@ def _fix_spec_status(spec_path: Path, spec_id: str, target: str) -> bool:
 
 def _fix_backlog_status(backlog_path: Path, spec_id: str, target: str) -> bool:
     """Replace status column for spec_id row in backlog.md."""
+    if target not in _VALID_STATUSES:
+        log.warning("STATUS_FIX: invalid target status '%s' for %s", target, spec_id)
+        return False
     text = backlog_path.read_text(errors="replace")
     pattern = rf"(\|\s*{re.escape(spec_id)}\s*\|.*?\|)\s*\S+\s*(\|)"
     new_text, count = re.subn(pattern, rf"\1 {target} \2", text, count=1)
@@ -379,6 +388,14 @@ def verify_status_sync(project_path: str, spec_id: str, target: str = "done") ->
     if spec_ok and backlog_ok:
         log.info("STATUS_SYNC: %s — both spec and backlog are %s ✓", spec_id, target)
         return
+
+    # Guard: if target is "done" but autopilot set "blocked", respect it
+    if target == "done" and spec_file:
+        blocked_re = re.compile(r"\*\*Status:\*\*\s*blocked", re.IGNORECASE)
+        text = spec_file.read_text(errors="replace")
+        if blocked_re.search(text):
+            log.info("STATUS_SYNC: %s — spec is blocked, skipping auto-fix to done", spec_id)
+            return
 
     # Auto-fix
     fixed_files = []
