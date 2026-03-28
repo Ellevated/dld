@@ -266,17 +266,19 @@ def scan_inbox(project_id: str, project_dir: str) -> int:
     if not inbox_dir.is_dir():
         return 0
 
+    _inbox_new_re = re.compile(r"\*\*Status:\*\*\s*new", re.IGNORECASE)
+
     count = 0
     for inbox_file in sorted(inbox_dir.glob("*.md")):
-        if "**Status:** new" not in inbox_file.read_text(errors="replace"):
+        text = inbox_file.read_text(errors="replace")
+        if not _inbox_new_re.search(text):
             continue
 
         log.info("processing inbox: %s/%s", project_id, inbox_file.name)
         meta = _parse_inbox_file(inbox_file)
         skill = _ROUTE_SKILL_MAP.get(meta["route"], "spark")
 
-        text = inbox_file.read_text(errors="replace")
-        text = text.replace("**Status:** new", "**Status:** processing")
+        text = _inbox_new_re.sub("**Status:** processing", text)
         inbox_file.write_text(text)
         done_dir = inbox_dir / "done"
         done_dir.mkdir(exist_ok=True)
