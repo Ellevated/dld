@@ -300,6 +300,111 @@ def dispatch_reflect(project_id: str, project_path: str, task_label: str, provid
         log.warning("reflect dispatch failed: %s", reflect_label)
 
 
+def _fix_spec_status(spec_path: Path, spec_id: str, target: str) -> bool:
+    """Replace **Status:** <anything> with **Status:** <target> in spec file."""
+    text = spec_path.read_text(errors="replace")
+    new_text, count = re.subn(
+        r"(\*\*Status:\*\*)\s*\S+",
+        rf"\1 {target}",
+        text,
+        count=1,
+    )
+    if count:
+        spec_path.write_text(new_text)
+        log.info("STATUS_FIX: spec %s → %s in %s", spec_id, target, spec_path.name)
+        return True
+    return False
+
+
+def _fix_backlog_status(backlog_path: Path, spec_id: str, target: str) -> bool:
+    """Replace status column for spec_id row in backlog.md."""
+    text = backlog_path.read_text(errors="replace")
+    pattern = rf"(\|\s*{re.escape(spec_id)}\s*\|.*?\|)\s*\S+\s*(\|)"
+    new_text, count = re.subn(pattern, rf"\1 {target} \2", text, count=1)
+    if count:
+        backlog_path.write_text(new_text)
+        log.info("STATUS_FIX: backlog %s → %s", spec_id, target)
+        return True
+    return False
+
+
+def _git_commit_push(project_path: str, spec_id: str, target: str, files: list) -> None:
+    """Stage, commit, and push status fix."""
+    git = ["git", "-C", project_path]
+    subprocess.run(git + ["add"] + files, capture_output=True, timeout=10)
+    subprocess.run(
+        git + ["commit", "-m", f"docs: mark {spec_id} as {target} (callback auto-fix)"],
+        capture_output=True,
+        timeout=30,
+    )
+    subprocess.run(
+        git + ["push", "origin", "develop"],
+        capture_output=True,
+        timeout=60,
+    )
+    log.info("STATUS_FIX: committed and pushed %s → %s", spec_id, target)
+
+
+def verify_status_sync(project_path: str, spec_id: str, target: str = "done") -> None:
+    """Check that spec file and backlog both have target status. Auto-fix if not."""
+    p = Path(project_path)
+    spec_re = re.compile(rf"\*\*Status:\*\*\s*{re.escape(target)}", re.IGNORECASE)
+    backlog_re = re.compile(
+        rf"\|\s*{re.escape(spec_id)}\s*\|.*?\|\s*{re.escape(target)}\s*\|",
+        re.IGNORECASE,
+    )
+
+    # Check spec file
+    spec_ok = False
+    spec_file = None
+    spec_files = list(p.glob(f"ai/features/{spec_id}*.md"))
+    if not spec_files:
+        log.warning("STATUS_SYNC: spec file not found for %s", spec_id)
+    else:
+        spec_file = spec_files[0]
+        text = spec_file.read_text(errors="replace")
+        if spec_re.search(text):
+            spec_ok = True
+
+    # Check backlog
+    backlog_ok = False
+    backlog_path = p / "ai" / "backlog.md"
+    if not backlog_path.is_file():
+        log.warning("STATUS_SYNC: backlog.md not found in %s", project_path)
+    else:
+        text = backlog_path.read_text(errors="replace")
+        if backlog_re.search(text):
+            backlog_ok = True
+
+    if spec_ok and backlog_ok:
+        log.info("STATUS_SYNC: %s — both spec and backlog are %s ✓", spec_id, target)
+        return
+
+    # Auto-fix
+    fixed_files = []
+    if not spec_ok and spec_file:
+        if _fix_spec_status(spec_file, spec_id, target):
+            fixed_files.append(str(spec_file.relative_to(p)))
+        else:
+            log.warning("STATUS_FIX: could not fix spec %s", spec_id)
+
+    if not backlog_ok and backlog_path.is_file():
+        if _fix_backlog_status(backlog_path, spec_id, target):
+            fixed_files.append("ai/backlog.md")
+        else:
+            log.warning("STATUS_FIX: could not fix backlog for %s", spec_id)
+
+    if fixed_files:
+        log.warning(
+            "STATUS_SYNC: %s — auto-fixed %d file(s) → %s: %s",
+            spec_id,
+            len(fixed_files),
+            target,
+            ", ".join(fixed_files),
+        )
+        _git_commit_push(project_path, spec_id, target, fixed_files)
+
+
 def write_event_for_skill(project_path: str, skill: str, status: str, task_label: str) -> None:
     """Write OpenClaw event for applicable skills."""
     if skill not in ("autopilot", "qa", "reflect", "spark"):
@@ -415,6 +520,20 @@ def main() -> None:
                         dispatch_reflect(project_id, project_path, task_label, provider)
             except Exception as exc:
                 log.warning("post-autopilot dispatch failed: %s", exc)
+
+        # Step 7: Verify spec + backlog status sync
+        if skill == "autopilot" and status in ("done", "failed"):
+            try:
+                if not project_path:
+                    state = db.get_project_state(project_id)
+                    project_path = state.get("path", "") if state else ""
+                if project_path:
+                    sid = resolve_spec_id(task_label, preview, project_path)
+                    if sid:
+                        target = "done" if status == "done" else "blocked"
+                        verify_status_sync(project_path, sid, target)
+            except Exception as exc:
+                log.warning("status_sync check failed: %s", exc)
 
     except Exception:
         log.exception("callback fatal error")

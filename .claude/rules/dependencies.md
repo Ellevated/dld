@@ -189,6 +189,9 @@ Dependency map between project components.
 | event_writer.py | scripts/vps/event_writer.py | notify() — send OpenClaw event |
 | run-agent.sh | scripts/vps/run-agent.sh | pueue add for QA/Reflect dispatch |
 | pueue CLI | PATH | pueue status --json, pueue log --json, pueue add |
+| spec files | ai/features/{SPEC_ID}*.md | verify_status_sync() reads/fixes **Status:** field |
+| backlog.md | ai/backlog.md | verify_status_sync() reads/fixes status column |
+| git CLI | PATH | _git_commit_push() — auto-fix commit + push to develop |
 
 ### Used by (←)
 
@@ -202,6 +205,8 @@ Dependency map between project components.
 - [ ] run-agent.sh (arg order: project_dir task provider skill)
 - [ ] event_writer.py (notify signature)
 - [ ] schema.sql (compute_slots, task_log, project_state column names)
+- [ ] ai/features/ spec files (verify_status_sync reads **Status:** field format)
+- [ ] ai/backlog.md (verify_status_sync reads status column in markdown table)
 
 ---
 
@@ -347,3 +352,4 @@ Dependency map between project components.
 | 2026-03-18 | Radical rewrite: orchestrator.py, callback.py, event_writer.py replace bash scripts (ARCH-161) | coder |
 | 2026-03-19 | Orphan slot watchdog: get_occupied_slots (db.py), get_live_pueue_ids + release_orphan_slots (orchestrator.py) (BUG-162) | coder |
 | 2026-03-28 | callback.py: QA/Reflect slot+log, phase fix, spark events, resolve_label dedup | manual |
+| 2026-03-28 | callback.py: verify_status_sync — auto-fix spec+backlog status after autopilot | manual |
