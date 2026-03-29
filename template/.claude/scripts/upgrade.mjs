@@ -17,6 +17,7 @@ const PROTECTED = new Set([
   'CLAUDE.md', 'README.md', '.gitignore', 'pyproject.toml', 'package.json',
   'Cargo.toml', 'go.mod', 'requirements.txt',
   '.claude/rules/localization.md', '.claude/rules/template-sync.md',
+  '.claude/rules/dependencies.md', '.claude/rules/architecture.md',
   '.claude/CUSTOMIZATIONS.md', '.claude/settings.local.json',
   '.claude/hooks/hooks.config.local.mjs', '.claude/hooks/hooks.config.mjs',
 ]);

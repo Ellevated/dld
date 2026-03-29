@@ -48,6 +48,16 @@ Does template/.claude/ have this file?
 
 These are NOT in template — edit directly in `.claude/`.
 
+## Files in Both, but Root Has DLD-Specific Extensions
+
+These files exist in template AND root. Template has the baseline, root adds DLD-specific content.
+**`/upgrade` will NOT overwrite them** (added to PROTECTED in upgrade.mjs).
+
+- `rules/architecture.md` — Root adds ADR-015..018 (DLD orchestrator decisions), shell script safety rules
+- `rules/dependencies.md` — Root has full DLD dependency map (scripts/vps/*, orchestrator, callback)
+
+When template updates these files, manually merge changes into root.
+
 ## Deleted Files (History)
 
 - `rules/git-local-folders.md` — Removed in TECH-144. Was redundant with root `.gitignore`.

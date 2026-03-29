@@ -6,6 +6,35 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.13] - 2026-03-29
+
+### Added
+- **Callback status enforcement (ADR-018)** — after every autopilot task, the orchestrator callback now verifies that both the spec file and `ai/backlog.md` are marked with the correct status. If the LLM missed the update (Edit tool failure, context overflow, max-turns exit), it auto-fixes and commits to develop. Success → `done`, failed pueue → `blocked`.
+- **Orphan slot watchdog** — orchestrator now detects stale `compute_slots` entries (crash, restart, external kill) and releases them automatically each cycle, preventing permanent deadlocks where no new tasks could be dispatched.
+- **Immediate OpenClaw wake** — after writing a pending-event for the conversation layer, the orchestrator now triggers an immediate wake instead of waiting up to 5 minutes for the next cron cycle.
+
+### Changed
+- **Orchestrator rewritten in Python** (ARCH-161) — replaced the bash + Telegram stack with a clean Python daemon (`orchestrator.py`, `callback.py`, `event_writer.py`). Removes Telegram dependency, adds structured SQLite state, proper error handling, and multi-layer label resolution.
+- **Runner limits increased** — autopilot `TIMEOUT` raised from 30 → 60 minutes, `MAX_TURNS` from 30 → 80. Complex tasks (20+ files) were hitting the ceiling before merge.
+- **Cycle notifications silenced** — intermediate Telegram notifications suppressed during `spark → autopilot → qa → reflect` cycle; only the final summary fires. Reduces noise when running multiple projects in parallel.
+- **Spark always outputs `queued`** — removed `draft` from Spark output. Draft is manual-override only; Spark-created specs are always immediately ready for autopilot.
+- **`/upgrade` protects custom scripts** — removed `scripts/` from `SAFE_GROUPS` so project-specific VPS scripts are never overwritten by framework upgrades.
+
+### Fixed
+- **`resumed` tasks were never picked up** — `scan_backlog()` only matched `queued`; the recovery flow (`blocked → resumed → in_progress`) was silently broken. Now matches `queued|resumed` case-insensitively.
+- **`blocked` status preserved on Success** — when autopilot itself sets a spec to `blocked` (test failure, merge conflict) and exits with code 0, the callback no longer overwrites it to `done`.
+- **Callback pueue socket mismatch** (BUG-164) — resolved race where the callback process couldn't reach the pueue socket. Agent output is now read from log files (Layer 1) and DB (Layer 2), with pueue CLI as last resort.
+- **OpenClaw wake timeout** (BUG-163) — reduced blocking timeout from 30 → 5 seconds, downgraded to DEBUG level. Was adding 23+ seconds to every callback cycle.
+- **Worktree stale branch cleanup** (TECH-149) — autopilot finishing phase now explicitly removes the feature branch after merge; stale worktrees no longer accumulate in `.worktrees/`.
+- **Claude settings permissions** — moved `defaultMode` into the `permissions` block where Claude Code expects it; added `bypassPermissions` to template.
+
+### Architecture
+- **ADR-018: Callback status enforcement** — LLM-instructional status updates are inherently unreliable. The callback layer is now the enforcement point: it reads files after completion and corrects any mismatch deterministically, without LLM involvement.
+- **Inbox scan case-insensitive** — `**Status:** new` matching now uses `re.IGNORECASE` for consistency with the rest of the status-matching layer.
+- **Status enum validation** — `_VALID_STATUSES` frozenset gates all auto-fix writes; invalid values are rejected before touching files.
+
+---
+
 ## [3.12] - 2026-03-02
 
 ### Added
