@@ -319,6 +319,12 @@ Risk replaces effort as the second axis of decision-making:
 **Manual Override Flow:** `draft → queued → in_progress → done`
 **Recovery:** `in_progress → blocked → resumed → in_progress`
 
+**Callback Enforcement (DLD-specific):**
+After pueue task completes, `callback.py` verifies spec + backlog status:
+- Success → auto-fixes both to `done` (unless spec is `blocked` — respects autopilot decision)
+- Failed → auto-fixes both to `blocked`
+- Commits and pushes fix to develop automatically
+
 ---
 
 ## Backlog Rules

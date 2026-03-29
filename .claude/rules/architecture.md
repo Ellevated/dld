@@ -84,6 +84,7 @@ Hooks must never crash — a crashing hook breaks Claude Code. See ADR-004.
 | ADR-015 | Devil uses Evaporating Cloud for contradiction resolution | 2026-03 | Formal resolution > freeform critique (SIGNAL-009) |
 | ADR-016 | DDD linguistic test for domain names | 2026-03 | Technical terms masquerading as domains must be rejected (SIGNAL-010) |
 | ADR-017 | SQL only via Python parameterized queries | 2026-03 | Shell interpolation = SQL injection (FTR-146 Task 3) |
+| ADR-018 | Callback status enforcement | 2026-03 | LLM-instructional status updates unreliable (Edit tool miss, context overflow). Callback auto-fixes spec+backlog after pueue completion. Respects `blocked` — won't overwrite to `done`. |
 
 ---
 
