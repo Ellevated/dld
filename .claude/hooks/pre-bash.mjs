@@ -65,9 +65,9 @@ async function main() {
       if (matched) {
         // Allow --ff-only explicitly (per spec)
         if (command.includes('--ff-only')) continue;
-        debugLog('pre-bash', 'ask', { reason: 'merge_pattern', command: command.slice(0, 100) });
-        timer.end('ask');
-        askTool(message);
+        debugLog('pre-bash', 'deny', { reason: 'merge_pattern', command: command.slice(0, 100) });
+        timer.end('deny');
+        denyTool(message);
         return;
       }
     }

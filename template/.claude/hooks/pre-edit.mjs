@@ -231,34 +231,32 @@ async function main() {
       const warnLoc = Math.floor(maxLoc * warnThreshold);
 
       if (loc >= maxLoc) {
-        debugLog('pre-edit', 'ask', { reason: 'loc_limit', file: relPath, loc, maxLoc });
-        timer.end('ask');
-        askTool(
+        debugLog('pre-edit', 'deny', { reason: 'loc_limit', file: relPath, loc, maxLoc });
+        timer.end('deny');
+        denyTool(
           `File exceeds LOC limit!\n\n` +
             `${relPath}: ${loc} lines (limit: ${maxLoc})\n\n` +
-            `Consider splitting the file.\n` +
-            `See: CLAUDE.md -> File Limits\n\n` +
-            `Proceed anyway?`,
+            `Split the file before editing.\n` +
+            `See: CLAUDE.md -> File Limits`,
         );
         return;
       } else if (loc >= warnLoc) {
-        debugLog('pre-edit', 'ask', { reason: 'loc_warning', file: relPath, loc, maxLoc });
-        timer.end('ask');
-        askTool(
-          `File approaching LOC limit\n\n` +
-            `${relPath}: ${loc} lines (limit: ${maxLoc})\n\n` +
-            `Proceed?`,
-        );
+        // Soft warning: allow edit but log — denyTool() would be too aggressive,
+        // askTool() kills bypass mode (claude-code#37420)
+        debugLog('pre-edit', 'allow', { reason: 'loc_warning', file: relPath, loc, maxLoc });
+        timer.end('allow');
+        allowTool();
         return;
       }
     }
 
-    // Check sync zone (Soft reminder)
+    // Check sync zone (Soft reminder) — allow edit, log reminder
+    // askTool() kills bypass mode (claude-code#37420), and denyTool() would block all template edits
     const syncReminder = checkSyncZone(relPath, syncZones, excludeFromSync);
     if (syncReminder) {
-      debugLog('pre-edit', 'ask', { reason: 'sync_zone', file: relPath });
-      timer.end('ask');
-      askTool(syncReminder);
+      debugLog('pre-edit', 'allow', { reason: 'sync_zone', file: relPath, reminder: syncReminder });
+      timer.end('allow');
+      allowTool();
       return;
     }
 
