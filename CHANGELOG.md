@@ -6,6 +6,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.14] - 2026-03-29
+
+### Added
+- **Upgrade** — hash-based customization tracking: `.dld-version` now stores SHA-256 of every applied file. Safe groups (agents, hooks) only auto-update files you haven't modified; customized files go to per-file review. Eliminates silent overwrites of custom agents, hooks, or any other framework file.
+
+### Fixed
+- **Hooks** — `askTool()` in PreToolUse hooks permanently killed bypass mode for the entire session (claude-code#37420). Replaced with `denyTool()` for hard blocks (LOC limit exceeded, unsafe `git merge`) and `allowTool()` for soft warnings (LOC approaching limit, sync zone reminders) that don't need to halt execution.
+- **Upgrade** — `rules` group removed from auto-update; `architecture.md` and `dependencies.md` now always require per-file review to protect project-specific ADRs and dependency maps from silent overwrites.
+
+---
+
 ## [3.13] - 2026-03-29
 
 ### Added
