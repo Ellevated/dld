@@ -43,7 +43,9 @@ const GROUP_PATTERNS = {
   settings:         (p) => p === '.claude/settings.json',
 };
 
-const SAFE_GROUPS = new Set(['agents', 'hooks', 'hook-tests', 'rules']);
+// Rules excluded from SAFE: architecture.md, dependencies.md contain project-specific
+// content (ADRs, dependency maps) that users customize. Auto-apply would destroy them.
+const SAFE_GROUPS = new Set(['agents', 'hooks', 'hook-tests']);
 
 // Upgrade only touches DLD framework files. Scaffolding (pyproject.toml, ai/, etc.) is excluded.
 const UPGRADE_SCOPE = (f) => f.startsWith('.claude/') || f.startsWith('scripts/');

@@ -46,7 +46,7 @@ Groups:
   agents:         {N} new, {N} changed  [safe — auto-update]
   hooks:          {N} new, {N} changed  [safe — auto-update]
   skills:         {N} new, {N} changed  [review recommended]
-  rules:          {N} new, {N} changed  [safe — auto-update]
+  rules:          {N} new, {N} changed  [review — contains project-specific ADRs/dependencies]
   scripts-claude: {N} new, {N} changed  [review — may contain custom project scripts]
   scripts-bash:   {N} new, {N} changed  [review — may contain custom project scripts]
   settings:       {N} changed           [always ask]
@@ -57,7 +57,7 @@ User-only (your files, untouched): {user_only count} files
 
 ### Step 3: User Confirmation
 
-Ask: "Apply safe groups automatically? (agents, hooks, rules) Y/n"
+Ask: "Apply safe groups automatically? (agents, hooks) Y/n"
 
 If yes:
 ```bash
