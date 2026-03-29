@@ -43,8 +43,8 @@ Template commit: {report.template_commit}
 Summary: {identical} up to date, {new_files} new, {different} changed, {protected} protected
 
 Groups:
-  agents:         {N} new, {N} changed  [safe — auto-update]
-  hooks:          {N} new, {N} changed  [safe — auto-update]
+  agents:         {N} new, {N} changed ({M} customized)  [safe — auto-update pristine only]
+  hooks:          {N} new, {N} changed ({M} customized)  [safe — auto-update pristine only]
   skills:         {N} new, {N} changed  [review recommended]
   rules:          {N} new, {N} changed  [review — contains project-specific ADRs/dependencies]
   scripts-claude: {N} new, {N} changed  [review — may contain custom project scripts]
@@ -55,9 +55,13 @@ Protected (never touched): {protected count} files
 User-only (your files, untouched): {user_only count} files
 ```
 
+Note: "customized" = files you modified since last upgrade (tracked via hash in `.dld-version`).
+Customized files in safe groups are NOT auto-applied — they go to Step 4 for per-file review.
+On first upgrade (no hash history), all changed files require review (conservative default).
+
 ### Step 3: User Confirmation
 
-Ask: "Apply safe groups automatically? (agents, hooks) Y/n"
+Ask: "Apply safe groups automatically? (agents, hooks — only pristine files) Y/n"
 
 If yes:
 ```bash

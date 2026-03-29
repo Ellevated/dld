@@ -98,11 +98,17 @@ function loadDeprecated(sourceDir) {
   } catch { return { removed: [], renamed: {} }; }
 }
 
+function loadAppliedHashes(projectDir) {
+  const ver = readVersion(projectDir);
+  return ver?.applied_hashes || {};
+}
+
 function analyze(sourceDir, projectDir, gitRoot) {
   const templateFiles = walkDir(sourceDir, sourceDir).filter(UPGRADE_SCOPE);
   const projectFiles = walkDir(projectDir, projectDir).filter(UPGRADE_SCOPE);
   const result = { identical: [], new_files: [], different: [], protected: [], infrastructure: [], user_only: [] };
   const templateSet = new Set(templateFiles);
+  const appliedHashes = loadAppliedHashes(projectDir);
 
   for (const tFile of templateFiles) {
     const userPath = join(projectDir, tFile);
@@ -120,7 +126,9 @@ function analyze(sourceDir, projectDir, gitRoot) {
     } else if (sha256(templatePath) === sha256(userPath)) {
       result.identical.push({ path: tFile, group: getGroup(tFile) });
     } else {
-      result.different.push({ path: tFile, group: getGroup(tFile), always_ask: ALWAYS_ASK.has(tFile) });
+      // User-modified = file changed since last upgrade (or no upgrade history = conservative default)
+      const userModified = !appliedHashes[tFile] || sha256(userPath) !== appliedHashes[tFile];
+      result.different.push({ path: tFile, group: getGroup(tFile), always_ask: ALWAYS_ASK.has(tFile), user_modified: userModified });
     }
   }
 
@@ -141,8 +149,9 @@ function analyze(sourceDir, projectDir, gitRoot) {
   const groups = {};
   for (const category of ['new_files', 'different']) {
     for (const item of result[category]) {
-      if (!groups[item.group]) groups[item.group] = { new_files: 0, different: 0, safe: SAFE_GROUPS.has(item.group) };
+      if (!groups[item.group]) groups[item.group] = { new_files: 0, different: 0, user_modified: 0, safe: SAFE_GROUPS.has(item.group) };
       groups[item.group][category]++;
+      if (category === 'different' && item.user_modified) groups[item.group].user_modified++;
     }
   }
 
@@ -200,7 +209,7 @@ function resolveTargets(report, groupNames, fileNames) {
         for (const item of report.files.new_files)
           if (SAFE_GROUPS.has(item.group) && !INFRASTRUCTURE.has(item.path)) targets.add(item.path);
         for (const item of report.files.different)
-          if (SAFE_GROUPS.has(item.group) && !item.always_ask && !INFRASTRUCTURE.has(item.path)) targets.add(item.path);
+          if (SAFE_GROUPS.has(item.group) && !item.always_ask && !INFRASTRUCTURE.has(item.path) && !item.user_modified) targets.add(item.path);
       } else if (name === 'new') {
         for (const item of report.files.new_files)
           if (!PROTECTED.has(item.path) && !INFRASTRUCTURE.has(item.path)) targets.add(item.path);
@@ -228,9 +237,17 @@ function readVersion(projectDir) {
   try { return JSON.parse(readFileSync(versionPath, 'utf-8')); } catch { return null; }
 }
 
-function writeVersion(projectDir, commitSha) {
-  const data = { version: '3.10.0', template_commit: commitSha, template_repo: REPO_URL,
-    upgraded_at: new Date().toISOString(), skip: [] };
+function writeVersion(projectDir, commitSha, appliedFiles, sourceDir) {
+  const existing = readVersion(projectDir) || {};
+  const hashes = { ...(existing.applied_hashes || {}) };
+  if (appliedFiles && sourceDir) {
+    for (const f of appliedFiles) {
+      const src = join(sourceDir, f);
+      if (existsSync(src)) hashes[f] = sha256(src);
+    }
+  }
+  const data = { version: '3.13.0', template_commit: commitSha, template_repo: REPO_URL,
+    upgraded_at: new Date().toISOString(), skip: existing.skip || [], applied_hashes: hashes };
   writeFileSync(join(projectDir, VERSION_FILE), JSON.stringify(data, null, 2) + '\n');
   return data;
 }
@@ -337,8 +354,11 @@ function main() {
           }
         }
       }
-      if (result.applied.length > 0 && result.errors.length === 0 && !result.rolled_back)
-        result.version = writeVersion(projectDir, report.template_commit);
+      if (result.applied.length > 0 && result.errors.length === 0 && !result.rolled_back) {
+        // Seed hashes for identical files too — builds baseline for next upgrade
+        const seedFiles = report.files.identical.map(f => f.path);
+        result.version = writeVersion(projectDir, report.template_commit, [...result.applied, ...seedFiles], sourceDir);
+      }
       if (result.applied.length > 0) {
         const logEntry = { timestamp: new Date().toISOString(), applied: result.applied,
           errors: result.errors, rolled_back: result.rolled_back || false, stash_ref: stashRef || null };
