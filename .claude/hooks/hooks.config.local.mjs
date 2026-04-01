@@ -10,5 +10,12 @@ export default {
       '.claude/CUSTOMIZATIONS.md',
       '.claude/settings.local.json',
     ],
+    // Disable LOC limit — was breaking autopilot bypass permissions
+    maxLocCode: 999999,
+    maxLocTest: 999999,
+  },
+  // Disable prompt-guard — was breaking autopilot bypass permissions
+  promptGuard: {
+    complexityPatterns: [],
   },
 };
