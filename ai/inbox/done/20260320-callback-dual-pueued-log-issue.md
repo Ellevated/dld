@@ -1,7 +1,7 @@
 # Bug: 20260320-101900
 **Source:** openclaw
 **Route:** spark
-**Status:** new
+**Status:** processing
 ---
 
 `extract_agent_output()` в callback.py возвращает пустой skill/preview для всех задач

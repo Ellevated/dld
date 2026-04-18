@@ -1,7 +1,7 @@
 # Idea: 20260319-191500
 **Source:** openclaw
 **Route:** spark
-**Status:** new
+**Status:** processing
 ---
 
 `openclaw system event` не работает с VPS — gateway закрывает соединение (1000).

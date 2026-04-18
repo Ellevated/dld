@@ -28,3 +28,15 @@
 
 # Сгенерированные артефакты
 *.html
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Локальные базы и секреты VPS-оркестратора
+scripts/vps/.env
+scripts/vps/*.db
+scripts/vps/.notified-drafts-*
+scripts/vps/.task-cmd-*.txt
