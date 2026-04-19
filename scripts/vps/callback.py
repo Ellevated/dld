@@ -116,11 +116,28 @@ def _find_log_file(project_name: str) -> Path | None:
 
 
 def _parse_log_file(log_path: Path) -> tuple:
-    """Parse JSON log file → (skill, result_preview)."""
+    """Parse JSON log file → (skill, result_preview). Logs cache metrics."""
     try:
         data = json.loads(log_path.read_text())
         skill = data.get("skill", "")
         preview = str(data.get("result_preview", ""))[:500]
+
+        input_tokens = int(data.get("input_tokens", 0) or 0)
+        output_tokens = int(data.get("output_tokens", 0) or 0)
+        cache_creation_input_tokens = int(data.get("cache_creation_input_tokens", 0) or 0)
+        cache_read_input_tokens = int(data.get("cache_read_input_tokens", 0) or 0)
+        denom = cache_read_input_tokens + input_tokens
+        cache_hit_rate = round(cache_read_input_tokens / denom, 4) if denom > 0 else 0.0
+        log.info(
+            "USAGE %s: in=%d out=%d cache_creation=%d cache_read=%d cache_hit_rate=%.4f",
+            log_path.name,
+            input_tokens,
+            output_tokens,
+            cache_creation_input_tokens,
+            cache_read_input_tokens,
+            cache_hit_rate,
+        )
+
         return skill, preview
     except Exception:
         return "", ""

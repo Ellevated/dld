@@ -19,6 +19,28 @@ import sys
 import time
 from pathlib import Path
 
+
+def load_env() -> None:
+    """Load KEY=VALUE pairs from .env file next to this script into os.environ.
+
+    Uses setdefault so existing env vars win (e.g., systemd EnvironmentFile).
+    """
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
+
+
+load_env()
+
 try:
     from claude_agent_sdk import (
         AssistantMessage,
@@ -29,9 +51,7 @@ try:
     )
     from claude_agent_sdk._errors import CLIConnectionError, ProcessError
 except ImportError:
-    sys.exit(
-        "claude-agent-sdk not installed. Run: pip install claude-agent-sdk"
-    )
+    sys.exit("claude-agent-sdk not installed. Run: pip install claude-agent-sdk")
 
 # ---------------------------------------------------------------------------
 # Config
@@ -84,7 +104,10 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
 
     logger.info(
         "project=%s skill=%s prompt=%s cwd=%s",
-        project_name, skill, prompt, project_path,
+        project_name,
+        skill,
+        prompt,
+        project_path,
     )
 
     # Agent SDK options
@@ -97,9 +120,8 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         env={
             "PROJECT_DIR": str(project_path),
             "CLAUDE_PROJECT_DIR": str(project_path),
-            "CLAUDE_CURRENT_SPEC_PATH": os.environ.get(
-                "CLAUDE_CURRENT_SPEC_PATH", ""
-            ),
+            "CLAUDE_CURRENT_SPEC_PATH": os.environ.get("CLAUDE_CURRENT_SPEC_PATH", ""),
+            "ENABLE_PROMPT_CACHING_1H": os.environ.get("ENABLE_PROMPT_CACHING_1H", "1"),
         },
     )
 
@@ -108,6 +130,12 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     turns = 0
     cost_usd = 0.0
     exit_code = 0
+    usage_metrics = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+    }
 
     try:
         async for message in query(prompt=prompt, options=options):
@@ -140,6 +168,12 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
                 is_error = getattr(message, "is_error", False)
                 if is_error:
                     exit_code = 1
+                usage = getattr(message, "usage", None) or {}
+                if not isinstance(usage, dict):
+                    usage = getattr(usage, "__dict__", {}) or {}
+                for key in usage_metrics:
+                    val = usage.get(key, 0) if isinstance(usage, dict) else 0
+                    usage_metrics[key] = int(val or 0)
 
         # Fallback: use last assistant message if no result_text
         if not result_text and last_assistant_text:
@@ -176,6 +210,10 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         result_text = err_str
 
     # Write log
+    cache_denom = usage_metrics["cache_read_input_tokens"] + usage_metrics["input_tokens"]
+    cache_hit_rate = (
+        round(usage_metrics["cache_read_input_tokens"] / cache_denom, 4) if cache_denom > 0 else 0.0
+    )
     log_data = {
         "exit_code": exit_code,
         "project": project_name,
@@ -184,12 +222,24 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         "prompt": prompt,
         "turns": turns,
         "cost_usd": round(cost_usd, 4),
+        "input_tokens": usage_metrics["input_tokens"],
+        "output_tokens": usage_metrics["output_tokens"],
+        "cache_creation_input_tokens": usage_metrics["cache_creation_input_tokens"],
+        "cache_read_input_tokens": usage_metrics["cache_read_input_tokens"],
+        "cache_hit_rate": cache_hit_rate,
         "result_preview": result_text[:1000] if result_text else "",
     }
     log_file.write_text(json.dumps(log_data, ensure_ascii=False, indent=2))
     logger.info(
-        "done project=%s exit=%d turns=%d cost=$%.4f",
-        project_name, exit_code, turns, cost_usd,
+        "done project=%s exit=%d turns=%d cost=$%.4f in=%d out=%d cache_read=%d cache_hit=%.2f",
+        project_name,
+        exit_code,
+        turns,
+        cost_usd,
+        usage_metrics["input_tokens"],
+        usage_metrics["output_tokens"],
+        usage_metrics["cache_read_input_tokens"],
+        cache_hit_rate,
     )
 
     return log_data
