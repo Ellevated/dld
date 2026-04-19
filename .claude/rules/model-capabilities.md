@@ -1,14 +1,14 @@
-# Model Capabilities (Claude Opus 4.6)
+# Model Capabilities (Claude Opus 4.7)
 
 Reference for agents about current model capabilities.
-Last updated: 2026-02-08
+Last updated: 2026-04-19
 
 ---
 
-## Active Model: Claude Opus 4.6
+## Active Model: Claude Opus 4.7
 
-**Released:** February 5, 2026
-**Model ID:** `claude-opus-4-6`
+**Released:** April 16, 2026
+**Model ID:** `claude-opus-4-7`
 **Pricing:** $5/$25 per million tokens (input/output)
 
 ---
@@ -20,8 +20,9 @@ Last updated: 2026-02-08
 | Context window | 200K standard, 1M beta | Beta: $10/$37.50 for >200K |
 | Max output tokens | 128K | Doubled from 64K in Opus 4.5 |
 | Adaptive thinking | Default | Model decides when/how much to think |
-| Effort levels | low / medium / high / max | Controls thinking depth |
+| Effort levels | low / medium / high / xhigh / max | Controls thinking depth |
 | Fast mode | 2.5x faster output | Research preview, `/fast` toggle |
+| Prompt caching | Automatic | 5-min default; set `ENABLE_PROMPT_CACHING_1H=1` for 1h TTL |
 
 ---
 
@@ -43,18 +44,26 @@ Agents should operate at different effort levels based on task complexity:
 | ~~diary-recorder~~ | — | DEPRECATED: inline in task-loop Step 6.5 (ADR-007) |
 | eval-judge | high | Rubric-based LLM output evaluation (sonnet) |
 | bughunt scope-decomposer | medium | File listing and grouping (sonnet) |
-| bughunt personas (6) | high | Deep analysis from specialized perspectives (sonnet) |
+| bughunt personas (6) | medium | Read + describe from specialized perspectives (sonnet) |
 | bughunt findings-collector | medium | Normalization, no reasoning (sonnet) |
 | bughunt spec-assembler | high | Structured assembly with ID protocol (sonnet) |
-| bughunt validator | high | Triage requires good judgment (opus) |
+| bughunt validator | high | Triage requires good judgment (sonnet) |
 | bughunt report-updater | medium | Structured update, clear patterns (sonnet) |
 | bughunt solution-architect | high | Fix design needs careful analysis (opus) |
 | triz data-collector | medium | Pure data extraction, no reasoning (sonnet) |
 | triz toc-analyst | max | System-level constraint analysis (opus) |
 | triz triz-analyst | max | System-level contradiction resolution (opus) |
 | triz synthesizer | high | Merge and prioritize recommendations (opus) |
+| council-synthesizer, architect/board/spark facilitators | medium | Process keeper / merge-format orchestration (sonnet) |
 
 ---
+
+## Breaking Changes from Opus 4.6
+
+| What | Impact | Action |
+|------|--------|--------|
+| `thinking` parameter changed | Incompatible format vs 4.6 | Not used by DLD claude-runner — safe |
+| `temperature` / `top_p` behavior tuned | Drift on deterministic prompts | Not used by DLD claude-runner — safe |
 
 ## Breaking Changes from Opus 4.5
 
@@ -73,6 +82,7 @@ Agents should operate at different effort levels based on task complexity:
 3. **1M context (beta)** — large codebases can fit entirely in context
 4. **Context compaction** — server-side, enables infinite conversations
 5. **Agent Teams** — research preview, direct agent-to-agent messaging
+6. **Prompt caching is automatic** — set `ENABLE_PROMPT_CACHING_1H=1` on the runner to extend TTL to 1 hour (useful for long council/bughunt sessions)
 
 ---
 
@@ -81,7 +91,7 @@ Agents should operate at different effort levels based on task complexity:
 | Model | Use For | Cost |
 |-------|---------|------|
 | opus | Complex reasoning, planning, review, council | $5/$25 |
-| sonnet | Standard implementation, research, testing | $3/$15 |
+| sonnet | Standard implementation, research, testing, orchestration | $3/$15 |
 | haiku | Quick checks, simple formatting | $1/$5 |
 
 **Rule:** Model is defined ONCE in agent frontmatter `model:` field.

@@ -1,7 +1,7 @@
 ---
 name: council-synthesizer
 description: Council Chairman - Oracle the Synthesizer. Synthesizes expert opinions into final decision.
-model: opus
+model: sonnet
 effort: max
 tools: Read, Write
 ---

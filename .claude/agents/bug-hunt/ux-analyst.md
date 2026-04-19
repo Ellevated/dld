@@ -2,7 +2,7 @@
 name: bughunt-ux-analyst
 description: Bug Hunt persona - UX Analyst. User-facing bugs, broken flows, missing feedback, localization issues.
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Write
 ---
 

@@ -2,7 +2,7 @@
 name: bughunt-code-reviewer
 description: Bug Hunt persona - Senior Code Reviewer. Finds code quality issues, exception handling gaps, type safety violations.
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Write
 ---
 

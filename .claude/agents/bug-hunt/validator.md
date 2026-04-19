@@ -1,7 +1,7 @@
 ---
 name: bughunt-validator
 description: Bug Hunt agent - Validator. Filters findings by relevance to user's original question, deduplicates, triages.
-model: opus
+model: sonnet
 effort: high
 tools: Read, Grep, Glob, Write
 ---

@@ -2,7 +2,7 @@
 name: bughunt-qa-engineer
 description: Bug Hunt persona - QA Engineer. Edge cases, boundary conditions, test gaps, regression risks.
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Write
 ---
 

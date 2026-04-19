@@ -2,7 +2,7 @@
 name: bughunt-software-architect
 description: Bug Hunt persona - Software Architect. Patterns, state management, atomicity, race conditions, design flaws.
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Write
 ---
 

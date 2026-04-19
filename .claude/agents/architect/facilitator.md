@@ -1,7 +1,7 @@
 ---
 name: architect-facilitator
 description: Architect Facilitator - Chief Architect. Process keeper, NOT a voter. Manages rounds, orchestrates multi-step write.
-model: opus
+model: sonnet
 effort: max
 tools: Task, Read, Write, Grep, Glob
 ---
