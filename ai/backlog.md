@@ -128,7 +128,7 @@
 | BUG-163 | Fix event_writer wake_openclaw() blocking callback 23s (timeout 30→5, log DEBUG) | done | P1 | [spec](features/BUG-163-2026-03-19-event-writer-wake-timeout.md) |
 | BUG-164 | Fix callback.py pueue socket mismatch — read agent output from log files + DB | done | P0 | [spec](features/BUG-164-2026-03-20-callback-pueue-socket-mismatch.md) |
 | TECH-149 | Deterministic Worktree Cleanup After Merge | done | P1 | [spec](features/TECH-149-2026-03-25-worktree-cleanup.md) |
-| TECH-165 | Anthropic Pipeline Optimization (SDK 0.1.48→0.1.63 + model routing + observability) | queued | P1 | [spec](features/TECH-165-2026-04-18-anthropic-pipeline-optimization.md) |
+| TECH-165 | Anthropic Pipeline Optimization (SDK 0.1.48→0.1.63 + model routing + observability) | done | P1 | [spec](features/TECH-165-2026-04-18-anthropic-pipeline-optimization.md) |
 
 ---
 
