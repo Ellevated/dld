@@ -45,7 +45,15 @@
     "pytest"
   ],
   "ignorePaths": [
-    "node_modules",
-    ".git"
+    "node_modules/**",
+    ".git/**",
+    "ai/**",
+    "template/**",
+    ".worktrees/**",
+    ".pytest_cache/**",
+    ".ruff_cache/**",
+    "scripts/vps/venv/**",
+    "scripts/vps/logs/**",
+    "CHANGELOG.md"
   ]
 }

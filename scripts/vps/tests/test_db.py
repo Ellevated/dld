@@ -7,12 +7,9 @@ callback CLI mode, save_finding, get_new_findings.
 """
 
 import sqlite3
-import subprocess
 import sys
-import os
 from pathlib import Path
 
-import pytest
 
 VPS_DIR = str(Path(__file__).resolve().parent.parent)
 if VPS_DIR not in sys.path:
@@ -23,21 +20,24 @@ import db
 
 # --- EC-1: seed_projects upsert idempotency ---
 
+
 class TestSeedProjects:
     def test_seed_upsert_idempotency(self, isolated_db):
         """EC-1: Seeding same project_id twice updates path, no duplicate row."""
-        db.seed_projects_from_json([
-            {"project_id": "proj1", "path": "/old/path", "topic_id": 5, "provider": "claude"},
-        ])
-        db.seed_projects_from_json([
-            {"project_id": "proj1", "path": "/new/path", "topic_id": 5, "provider": "claude"},
-        ])
+        db.seed_projects_from_json(
+            [
+                {"project_id": "proj1", "path": "/old/path", "topic_id": 5, "provider": "claude"},
+            ]
+        )
+        db.seed_projects_from_json(
+            [
+                {"project_id": "proj1", "path": "/new/path", "topic_id": 5, "provider": "claude"},
+            ]
+        )
 
         conn = sqlite3.connect(str(isolated_db))
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT * FROM project_state WHERE project_id = 'proj1'"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM project_state WHERE project_id = 'proj1'").fetchall()
         conn.close()
 
         assert len(rows) == 1, "Should have exactly 1 row after double-seed"
@@ -45,10 +45,12 @@ class TestSeedProjects:
 
     def test_seed_multiple_projects(self, isolated_db):
         """Seeding multiple projects creates all rows."""
-        db.seed_projects_from_json([
-            {"project_id": "a", "path": "/a", "topic_id": 1, "provider": "claude"},
-            {"project_id": "b", "path": "/b", "topic_id": 2, "provider": "codex"},
-        ])
+        db.seed_projects_from_json(
+            [
+                {"project_id": "a", "path": "/a", "topic_id": 1, "provider": "claude"},
+                {"project_id": "b", "path": "/b", "topic_id": 2, "provider": "codex"},
+            ]
+        )
         assert db.get_project_state("a") is not None
         assert db.get_project_state("b") is not None
         assert db.get_project_state("a")["provider"] == "claude"
@@ -56,12 +58,16 @@ class TestSeedProjects:
 
     def test_seed_preserves_existing_topic_binding_when_json_omits_it(self, isolated_db):
         """Reseed must not erase topic binding if projects.json omits it."""
-        db.seed_projects_from_json([
-            {"project_id": "proj1", "path": "/old/path", "topic_id": 42, "provider": "claude"},
-        ])
-        db.seed_projects_from_json([
-            {"project_id": "proj1", "path": "/new/path", "provider": "claude"},
-        ])
+        db.seed_projects_from_json(
+            [
+                {"project_id": "proj1", "path": "/old/path", "topic_id": 42, "provider": "claude"},
+            ]
+        )
+        db.seed_projects_from_json(
+            [
+                {"project_id": "proj1", "path": "/new/path", "provider": "claude"},
+            ]
+        )
 
         state = db.get_project_state("proj1")
         assert state is not None
@@ -70,6 +76,7 @@ class TestSeedProjects:
 
 
 # --- EC-12: log_task creates DB entry ---
+
 
 class TestLogTask:
     def test_log_task_creates_entry(self, seed_project):
@@ -113,6 +120,7 @@ class TestLogTask:
 
 # --- EC-2 + EC-3: try_acquire_slot ---
 
+
 class TestSlotAcquisition:
     def test_acquire_slot_success(self, seed_project):
         """Acquire a free claude slot returns slot_number."""
@@ -132,9 +140,11 @@ class TestSlotAcquisition:
     def test_acquire_slot_concurrent_one_slot(self, isolated_db):
         """EC-3: Two calls for 1 slot -- exactly one gets it."""
         # Seed project first
-        db.seed_projects_from_json([
-            {"project_id": "p1", "path": "/p1", "topic_id": 1, "provider": "codex"},
-        ])
+        db.seed_projects_from_json(
+            [
+                {"project_id": "p1", "path": "/p1", "topic_id": 1, "provider": "codex"},
+            ]
+        )
         # codex has exactly 1 slot (slot_number=3)
         slot_a = db.try_acquire_slot("p1", "codex", pueue_id=20)
         slot_b = db.try_acquire_slot("p1", "codex", pueue_id=21)
@@ -166,6 +176,7 @@ class TestSlotAcquisition:
 
 
 # --- project state + phase ---
+
 
 class TestProjectState:
     def test_get_project_state(self, seed_project):

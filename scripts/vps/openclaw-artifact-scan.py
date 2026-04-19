@@ -35,7 +35,7 @@ def extract_status(text: str) -> str:
     """
     for line in text.splitlines():
         if line.startswith("**Status:**"):
-            val = line[len("**Status:**"):].strip().rstrip("*").strip()
+            val = line[len("**Status:**") :].strip().rstrip("*").strip()
             return val if val else "no_status_header"
     return "no_status_header"
 
@@ -52,7 +52,7 @@ def extract_spec(text: str) -> str:
     # Primary: explicit **Spec:** header
     for line in text.splitlines():
         if line.startswith("**Spec:**"):
-            return line[len("**Spec:**"):].strip()
+            return line[len("**Spec:**") :].strip()
 
     # Fallback: extract from title '# QA Report: SPEC-ID ...'
     for line in text.splitlines():

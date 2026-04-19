@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-import pytest
 
 VPS_DIR = str(Path(__file__).resolve().parent.parent)
 if VPS_DIR not in sys.path:
@@ -20,6 +19,7 @@ import orchestrator
 
 
 # --- EC-7: get_occupied_slots returns correct data ---
+
 
 class TestGetOccupiedSlots:
     def test_returns_occupied_only(self, seed_project):
@@ -43,6 +43,7 @@ class TestGetOccupiedSlots:
 
 # --- EC-1: pueue failure → no release ---
 
+
 class TestGetLivePueueIds:
     def test_pueue_failure_returns_none(self, seed_project):
         """EC-1: When pueue status fails, return None (not empty set)."""
@@ -63,10 +64,20 @@ class TestGetLivePueueIds:
         """EC-2: Running tasks appear in live set."""
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"tasks": {
-            "5": {"status": {"Running": {"start": "2026-03-19T00:00:00Z"}}, "label": "proj:T1"},
-            "6": {"status": {"Running": {"start": "2026-03-19T00:00:00Z"}}, "label": "proj:T2"},
-        }})
+        mock_result.stdout = json.dumps(
+            {
+                "tasks": {
+                    "5": {
+                        "status": {"Running": {"start": "2026-03-19T00:00:00Z"}},
+                        "label": "proj:T1",
+                    },
+                    "6": {
+                        "status": {"Running": {"start": "2026-03-19T00:00:00Z"}},
+                        "label": "proj:T2",
+                    },
+                }
+            }
+        )
         with patch("orchestrator.subprocess.run", return_value=mock_result):
             result = orchestrator.get_live_pueue_ids()
         assert result == {5, 6}
@@ -75,9 +86,13 @@ class TestGetLivePueueIds:
         """EC-6: Queued tasks are included in live set (not released)."""
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"tasks": {
-            "10": {"status": "Queued", "label": "proj:T1"},
-        }})
+        mock_result.stdout = json.dumps(
+            {
+                "tasks": {
+                    "10": {"status": "Queued", "label": "proj:T1"},
+                }
+            }
+        )
         with patch("orchestrator.subprocess.run", return_value=mock_result):
             result = orchestrator.get_live_pueue_ids()
         assert 10 in result
@@ -86,10 +101,14 @@ class TestGetLivePueueIds:
         """Stashed and Paused tasks stay in live set."""
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"tasks": {
-            "20": {"status": "Stashed", "label": "proj:T1"},
-            "21": {"status": "Paused", "label": "proj:T2"},
-        }})
+        mock_result.stdout = json.dumps(
+            {
+                "tasks": {
+                    "20": {"status": "Stashed", "label": "proj:T1"},
+                    "21": {"status": "Paused", "label": "proj:T2"},
+                }
+            }
+        )
         with patch("orchestrator.subprocess.run", return_value=mock_result):
             result = orchestrator.get_live_pueue_ids()
         assert result == {20, 21}
@@ -105,6 +124,7 @@ class TestGetLivePueueIds:
 
 
 # --- EC-3, EC-4: release_orphan_slots ---
+
 
 class TestReleaseOrphanSlots:
     def test_pueue_unreachable_no_release(self, seed_project):
@@ -167,6 +187,7 @@ class TestReleaseOrphanSlots:
 
 
 # --- EC-8: Integration test (no mocks for DB) ---
+
 
 class TestWatchdogIntegration:
     def test_acquire_then_watchdog_frees_slot(self, seed_project):

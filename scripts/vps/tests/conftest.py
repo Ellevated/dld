@@ -42,13 +42,15 @@ def seed_project(isolated_db):
     """Seed a single test project and return its project_id."""
     import db
 
-    db.seed_projects_from_json([
-        {
-            "project_id": "testproject",
-            "path": "/tmp/test-project",
-            "topic_id": 5,
-            "provider": "claude",
-            "auto_approve_timeout": 30,
-        }
-    ])
+    db.seed_projects_from_json(
+        [
+            {
+                "project_id": "testproject",
+                "path": "/tmp/test-project",
+                "topic_id": 5,
+                "provider": "claude",
+                "auto_approve_timeout": 30,
+            }
+        ]
+    )
     return "testproject"

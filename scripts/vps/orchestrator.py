@@ -178,9 +178,10 @@ def git_pull(project_id: str, project_dir: str) -> None:
     if is_agent_running(project_id):
         log.info("skip git pull — agent running: %s", project_id)
         return
-    _git = lambda *a, **kw: subprocess.run(
-        ["git", "-C", project_dir] + list(a), capture_output=True, **kw
-    )
+
+    def _git(*a, **kw):
+        return subprocess.run(["git", "-C", project_dir] + list(a), capture_output=True, **kw)
+
     try:
         clean = _git("diff", "--quiet", timeout=30).returncode == 0
         staged = _git("diff", "--cached", "--quiet", timeout=30).returncode == 0

@@ -15,9 +15,8 @@ Used by:
 Glossary: N/A (standalone example)
 """
 
-from fastapi import Depends, FastAPI
-
 from config import Settings, get_settings
+from fastapi import Depends, FastAPI
 
 app = FastAPI()
 

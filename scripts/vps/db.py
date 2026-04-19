@@ -101,7 +101,6 @@ def get_project_state(project_id: str) -> Optional[dict]:
         return dict(row) if row else None
 
 
-
 def get_all_projects() -> list[dict]:
     """Get all enabled projects."""
     with get_db() as conn:
@@ -219,7 +218,6 @@ def seed_projects_from_json(projects: list[dict]) -> None:
                     p.get("auto_approve_timeout", 30),
                 ),
             )
-
 
 
 def save_finding(
