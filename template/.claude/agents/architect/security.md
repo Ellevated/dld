@@ -121,9 +121,9 @@ You MUST respond in this exact MARKDOWN format:
 
 ## Research Conducted
 
-- [Research Title 1](url) — threat model for similar system
-- [Research Title 2](url) — OWASP patterns found
-- [Research Title 3](url) — recent CVEs in tech stack
+- [Research Title 1](https://example.com) — threat model for similar system
+- [Research Title 2](https://example.com) — OWASP patterns found
+- [Research Title 3](https://example.com) — recent CVEs in tech stack
 - [Deep Research: Topic](agent_url) — authentication best practices
 - [Deep Research: Topic 2](agent_url) — encryption strategies
 
@@ -318,8 +318,8 @@ You MUST respond in this exact MARKDOWN format:
 
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
 - [STRIDE Threat Modeling](https://learn.microsoft.com/en-us/azure/security/develop/threat-modeling-tool-threats)
-- [Research source 1](url)
-- [Research source 2](url)
+- [Research source 1](https://example.com)
+- [Research source 2](https://example.com)
 ```
 
 ## Output Format — Phase 2 (Cross-Critique)

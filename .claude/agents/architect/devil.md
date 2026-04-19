@@ -125,9 +125,9 @@ You MUST respond in this exact MARKDOWN format:
 
 ## Research Conducted
 
-- [Research Title 1](url) — conceptual integrity examples
-- [Research Title 2](url) — consistency patterns
-- [Research Title 3](url) — complexity failures
+- [Research Title 1](https://example.com) — conceptual integrity examples
+- [Research Title 2](https://example.com) — consistency patterns
+- [Research Title 3](https://example.com) — complexity failures
 - [Deep Research: Topic](agent_url) — architectural coherence
 - [Deep Research: Topic 2](agent_url) — single points of failure
 
@@ -303,8 +303,8 @@ Which one is correct? Or is there a third way that resolves the tension?
 
 - [Fred Brooks — The Mythical Man-Month](https://en.wikipedia.org/wiki/The_Mythical_Man-Month)
 - [Brooks — No Silver Bullet](http://worrydream.com/refs/Brooks-NoSilverBullet.pdf)
-- [Research source 1](url)
-- [Research source 2](url)
+- [Research source 1](https://example.com)
+- [Research source 2](https://example.com)
 ```
 
 ## Output Format — Phase 2 (Cross-Critique)

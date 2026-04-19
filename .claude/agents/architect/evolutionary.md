@@ -145,9 +145,9 @@ You MUST respond in this exact MARKDOWN format:
 
 ## Research Conducted
 
-- [Research Title 1](url) — fitness function examples
-- [Research Title 2](url) — change vector analysis methodology
-- [Research Title 3](url) — tech debt measurement
+- [Research Title 1](https://example.com) — fitness function examples
+- [Research Title 2](https://example.com) — change vector analysis methodology
+- [Research Title 3](https://example.com) — tech debt measurement
 - [Deep Research: Topic](agent_url) — architectural characteristics trade-offs
 - [Deep Research: Topic 2](agent_url) — reversibility patterns
 
@@ -382,8 +382,8 @@ radon cc src/ --min B --show-complexity
 
 - [Neal Ford — Evolutionary Architecture](https://evolutionaryarchitecture.com/)
 - [Martin Fowler — Fitness Functions](https://martinfowler.com/bliki/FitnessFunction.html)
-- [Research source 1](url)
-- [Research source 2](url)
+- [Research source 1](https://example.com)
+- [Research source 2](https://example.com)
 ```
 
 ## Output Format — Phase 2 (Cross-Critique)

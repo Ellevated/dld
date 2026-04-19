@@ -447,9 +447,9 @@ If creating UI elements with callbacks/events — fill this table:
 ## Implementation Plan
 
 ### Research Sources
-- [Pattern Name](url) — description of what pattern solves
-- [Library Docs](url) — API reference for implementation
-- [Example](url) — code example that inspired approach
+- [Pattern Name](https://example.com) — description of what pattern solves
+- [Library Docs](https://example.com) — API reference for implementation
+- [Example](https://example.com) — code example that inspired approach
 
 ### Task 1: [Name]
 **Type:** code | test | migrate

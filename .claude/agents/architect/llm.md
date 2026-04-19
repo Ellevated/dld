@@ -392,8 +392,8 @@ Given ONLY the OpenAPI spec (no source code), can an agent:
 
 - [Anthropic — Building Effective Agents](https://www.anthropic.com/research/building-effective-agents)
 - [Anthropic — Prompt Engineering Guide](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering)
-- [Research source 1](url)
-- [Research source 2](url)
+- [Research source 1](https://example.com)
+- [Research source 2](https://example.com)
 ```
 
 ## Rules

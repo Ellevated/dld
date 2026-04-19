@@ -113,7 +113,7 @@ Only after root cause is found → create BUG-XXX spec:
 - [ ] All found files added to Allowed Files
 
 ## Research Sources
-- [Pattern](url) — description from Scout
+- [Pattern](https://example.com) — description from Scout
 
 ## Allowed Files
 1. `path/to/file.py` — fix location
