@@ -10,6 +10,15 @@ exclude_path = [
   ".worktrees/",
 ]
 
+# URL patterns to skip (regex)
+exclude = [
+  # Placeholders in agent templates: [text](url) — intentionally literal
+  "^url$",
+  # Known 404s on third-party docs (sites moved/renamed pages)
+  "martinfowler\\.com/bliki/FitnessFunction",
+  "redis\\.io/docs/manual/patterns/rate-limiter",
+]
+
 # Per-run behavior
 max_redirects = 5
 no_progress = true
