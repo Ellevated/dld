@@ -2,7 +2,7 @@
 name: bughunt-junior-developer
 description: Bug Hunt persona - Junior Developer. Fresh eyes for obvious bugs, unclear code, missing docs.
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Write
 ---
 

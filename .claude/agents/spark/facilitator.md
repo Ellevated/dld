@@ -1,7 +1,7 @@
 ---
 name: spark-facilitator
 description: Spark Facilitator — orchestrates 8-phase feature spec creation (CRSДWR)
-model: opus
+model: sonnet
 effort: max
 tools: Task, Read, Write, Grep
 ---

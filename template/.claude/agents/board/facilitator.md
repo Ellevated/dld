@@ -1,7 +1,7 @@
 ---
 name: board-facilitator
 description: Board meeting facilitator — process keeper, NOT a voter
-model: opus
+model: sonnet
 effort: max
 tools: Task, Read, Write, Grep, Glob
 ---

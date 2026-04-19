@@ -1,0 +1,17 @@
+{
+  "task_id": "TECH-165",
+  "title": "Anthropic pipeline optimization: SDK upgrade + model routing + observability",
+  "session_dir": "ai/.spark/20260418-TECH-165",
+  "phases": {
+    "collect": {"status": "done", "ts": "2026-04-18T00:00:00Z", "mode": "human_detailed"},
+    "research": {"status": "done", "ts": "2026-04-18T00:00:00Z", "files": ["research-external.md", "research-codebase.md", "research-patterns.md", "research-devil.md"]},
+    "synthesize": {"status": "done", "ts": "2026-04-18T00:00:00Z"},
+    "decide": {"status": "done", "ts": "2026-04-18T00:00:00Z", "approach": "A", "route": "AUTO"},
+    "write": {"status": "done", "ts": "2026-04-18T13:40:00Z", "spec_path": "ai/features/TECH-165-2026-04-18-anthropic-pipeline-optimization.md"},
+    "validate": {"status": "done", "ts": "2026-04-18T13:45:00Z", "gates_passed": ["structure", "eval_criteria", "allowed_files", "backlog_entry", "id_uniqueness", "overlap_check"]},
+    "reflect": {"status": "done", "ts": "2026-04-18T13:45:00Z", "signals": 1, "note": "subscription vs API billing correction captured in diary/corrections.md"},
+    "completion": {"status": "done", "ts": "2026-04-18T13:45:00Z"}
+  },
+  "priority": "P1",
+  "risk": "R1"
+}

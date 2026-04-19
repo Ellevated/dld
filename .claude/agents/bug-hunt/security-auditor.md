@@ -2,7 +2,7 @@
 name: bughunt-security-auditor
 description: Bug Hunt persona - Security Auditor. OWASP Top 10, injection, SSRF, auth bypass, data exposure.
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Write
 ---
 
