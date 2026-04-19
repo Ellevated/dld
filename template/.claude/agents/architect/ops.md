@@ -118,9 +118,9 @@ You MUST respond in this exact MARKDOWN format:
 
 ## Research Conducted
 
-- [Research Title 1](url) — deployment pattern for similar system
-- [Research Title 2](url) — SLO/SLI best practices
-- [Research Title 3](url) — observability tooling comparison
+- [Research Title 1](https://example.com) — deployment pattern for similar system
+- [Research Title 2](https://example.com) — SLO/SLI best practices
+- [Research Title 3](https://example.com) — observability tooling comparison
 - [Deep Research: Topic](agent_url) — zero-downtime deployment
 - [Deep Research: Topic 2](agent_url) — distributed tracing strategies
 
@@ -323,8 +323,8 @@ You MUST respond in this exact MARKDOWN format:
 
 - [Charity Majors — Observability](https://www.honeycomb.io/blog/)
 - [Google SRE Book](https://sre.google/sre-book/table-of-contents/)
-- [Research source 1](url)
-- [Research source 2](url)
+- [Research source 1](https://example.com)
+- [Research source 2](https://example.com)
 ```
 
 ## Output Format — Phase 2 (Cross-Critique)

@@ -119,9 +119,9 @@ You MUST respond in this exact MARKDOWN format:
 
 ## Research Conducted
 
-- [Research Title 1](url) — schema design pattern found
-- [Research Title 2](url) — migration strategy from similar system
-- [Research Title 3](url) — consistency model trade-offs
+- [Research Title 1](https://example.com) — schema design pattern found
+- [Research Title 2](https://example.com) — migration strategy from similar system
+- [Research Title 3](https://example.com) — consistency model trade-offs
 - [Deep Research: Topic](agent_url) — storage engine comparison
 - [Deep Research: Topic 2](agent_url) — CQRS vs traditional CRUD
 
@@ -290,8 +290,8 @@ User Action
 ## References
 
 - [Martin Kleppmann — DDIA](https://dataintensive.net/)
-- [Research source 1](url)
-- [Research source 2](url)
+- [Research source 1](https://example.com)
+- [Research source 2](https://example.com)
 ```
 
 ## Output Format — Phase 2 (Cross-Critique)

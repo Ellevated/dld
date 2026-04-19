@@ -14,6 +14,7 @@ Glossary: N/A (standalone example)
 """
 
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

@@ -4,3 +4,15 @@
 
 # Template files are user-customizable
 template/
+
+# LLM-generated artifacts (not human-authored, content-of-record)
+ai/
+
+# Eval golden files (LLM outputs under test/)
+test/
+
+# Caches and build outputs
+node_modules/
+.worktrees/
+.pytest_cache/
+.ruff_cache/

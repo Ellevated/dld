@@ -163,9 +163,9 @@ You MUST respond in this exact MARKDOWN format:
 
 ## Research Conducted
 
-- [Research Title 1](url) — boring tech examples
-- [Research Title 2](url) — build vs buy analysis
-- [Research Title 3](url) — DX metrics comparison
+- [Research Title 1](https://example.com) — boring tech examples
+- [Research Title 2](https://example.com) — build vs buy analysis
+- [Research Title 3](https://example.com) — DX metrics comparison
 - [Deep Research: Topic](agent_url) — DORA metrics implementation
 - [Deep Research: Topic 2](agent_url) — onboarding time reduction
 
@@ -368,8 +368,8 @@ You MUST respond in this exact MARKDOWN format:
 
 - [Dan McKinley — Choose Boring Technology](https://mcfunley.com/choose-boring-technology)
 - [DORA Metrics](https://cloud.google.com/blog/products/devops-sre/using-the-four-keys-to-measure-your-devops-performance)
-- [Research source 1](url)
-- [Research source 2](url)
+- [Research source 1](https://example.com)
+- [Research source 2](https://example.com)
 ```
 
 ## Output Format — Phase 2 (Cross-Critique)

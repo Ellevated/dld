@@ -18,9 +18,9 @@ Uses:
 Glossary: None (example project)
 """
 
+from config import Settings, get_settings
 from fastapi.testclient import TestClient
 from main import app
-from config import Settings, get_settings
 
 
 # Test fixtures for dependency override

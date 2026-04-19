@@ -24,14 +24,31 @@ addopts = "-v --tb=short"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+exclude = [
+    "ai",
+    "template",
+    "node_modules",
+    ".worktrees",
+    "scripts/vps/venv",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# Test files need `sys.path.insert(...)` between stdlib imports and local imports
+"tests/**/*.py" = ["E402", "I001"]
+"scripts/vps/tests/**/*.py" = ["E402", "I001"]
+
 [tool.coverage.run]
-source = ["template/.claude/hooks"]
-omit = ["tests/*", "*/__pycache__/*"]
+source = ["scripts/vps"]
+omit = [
+    "tests/*",
+    "*/__pycache__/*",
+    "scripts/vps/tests/*",
+    "scripts/vps/venv/*",
+]
 
 [tool.coverage.report]
 exclude_lines = [

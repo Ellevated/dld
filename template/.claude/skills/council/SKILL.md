@@ -338,8 +338,8 @@ Task:
 ```markdown
 ### Research
 - Query: "telegram bot rate limiting patterns 2025"
-- Found: [Telegram Bot Best Practices](url) — use middleware approach
-- Found: [Rate Limit Strategies](url) — token bucket > sliding window
+- Found: [Telegram Bot Best Practices](https://example.com) — use middleware approach
+- Found: [Rate Limit Strategies](https://example.com) — token bucket > sliding window
 ```
 
 ## Voting & Decision
@@ -389,8 +389,8 @@ dissenting_opinions:
     resolution: "Addressed in changes_required[2]"
 
 research_highlights:
-  - "[Pattern X](url) — adopted"
-  - "[Risk Y](url) — mitigated via Z"
+  - "[Pattern X](https://example.com) — adopted"
+  - "[Risk Y](https://example.com) — mitigated via Z"
 
 confidence: high | medium | low
 next_step: autopilot | spark | human

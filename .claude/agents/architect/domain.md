@@ -111,9 +111,9 @@ You MUST respond in this exact MARKDOWN format:
 
 ## Research Conducted
 
-- [Research Title 1](url) — key insight about bounded contexts
-- [Research Title 2](url) — pattern found for context mapping
-- [Research Title 3](url) — example from similar domain
+- [Research Title 1](https://example.com) — key insight about bounded contexts
+- [Research Title 2](https://example.com) — pattern found for context mapping
+- [Research Title 3](https://example.com) — example from similar domain
 - [Deep Research: Topic](agent_url) — comprehensive analysis
 - [Deep Research: Topic 2](agent_url) — domain event patterns
 
@@ -220,8 +220,8 @@ If not, what technical abstractions are leaking into the domain model?]
 ## References
 
 - [Eric Evans — Domain-Driven Design](https://www.domainlanguage.com/ddd/)
-- [Research source 1](url)
-- [Research source 2](url)
+- [Research source 1](https://example.com)
+- [Research source 2](https://example.com)
 ```
 
 ## Output Format — Phase 2 (Cross-Critique)

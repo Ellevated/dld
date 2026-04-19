@@ -71,8 +71,7 @@ def wake_openclaw() -> bool:
         return False
     try:
         subprocess.run(
-            [openclaw_bin, "system", "event", "--mode", "now",
-             "--text", "pipeline event"],
+            [openclaw_bin, "system", "event", "--mode", "now", "--text", "pipeline event"],
             timeout=5,
             capture_output=True,
         )
@@ -105,8 +104,7 @@ def main() -> None:
     """
     if len(sys.argv) < 5:
         print(
-            "Usage: event_writer.py <project_path> <skill> <status> <message> "
-            "[--artifact <path>]",
+            "Usage: event_writer.py <project_path> <skill> <status> <message> [--artifact <path>]",
             file=sys.stderr,
         )
         sys.exit(1)
