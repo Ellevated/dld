@@ -1,8 +1,8 @@
 ---
 name: documenter
 description: Update documentation after code changes
-model: sonnet
-effort: medium
+model: haiku
+effort: low
 tools: Read, Glob, Grep, Edit, Bash
 ---
 

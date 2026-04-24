@@ -20,7 +20,7 @@ Parallel autopilot instances can:
 3. Create conflicting git commits on the same branch
 4. Corrupt backlog status (both write "in_progress")
 
-**Prevention:** Use `autopilot-loop.sh` for sequential execution. Never run multiple `autopilot` commands in parallel terminals.
+**Prevention:** Never run multiple `autopilot` commands in parallel terminals against the same project. The VPS orchestrator serializes via pueue slots; for interactive use, run one `/autopilot` session at a time.
 
 ## Git Safety
 

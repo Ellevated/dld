@@ -1,7 +1,8 @@
 # Finishing Workflow (PHASE 3)
 
 **Note:** In loop mode (SPEC_ID provided), step 9 exits immediately after merge.
-External orchestrator (`autopilot-loop.sh`) provides fresh context for next spec.
+The VPS orchestrator (`scripts/vps/orchestrator.py`) dispatches the next spec
+as a fresh Agent SDK session via pueue.
 
 Final verification, status update, merge, and cleanup.
 

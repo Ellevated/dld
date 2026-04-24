@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "nexus": {
+      "command": "node",
+      "args": ["D:/dev/RIS/nexus/src/app/mcp-server.js"],
+      "env": {
+        "NEXUS_ROOT": "D:/dev/RIS/nexus"
+      }
+    }
+  }
+}

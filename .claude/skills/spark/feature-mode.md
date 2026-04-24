@@ -614,6 +614,29 @@ Before marking spec `queued`, run 6 structural validation gates.
 □ DoD is measurable?
 ```
 
+### Gate 1b: Spec Size (SOFT — warning only, never blocks)
+```
+□ Implementation Plan has ≤ 5 tasks?     (warn if >5)
+□ Allowed Files list ≤ 10 entries?       (warn if >10)
+□ Estimated effort ≤ 1 autopilot session (~$15, ~50 turns)? (warn if more)
+```
+
+**Why it matters:** Autopilot runs with `max_turns=60`. Oversized specs burn
+$20+ per run with high failure rate (BUG-327 post-mortem: 117 turns, $50, FAIL).
+Smaller specs = higher success rate and cheaper.
+
+**If any check fails:**
+- Add a ⚠️ WARNING section at the top of the spec:
+  ```
+  ⚠️ **Size warning:** {N} tasks / {M} allowed files / est. ${X}.
+  Consider splitting into: {concrete suggestion — e.g., "ARCH-XXX epic + 3 child specs"}.
+  ```
+- Proceed to `queued` anyway — user may know the spec is indivisible.
+- Prefer splitting when possible: parent epic (ARCH-*) + 2-3 child specs
+  (FTR/TECH), each independently shippable, epic tracks child completion.
+
+**Do NOT block the spec** — warning is informational. The user decides.
+
 ### Gate 2: Eval Criteria Gate
 ```
 □ Eval Criteria section filled? (or Tests section for legacy specs)

@@ -42,7 +42,9 @@
     "UltraThink",
     "async",
     "Awardybot",
-    "pytest"
+    "pytest",
+    "brandbook",
+    "Excalidraw"
   ],
   "ignorePaths": [
     "node_modules/**",

@@ -56,7 +56,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-MAX_TURNS = 80
+MAX_TURNS = 60
 TIMEOUT_SECONDS = 3600  # 60 min hard limit
 
 LOG_DIR = Path(__file__).parent / "logs"
@@ -135,7 +135,10 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         "output_tokens": 0,
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
+        "cache_creation_1h_input_tokens": 0,
+        "cache_creation_5m_input_tokens": 0,
     }
+    model_usage: dict = {}
 
     try:
         async for message in query(prompt=prompt, options=options):
@@ -171,9 +174,23 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
                 usage = getattr(message, "usage", None) or {}
                 if not isinstance(usage, dict):
                     usage = getattr(usage, "__dict__", {}) or {}
-                for key in usage_metrics:
-                    val = usage.get(key, 0) if isinstance(usage, dict) else 0
-                    usage_metrics[key] = int(val or 0)
+                # Flat keys (Anthropic API contract: input_tokens, output_tokens,
+                # cache_read_input_tokens). cache_creation is nested — see below.
+                for key in ("input_tokens", "output_tokens", "cache_read_input_tokens"):
+                    usage_metrics[key] = int(usage.get(key, 0) or 0)
+                # cache_creation moved to nested dict in 2026 API revision:
+                # usage.cache_creation.ephemeral_{1h,5m}_input_tokens
+                cc = usage.get("cache_creation", {}) if isinstance(usage, dict) else {}
+                if isinstance(cc, dict):
+                    h1 = int(cc.get("ephemeral_1h_input_tokens", 0) or 0)
+                    m5 = int(cc.get("ephemeral_5m_input_tokens", 0) or 0)
+                    usage_metrics["cache_creation_1h_input_tokens"] = h1
+                    usage_metrics["cache_creation_5m_input_tokens"] = m5
+                    usage_metrics["cache_creation_input_tokens"] = h1 + m5
+                # Per-model breakdown (Opus vs Sonnet vs Haiku in one run)
+                mu = getattr(message, "model_usage", None)
+                if isinstance(mu, dict):
+                    model_usage = mu
 
         # Fallback: use last assistant message if no result_text
         if not result_text and last_assistant_text:
@@ -209,11 +226,13 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
             exit_code = 1
         result_text = err_str
 
-    # Write log
-    cache_denom = usage_metrics["cache_read_input_tokens"] + usage_metrics["input_tokens"]
-    cache_hit_rate = (
-        round(usage_metrics["cache_read_input_tokens"] / cache_denom, 4) if cache_denom > 0 else 0.0
+    # Cache hit rate: fraction of total input that came from cache read.
+    # Denominator = direct input + cache creation + cache read (total paid input-ish).
+    cache_read = usage_metrics["cache_read_input_tokens"]
+    cache_total = (
+        cache_read + usage_metrics["cache_creation_input_tokens"] + usage_metrics["input_tokens"]
     )
+    cache_hit_rate = round(cache_read / cache_total, 4) if cache_total > 0 else 0.0
     log_data = {
         "exit_code": exit_code,
         "project": project_name,
@@ -225,8 +244,11 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         "input_tokens": usage_metrics["input_tokens"],
         "output_tokens": usage_metrics["output_tokens"],
         "cache_creation_input_tokens": usage_metrics["cache_creation_input_tokens"],
+        "cache_creation_1h_input_tokens": usage_metrics["cache_creation_1h_input_tokens"],
+        "cache_creation_5m_input_tokens": usage_metrics["cache_creation_5m_input_tokens"],
         "cache_read_input_tokens": usage_metrics["cache_read_input_tokens"],
         "cache_hit_rate": cache_hit_rate,
+        "model_usage": model_usage,
         "result_preview": result_text[:1000] if result_text else "",
     }
     log_file.write_text(json.dumps(log_data, ensure_ascii=False, indent=2))
