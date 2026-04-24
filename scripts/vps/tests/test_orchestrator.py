@@ -113,6 +113,87 @@ class TestGetLivePueueIds:
             result = orchestrator.get_live_pueue_ids()
         assert result == {20, 21}
 
+    def test_dict_queued_status_in_live_set(self, seed_project):
+        """Regression 2026-04-24: modern pueue wraps Queued in a dict.
+
+        Before the fix, `status: {"Queued": {...}}` fell through to the
+        string-match branch (`st in ("Queued", ...)`), which is always false
+        because st is a dict. Result: all Queued tasks flagged as orphans
+        and released, causing duplicate dispatch.
+        """
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps(
+            {
+                "tasks": {
+                    "30": {"status": {"Queued": {"enqueued_at": "t"}}, "label": "proj:T1"},
+                    "31": {"status": {"Stashed": {"enqueue_at": None}}, "label": "proj:T2"},
+                    "32": {"status": {"Paused": {}}, "label": "proj:T3"},
+                    "33": {"status": {"Running": {"start": "t"}}, "label": "proj:T4"},
+                    "34": {"status": {"Done": {"result": "Success"}}, "label": "proj:T5"},
+                }
+            }
+        )
+        with patch("orchestrator.subprocess.run", return_value=mock_result):
+            result = orchestrator.get_live_pueue_ids()
+        # 34 is Done → not live; all others → live
+        assert result == {30, 31, 32, 33}
+
+
+class TestPueueHasActiveLabel:
+    """Verify dedup guard used in scan_backlog/scan_inbox."""
+
+    def test_returns_true_for_running_duplicate(self):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps(
+            {"tasks": {"7": {"status": {"Running": {}}, "label": "proj:BUG-1"}}}
+        )
+        with patch("orchestrator.subprocess.run", return_value=mock_result):
+            assert orchestrator.pueue_has_active_label("proj:BUG-1") is True
+
+    def test_returns_true_for_queued_duplicate(self):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps(
+            {"tasks": {"8": {"status": {"Queued": {}}, "label": "proj:BUG-2"}}}
+        )
+        with patch("orchestrator.subprocess.run", return_value=mock_result):
+            assert orchestrator.pueue_has_active_label("proj:BUG-2") is True
+
+    def test_returns_false_for_done_task(self):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps(
+            {
+                "tasks": {
+                    "9": {
+                        "status": {"Done": {"result": "Success"}},
+                        "label": "proj:BUG-3",
+                    }
+                }
+            }
+        )
+        with patch("orchestrator.subprocess.run", return_value=mock_result):
+            assert orchestrator.pueue_has_active_label("proj:BUG-3") is False
+
+    def test_returns_false_when_label_absent(self):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps(
+            {"tasks": {"10": {"status": {"Running": {}}, "label": "other:spec"}}}
+        )
+        with patch("orchestrator.subprocess.run", return_value=mock_result):
+            assert orchestrator.pueue_has_active_label("proj:BUG-4") is False
+
+    def test_fail_open_on_pueue_error(self):
+        """If pueue is unreachable, return False (allow dispatch)."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "daemon not running"
+        with patch("orchestrator.subprocess.run", return_value=mock_result):
+            assert orchestrator.pueue_has_active_label("proj:BUG-5") is False
+
     def test_empty_tasks_returns_empty_set(self, seed_project):
         """EC-4: pueue returns empty tasks (valid response) → empty set (not None)."""
         mock_result = MagicMock()
