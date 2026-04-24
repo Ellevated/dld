@@ -6,6 +6,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.15.3] - 2026-04-24
+
+### Fixed
+- **Orchestrator: duplicate-dispatch loop (critical).** `get_live_pueue_ids` in `scripts/vps/orchestrator.py` missed Queued/Stashed/Paused tasks because it fell through to a string-equality branch (`st in ("Queued", ...)`) while modern pueue returns `status` as a dict (`{"Queued": {...}}`). The dead branch made the watchdog see all Queued tasks as orphans, release their slots every cycle, and `scan_backlog` then re-dispatched the same `resumed`/`queued` spec. In production 15 duplicate tasks accumulated in ~20 minutes, two parallel processes started competing over the same worktree for FTR-851. Fix: introduce `_LIVE_PUEUE_STATES` and normalise the status to a single `state_name`, handling dict and string forms.
+- **Orchestrator: dedup guard at dispatch time.** Added `pueue_has_active_label(label)` and called it from both `scan_inbox` and `scan_backlog` before `_pueue_add`. Belt-and-suspenders: even if the slot table is briefly out of sync, the same label is never added to pueue twice. Fail-open on pueue errors (better to risk a duplicate than block every dispatch).
+
+### Added
+- Tests for both paths: `TestGetLivePueueIds.test_dict_queued_status_in_live_set` (regression guard) and `TestPueueHasActiveLabel` (5 cases covering running/queued/done/absent/pueue-error).
+
+---
+
 ## [3.15.2] - 2026-04-24
 
 ### Fixed

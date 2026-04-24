@@ -95,8 +95,15 @@ def sync_projects() -> None:
     log.info("synced %d projects from %s", len(projects), projects_json)
 
 
+_LIVE_PUEUE_STATES = frozenset({"Running", "Locked", "Queued", "Stashed", "Paused"})
+
+
 def get_live_pueue_ids() -> set[int] | None:
-    """Return live pueue task IDs. None on failure (skip watchdog, no false release)."""
+    """Return live pueue task IDs. None on failure (skip watchdog, no false release).
+
+    Modern pueue versions return `status` as a dict like `{"Queued": {...}}` or
+    `{"Running": {...}}`. Older versions may return a bare string. We handle both.
+    """
     try:
         r = subprocess.run(
             ["pueue", "status", "--json"],
@@ -111,14 +118,48 @@ def get_live_pueue_ids() -> set[int] | None:
         live: set[int] = set()
         for tid_str, task in data.get("tasks", {}).items():
             st = task.get("status", "")
-            if isinstance(st, dict) and ("Running" in st or "Locked" in st):
-                live.add(int(tid_str))
-            elif st in ("Queued", "Stashed", "Paused"):
+            state_name: str = ""
+            if isinstance(st, dict):
+                state_name = next(iter(st.keys()), "")
+            elif isinstance(st, str):
+                state_name = st
+            if state_name in _LIVE_PUEUE_STATES:
                 live.add(int(tid_str))
         return live
     except Exception as exc:
         log.warning("get_live_pueue_ids failed: %s", exc)
         return None
+
+
+def pueue_has_active_label(label: str) -> bool:
+    """Return True if pueue already has a Running/Queued task with this label.
+
+    Belt-and-suspenders guard against duplicate dispatch — even if the slot
+    table is stale or out-of-sync, this catches the dup at the pueue layer.
+    On failure returns False (fail-open — better to risk a duplicate than
+    block all dispatches).
+    """
+    try:
+        r = subprocess.run(
+            ["pueue", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if r.returncode != 0:
+            return False
+        data = json.loads(r.stdout)
+        for _tid, task in data.get("tasks", {}).items():
+            if task.get("label") != label:
+                continue
+            st = task.get("status", "")
+            state_name = next(iter(st.keys()), "") if isinstance(st, dict) else st
+            if state_name in _LIVE_PUEUE_STATES:
+                return True
+        return False
+    except Exception as exc:
+        log.warning("pueue_has_active_label check failed: %s", exc)
+        return False
 
 
 def release_orphan_slots() -> int:
@@ -298,6 +339,9 @@ def scan_inbox(project_id: str, project_dir: str) -> int:
         task_file = SCRIPT_DIR / f".task-cmd-{ts}.txt"
         task_file.write_text(task_cmd)
         task_label = f"{project_id}:inbox-{ts}"
+        if pueue_has_active_label(task_label):
+            log.info("skip inbox dispatch: %s already in pueue", task_label)
+            continue
         pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": str(done_file)}
         pueue_id = _pueue_add(
             f"{provider}-runner",
@@ -349,6 +393,9 @@ def scan_backlog(project_id: str, project_dir: str) -> bool:
         return False
 
     task_label = f"{project_id}:{spec_id}"
+    if pueue_has_active_label(task_label):
+        log.info("skip dispatch: %s already in pueue", task_label)
+        return False
     pueue_id = _pueue_add(
         f"{provider}-runner",
         task_label,
