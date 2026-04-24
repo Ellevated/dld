@@ -48,5 +48,12 @@
     "chat_id": -1003730735152,
     "provider": "claude",
     "auto_approve_timeout": 30
+  },
+  {
+    "project_id": "memyselfandi",
+    "path": "/home/dld/projects/memyselfandi",
+    "chat_id": -1003730735152,
+    "provider": "claude",
+    "auto_approve_timeout": 30
   }
 ]
