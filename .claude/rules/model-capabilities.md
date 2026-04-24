@@ -35,7 +35,7 @@ Agents should operate at different effort levels based on task complexity:
 | planner | opus | xhigh | Deep analysis, drift detection, long-horizon agentic |
 | council experts | opus | xhigh | Expert-level architectural decisions, adversarial |
 | debugger | opus | high | Root cause analysis requires deep thinking |
-| review (Code Quality Gate) | opus | high | Critical path for autopilot commit; Opus +7pp on SWE-bench |
+| review (Code Quality Gate) | sonnet | xhigh | Critical commit gate. SWE-bench: Opus 87.6% / Sonnet 80.8% — the 7pp gap is on end-to-end coding, not on deduplication/LOC/anti-pattern checks where Sonnet + strict checklist + `checks_performed` evidence gap closes. 12× cheaper on Max compute and runs once per task = massive saving. Prompt hardened 2026-04-24 with reviewer-discipline section. |
 | solution-architect (bughunt) | opus | high | Fix design needs careful reasoning |
 | triz toc-analyst, triz-analyst | opus | high | System-level contradiction/constraint resolution |
 | coder | sonnet | medium | Pattern-following coding (Sonnet 4.6 = 80.8% SWE-bench, 5x cheaper) |
