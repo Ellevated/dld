@@ -6,6 +6,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.15.2] - 2026-04-24
+
+### Fixed
+- **Hotfix: `MAX_TURNS` rollback 60 → 80.** The reduction in v3.15 was based on pre-telemetry-fix data (`cache_hit_rate=0` across 200 runs — stale key parser) where long sessions looked wasteful. Live data from the fresh orchestrator cycle on 2026-04-24 showed 7/9 autopilot runs failing at exactly `turns=61` — all were hitting the new ceiling while cache_hit_rate was actually 95-98% and the successful ones finished in 49-50 turns. The ~$52 of burned runs were legitimate sessions killed mid-flight. Restored `MAX_TURNS=80` in `scripts/vps/claude-runner.py`.
+
+### Kept from v3.15.1
+- Spark Gate 1b soft size warning remains — it nudges toward smaller specs at creation time without ever blocking.
+
+---
+
 ## [3.15.1] - 2026-04-24
 
 ### Changed
