@@ -55,5 +55,19 @@
     "chat_id": -1003730735152,
     "provider": "claude",
     "auto_approve_timeout": 30
+  },
+  {
+    "project_id": "mishkinlyap",
+    "path": "/home/dld/projects/mishkinlyap",
+    "chat_id": -1003730735152,
+    "provider": "claude",
+    "auto_approve_timeout": 30
+  },
+  {
+    "project_id": "wb",
+    "path": "/home/dld/projects/wb",
+    "chat_id": -1003730735152,
+    "provider": "claude",
+    "auto_approve_timeout": 30
   }
 ]
