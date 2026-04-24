@@ -6,6 +6,20 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.15.1] - 2026-04-24
+
+### Changed
+- **`review` agent (Code Quality Gate): opus → sonnet xhigh with hardened prompt.** Review runs once per autopilot task before every commit — the highest-frequency Opus dispatch in the pipeline. Benchmark context: SWE-bench shows Opus 87.6% vs Sonnet 80.8%, but that gap is on end-to-end coding, not on the deduplication / LOC-check / anti-pattern scans that `review.md` actually performs. Compensated with:
+  - New **"Reviewer Discipline (READ FIRST)"** block — explicit anti-rubber-stamp protocol: run every bash check, think before verdict, no verdict without evidence, escalate on uncertainty.
+  - `checks_performed` is now a **mandatory** field in the output schema. Empty list = self-reject. Forces the reviewer to state what it actually verified.
+  - New rule: "when in doubt → `needs_discussion`, never `approved` to keep the pipeline moving."
+- Updated `.claude/rules/model-capabilities.md` rationale.
+
+### Expected impact
+On Claude Max plan, Opus consumes ~12× the weekly-quota compute of Sonnet. Review at `xhigh` effort narrows that to ~6–8× in practice, still a major saving given its per-task frequency. The new telemetry (shipped in 3.15) will measure the actual delta in `model_usage` over the next 24–48h.
+
+---
+
 ## [3.15] - 2026-04-24
 
 ### Added
