@@ -41,5 +41,12 @@
     "chat_id": -1003730735152,
     "provider": "claude",
     "auto_approve_timeout": 30
+  },
+  {
+    "project_id": "gipotenuza",
+    "path": "/home/dld/projects/gipotenuza",
+    "chat_id": -1003730735152,
+    "provider": "claude",
+    "auto_approve_timeout": 30
   }
 ]
