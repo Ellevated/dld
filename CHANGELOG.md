@@ -6,6 +6,31 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.15] - 2026-04-24
+
+### Added
+- **Telemetry: per-model usage breakdown** — `scripts/vps/claude-runner.py` now logs `model_usage` (per-model input/output/cache tokens, cost in USD, context window), plus splits cache creation into `cache_creation_1h_input_tokens` and `cache_creation_5m_input_tokens`. Previous telemetry showed `cache_hit_rate=0` on all 200 runs because the parser used stale flat keys — the 2026 API revision moved cache creation into a nested `usage.cache_creation.ephemeral_*` dict. Live probe confirms fix: 44% cache hit on startup.
+- **Spark size gate (soft)** — `feature-mode.md` Gate 1b adds a size warning (>5 tasks, >10 allowed files, >$15 estimated effort). Never blocks — adds a ⚠️ size section inviting the author to split into epic + child specs. User decides.
+- **ADR-019** — model routing rebalance for the Opus 4.7 era. `.claude/rules/architecture.md`.
+- **ADR-020** — no headless loop wrapper from inside Claude Code. `.claude/rules/architecture.md`.
+
+### Changed
+- **Model routing rebalance (ADR-019)** — eight agents re-pointed to lighter models after external benchmarking (Opus 4.7 vs Sonnet 4.6 vs Haiku 4.5 across SWE-bench, knowledge, agentic tasks):
+  - `audit/synthesizer`, `board/synthesizer`, `triz/synthesizer`: opus → sonnet (audit keeps `effort: xhigh` for 6-persona merge depth; board/triz → `high`).
+  - `documenter`, `diary-recorder`, `bughunt/{findings-collector, scope-decomposer, report-updater}`: sonnet → haiku (`effort: low`). These are structured-output / formatting agents where Haiku 4.5 delivers ~95% quality at ~3× lower cost.
+  - `planner`, `debugger`, council experts, `review`, `triz toc/triz-analyst`, `solution-architect` — kept on opus; SWE-bench and agentic benchmarks justify the delta on frontier reasoning.
+  - Updated `rules/model-capabilities.md` with a new routing table (adds a `Model` column and 2026-04-24 rationale).
+- **Autopilot `MAX_TURNS`: 80 → 60** — cuts runaway sessions. Post-mortem of BUG-327 (117 turns, $50.83, FAIL) and the broader pattern (10.9% of provider cost burned on `exit_code != 0`) drove the tighter ceiling.
+- **`/autopilot` interactive flow** — `.claude/skills/autopilot/SKILL.md`, `finishing.md`, `safety-rules.md` no longer route interactive sessions through `scripts/autopilot-loop.sh`. The wrapper's `claude --print` subprocess ran without `--setting-sources`, so subagents didn't resolve and costs exploded. Interactive `/autopilot` now runs inline using the current session's native `Agent`/`Skill` tools.
+
+### Fixed
+- **Autopilot headless breakage (ADR-020)** — see above. VPS orchestrator path (`orchestrator.py` → pueue → `claude-runner.py` via Agent SDK with `setting_sources=["user","project"]`) is unchanged and unaffected; only the interactive loop was broken.
+
+### Deprecated
+- **`scripts/autopilot-loop.sh`** — kept on disk for manual operator use from a bare shell (outside Claude Code). Header clearly labels it DEPRECATED. Not invoked by any skill or orchestrator code any more.
+
+---
+
 ## [3.14] - 2026-03-29
 
 ### Added

@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
-# autopilot-loop.sh - Long-running autonomous spec execution loop
+# autopilot-loop.sh - DEPRECATED (2026-04-24)
+#
+# ⚠️  DO NOT invoke from inside a Claude Code session.
+#     This wrapper calls `claude --print` in headless mode without
+#     --setting-sources, so subagents don't resolve and costs explode.
+#
+#     For interactive use: run `/autopilot` directly in Claude Code — it uses
+#     native Agent/Skill tools for subagent dispatch.
+#     For automated VPS runs: the orchestrator (scripts/vps/orchestrator.py)
+#     dispatches via pueue → claude-runner.py (Agent SDK), NOT via this script.
+#
+# Kept only for manual operator use from a bare shell (no Claude Code parent).
+#
 # Each spec gets a fresh Claude context. Memory persists via files.
 #
 # Usage:

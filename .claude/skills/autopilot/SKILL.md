@@ -21,7 +21,7 @@ When called with `autopilot TECH-069` (specific SPEC_ID):
 2. **Exit after completion** — do NOT continue to next spec
 3. **Let external orchestrator handle next** — fresh context per spec
 
-This enables `autopilot-loop.sh` to run overnight with fresh context per spec.
+This is the mode the VPS orchestrator (`scripts/vps/orchestrator.py` → pueue → `claude-runner.py` via Agent SDK) uses: it dispatches one spec at a time as a fresh Agent SDK session.
 
 **Detection:** If first argument matches pattern `(TECH|FTR|BUG|ARCH)-\d+`, enter loop mode.
 
@@ -218,17 +218,25 @@ Fix the issue and re-run autopilot.
 
 ## Context Management
 
-### Interactive Mode
-Context accumulates. AUTO-COMPACT after each spec (legacy).
+### Interactive Mode (current session)
+`/autopilot` (no SPEC_ID) runs directly in the current Claude Code session.
+It uses native `Agent`/`Skill` tools for subagent dispatch — NO external bash
+wrapper, NO `claude --print` subprocess. After each spec: `/compact` (optional,
+user-triggered) and continue to the next queued spec.
 
-### Loop Mode (Recommended)
-Each spec = fresh Claude session via external orchestrator.
+⛔ **Do NOT invoke `./scripts/autopilot-loop.sh` from inside an interactive
+session.** That wrapper calls `claude --print` as a subprocess, which runs
+in headless mode without `--setting-sources` — subagents don't resolve and
+costs explode. The script is DEPRECATED; kept only for manual operator use
+outside Claude Code.
+
+### Single-Spec Mode (VPS orchestrator)
+Each spec = fresh Agent SDK session dispatched via pueue:
 
 ```
-autopilot-loop.sh:
-  └─ claude "autopilot TECH-065" → fresh context
-  └─ claude "autopilot TECH-066" → fresh context
-  └─ claude "autopilot TECH-067" → fresh context
+orchestrator.py → pueue add → run-agent.sh → claude-runner.py (SDK)
+  └─ /autopilot TECH-065 → fresh session, exits after done
+  └─ /autopilot TECH-066 → fresh session, exits after done
   └─ ...
 ```
 
@@ -236,8 +244,6 @@ autopilot-loop.sh:
 - `ai/backlog.md` — task status
 - `ai/diary/autopilot-progress.md` — learnings
 - Git history — code changes
-
-See: `./scripts/autopilot-loop.sh`
 
 ---
 

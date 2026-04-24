@@ -1,8 +1,8 @@
 ---
 name: bughunt-report-updater
 description: Bug Hunt Step 5 - Updates report with validator results, executive summary, and out-of-scope ideas.
-model: sonnet
-effort: medium
+model: haiku
+effort: low
 tools: Read, Write, Edit
 ---
 
