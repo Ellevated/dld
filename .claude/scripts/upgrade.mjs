@@ -203,7 +203,7 @@ function resolveTargets(report, groupNames, fileNames) {
     for (const name of names) {
       const addFromCategory = (category) => {
         for (const item of report.files[category])
-          if (item.group === name && !item.always_ask && !INFRASTRUCTURE.has(item.path)) targets.add(item.path);
+          if (item.group === name && !item.always_ask && !INFRASTRUCTURE.has(item.path) && !(category === 'different' && item.user_modified)) targets.add(item.path);
       };
       if (name === 'safe') {
         for (const item of report.files.new_files)
