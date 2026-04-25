@@ -6,6 +6,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.15.4] - 2026-04-25
+
+### Changed
+- **`MAX_TURNS` raised 80 → 120 in `scripts/vps/claude-runner.py`.** Field observation: Opus 4.7 follows pipeline instructions more thoroughly than 4.6/4.5 — it does not skip the Coder → Tester → PreCheck → SpecReview → CodeQuality → Commit subagent chain on individual tasks. That's a quality win, but it costs turns. Empirical pattern across 4 spec runs after v3.15.3:
+  - `BUG-865`, `BUG-376`, `FTR-852`, `FTR-034` all failed at exactly `turns=81` (the SDK ceiling)
+  - `FTR-851` slipped through at `turns=82` (last turn happened to complete the work)
+  - Cache hit rate was 95–98% on every one — failures are pipeline-length, not retry-loops
+- **Math:** typical spec pipeline ≈ 5–7 turns × N tasks + 15 turns setup/finishing. A 10-task spec with one debug retry ≈ 95 turns minimum. 120 leaves a comfortable margin without enabling runaway.
+- **Cost note:** worst-case +30% per spec at the runner level vs 80, but the alternative is full-cost burns at the ceiling ($7–14 each, see today's $35 of `turns=81` failures). Net savings significant.
+
+---
+
 ## [3.15.3] - 2026-04-24
 
 ### Fixed
