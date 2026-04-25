@@ -414,6 +414,23 @@ def verify_status_sync(project_path: str, spec_id: str, target: str = "done") ->
             log.info("STATUS_SYNC: %s — spec is blocked, skipping auto-fix to done", spec_id)
             return
 
+    # Symmetric guard: don't blank-stamp "blocked" over an already-done spec.
+    # Autopilot writes done only after committing all per-task code. If the
+    # final push/merge step then fails (timeout, conflict, ceiling),
+    # status="failed" arrives here with target="blocked" — but the work is
+    # already on a feature branch and can be merged manually. Wiping the done
+    # status loses that signal and forces a full re-run.
+    if target == "blocked" and spec_file:
+        done_re = re.compile(r"\*\*Status:\*\*\s*done", re.IGNORECASE)
+        text = spec_file.read_text(errors="replace")
+        if done_re.search(text):
+            log.info(
+                "STATUS_SYNC: %s — spec already done, skipping auto-fix to blocked "
+                "(work likely on feature branch; operator should merge or resume)",
+                spec_id,
+            )
+            return
+
     # Auto-fix
     fixed_files = []
     if not spec_ok and spec_file:

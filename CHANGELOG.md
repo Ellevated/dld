@@ -6,6 +6,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.15.5] - 2026-04-25
+
+### Fixed
+- **Callback: symmetric guard against blocked-overwriting-done.** `callback.verify_status_sync` already had a guard preventing `target='done'` from overwriting a spec marked `blocked` by autopilot. The reverse case was unprotected: `target='blocked'` (when pueue task exited non-zero on the final merge step) would silently wipe an already-`done` spec and its backlog row, even when the work was committed and pushed to a `feature/<id>` branch. Today's pattern: BUG-374, BUG-375, BUG-376, BUG-379, BUG-865 all had complete code on their feature branches, exited 1 on the final merge, and were stamped `blocked` — losing the signal and forcing full re-runs (which then duplicated work and wasted ~$50 of compute).
+- New symmetric guard in `scripts/vps/callback.py`: if `target='blocked'` but spec already says `**Status:** done`, log and skip. Operator merges or resumes manually.
+- Tests in `scripts/vps/tests/test_callback.py`: covers both guards plus idempotent no-ops.
+
+---
+
 ## [3.15.4] - 2026-04-25
 
 ### Changed
