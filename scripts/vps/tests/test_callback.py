@@ -100,3 +100,68 @@ class TestIdempotent:
         with patch("callback._git_commit_push") as mock_push:
             callback.verify_status_sync(str(project), "BUG-5", target="blocked")
         mock_push.assert_not_called()
+
+
+# --- v3.15.6: backlog resync to spec authority on guard fire ---
+
+
+class TestBacklogResyncToSpec:
+    """Stop dispatch loops by syncing backlog → spec when guards fire.
+
+    Scenario: backlog says queued/resumed, spec says blocked. Orchestrator
+    sees queued, dispatches autopilot, autopilot SKIPs (inconsistency),
+    callback target=done, Guard A fires. Without resync, backlog stays
+    queued → next cycle dispatches again → loop ($0.30/cycle waste).
+    Real case 2026-04-25: FTR-853 looped 11 times.
+    """
+
+    def test_guard_a_resyncs_backlog_when_spec_blocked(self, project):
+        """target=done + spec=blocked + backlog=queued → backlog → blocked."""
+        _write_spec(project, "BUG-10", "blocked")
+        _write_backlog(project, "BUG-10", "queued")
+        with patch("callback._git_commit_push") as mock_push:
+            callback.verify_status_sync(str(project), "BUG-10", target="done")
+        assert "| blocked |" in (project / "ai" / "backlog.md").read_text(), (
+            "backlog resynced to spec's blocked"
+        )
+        # spec untouched
+        assert "**Status:** blocked" in (project / "ai" / "features" / "BUG-10-test.md").read_text()
+        mock_push.assert_called_once(), "resync should commit"
+
+    def test_guard_a_resyncs_backlog_when_resumed(self, project):
+        """Same shape with backlog=resumed (after operator resume)."""
+        _write_spec(project, "BUG-11", "blocked")
+        _write_backlog(project, "BUG-11", "resumed")
+        with patch("callback._git_commit_push") as mock_push:
+            callback.verify_status_sync(str(project), "BUG-11", target="done")
+        assert "| blocked |" in (project / "ai" / "backlog.md").read_text()
+        mock_push.assert_called_once()
+
+    def test_guard_b_resyncs_backlog_when_spec_done(self, project):
+        """target=blocked + spec=done + backlog=in_progress → backlog → done."""
+        _write_spec(project, "BUG-12", "done")
+        _write_backlog(project, "BUG-12", "in_progress")
+        with patch("callback._git_commit_push") as mock_push:
+            callback.verify_status_sync(str(project), "BUG-12", target="blocked")
+        assert "| done |" in (project / "ai" / "backlog.md").read_text(), (
+            "backlog resynced to spec's done"
+        )
+        # spec untouched
+        assert "**Status:** done" in (project / "ai" / "features" / "BUG-12-test.md").read_text()
+        mock_push.assert_called_once()
+
+    def test_guard_a_no_commit_when_backlog_already_blocked(self, project):
+        """Idempotency: guard fires but backlog already in sync → no commit."""
+        _write_spec(project, "BUG-13", "blocked")
+        _write_backlog(project, "BUG-13", "blocked")
+        with patch("callback._git_commit_push") as mock_push:
+            callback.verify_status_sync(str(project), "BUG-13", target="done")
+        mock_push.assert_not_called()
+
+    def test_guard_b_no_commit_when_backlog_already_done(self, project):
+        """Idempotency: guard fires but backlog already in sync → no commit."""
+        _write_spec(project, "BUG-14", "done")
+        _write_backlog(project, "BUG-14", "done")
+        with patch("callback._git_commit_push") as mock_push:
+            callback.verify_status_sync(str(project), "BUG-14", target="blocked")
+        mock_push.assert_not_called()

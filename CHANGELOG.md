@@ -6,6 +6,23 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.15.6] - 2026-04-25
+
+### Fixed
+- **Callback: stop dispatch loops by resyncing backlog to spec authority.** When a guard fired (target=done blocked by spec=blocked, or target=blocked blocked by spec=done) the function returned without touching the backlog. If backlog was in a different state (e.g. `queued`/`resumed`), the orchestrator kept rediscovering the spec on every poll and dispatching autopilot, which then SKIPped because of the inconsistency. Real case 2026-04-25: FTR-853 looped 11 times in 90 minutes ($2.71 wasted on no-op autopilots that returned exit=0 without doing any work).
+- New helper `_resync_backlog_to_spec()` in `scripts/vps/callback.py` is called from both guards. Idempotent: only commits if backlog actually changed.
+
+### Reasoning
+The spec file is treated as the authoritative status source — autopilot writes `**Status:** done` only after committing all per-task code, so a `done` spec with a `feature/<id>` branch is real work; conversely `blocked` in spec is autopilot's deliberate decision to halt. When backlog drifts away from the spec, the right move is to bring backlog back to spec — not to overwrite spec from a stale callback signal.
+
+### Tests
+`scripts/vps/tests/test_callback.py` — 5 new cases (resync on guard fire from queued/resumed → blocked, in_progress → done; idempotent no-ops). 46/46 total pass.
+
+### Notes
+- A separate mass scan found 154 inactive desyncs across 10 projects (mostly backlog=done, spec=queued — historical drift). They do not trigger loops because the orchestrator skips backlog rows whose status is not `queued`/`resumed`. Cleanup is a separate one-shot chore, not a release blocker.
+
+---
+
 ## [3.15.5] - 2026-04-25
 
 ### Fixed

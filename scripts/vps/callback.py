@@ -371,6 +371,40 @@ def _git_commit_push(project_path: str, spec_id: str, target: str, files: list) 
     log.info("STATUS_FIX: committed and pushed %s → %s", spec_id, target)
 
 
+def _resync_backlog_to_spec(
+    project_path: str,
+    spec_id: str,
+    spec_status: str,
+    backlog_path: Path,
+) -> None:
+    """Sync backlog row status to spec authority — stop dispatch loops.
+
+    When a guard fires (target=done blocked by spec=blocked, or target=blocked
+    blocked by spec=done), the spec is treated as authoritative. Without this
+    resync, the backlog can stay in a state (queued/resumed/in_progress) that
+    causes the orchestrator to dispatch the spec on every poll cycle, while
+    autopilot then SKIPs because of the inconsistency. v3.15.6.
+
+    Idempotent: if backlog already matches `spec_status`, no commit.
+    """
+    if not backlog_path.is_file():
+        return
+    backlog_re = re.compile(
+        rf"\|\s*{re.escape(spec_id)}\s*\|.*?\|\s*{re.escape(spec_status)}\s*\|",
+        re.IGNORECASE,
+    )
+    text = backlog_path.read_text(errors="replace")
+    if backlog_re.search(text):
+        return  # already in sync
+    if _fix_backlog_status(backlog_path, spec_id, spec_status):
+        log.warning(
+            "STATUS_SYNC: %s — resynced backlog to spec authority (%s) to break dispatch loop",
+            spec_id,
+            spec_status,
+        )
+        _git_commit_push(project_path, spec_id, spec_status, ["ai/backlog.md"])
+
+
 def verify_status_sync(project_path: str, spec_id: str, target: str = "done") -> None:
     """Check that spec file and backlog both have target status. Auto-fix if not."""
     p = Path(project_path)
@@ -406,12 +440,15 @@ def verify_status_sync(project_path: str, spec_id: str, target: str = "done") ->
         log.info("STATUS_SYNC: %s — both spec and backlog are %s ✓", spec_id, target)
         return
 
-    # Guard: if target is "done" but autopilot set "blocked", respect it
+    # Guard: if target is "done" but autopilot set "blocked", respect it.
+    # Spec is the authority — if it says blocked, backlog must follow it
+    # (resync loop-stopper, see v3.15.6).
     if target == "done" and spec_file:
         blocked_re = re.compile(r"\*\*Status:\*\*\s*blocked", re.IGNORECASE)
         text = spec_file.read_text(errors="replace")
         if blocked_re.search(text):
             log.info("STATUS_SYNC: %s — spec is blocked, skipping auto-fix to done", spec_id)
+            _resync_backlog_to_spec(project_path, spec_id, "blocked", backlog_path)
             return
 
     # Symmetric guard: don't blank-stamp "blocked" over an already-done spec.
@@ -429,6 +466,7 @@ def verify_status_sync(project_path: str, spec_id: str, target: str = "done") ->
                 "(work likely on feature branch; operator should merge or resume)",
                 spec_id,
             )
+            _resync_backlog_to_spec(project_path, spec_id, "done", backlog_path)
             return
 
     # Auto-fix
