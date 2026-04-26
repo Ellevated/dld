@@ -6,6 +6,21 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.15.7] - 2026-04-26
+
+### Fixed
+- **Callback skill detection survives SIGKILL'd runners.** `extract_agent_output` resolved skill from "newest mtime in `scripts/vps/logs/{project}-*.log`" — but a `claude-runner.py` killed by `TIMEOUT_SECONDS` never reaches its finally-clause to write that JSON log. The newest file then belongs to a different (earlier) task, so `skill` was misclassified. Real case 2026-04-26: `awardybot/TECH-869` got `Failed` after 60-minute timeout; callback read the previous `qa` task's log and wrote `skill=qa`. The `if skill == "autopilot" and status in ("done","failed")` branch never fired → backlog and spec stayed `in_progress`, status sync silently skipped.
+- New helper `_skill_from_pueue_command(pueue_id)` parses skill out of the actual `pueue status --json → tasks[id].command` (4th argv after `run-agent.sh`). Deterministic, works on any termination path. Inserted as Layer 0 in `extract_agent_output`.
+- `_find_log_file` now takes `after_ts: float = 0.0` — only returns a file whose mtime is strictly later. Default `0.0` keeps backward-compat behavior. Together these prevent stale-log adoption.
+
+### Changed
+- **`TIMEOUT_SECONDS`: 3600 → 5400 (90 min).** R1 specs with 8+ tasks (FTR-853 yesterday, TECH-869 today) hit the 60-min ceiling while still mid-implementation. Cache hit rate on those runs was ~95–100%, so wall-clock dominates not retry loops. 90 min gives Opus 4.7's thorough pipeline (Coder→Tester→PreCheck→SpecReview→CodeQuality→Commit per task) room without enabling runaway sessions. `MAX_TURNS=120` is the upper hard bound; this is the timeout to match it.
+
+### Tests
+`scripts/vps/tests/test_callback.py` — 8 new cases (5 for `_skill_from_pueue_command`, 3 for `_find_log_file` after_ts filter). 18/18 callback tests pass; full suite 49/49.
+
+---
+
 ## [3.15.6] - 2026-04-25
 
 ### Fixed
