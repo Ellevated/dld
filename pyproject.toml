@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dld"
-version = "3.15.6"
+version = "3.15.7"
 requires-python = ">=3.10"
 description = "Double-Loop Development — AI-native development methodology"
 

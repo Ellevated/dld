@@ -57,7 +57,7 @@ except ImportError:
 # Config
 # ---------------------------------------------------------------------------
 MAX_TURNS = 120
-TIMEOUT_SECONDS = 3600  # 60 min hard limit
+TIMEOUT_SECONDS = 5400  # 90 min hard limit (R1 specs with 8+ tasks need >60m)
 
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)

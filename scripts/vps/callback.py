@@ -105,14 +105,75 @@ def map_result(result: str) -> tuple:
     return "failed", 1
 
 
-def _find_log_file(project_name: str) -> Path | None:
-    """Find most recent log file for project in logs/ dir."""
+def _find_log_file(project_name: str, after_ts: float = 0.0) -> Path | None:
+    """Find most recent log file for project in logs/ dir.
+
+    `after_ts` (Unix epoch) — if given, only return a file whose mtime is
+    strictly later. Prevents picking up stale logs from previous tasks when
+    the current task's runner was SIGKILL'd before it could write its own.
+    """
     log_dir = SCRIPT_DIR / "logs"
     if not log_dir.is_dir():
         return None
     pattern = f"{project_name}-*.log"
     files = sorted(log_dir.glob(pattern), key=lambda f: f.stat().st_mtime, reverse=True)
-    return files[0] if files else None
+    for f in files:
+        if f.stat().st_mtime > after_ts:
+            return f
+    return None
+
+
+def _skill_from_pueue_command(pueue_id: str) -> tuple[str, float]:
+    """Read skill + task start_time from `pueue status --json`.
+
+    Pueue stores the original launch command. Our run-agent.sh signature is:
+        run-agent.sh <project_dir> <provider> <skill> <task...>
+    So the 4th argv is always the skill.
+
+    This is the only deterministic source of truth for skill on a
+    SIGKILL'd run (TIMEOUT_SECONDS) — claude-runner.py never reaches its
+    finally-clause to write the JSON log file, so log-file inference picks
+    up a stale neighbour's log.
+
+    Returns (skill, start_ts). Both empty/0.0 on failure (caller falls back).
+    """
+    try:
+        r = subprocess.run(
+            ["pueue", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if r.returncode != 0:
+            return "", 0.0
+        data = json.loads(r.stdout)
+        task = data.get("tasks", {}).get(str(pueue_id), {})
+        cmd = task.get("command") or task.get("original_command") or ""
+        # Extract 4th token (after run-agent.sh project_dir provider <skill>)
+        # Tolerant to absolute / relative path of run-agent.sh.
+        parts = cmd.split()
+        skill = ""
+        for i, p in enumerate(parts):
+            if p.endswith("run-agent.sh") and i + 3 < len(parts):
+                skill = parts[i + 3]
+                break
+        # Parse start_ts to filter stale neighbour logs
+        start_ts = 0.0
+        s = task.get("status", {})
+        if isinstance(s, dict):
+            inner = s.get("Running") or s.get("Done") or {}
+            start_str = inner.get("start") if isinstance(inner, dict) else None
+            if start_str:
+                try:
+                    from datetime import datetime
+
+                    start_ts = datetime.fromisoformat(start_str.replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    pass
+        return skill, start_ts
+    except Exception as exc:
+        log.warning("_skill_from_pueue_command failed: %s", exc)
+        return "", 0.0
 
 
 def _parse_log_file(log_path: Path) -> tuple:
@@ -144,22 +205,41 @@ def _parse_log_file(log_path: Path) -> tuple:
 
 
 def extract_agent_output(pueue_id: str, project_id: str = "") -> tuple:
-    """Extract skill and result_preview. Log file → DB → pueue log → ("", "")."""
-    # Layer 1: Read from log file (reliable — written by claude-runner.py)
+    """Extract skill and result_preview.
+
+    Resolution order (skill first, preview second):
+      0. pueue command — deterministic, survives SIGKILL'd runners
+      1. log file (newer than task start) — reliable for clean exits
+      2. DB task_log row
+      3. pueue raw log
+    """
+    # Layer 0: skill from pueue command (deterministic, never fooled by stale logs)
+    pueue_skill, start_ts = _skill_from_pueue_command(pueue_id)
+
+    # Layer 1: Read from log file (reliable — written by claude-runner.py at end of run)
     if project_id:
         try:
             state = db.get_project_state(project_id)
             if state:
                 project_name = Path(state.get("path", "")).name
                 if project_name:
-                    log_path = _find_log_file(project_name)
+                    log_path = _find_log_file(project_name, after_ts=start_ts)
                     if log_path:
                         skill, preview = _parse_log_file(log_path)
+                        # If pueue gave us a skill, trust it over the log file's
+                        # (covers edge case of a still-stale log slipping through).
+                        if pueue_skill:
+                            skill = pueue_skill
                         if skill:
                             log.info("extract_agent_output from log: %s", log_path.name)
                             return skill, preview
         except Exception as exc:
             log.warning("extract_agent_output log file failed: %s", exc)
+
+    # If log file missing/stale but pueue knew the skill — return it now.
+    if pueue_skill:
+        log.info("extract_agent_output skill from pueue command: %s", pueue_skill)
+        return pueue_skill, ""
 
     # Layer 1b: Try DB task_log for skill (if no log file found)
     try:

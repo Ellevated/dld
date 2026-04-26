@@ -7,9 +7,10 @@ The two guards are symmetric:
     on a feature branch — wiping done loses the signal).
 """
 
+import json
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -165,3 +166,117 @@ class TestBacklogResyncToSpec:
         with patch("callback._git_commit_push") as mock_push:
             callback.verify_status_sync(str(project), "BUG-14", target="blocked")
         mock_push.assert_not_called()
+
+
+# --- v3.15.7: skill detection from pueue command (survives SIGKILL'd runners) ---
+
+
+def _mock_pueue_status(task_id: str, command: str, start_iso: str = ""):
+    """Build a MagicMock subprocess.run result for `pueue status --json`."""
+    status = {"Running": {"start": start_iso}} if start_iso else {"Queued": {}}
+    payload = {
+        "tasks": {
+            task_id: {
+                "command": command,
+                "original_command": command,
+                "status": status,
+                "label": "proj:SPEC-1",
+            }
+        }
+    }
+    m = MagicMock()
+    m.returncode = 0
+    m.stdout = json.dumps(payload)
+    return m
+
+
+class TestSkillFromPueueCommand:
+    """Reproduce TECH-869 case: SIGKILL'd autopilot — log file is stale,
+    pueue command is the only deterministic skill source."""
+
+    def test_extracts_autopilot_from_run_agent_invocation(self):
+        cmd = (
+            "/home/dld/projects/dld/scripts/vps/run-agent.sh "
+            "/home/dld/projects/awardybot claude autopilot /autopilot TECH-869"
+        )
+        with patch(
+            "callback.subprocess.run",
+            return_value=_mock_pueue_status("1120", cmd, "2026-04-26T17:26:08+03:00"),
+        ):
+            skill, start_ts = callback._skill_from_pueue_command("1120")
+        assert skill == "autopilot"
+        assert start_ts > 0
+
+    def test_extracts_qa_skill(self):
+        cmd = "/path/run-agent.sh /proj claude qa /qa TECH-869"
+        with patch("callback.subprocess.run", return_value=_mock_pueue_status("5", cmd)):
+            skill, _ = callback._skill_from_pueue_command("5")
+        assert skill == "qa"
+
+    def test_extracts_spark_skill(self):
+        cmd = "/x/run-agent.sh /p claude spark /tmp/.task-cmd-X.txt"
+        with patch("callback.subprocess.run", return_value=_mock_pueue_status("9", cmd)):
+            skill, _ = callback._skill_from_pueue_command("9")
+        assert skill == "spark"
+
+    def test_returns_empty_on_pueue_failure(self):
+        m = MagicMock()
+        m.returncode = 1
+        m.stderr = "daemon down"
+        with patch("callback.subprocess.run", return_value=m):
+            skill, ts = callback._skill_from_pueue_command("1")
+        assert skill == ""
+        assert ts == 0.0
+
+    def test_returns_empty_when_command_unknown(self):
+        cmd = "/some/other/script foo bar baz"
+        with patch("callback.subprocess.run", return_value=_mock_pueue_status("2", cmd)):
+            skill, _ = callback._skill_from_pueue_command("2")
+        assert skill == ""
+
+
+class TestFindLogFileFiltersStale:
+    """Verify _find_log_file refuses logs older than the task's own start_ts.
+
+    This is the actual TECH-869 fix: previously _find_log_file returned the
+    latest mtime in logs/ regardless of when the current task started, so
+    a SIGKILL'd run with no fresh log got the previous (qa) run's log
+    mistakenly classified as autopilot's output.
+    """
+
+    def test_skips_old_logs(self, tmp_path, monkeypatch):
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        # Stale log (mtime in the past)
+        old = log_dir / "proj-old.log"
+        old.write_text("{}")
+        import os
+
+        os.utime(old, (1000, 1000))
+        # Patch SCRIPT_DIR
+        monkeypatch.setattr(callback, "SCRIPT_DIR", tmp_path)
+        # Task started after mtime — old log must be skipped
+        result = callback._find_log_file("proj", after_ts=2000.0)
+        assert result is None
+
+    def test_returns_log_newer_than_after_ts(self, tmp_path, monkeypatch):
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        new = log_dir / "proj-new.log"
+        new.write_text("{}")
+        import os
+
+        os.utime(new, (5000, 5000))
+        monkeypatch.setattr(callback, "SCRIPT_DIR", tmp_path)
+        result = callback._find_log_file("proj", after_ts=2000.0)
+        assert result == new
+
+    def test_default_after_ts_zero_returns_any_log(self, tmp_path, monkeypatch):
+        """Backward-compat: callers that don't pass after_ts get original behavior."""
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        f = log_dir / "proj-x.log"
+        f.write_text("{}")
+        monkeypatch.setattr(callback, "SCRIPT_DIR", tmp_path)
+        result = callback._find_log_file("proj")
+        assert result == f
