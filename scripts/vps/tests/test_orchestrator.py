@@ -140,6 +140,40 @@ class TestGetLivePueueIds:
         assert result == {30, 31, 32, 33}
 
 
+class TestSpecIdRegex:
+    """v3.15.8: spec id regex must capture letter suffixes (ARCH-176a/b/c/d).
+
+    Reproduces wb infinite-dispatch loop: a `queued` row for ARCH-176a in
+    the backlog kept being matched as `ARCH-176` by the old `\\d+` regex,
+    and orchestrator dispatched the parent (status=split) on every cycle.
+    """
+
+    def test_captures_simple_id(self):
+        import re
+
+        m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*", "| BUG-865 | foo |")
+        assert m and m.group(0) == "BUG-865"
+
+    def test_captures_letter_suffix(self):
+        import re
+
+        m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*", "| ARCH-176a | foo |")
+        assert m and m.group(0) == "ARCH-176a"
+
+    def test_captures_multi_letter_suffix(self):
+        import re
+
+        m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*", "ARCH-176abc rest")
+        assert m and m.group(0) == "ARCH-176abc"
+
+    def test_does_not_eat_uppercase_after_id(self):
+        import re
+
+        m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*", "ARCH-176 META-SPEC")
+        # Uppercase 'M' is not captured (regex only consumes lowercase a-z)
+        assert m and m.group(0) == "ARCH-176"
+
+
 class TestPueueHasActiveLabel:
     """Verify dedup guard used in scan_backlog/scan_inbox."""
 

@@ -6,6 +6,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.15.8] - 2026-04-27
+
+### Fixed
+- **Spec-id regex must capture letter suffixes (ARCH-176a/b/c/d).** `scan_backlog` extracted spec id with `(TECH|FTR|BUG|ARCH)-\d+`. `\d+` stops at the first non-digit, so a backlog row `| ARCH-176a | ... | queued |` was matched as `ARCH-176` (parent, status=split). Every poll cycle the parent was dispatched, autopilot SKIP'd because of the inconsistency, and the loop repeated until manual intervention. Real case 2026-04-27: 4 cycles in 15 minutes burned ~$1 each on no-op SKIPs of the meta-spec.
+- Updated regex to `(TECH|FTR|BUG|ARCH)-\d+[a-z]*` in `scripts/vps/orchestrator.py:scan_backlog` and `scripts/vps/callback.py:resolve_spec_id`. Both must mirror — orchestrator picks the spec to dispatch, callback resolves the same id from the pueue label / log preview to drive `verify_status_sync`.
+- Added `TestSpecIdRegex` in `scripts/vps/tests/test_orchestrator.py` (4 cases: plain id, single letter suffix, multi-letter, no eating of uppercase). 58/58 pass.
+
+### Notes
+- The `[a-z]*` greedy form is intentional — letter suffixes for sub-spec series (a→z) are the convention. If we ever need digit-suffix variants (e.g. `ARCH-176-1`), this regex will need broader treatment.
+
+---
+
 ## [3.15.7] - 2026-04-26
 
 ### Fixed

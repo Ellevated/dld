@@ -282,7 +282,10 @@ def extract_agent_output(pueue_id: str, project_id: str = "") -> tuple:
 
 def resolve_spec_id(task_label: str, preview: str, project_path: str) -> str | None:
     """Multi-layer spec_id resolution."""
-    spec_re = re.compile(r"(TECH|FTR|BUG|ARCH)-\d+")
+    # `[a-z]*` captures sub-spec suffixes (e.g. ARCH-176a/b/c/d). Mirrors
+    # orchestrator.scan_backlog regex (v3.15.8). Without it status_sync
+    # would target the parent ARCH-176 instead of ARCH-176a.
+    spec_re = re.compile(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*")
 
     # Layer 1: from task label
     m = spec_re.search(task_label)

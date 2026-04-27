@@ -369,7 +369,10 @@ def scan_backlog(project_id: str, project_dir: str) -> bool:
     spec_id = None
     for line in backlog.read_text().splitlines():
         if re.search(r"\|\s*(queued|resumed)\s*\|", line, re.IGNORECASE):
-            m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+", line)
+            # NB: trailing `[a-z]*` captures sub-spec suffixes (ARCH-176a/b/c/d).
+            # Without it `\d+` stops at the letter and the parent spec id is
+            # extracted, causing infinite-loop dispatch of the parent (v3.15.8).
+            m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*", line)
             if m:
                 spec_id = m.group(0)
                 break
