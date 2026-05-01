@@ -129,6 +129,7 @@
 | BUG-164 | Fix callback.py pueue socket mismatch — read agent output from log files + DB | done | P0 | [spec](features/BUG-164-2026-03-20-callback-pueue-socket-mismatch.md) |
 | TECH-149 | Deterministic Worktree Cleanup After Merge | done | P1 | [spec](features/TECH-149-2026-03-25-worktree-cleanup.md) |
 | TECH-165 | Anthropic Pipeline Optimization (SDK 0.1.48→0.1.63 + model routing + observability) | done | P1 | [spec](features/TECH-165-2026-04-18-anthropic-pipeline-optimization.md) |
+| TECH-166 | Callback implementation guard — git-diff проверка allowed files перед mark-done (закрывает дыру с FTR-896 false-done) | done | P1 | [spec](features/TECH-166-2026-05-01-callback-implementation-guard.md) |
 
 ---
 

@@ -488,8 +488,151 @@ def _resync_backlog_to_spec(
         _git_commit_push(project_path, spec_id, spec_status, ["ai/backlog.md"])
 
 
-def verify_status_sync(project_path: str, spec_id: str, target: str = "done") -> None:
-    """Check that spec file and backlog both have target status. Auto-fix if not."""
+# --- TECH-166: Implementation guard helpers ----------------------------------
+
+# Path-extension allowlist for `## Allowed Files` parser.
+_ALLOWED_FILE_EXT_RE = re.compile(
+    r"`([^`\n]+\.(?:py|sh|md|sql|yml|yaml|json|toml|js|ts|tsx|jsx|html|css))`"
+)
+_ALLOWED_FILES_HEADING_RE = re.compile(r"^##\s+Allowed\s+Files\s*$", re.IGNORECASE)
+_NEXT_H2_RE = re.compile(r"^##\s+\S")
+
+
+def _parse_allowed_files(spec_path: Path) -> list[str] | None:
+    """Extract relative paths listed in spec's `## Allowed Files` section.
+
+    Returns:
+        list[str]: explicit list (may be empty if section is present but lists no paths)
+        None: section absent (degrade-open: legacy specs without allowlist)
+    """
+    try:
+        text = spec_path.read_text(errors="replace")
+    except OSError as exc:
+        log.warning("ALLOWED_FILES: read failed for %s: %s", spec_path, exc)
+        return None
+
+    lines = text.splitlines()
+    in_section = False
+    section_buf: list[str] = []
+    for line in lines:
+        if not in_section:
+            if _ALLOWED_FILES_HEADING_RE.match(line):
+                in_section = True
+            continue
+        # Already inside section — stop on next H2.
+        if _NEXT_H2_RE.match(line):
+            break
+        section_buf.append(line)
+
+    if not in_section:
+        return None
+    section_text = "\n".join(section_buf)
+    return _ALLOWED_FILE_EXT_RE.findall(section_text)
+
+
+def _get_started_at(pueue_id: int) -> str | None:
+    """Read started_at for a pueue task from task_log (read-only db access)."""
+    try:
+        with db.get_db() as conn:
+            row = conn.execute(
+                "SELECT started_at FROM task_log WHERE pueue_id = ? "
+                "ORDER BY id DESC LIMIT 1",
+                (pueue_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return row[0] if not hasattr(row, "keys") else row["started_at"]
+    except Exception as exc:  # noqa: BLE001 — defensive (callback must not crash)
+        log.warning("ALLOWED_FILES: started_at lookup failed for %s: %s", pueue_id, exc)
+        return None
+
+
+def _has_implementation_commits(
+    project_path: str,
+    allowed: list[str] | None,
+    started_at: str | None,
+) -> bool:
+    """True if any commit since `started_at` touched any path in `allowed`.
+
+    Degrade-open semantics:
+        allowed is None        → True  (no allowlist in spec; can't enforce)
+        started_at is None     → True  (no time window; can't enforce)
+        allowed == []          → False (explicit empty allowlist = no-impl by definition)
+        subprocess error       → True  (don't block on tool failure)
+    """
+    if allowed is None or started_at is None:
+        return True
+    if not allowed:
+        return False
+    cmd = [
+        "git", "-C", project_path, "log",
+        f"--since={started_at}",
+        "--pretty=%H",
+        "--",
+        *allowed,
+    ]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=15, check=False
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("IMPL_GUARD: git log failed (%s) — degrade open", exc)
+        return True
+    if result.returncode != 0:
+        log.warning(
+            "IMPL_GUARD: git log rc=%s stderr=%s — degrade open",
+            result.returncode, result.stderr.strip()[:200],
+        )
+        return True
+    return bool(result.stdout.strip())
+
+
+def _append_blocked_reason(spec_file: Path, reason: str) -> None:
+    """Idempotently set `**Blocked Reason:** <reason>` near the **Status:** line."""
+    try:
+        text = spec_file.read_text(errors="replace")
+    except OSError as exc:
+        log.warning("BLOCKED_REASON: read failed for %s: %s", spec_file, exc)
+        return
+    line = f"**Blocked Reason:** {reason}"
+    new_text, n = re.subn(
+        r"\*\*Blocked Reason:\*\*\s*[^\n]*", line, text, count=1
+    )
+    if n == 0:
+        # Insert right after first **Status:** line.
+        new_text, n = re.subn(
+            r"(\*\*Status:\*\*[^\n]*\n)",
+            rf"\1{line}\n",
+            text,
+            count=1,
+        )
+    if n == 0:
+        log.warning("BLOCKED_REASON: no Status anchor in %s", spec_file)
+        return
+    if new_text != text:
+        try:
+            spec_file.write_text(new_text)
+        except OSError as exc:
+            log.warning("BLOCKED_REASON: write failed for %s: %s", spec_file, exc)
+
+
+# -----------------------------------------------------------------------------
+
+
+def verify_status_sync(
+    project_path: str,
+    spec_id: str,
+    target: str = "done",
+    pueue_id: int | None = None,
+) -> None:
+    """Check that spec file and backlog both have target status. Auto-fix if not.
+
+    TECH-166: when target='done' and pueue_id is provided, run an implementation
+    guard — verify that commits touching the spec's `## Allowed Files` exist
+    since the task's `started_at`. If not, demote target to 'blocked' and append
+    a Blocked Reason. Degrades open on missing data (legacy specs / no pueue_id
+    / git errors) — see `_has_implementation_commits` docstring.
+    """
     p = Path(project_path)
     spec_re = re.compile(rf"\*\*Status:\*\*\s*{re.escape(target)}", re.IGNORECASE)
     backlog_re = re.compile(
@@ -518,6 +661,34 @@ def verify_status_sync(project_path: str, spec_id: str, target: str = "done") ->
         text = backlog_path.read_text(errors="replace")
         if backlog_re.search(text):
             backlog_ok = True
+
+    # TECH-166: implementation guard — demote done→blocked if no commits
+    # touched the spec's Allowed Files since task start. Runs BEFORE the
+    # spec-blocked / spec-done guards so demotion semantics are: (a) write
+    # blocked into the spec via _append_blocked_reason + later auto-fix,
+    # (b) flow through the rest of verify_status_sync as target='blocked'.
+    if target == "done" and spec_file and pueue_id is not None:
+        allowed = _parse_allowed_files(spec_file)
+        started_at = _get_started_at(int(pueue_id))
+        if not _has_implementation_commits(project_path, allowed, started_at):
+            log.warning(
+                "IMPL_GUARD: %s — no commits touching allowed files since %s, "
+                "demoting done → blocked (no_implementation_commits)",
+                spec_id, started_at,
+            )
+            _append_blocked_reason(spec_file, "no_implementation_commits")
+            target = "blocked"
+            # Recompute spec_ok / backlog_ok against the new target.
+            spec_re = re.compile(rf"\*\*Status:\*\*\s*{re.escape(target)}", re.IGNORECASE)
+            backlog_re = re.compile(
+                rf"\|\s*{re.escape(spec_id)}\s*\|.*?\|\s*{re.escape(target)}\s*\|",
+                re.IGNORECASE,
+            )
+            spec_ok = bool(spec_re.search(spec_file.read_text(errors="replace")))
+            backlog_ok = (
+                backlog_path.is_file()
+                and bool(backlog_re.search(backlog_path.read_text(errors="replace")))
+            )
 
     if spec_ok and backlog_ok:
         log.info("STATUS_SYNC: %s — both spec and backlog are %s ✓", spec_id, target)
@@ -703,7 +874,10 @@ def main() -> None:
                     sid = resolve_spec_id(task_label, preview, project_path)
                     if sid:
                         target = "done" if status == "done" else "blocked"
-                        verify_status_sync(project_path, sid, target)
+                        verify_status_sync(
+                            project_path, sid, target,
+                            pueue_id=int(pueue_id) if pueue_id else None,
+                        )
             except Exception as exc:
                 log.warning("status_sync check failed: %s", exc)
 
