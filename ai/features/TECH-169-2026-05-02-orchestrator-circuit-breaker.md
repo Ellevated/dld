@@ -9,7 +9,7 @@ created: 2026-05-02
 
 # TECH-169 — Orchestrator circuit-breaker on mass-demote
 
-**Status:** queued
+**Status:** blocked
 **Priority:** P0
 **Risk:** R1 (затрагивает callback и orchestrator decision flow)
 
