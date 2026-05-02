@@ -40,3 +40,7 @@ scripts/vps/.env
 scripts/vps/*.db
 scripts/vps/.notified-drafts-*
 scripts/vps/.task-cmd-*.txt
+
+# Личная инфраструктура — отдельный приватный репо EllevatedAI/infra
+# (DLD публичный, серверы и VPN-документы туда не попадают)
+/infra/
