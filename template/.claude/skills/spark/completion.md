@@ -43,9 +43,10 @@ Sequential ID assignment is NOT atomic. If two spark instances run concurrently:
 3. [ ] **Spec file created** — ai/features/TYPE-XXX-YYYY-MM-DD-name.md
 4. [ ] **Entry added to backlog** — in active tasks table
 5. [ ] **Status = queued** — spec ready for orchestrator pickup!
-6. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
+6. [ ] **Allowlist Linter passed** (Phase 5.5) — `grep '<!-- callback-allowlist v1' ai/features/{TASK_ID}*.md` returns 1 line, and `## Allowed Files` heading exists exactly once
+7. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
-7. [ ] **Auto-commit done** — `git add ai/ && git commit` (no push!)
+8. [ ] **Auto-commit done** — `git add ai/ && git commit` (no push!)
 
 If any item not done — **STOP and do it**.
 
@@ -217,6 +218,30 @@ on:
 ```
 
 ---
+
+## Linter Failure → Do Not Commit (MANDATORY)
+
+If Phase 5.5 (Allowlist Linter) returned a failure code (E001..E006):
+
+1. Spec file MUST already be deleted by facilitator (if not — delete now via
+   `rm -f ai/features/{TASK_ID}*.md`).
+2. Backlog row for `{TASK_ID}` MUST be removed (use Edit tool).
+3. **DO NOT run `git add` / `git commit` / `git push`** for this task.
+4. Return final status:
+   ```yaml
+   status: blocked
+   spec_path: null
+   spec_status: not_created
+   pushed: false
+   error_code: ALLOWLIST_E00X
+   error_message: "<human-readable description>"
+   ```
+5. The orchestrator/operator surfaces the error to the founder via Telegram —
+   no auto-recovery.
+
+⛔ Pushing a spec that fails the linter defeats the whole point of TECH-167.
+The callback parser will reject it on the autopilot side, and the founder will
+have to debug the same drift again.
 
 ## Completion — No Handoff
 

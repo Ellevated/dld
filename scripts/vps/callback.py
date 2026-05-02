@@ -551,7 +551,7 @@ def _resync_backlog_to_spec(
     _git_commit_push(project_path, spec_id, spec_status, [("ai/backlog.md", new_text)])
 
 
-# --- TECH-166: Implementation guard helpers ----------------------------------
+# --- TECH-166 / TECH-167: Implementation guard helpers ----------------------
 
 # Backticked path-shape: anything between backticks with a dot extension.
 # Drops the extension whitelist — Go (.go), Astro (.astro), Terraform (.tf),
@@ -559,6 +559,19 @@ def _resync_backlog_to_spec(
 # like `foo.bar` are harmless: git log finds no commits and they're ignored.
 _ALLOWED_FILE_EXT_RE = re.compile(r"`([^\s`\n]+\.[a-zA-Z][\w-]*)`")
 
+# --- TECH-167 v1 canonical format -------------------------------------------
+# Strict heading: "## Allowed Files" (case-sensitive, no suffix, no qualifier).
+_ALLOWED_FILES_V1_HEADING_RE = re.compile(r"^##[ \t]+Allowed Files[ \t]*$")
+# Marker comment that opts a spec into v1 strict parsing.
+_ALLOWED_FILES_V1_MARKER_RE = re.compile(
+    r"<!--\s*callback-allowlist\s+v1\b[^>]*-->"
+)
+# Canonical bullet: "- `path/with.ext` optional trailing prose".
+_ALLOWED_FILES_V1_BULLET_RE = re.compile(
+    r"^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$"
+)
+
+# --- TECH-166 legacy fallback (kept for specs without the v1 marker) --------
 # Heading variants seen across DLD projects (case-insensitive):
 #   ## Allowed Files
 #   ## Allowed Files (whitelist|canonical|STRICT|...)
@@ -571,20 +584,53 @@ _ALLOWED_FILES_HEADING_RE = re.compile(
 _NEXT_H2_RE = re.compile(r"^##\s+\S")
 
 
-def _parse_allowed_files(spec_path: Path) -> list[str] | None:
-    """Extract relative paths listed in spec's `## Allowed Files` section.
+def _parse_allowed_files_v1(spec_text: str) -> list[str] | None:
+    """Strict canonical v1 parser. Returns:
 
-    Returns:
-        list[str]: explicit list (may be empty if section is present but lists no paths)
-        None: section absent (degrade-open: legacy specs without allowlist)
+        list[str]: \u22651 paths (success).
+        []        : marker present but ZERO valid bullets \u2014 degrade-closed.
+        None      : v1 marker not present (caller should try legacy fallback).
     """
-    try:
-        text = spec_path.read_text(errors="replace")
-    except OSError as exc:
-        log.warning("ALLOWED_FILES: read failed for %s: %s", spec_path, exc)
+    lines = spec_text.splitlines()
+
+    # Locate the canonical heading (must be EXACT \u2014 case-sensitive, no suffix).
+    heading_idxs = [i for i, ln in enumerate(lines)
+                    if _ALLOWED_FILES_V1_HEADING_RE.match(ln)]
+    if not heading_idxs:
+        return None  # caller falls back to legacy
+    # Use the first canonical heading; section ends at next H2.
+    start = heading_idxs[0] + 1
+    end = len(lines)
+    for j in range(start, len(lines)):
+        if _NEXT_H2_RE.match(lines[j]):
+            end = j
+            break
+    section = lines[start:end]
+    section_text = "\n".join(section)
+
+    # Marker is the v1 opt-in. Without it, spec is legacy; defer.
+    if not _ALLOWED_FILES_V1_MARKER_RE.search(section_text):
         return None
 
-    lines = text.splitlines()
+    # Strict mode: only canonical bullets count. No fenced blocks, no
+    # backtick-paths outside bullets, no fallback to _ALLOWED_FILE_EXT_RE.
+    paths: list[str] = []
+    for ln in section:
+        m = _ALLOWED_FILES_V1_BULLET_RE.match(ln)
+        if m:
+            paths.append(m.group(1))
+    # Empty list with marker present = degrade-closed (explicit empty allowlist).
+    return paths
+
+
+def _parse_allowed_files_legacy(spec_text: str) -> list[str] | None:
+    """Pre-TECH-167 parser: heading variants + any backticked-path-shape.
+
+    Used only when v1 marker is absent (legacy specs). Same semantics as the
+    pre-TECH-167 implementation: section heading match \u2192 extract every
+    backticked path inside the section.
+    """
+    lines = spec_text.splitlines()
     in_section = False
     section_buf: list[str] = []
     for line in lines:
@@ -592,16 +638,68 @@ def _parse_allowed_files(spec_path: Path) -> list[str] | None:
             if _ALLOWED_FILES_HEADING_RE.match(line):
                 in_section = True
             continue
-        # Already inside section — stop on next H2.
         if _NEXT_H2_RE.match(line):
             break
         section_buf.append(line)
-
     if not in_section:
         return None
-    section_text = "\n".join(section_buf)
-    return _ALLOWED_FILE_EXT_RE.findall(section_text)
+    return _ALLOWED_FILE_EXT_RE.findall("\n".join(section_buf))
 
+
+def _parse_allowed_files(spec_path: Path) -> list[str] | None:
+    """Extract allowlist for the implementation guard.
+
+    Strategy (TECH-167):
+        1. If spec has the v1 marker \u2192 strict canonical parse (no fallback).
+        2. Else \u2192 legacy parser (heading variants, any backticked paths).
+        3. Section absent entirely \u2192 None (degrade-open sentinel).
+
+    Returns:
+        list[str]: explicit list (may be empty if v1 marker present but
+                   bullets malformed \u2192 degrade-closed).
+        None:      no Allowed Files section at all (legacy spec without
+                   any allowlist \u2014 caller decides degrade-open semantics).
+    """
+    try:
+        text = spec_path.read_text(errors="replace")
+    except OSError as exc:
+        log.warning("ALLOWED_FILES: read failed for %s: %s", spec_path, exc)
+        return None
+
+    v1 = _parse_allowed_files_v1(text)
+    if v1 is not None:
+        log.info(
+            "ALLOWED_FILES: v1 canonical parse for %s \u2192 %d path(s)",
+            spec_path.name,
+            len(v1),
+        )
+        return v1
+
+    legacy = _parse_allowed_files_legacy(text)
+    if legacy is not None:
+        log.info(
+            "ALLOWED_FILES: legacy fallback parse for %s \u2192 %d path(s)",
+            spec_path.name,
+            len(legacy),
+        )
+    return legacy
+
+
+
+def _append_blocked_reason(spec_path: Path, reason: str) -> bool:
+    """Path-taking wrapper around _apply_blocked_reason — preserves the
+    pre-TECH-167 helper signature used by existing unit tests.
+
+    Reads spec_path, applies _apply_blocked_reason, writes back if changed.
+    Idempotent: calling twice with the same reason produces only one
+    `**Blocked Reason:**` line (re.subn count=1 ensures replacement, not
+    append).
+    """
+    text = spec_path.read_text(errors="replace")
+    changed, new_text = _apply_blocked_reason(text, reason)
+    if changed and new_text != text:
+        spec_path.write_text(new_text)
+    return changed
 
 def _get_started_at(pueue_id: int) -> str | None:
     """Read started_at for a pueue task from task_log (read-only db access)."""
