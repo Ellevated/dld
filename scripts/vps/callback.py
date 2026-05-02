@@ -494,7 +494,7 @@ def _resync_backlog_to_spec(
 _ALLOWED_FILE_EXT_RE = re.compile(
     r"`([^`\n]+\.(?:py|sh|md|sql|yml|yaml|json|toml|js|ts|tsx|jsx|html|css))`"
 )
-_ALLOWED_FILES_HEADING_RE = re.compile(r"^##\s+Allowed\s+Files\s*$", re.IGNORECASE)
+_ALLOWED_FILES_HEADING_RE = re.compile(r"^##\s+Allowed\s+Files\b", re.IGNORECASE)
 _NEXT_H2_RE = re.compile(r"^##\s+\S")
 
 
@@ -535,8 +535,7 @@ def _get_started_at(pueue_id: int) -> str | None:
     try:
         with db.get_db() as conn:
             row = conn.execute(
-                "SELECT started_at FROM task_log WHERE pueue_id = ? "
-                "ORDER BY id DESC LIMIT 1",
+                "SELECT started_at FROM task_log WHERE pueue_id = ? ORDER BY id DESC LIMIT 1",
                 (pueue_id,),
             ).fetchone()
             if row is None:
@@ -565,23 +564,25 @@ def _has_implementation_commits(
     if not allowed:
         return False
     cmd = [
-        "git", "-C", project_path, "log",
+        "git",
+        "-C",
+        project_path,
+        "log",
         f"--since={started_at}",
         "--pretty=%H",
         "--",
         *allowed,
     ]
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=15, check=False
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
         log.warning("IMPL_GUARD: git log failed (%s) — degrade open", exc)
         return True
     if result.returncode != 0:
         log.warning(
             "IMPL_GUARD: git log rc=%s stderr=%s — degrade open",
-            result.returncode, result.stderr.strip()[:200],
+            result.returncode,
+            result.stderr.strip()[:200],
         )
         return True
     return bool(result.stdout.strip())
@@ -595,9 +596,7 @@ def _append_blocked_reason(spec_file: Path, reason: str) -> None:
         log.warning("BLOCKED_REASON: read failed for %s: %s", spec_file, exc)
         return
     line = f"**Blocked Reason:** {reason}"
-    new_text, n = re.subn(
-        r"\*\*Blocked Reason:\*\*\s*[^\n]*", line, text, count=1
-    )
+    new_text, n = re.subn(r"\*\*Blocked Reason:\*\*\s*[^\n]*", line, text, count=1)
     if n == 0:
         # Insert right after first **Status:** line.
         new_text, n = re.subn(
@@ -674,7 +673,8 @@ def verify_status_sync(
             log.warning(
                 "IMPL_GUARD: %s — no commits touching allowed files since %s, "
                 "demoting done → blocked (no_implementation_commits)",
-                spec_id, started_at,
+                spec_id,
+                started_at,
             )
             _append_blocked_reason(spec_file, "no_implementation_commits")
             target = "blocked"
@@ -685,9 +685,8 @@ def verify_status_sync(
                 re.IGNORECASE,
             )
             spec_ok = bool(spec_re.search(spec_file.read_text(errors="replace")))
-            backlog_ok = (
-                backlog_path.is_file()
-                and bool(backlog_re.search(backlog_path.read_text(errors="replace")))
+            backlog_ok = backlog_path.is_file() and bool(
+                backlog_re.search(backlog_path.read_text(errors="replace"))
             )
 
     if spec_ok and backlog_ok:
@@ -875,7 +874,9 @@ def main() -> None:
                     if sid:
                         target = "done" if status == "done" else "blocked"
                         verify_status_sync(
-                            project_path, sid, target,
+                            project_path,
+                            sid,
+                            target,
                             pueue_id=int(pueue_id) if pueue_id else None,
                         )
             except Exception as exc:
