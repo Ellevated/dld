@@ -403,55 +403,114 @@ def dispatch_reflect(project_id: str, project_path: str, task_label: str, provid
 _VALID_STATUSES = frozenset({"draft", "queued", "in_progress", "blocked", "resumed", "done"})
 
 
-def _fix_spec_status(spec_path: Path, spec_id: str, target: str) -> bool:
-    """Replace **Status:** <anything> with **Status:** <target> in spec file."""
-    if target not in _VALID_STATUSES:
-        log.warning("STATUS_FIX: invalid target status '%s' for %s", target, spec_id)
-        return False
-    text = spec_path.read_text(errors="replace")
-    new_text, count = re.subn(
-        r"(\*\*Status:\*\*)\s*\S+",
-        rf"\1 {target}",
-        text,
-        count=1,
-    )
-    if count:
-        spec_path.write_text(new_text)
-        log.info("STATUS_FIX: spec %s → %s in %s", spec_id, target, spec_path.name)
-        return True
-    return False
+def _read_head_blob(project_path: str, rel_path: str) -> str | None:
+    """Read file content as it exists at HEAD. None if missing or git error.
+
+    Used by status-sync to operate on canonical state instead of working tree —
+    callback never sees (or commits) operator's uncommitted edits.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", project_path, "show", f"HEAD:{rel_path}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("HEAD_READ: subprocess failed for %s: %s", rel_path, exc)
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout
 
 
-def _fix_backlog_status(backlog_path: Path, spec_id: str, target: str) -> bool:
-    """Replace status column for spec_id row in backlog.md."""
+def _apply_spec_status(text: str, target: str) -> tuple[bool, str]:
+    """Return (changed, new_text) with **Status:** flipped to target."""
     if target not in _VALID_STATUSES:
-        log.warning("STATUS_FIX: invalid target status '%s' for %s", target, spec_id)
-        return False
-    text = backlog_path.read_text(errors="replace")
+        return (False, text)
+    new_text, count = re.subn(r"(\*\*Status:\*\*)\s*\S+", rf"\1 {target}", text, count=1)
+    return (bool(count), new_text)
+
+
+def _apply_backlog_status(text: str, spec_id: str, target: str) -> tuple[bool, str]:
+    """Return (changed, new_text) with backlog row status flipped to target."""
+    if target not in _VALID_STATUSES:
+        return (False, text)
     pattern = rf"(\|\s*{re.escape(spec_id)}\s*\|.*?\|)\s*\S+\s*(\|)"
     new_text, count = re.subn(pattern, rf"\1 {target} \2", text, count=1)
-    if count:
-        backlog_path.write_text(new_text)
-        log.info("STATUS_FIX: backlog %s → %s", spec_id, target)
-        return True
-    return False
+    return (bool(count), new_text)
 
 
-def _git_commit_push(project_path: str, spec_id: str, target: str, files: list) -> None:
-    """Stage, commit, and push status fix."""
+def _apply_blocked_reason(text: str, reason: str) -> tuple[bool, str]:
+    """Return (changed, new_text) with **Blocked Reason:** appended/updated."""
+    line = f"**Blocked Reason:** {reason}"
+    new_text, n = re.subn(r"\*\*Blocked Reason:\*\*\s*[^\n]*", line, text, count=1)
+    if n == 0:
+        new_text, n = re.subn(r"(\*\*Status:\*\*[^\n]*\n)", rf"\1{line}\n", text, count=1)
+    return (bool(n), new_text if n else text)
+
+
+def _git_commit_push(
+    project_path: str,
+    spec_id: str,
+    target: str,
+    fixes: list[tuple[str, str]],
+) -> None:
+    """Commit (path, new_content) pairs via plumbing — does NOT touch working tree.
+
+    Uses `git hash-object -w` + `git update-index --cacheinfo` so the index is
+    populated directly from new_content. The commit captures only those blobs.
+    Any uncommitted operator edits (in the same files or others) stay in the
+    working tree untouched, preventing the callback from snatching unrelated
+    changes the way `git add <file>` did.
+    """
+    if not fixes:
+        return
     git = ["git", "-C", project_path]
-    subprocess.run(git + ["add"] + files, capture_output=True, timeout=10)
-    subprocess.run(
-        git + ["commit", "-m", f"docs: mark {spec_id} as {target} (callback auto-fix)"],
-        capture_output=True,
-        timeout=30,
+    for rel_path, new_content in fixes:
+        try:
+            r = subprocess.run(
+                git + ["hash-object", "-w", "--stdin"],
+                input=new_content,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=True,
+            )
+            blob_sha = r.stdout.strip()
+            subprocess.run(
+                git + ["update-index", "--cacheinfo", f"100644,{blob_sha},{rel_path}"],
+                capture_output=True,
+                timeout=10,
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr or ""
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode(errors="replace")
+            log.warning(
+                "STATUS_FIX: plumbing stage failed for %s: %s",
+                rel_path,
+                stderr[:200],
+            )
+            return
+    msg = f"docs: mark {spec_id} as {target} (callback auto-fix)"
+    r = subprocess.run(git + ["commit", "-m", msg], capture_output=True, timeout=30)
+    if r.returncode != 0:
+        log.warning(
+            "STATUS_FIX: commit failed for %s: %s",
+            spec_id,
+            r.stderr.decode(errors="replace")[:200],
+        )
+        return
+    subprocess.run(git + ["push", "origin", "develop"], capture_output=True, timeout=60)
+    log.info(
+        "STATUS_FIX: committed and pushed %s → %s (%d file(s), no working-tree mutation)",
+        spec_id,
+        target,
+        len(fixes),
     )
-    subprocess.run(
-        git + ["push", "origin", "develop"],
-        capture_output=True,
-        timeout=60,
-    )
-    log.info("STATUS_FIX: committed and pushed %s → %s", spec_id, target)
 
 
 def _resync_backlog_to_spec(
@@ -472,20 +531,24 @@ def _resync_backlog_to_spec(
     """
     if not backlog_path.is_file():
         return
+    head = _read_head_blob(project_path, "ai/backlog.md")
+    if head is None:
+        return
     backlog_re = re.compile(
         rf"\|\s*{re.escape(spec_id)}\s*\|.*?\|\s*{re.escape(spec_status)}\s*\|",
         re.IGNORECASE,
     )
-    text = backlog_path.read_text(errors="replace")
-    if backlog_re.search(text):
-        return  # already in sync
-    if _fix_backlog_status(backlog_path, spec_id, spec_status):
-        log.warning(
-            "STATUS_SYNC: %s — resynced backlog to spec authority (%s) to break dispatch loop",
-            spec_id,
-            spec_status,
-        )
-        _git_commit_push(project_path, spec_id, spec_status, ["ai/backlog.md"])
+    if backlog_re.search(head):
+        return  # already in sync at HEAD
+    ok, new_text = _apply_backlog_status(head, spec_id, spec_status)
+    if not ok or new_text == head:
+        return
+    log.warning(
+        "STATUS_SYNC: %s — resynced backlog to spec authority (%s) to break dispatch loop",
+        spec_id,
+        spec_status,
+    )
+    _git_commit_push(project_path, spec_id, spec_status, [("ai/backlog.md", new_text)])
 
 
 # --- TECH-166: Implementation guard helpers ----------------------------------
@@ -553,13 +616,21 @@ def _has_implementation_commits(
 ) -> bool:
     """True if any commit since `started_at` touched any path in `allowed`.
 
-    Degrade-open semantics:
-        allowed is None        → True  (no allowlist in spec; can't enforce)
-        started_at is None     → True  (no time window; can't enforce)
-        allowed == []          → False (explicit empty allowlist = no-impl by definition)
+    Mixed semantics — content issues fail closed, infra/data issues fail open:
+        allowed is None        → False (no `## Allowed Files` section: spec is
+                                        non-conformant, refuse to mark done.
+                                        Caller logs reason='missing_allowed_files_section'.)
+        allowed == []          → False (explicit empty allowlist = no-impl)
+        started_at is None     → True  (data-availability issue, not spec content)
         subprocess error       → True  (don't block on tool failure)
     """
-    if allowed is None or started_at is None:
+    if allowed is None:
+        log.warning(
+            "IMPL_GUARD: spec has no `## Allowed Files` section — "
+            "blocking done (degrade-closed). Specs MUST declare an allowlist."
+        )
+        return False
+    if started_at is None:
         return True
     if not allowed:
         return False
@@ -588,33 +659,6 @@ def _has_implementation_commits(
     return bool(result.stdout.strip())
 
 
-def _append_blocked_reason(spec_file: Path, reason: str) -> None:
-    """Idempotently set `**Blocked Reason:** <reason>` near the **Status:** line."""
-    try:
-        text = spec_file.read_text(errors="replace")
-    except OSError as exc:
-        log.warning("BLOCKED_REASON: read failed for %s: %s", spec_file, exc)
-        return
-    line = f"**Blocked Reason:** {reason}"
-    new_text, n = re.subn(r"\*\*Blocked Reason:\*\*\s*[^\n]*", line, text, count=1)
-    if n == 0:
-        # Insert right after first **Status:** line.
-        new_text, n = re.subn(
-            r"(\*\*Status:\*\*[^\n]*\n)",
-            rf"\1{line}\n",
-            text,
-            count=1,
-        )
-    if n == 0:
-        log.warning("BLOCKED_REASON: no Status anchor in %s", spec_file)
-        return
-    if new_text != text:
-        try:
-            spec_file.write_text(new_text)
-        except OSError as exc:
-            log.warning("BLOCKED_REASON: write failed for %s: %s", spec_file, exc)
-
-
 # -----------------------------------------------------------------------------
 
 
@@ -626,125 +670,101 @@ def verify_status_sync(
 ) -> None:
     """Check that spec file and backlog both have target status. Auto-fix if not.
 
+    Operates on HEAD content (not working tree) — operator's uncommitted edits
+    in spec/backlog are preserved. Final commit goes through git plumbing
+    (`update-index --cacheinfo`), so the working tree is never touched.
+
     TECH-166: when target='done' and pueue_id is provided, run an implementation
-    guard — verify that commits touching the spec's `## Allowed Files` exist
-    since the task's `started_at`. If not, demote target to 'blocked' and append
-    a Blocked Reason. Degrades open on missing data (legacy specs / no pueue_id
-    / git errors) — see `_has_implementation_commits` docstring.
+    guard — verify commits touching the spec's `## Allowed Files` since
+    `started_at`. Missing section → demote with reason='missing_allowed_files_section'.
+    No matching commits → demote with reason='no_implementation_commits'.
     """
     p = Path(project_path)
-    spec_re = re.compile(rf"\*\*Status:\*\*\s*{re.escape(target)}", re.IGNORECASE)
-    backlog_re = re.compile(
-        rf"\|\s*{re.escape(spec_id)}\s*\|.*?\|\s*{re.escape(target)}\s*\|",
-        re.IGNORECASE,
-    )
 
-    # Check spec file
-    spec_ok = False
-    spec_file = None
+    # Resolve spec path + read HEAD content
     spec_files = list(p.glob(f"ai/features/{spec_id}*.md"))
+    spec_file = spec_files[0] if spec_files else None
+    spec_rel = str(spec_file.relative_to(p)) if spec_file else None
+    spec_head = _read_head_blob(project_path, spec_rel) if spec_rel else None
     if not spec_files:
         log.warning("STATUS_SYNC: spec file not found for %s", spec_id)
-    else:
-        spec_file = spec_files[0]
-        text = spec_file.read_text(errors="replace")
-        if spec_re.search(text):
-            spec_ok = True
 
-    # Check backlog
-    backlog_ok = False
+    # Backlog HEAD content
     backlog_path = p / "ai" / "backlog.md"
-    if not backlog_path.is_file():
+    backlog_rel = "ai/backlog.md"
+    backlog_head = _read_head_blob(project_path, backlog_rel) if backlog_path.is_file() else None
+    if backlog_head is None and not backlog_path.is_file():
         log.warning("STATUS_SYNC: backlog.md not found in %s", project_path)
-    else:
-        text = backlog_path.read_text(errors="replace")
-        if backlog_re.search(text):
-            backlog_ok = True
 
-    # TECH-166: implementation guard — demote done→blocked if no commits
-    # touched the spec's Allowed Files since task start. Runs BEFORE the
-    # spec-blocked / spec-done guards so demotion semantics are: (a) write
-    # blocked into the spec via _append_blocked_reason + later auto-fix,
-    # (b) flow through the rest of verify_status_sync as target='blocked'.
-    if target == "done" and spec_file and pueue_id is not None:
+    spec_text = spec_head
+    backlog_text = backlog_head
+
+    # TECH-166: implementation guard — demote done→blocked if no commits touched
+    # the spec's Allowed Files since task start, OR if the spec lacks the section.
+    if target == "done" and spec_text is not None and pueue_id is not None and spec_file:
         allowed = _parse_allowed_files(spec_file)
         started_at = _get_started_at(int(pueue_id))
         if not _has_implementation_commits(project_path, allowed, started_at):
+            reason = (
+                "missing_allowed_files_section" if allowed is None else "no_implementation_commits"
+            )
             log.warning(
-                "IMPL_GUARD: %s — no commits touching allowed files since %s, "
-                "demoting done → blocked (no_implementation_commits)",
+                "IMPL_GUARD: %s — demoting done → blocked (%s, started_at=%s)",
                 spec_id,
+                reason,
                 started_at,
             )
-            _append_blocked_reason(spec_file, "no_implementation_commits")
+            _, spec_text = _apply_blocked_reason(spec_text, reason)
             target = "blocked"
-            # Recompute spec_ok / backlog_ok against the new target.
-            spec_re = re.compile(rf"\*\*Status:\*\*\s*{re.escape(target)}", re.IGNORECASE)
-            backlog_re = re.compile(
-                rf"\|\s*{re.escape(spec_id)}\s*\|.*?\|\s*{re.escape(target)}\s*\|",
-                re.IGNORECASE,
-            )
-            spec_ok = bool(spec_re.search(spec_file.read_text(errors="replace")))
-            backlog_ok = backlog_path.is_file() and bool(
-                backlog_re.search(backlog_path.read_text(errors="replace"))
-            )
 
-    if spec_ok and backlog_ok:
-        log.info("STATUS_SYNC: %s — both spec and backlog are %s ✓", spec_id, target)
-        return
-
-    # Guard: if target is "done" but autopilot set "blocked", respect it.
-    # Spec is the authority — if it says blocked, backlog must follow it
-    # (resync loop-stopper, see v3.15.6).
-    if target == "done" and spec_file:
-        blocked_re = re.compile(r"\*\*Status:\*\*\s*blocked", re.IGNORECASE)
-        text = spec_file.read_text(errors="replace")
-        if blocked_re.search(text):
-            log.info("STATUS_SYNC: %s — spec is blocked, skipping auto-fix to done", spec_id)
+    # Spec-authority guards (v3.15.5/6) — operate on HEAD, never on working tree.
+    if target == "done" and spec_text is not None:
+        if re.search(r"\*\*Status:\*\*\s*blocked", spec_text, re.IGNORECASE):
+            log.info(
+                "STATUS_SYNC: %s — spec is blocked at HEAD, skipping done; resync backlog",
+                spec_id,
+            )
             _resync_backlog_to_spec(project_path, spec_id, "blocked", backlog_path)
             return
-
-    # Symmetric guard: don't blank-stamp "blocked" over an already-done spec.
-    # Autopilot writes done only after committing all per-task code. If the
-    # final push/merge step then fails (timeout, conflict, ceiling),
-    # status="failed" arrives here with target="blocked" — but the work is
-    # already on a feature branch and can be merged manually. Wiping the done
-    # status loses that signal and forces a full re-run.
-    if target == "blocked" and spec_file:
-        done_re = re.compile(r"\*\*Status:\*\*\s*done", re.IGNORECASE)
-        text = spec_file.read_text(errors="replace")
-        if done_re.search(text):
+    if target == "blocked" and spec_text is not None:
+        if re.search(r"\*\*Status:\*\*\s*done", spec_text, re.IGNORECASE):
             log.info(
-                "STATUS_SYNC: %s — spec already done, skipping auto-fix to blocked "
-                "(work likely on feature branch; operator should merge or resume)",
+                "STATUS_SYNC: %s — spec already done at HEAD, skipping blocked "
+                "(work likely on feature branch); resync backlog",
                 spec_id,
             )
             _resync_backlog_to_spec(project_path, spec_id, "done", backlog_path)
             return
 
-    # Auto-fix
-    fixed_files = []
-    if not spec_ok and spec_file:
-        if _fix_spec_status(spec_file, spec_id, target):
-            fixed_files.append(str(spec_file.relative_to(p)))
-        else:
-            log.warning("STATUS_FIX: could not fix spec %s", spec_id)
+    # Compute desired final content for spec + backlog at HEAD.
+    if spec_text is not None:
+        ok_spec, spec_text = _apply_spec_status(spec_text, target)
+        if not ok_spec:
+            log.warning("STATUS_FIX: could not patch spec status for %s", spec_id)
+    if backlog_text is not None:
+        ok_bl, backlog_text = _apply_backlog_status(backlog_text, spec_id, target)
+        if not ok_bl:
+            log.warning("STATUS_FIX: could not patch backlog row for %s", spec_id)
 
-    if not backlog_ok and backlog_path.is_file():
-        if _fix_backlog_status(backlog_path, spec_id, target):
-            fixed_files.append("ai/backlog.md")
-        else:
-            log.warning("STATUS_FIX: could not fix backlog for %s", spec_id)
+    # Build commit set — only files whose HEAD content differs from desired.
+    fixes: list[tuple[str, str]] = []
+    if spec_rel and spec_head is not None and spec_text is not None and spec_text != spec_head:
+        fixes.append((spec_rel, spec_text))
+    if backlog_head is not None and backlog_text is not None and backlog_text != backlog_head:
+        fixes.append((backlog_rel, backlog_text))
 
-    if fixed_files:
-        log.warning(
-            "STATUS_SYNC: %s — auto-fixed %d file(s) → %s: %s",
-            spec_id,
-            len(fixed_files),
-            target,
-            ", ".join(fixed_files),
-        )
-        _git_commit_push(project_path, spec_id, target, fixed_files)
+    if not fixes:
+        log.info("STATUS_SYNC: %s — both spec and backlog are %s ✓", spec_id, target)
+        return
+
+    log.warning(
+        "STATUS_SYNC: %s — auto-fixed %d file(s) → %s: %s",
+        spec_id,
+        len(fixes),
+        target,
+        ", ".join(rel for rel, _ in fixes),
+    )
+    _git_commit_push(project_path, spec_id, target, fixes)
 
 
 def write_event_for_skill(project_path: str, skill: str, status: str, task_label: str) -> None:
