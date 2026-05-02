@@ -266,4 +266,15 @@ Spec: {SPEC_ID} → done
 ```
 
 **BAD:** "Все функциональные чекбоксы в Definition of Done отмечены как выполненные..."
-**GOOD:** "Добавлены кнопки отменить/пауза для кампаний. Файлы: 3 изменено. FTR-0063 → done"
+**GOOD:** "Добавлены кнопки отменить/пауза для кампаний. Файлы: 3 изменено. FTR-0063 → done
+
+The final JSON output MUST include `task_status`:
+
+```json
+{
+  "task_status": "complete" | "blocked" | "needs_review",
+  "result_preview": "..."
+}
+```
+
+Status field is written by callback only (TECH-172). Autopilot emits `task_status` in final JSON; never Edits `**Status:**` in spec or backlog."

@@ -21,15 +21,14 @@ Final verification, status update, merge, and cleanup.
 4. Pre-Done Checklist (see below)
    └─ ALL items must be checked
 
-5. Update status → done
-   └─ Spec file: **Status:** done
-   └─ Backlog: done
-   └─ VERIFY both match!
+5. Emit task_status in final JSON output:
+   └─ `"task_status": "complete"` — all tasks done, callback marks done
+   └─ `"task_status": "blocked"` — needs human, callback marks blocked
+   └─ `"task_status": "needs_review"` — uncertain, callback marks blocked
+   └─ Do NOT Edit `**Status:**` in spec or backlog — callback writes it
+   └─ No separate status commit — callback writes status post-pueue
 
-6. Commit status change:
-   git commit -m "docs: mark {TYPE}-XXX as done"
-
-7. Push feature branch (backup):
+6. Push feature branch (backup):
    git push -u origin {type}/{ID}
 
 7.5. POST-DEPLOY VERIFY (conditional):
@@ -187,7 +186,7 @@ For EACH task, verify:
 
 ### Cleanup
 - [ ] Autopilot Log updated in spec file
-- [ ] Status synced: spec=done AND backlog=done
+- [ ] task_status emitted in final JSON output
 - [ ] Worktree cleaned up
 
 **❌ Any item unchecked → status stays `in_progress`, fix first!**
@@ -212,22 +211,19 @@ Add to feature file:
 - Commit: abc1234 | BLOCKED (reviewer not approved)
 ```
 
-## Status Sync (MANDATORY)
+## Status Writes — Callback Only
 
-**Status must match in TWO places:**
+Autopilot MUST NOT modify `**Status:**` line in spec or status column in `ai/backlog.md`.
+After tests pass, autopilot emits `task_status` in its final JSON output:
+- `"task_status": "complete"` — all tasks done, ready for callback to mark done
+- `"task_status": "blocked"` — needs human, callback marks blocked
+- `"task_status": "needs_review"` — uncertain, callback marks blocked with reason
 
-| Transition | Feature File | Backlog |
-|------------|--------------|---------|
-| Start work | `**Status:** in_progress` | `in_progress` |
-| Blocked | `**Status:** blocked` | `blocked` |
-| Complete | `**Status:** done` | `done` |
+Callback (`scripts/vps/callback.py`) reads pueue exit code + `task_status` from agent JSON output
+and writes `**Status:**` via git plumbing.
 
-**Self-check (say out loud):**
-```
-"Updating spec file: Status → done" [Edit spec]
-"Updating backlog: Status → done"   [Edit backlog]
-"Both updated? ✓"                   [Verify match]
-```
+Migration: in-flight specs may still have legacy autopilot status edits — callback's guard
+re-verifies via implementation guard (ADR-018).
 
 ## Git Safety for Merge
 

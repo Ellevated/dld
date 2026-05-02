@@ -472,3 +472,7 @@ Task N:
   DIARY → index row + detail (if problem) → update state
   LOCAL VERIFY → pass/warn/skip → update state → NEXT TASK
 ```
+
+## Status Writes — Forbidden in task-loop
+
+Autopilot never edits `**Status:**` in spec file or `ai/backlog.md` status column. Final task closure emits `task_status` in result_preview JSON; callback writes status. See `finishing.md` "Status Writes — Callback Only".

@@ -1,7 +1,7 @@
 ---
 id: TECH-172
 type: TECH
-status: queued
+status: done
 priority: P1
 risk: R1
 created: 2026-05-02
@@ -9,8 +9,7 @@ created: 2026-05-02
 
 # TECH-172 — Single Status write path: callback is the only writer
 
-**Status:** blocked
-**Blocked Reason:** no_implementation_commits
+**Status:** done
 **Priority:** P1
 **Risk:** R1
 
@@ -62,13 +61,14 @@ created: 2026-05-02
 - `.claude/skills/autopilot/finishing.md`
 - `.claude/skills/autopilot/SKILL.md`
 - `.claude/skills/autopilot/task-loop.md`
-- `.claude/agents/autopilot/coder.md`
+- `.claude/agents/coder.md`
 - `template/.claude/skills/autopilot/finishing.md`
 - `template/.claude/skills/autopilot/SKILL.md`
 - `template/.claude/skills/autopilot/task-loop.md`
-- `template/.claude/agents/autopilot/coder.md`
+- `template/.claude/agents/coder.md`
 - `scripts/vps/callback.py`
 - `tests/integration/test_autopilot_no_status_write.py`
+- `ai/features/TECH-172-2026-05-02-single-status-write-path.md`
 
 ---
 
@@ -91,6 +91,39 @@ created: 2026-05-02
 | EC-2 | integration | Callback читает `task_status` из agent output и переводит в target |
 | EC-3 | regression | Существующая работа autopilot (commit code, run tests) не сломана |
 | EC-4 | deterministic | Если autopilot всё-таки написал `done` в спеку (legacy/error), callback всё равно прогоняет guard |
+
+---
+
+## Implementation Plan
+
+### Task 1 — autopilot docs: stop writing Status
+
+Files: `.claude/skills/autopilot/finishing.md`, `.claude/skills/autopilot/SKILL.md`, `.claude/skills/autopilot/task-loop.md`, `.claude/agents/autopilot/coder.md` (+ `template/.claude/...` mirrors).
+
+- `finishing.md`: remove step "5. Update status → done / Edit spec" and the "Self-check" block with `[Edit spec]`. Replace with rule: autopilot MUST NOT modify `**Status:**` line or backlog status column. Final `result_preview` JSON must include `task_status: "complete" | "blocked" | "needs_review"`. Callback writes status.
+- `SKILL.md`: update Notification Output Format to include `task_status`.
+- `task-loop.md`: any Status-edit instruction → removed. Add note that closure emits `task_status`.
+- `coder.md`: add forbidden clause — coder never Edits `**Status:**` in spec or backlog row.
+
+Acceptance: grep on autopilot docs finds no Status-writing instruction.
+
+### Task 2 — Mirror to template/
+
+Sync identical changes from `.claude/...` to `template/.claude/...` for the four autopilot files.
+
+### Task 3 — callback.py: parse `task_status`
+
+- `_parse_log_file` returns `(skill, preview, task_status)`. Reads `data.get("task_status")` plus tries to parse `result_preview` JSON for `task_status` field.
+- `extract_agent_output` returns triple. Internal returns updated.
+- `main()` Step 4 unpacks triple. Step 7: `status=="done" and task_status=="blocked"` → target=`"blocked"`.
+
+### Task 4 — Integration test
+
+`tests/integration/test_autopilot_no_status_write.py` — grep-style assertions on autopilot doc files (no Status-write instruction; coder.md mentions forbidden Status edit + callback).
+
+### Task 5 — Migration note in SKILL.md
+
+Add brief 1–2 sentence note in autopilot SKILL.md (root + template): "Status field is written by callback only. Autopilot emits `task_status` in final JSON; never Edits `**Status:**`."
 
 ---
 

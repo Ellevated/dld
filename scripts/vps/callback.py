@@ -182,11 +182,20 @@ def _skill_from_pueue_command(pueue_id: str) -> tuple[str, float]:
 
 
 def _parse_log_file(log_path: Path) -> tuple:
-    """Parse JSON log file → (skill, result_preview). Logs cache metrics."""
+    """Parse JSON log file → (skill, result_preview, task_status). Logs cache metrics."""
     try:
         data = json.loads(log_path.read_text())
         skill = data.get("skill", "")
         preview = str(data.get("result_preview", ""))[:500]
+
+        # task_status: prefer top-level field; fall back to parsing result_preview as JSON
+        task_status = str(data.get("task_status", "") or "")
+        if not task_status and preview:
+            try:
+                inner = json.loads(preview)
+                task_status = str(inner.get("task_status", "") or "")
+            except json.JSONDecodeError:
+                pass
 
         input_tokens = int(data.get("input_tokens", 0) or 0)
         output_tokens = int(data.get("output_tokens", 0) or 0)
@@ -204,15 +213,15 @@ def _parse_log_file(log_path: Path) -> tuple:
             cache_hit_rate,
         )
 
-        return skill, preview
+        return skill, preview, task_status
     except Exception:
-        return "", ""
+        return "", "", ""
 
 
 def extract_agent_output(pueue_id: str, project_id: str = "") -> tuple:
-    """Extract skill and result_preview.
+    """Extract skill, result_preview, and task_status.
 
-    Resolution order (skill first, preview second):
+    Resolution order (skill first, preview second, task_status third):
       0. pueue command — deterministic, survives SIGKILL'd runners
       1. log file (newer than task start) — reliable for clean exits
       2. DB task_log row
@@ -230,28 +239,28 @@ def extract_agent_output(pueue_id: str, project_id: str = "") -> tuple:
                 if project_name:
                     log_path = _find_log_file(project_name, after_ts=start_ts)
                     if log_path:
-                        skill, preview = _parse_log_file(log_path)
+                        skill, preview, task_status = _parse_log_file(log_path)
                         # If pueue gave us a skill, trust it over the log file's
                         # (covers edge case of a still-stale log slipping through).
                         if pueue_skill:
                             skill = pueue_skill
                         if skill:
                             log.info("extract_agent_output from log: %s", log_path.name)
-                            return skill, preview
+                            return skill, preview, task_status
         except Exception as exc:
             log.warning("extract_agent_output log file failed: %s", exc)
 
     # If log file missing/stale but pueue knew the skill — return it now.
     if pueue_skill:
         log.info("extract_agent_output skill from pueue command: %s", pueue_skill)
-        return pueue_skill, ""
+        return pueue_skill, "", ""
 
     # Layer 1b: Try DB task_log for skill (if no log file found)
     try:
         row = db.get_task_by_pueue_id(int(pueue_id))
         if row and row.get("skill"):
             log.info("extract_agent_output skill from DB: %s", row["skill"])
-            return row["skill"], ""
+            return row["skill"], "", ""
     except Exception as exc:
         log.warning("extract_agent_output DB failed: %s", exc)
 
@@ -276,13 +285,14 @@ def extract_agent_output(pueue_id: str, project_id: str = "") -> tuple:
                     obj = json.loads(line)
                     skill = obj.get("skill", "")
                     preview = str(obj.get("result_preview", ""))[:500]
-                    return skill, preview
+                    task_status = str(obj.get("task_status", "") or "")
+                    return skill, preview, task_status
                 except json.JSONDecodeError:
                     continue
     except Exception:
         pass
 
-    return "", ""
+    return "", "", ""
 
 
 def resolve_spec_id(task_label: str, preview: str, project_path: str) -> str | None:
@@ -1164,10 +1174,10 @@ def main() -> None:
             log.warning("update_phase failed: %s", exc)
 
         # Step 4: Extract agent output
-        skill, preview = "", ""
+        skill, preview, task_status = "", "", ""
         try:
-            skill, preview = extract_agent_output(pueue_id, project_id)
-            log.info("agent output: skill=%s preview_len=%d", skill, len(preview))
+            skill, preview, task_status = extract_agent_output(pueue_id, project_id)
+            log.info("agent output: skill=%s preview_len=%d task_status=%s", skill, len(preview), task_status)
         except Exception as exc:
             log.warning("extract_agent_output failed: %s", exc)
 
@@ -1208,7 +1218,19 @@ def main() -> None:
                 if project_path:
                     sid = resolve_spec_id(task_label, preview, project_path)
                     if sid:
-                        target = "done" if status == "done" else "blocked"
+                        if status == "done":
+                            # task_status=blocked or needs_review → demote to blocked
+                            if task_status in ("blocked", "needs_review"):
+                                target = "blocked"
+                                log.info(
+                                    "STATUS: task_status=%s → target=blocked (overrides pueue Success)",
+                                    task_status,
+                                )
+                            else:
+                                # task_status="" (missing) or "complete" → honour pueue Success
+                                target = "done"
+                        else:
+                            target = "blocked"
                         verify_status_sync(
                             project_path,
                             sid,
