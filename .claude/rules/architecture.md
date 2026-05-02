@@ -65,6 +65,10 @@ Hooks must never crash — a crashing hook breaks Claude Code. See ADR-004.
 
 ## ADR (Architecture Decision Records)
 
+> **Orchestrator-specific decisions** (callback contract, guard, audit log) are documented in
+> `~/.claude/projects/-root/memory/dld-orchestrator.md` §6. This file lists project-wide ADRs only;
+> orchestrator details are forward-pointed below.
+
 | ID | Decision | Date | Reason |
 |----|----------|------|--------|
 | ADR-001 | Money in cents | 2026-01 | Avoid float precision errors |
@@ -84,9 +88,17 @@ Hooks must never crash — a crashing hook breaks Claude Code. See ADR-004.
 | ADR-015 | Devil uses Evaporating Cloud for contradiction resolution | 2026-03 | Formal resolution > freeform critique (SIGNAL-009) |
 | ADR-016 | DDD linguistic test for domain names | 2026-03 | Technical terms masquerading as domains must be rejected (SIGNAL-010) |
 | ADR-017 | SQL only via Python parameterized queries | 2026-03 | Shell interpolation = SQL injection (FTR-146 Task 3) |
-| ADR-018 | Callback status enforcement | 2026-03 | LLM-instructional status updates unreliable (Edit tool miss, context overflow). Callback auto-fixes spec+backlog after pueue completion. Respects `blocked` — won't overwrite to `done`. **Extended TECH-166 (2026-05):** implementation guard runs before mark-done — `git log --since=started_at -- <Allowed Files>`. No commits touching allowed paths in window → demote `done → blocked` with reason `no_implementation_commits`. Degrades open on missing data (no `## Allowed Files` section, no pueue_id, git error). |
+| ADR-018 | Callback status enforcement | 2026-03 | LLM-instructional status updates unreliable (Edit tool miss, context overflow). Callback auto-fixes spec+backlog after pueue completion. Respects `blocked` — won't overwrite to `done`. **Extended TECH-166 (2026-05):** implementation guard. Degrades open on missing data. См. dld-orchestrator.md§5 |
 | ADR-019 | Model routing rebalance for Opus 4.7 era | 2026-04 | Opus 4.7 on structured merge/format tasks overthinks without quality gain. Synthesizers (audit/board/triz) → sonnet high. Formatters (documenter, bughunt scope-decomposer/findings-collector/report-updater, diary-recorder) → haiku low. Est. 30–40% cost reduction at same quality. See `rules/model-capabilities.md`. |
 | ADR-020 | No headless loop wrapper from inside Claude Code | 2026-04 | `scripts/autopilot-loop.sh` invokes `claude --print` subprocess without `--setting-sources` → subagents don't resolve, costs explode (BUG-327: 117 turns, $50, FAIL). Interactive `/autopilot` uses native Agent/Skill tools in current session. VPS orchestrator uses Agent SDK (setting_sources loaded). The bash wrapper is kept only for manual operator use outside Claude Code. |
+| TECH-166 | Callback implementation guard: git-diff verify before mark-done | 2026-05 | См. dld-orchestrator.md§6 |
+| TECH-167 | Spark canonical `## Allowed Files` + `<!-- callback-allowlist v1 -->` marker | 2026-05 | См. dld-orchestrator.md§6 |
+| TECH-168 | Callback test suite (unit + integration + regression) | 2026-05 | См. dld-orchestrator.md§9 |
+| TECH-169 | Orchestrator circuit-breaker on mass-demote (>3/10min) | 2026-05 | См. dld-orchestrator.md§6 |
+| TECH-170 | Implementation guard sees feature-branch commits (`--all`) | 2026-05 | См. dld-orchestrator.md§6 |
+| TECH-171 | Guard structured audit log (JSONL per verify_status_sync call) | 2026-05 | См. dld-orchestrator.md§6 |
+| TECH-172 | Single status write path: callback is the only writer | 2026-05 | См. dld-orchestrator.md§6 |
+| TECH-174 | Manual spec verification protocol (operator checklist) | 2026-05 | См. dld-orchestrator.md§8 |
 
 ---
 

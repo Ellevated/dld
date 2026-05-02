@@ -320,10 +320,19 @@ Risk replaces effort as the second axis of decision-making:
 **Recovery:** `in_progress → blocked → resumed → in_progress`
 
 **Callback Enforcement (DLD-specific):**
-After pueue task completes, `callback.py` verifies spec + backlog status:
-- Success → auto-fixes both to `done` (unless spec is `blocked` — respects autopilot decision)
-- Failed → auto-fixes both to `blocked`
-- Commits and pushes fix to develop automatically
+После завершения pueue задачи `callback.py` — единственный writer статусов спек.
+Implementation guard проверяет коммиты в Allowed Files. См. dld-orchestrator.md§5
+
+---
+
+## DLD Orchestrator Reference
+
+VPS daemon координирующий multi-project AI execution через pueue + SQLite SoT.
+Callback enforces spec/backlog status атомарно (ADR-018). Critical path:
+pueue completion → callback.py → verify_status_sync → plumbing commit.
+
+Full docs: `~/.claude/projects/-root/memory/dld-orchestrator.md`
+Runbook:   `~/.claude/projects/-root/memory/orchestrator-runbook.md`
 
 ---
 

@@ -309,6 +309,17 @@ Use Risk as the second decision axis (instead of effort):
 
 ---
 
+## DLD Orchestrator Reference
+
+VPS daemon coordinating multi-project AI execution via pueue + SQLite SoT.
+Callback enforces spec/backlog status atomically (ADR-018). Critical path:
+pueue completion → callback.py → verify_status_sync → plumbing commit.
+
+Full docs: `~/.claude/projects/-root/memory/dld-orchestrator.md`
+Runbook:   `~/.claude/projects/-root/memory/orchestrator-runbook.md`
+
+---
+
 ## Backlog Rules
 
 - **Size:** 30-50 active tasks max
