@@ -415,7 +415,14 @@ def scan_backlog(project_id: str, project_dir: str) -> bool:
         return False
 
     db.try_acquire_slot(project_id, provider, pueue_id)
-    db.log_task(project_id, task_label, "autopilot", "running", pueue_id)
+    db.log_task(
+        project_id,
+        task_label,
+        "autopilot",
+        "running",
+        pueue_id,
+        branch=f"feature/{spec_id}",
+    )
     db.update_project_phase(project_id, "autopilot", spec_id)
     log.info("autopilot submitted: %s spec=%s pueue_id=%d", project_id, spec_id, pueue_id)
     return True

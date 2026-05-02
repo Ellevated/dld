@@ -17,6 +17,27 @@ from typing import Optional
 
 DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent / "orchestrator.db"))
 _UNSET = object()
+_MIGRATIONS_APPLIED = False
+
+
+def _ensure_migrations(conn: sqlite3.Connection) -> None:
+    """Idempotent runtime migrations. Process-cached after first success.
+
+    TECH-170: add task_log.branch column for feature-branch awareness.
+    Safe under WAL — ALTER TABLE ADD COLUMN is atomic and idempotent if
+    we check pragma_table_info first.
+    """
+    global _MIGRATIONS_APPLIED
+    if _MIGRATIONS_APPLIED:
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(task_log)").fetchall()}
+    if "branch" not in cols:
+        try:
+            conn.execute("ALTER TABLE task_log ADD COLUMN branch TEXT")
+        except sqlite3.OperationalError:
+            # Race: another process added it between PRAGMA and ALTER.
+            pass
+    _MIGRATIONS_APPLIED = True
 
 
 @contextmanager
@@ -36,6 +57,7 @@ def get_db(immediate: bool = False):
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
+    _ensure_migrations(conn)   # TECH-170: idempotent, process-cached
     begin = "BEGIN IMMEDIATE" if immediate else "BEGIN"
     conn.execute(begin)
     try:
@@ -141,13 +163,21 @@ def log_task(
     skill: str,
     status: str,
     pueue_id: int = None,
+    branch: str | None = None,
 ) -> int:
-    """Create a task_log entry. Returns the row id."""
+    """Create a task_log entry. Returns the row id.
+
+    Args:
+        branch: Git branch name (e.g. 'feature/TECH-170'). Used by the
+            implementation guard to differentiate work merged to develop
+            vs. work still on a feature branch (TECH-170).
+    """
     with get_db() as conn:
         cursor = conn.execute(
-            "INSERT INTO task_log (project_id, task_label, skill, status, pueue_id) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (project_id, task_label, skill, status, pueue_id),
+            "INSERT INTO task_log "
+            "(project_id, task_label, skill, status, pueue_id, branch) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (project_id, task_label, skill, status, pueue_id, branch),
         )
         return cursor.lastrowid
 

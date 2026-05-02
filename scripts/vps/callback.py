@@ -721,8 +721,16 @@ def _has_implementation_commits(
     project_path: str,
     allowed: list[str] | None,
     started_at: str | None,
+    branches: str = "all",
 ) -> bool:
     """True if any commit since `started_at` touched any path in `allowed`.
+
+    `branches` (TECH-170):
+        "all"     → `git log --all` — sees commits on feature branches
+                    even when worktree hasn't merged back to develop yet.
+                    Default; closes the false-negative gap behind ADR-009.
+        "current" → no branch flag — pre-TECH-170 behavior.
+        "develop" → `git log develop` — used by `is_merged_to_develop`.
 
     Mixed semantics — content issues fail closed, infra/data issues fail open:
         allowed is None        → False (no `## Allowed Files` section: spec is
@@ -742,16 +750,13 @@ def _has_implementation_commits(
         return True
     if not allowed:
         return False
-    cmd = [
-        "git",
-        "-C",
-        project_path,
-        "log",
-        f"--since={started_at}",
-        "--pretty=%H",
-        "--",
-        *allowed,
-    ]
+    cmd = ["git", "-C", project_path, "log"]
+    if branches == "all":
+        cmd.append("--all")
+    elif branches == "develop":
+        cmd.append("develop")
+    # "current" → no extra flag
+    cmd += [f"--since={started_at}", "--pretty=%H", "--", *allowed]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
@@ -765,6 +770,35 @@ def _has_implementation_commits(
         )
         return True
     return bool(result.stdout.strip())
+
+
+def is_merged_to_develop(project_path: str, spec_id: str) -> bool:
+    """Best-effort check: does `develop` contain a commit mentioning spec_id?
+
+    Used only for diagnostic logging in `verify_status_sync`. Never blocks
+    a transition. On any error returns False (silent — caller treats as
+    "merge state unknown").
+
+    TECH-170: pairs with `--all` guard. Together they let us tell apart:
+        - work on feature/<spec> only (guard True, this False) — log warn
+        - work merged to develop      (guard True, this True)  — happy path
+    """
+    if not spec_id:
+        return False
+    cmd = [
+        "git", "-C", project_path, "log", "develop",
+        "--grep", re.escape(spec_id),
+        "--pretty=%H",
+        "-n", "1",
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.info("MERGE_CHECK: git log failed for %s: %s", spec_id, exc)
+        return False
+    if r.returncode != 0:
+        return False
+    return bool(r.stdout.strip())
 
 
 # -----------------------------------------------------------------------------
@@ -824,6 +858,16 @@ def verify_status_sync(
             )
             _, spec_text = _apply_blocked_reason(spec_text, reason)
             target = "blocked"
+        else:
+            # TECH-170: positive path — tell apart "merged to develop" vs "feature-only"
+            if is_merged_to_develop(project_path, spec_id):
+                log.info("IMPL_GUARD: %s — commits found and merged to develop ✓", spec_id)
+            else:
+                log.warning(
+                    "IMPL_GUARD: %s has commits on feature branch but NOT merged to develop yet "
+                    "(allowing done; visible in dashboard)",
+                    spec_id,
+                )
 
     # Spec-authority guards (v3.15.5/6) — operate on HEAD, never on working tree.
     if target == "done" and spec_text is not None:

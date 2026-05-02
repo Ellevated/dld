@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS task_log (
     skill        TEXT NOT NULL DEFAULT 'autopilot',
     status       TEXT NOT NULL DEFAULT 'queued',
     pueue_id     INTEGER,
+    branch       TEXT,
     started_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     finished_at  TEXT,
     exit_code    INTEGER,
