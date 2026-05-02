@@ -553,11 +553,21 @@ def _resync_backlog_to_spec(
 
 # --- TECH-166: Implementation guard helpers ----------------------------------
 
-# Path-extension allowlist for `## Allowed Files` parser.
-_ALLOWED_FILE_EXT_RE = re.compile(
-    r"`([^`\n]+\.(?:py|sh|md|sql|yml|yaml|json|toml|js|ts|tsx|jsx|html|css))`"
+# Backticked path-shape: anything between backticks with a dot extension.
+# Drops the extension whitelist — Go (.go), Astro (.astro), Terraform (.tf),
+# Dockerfile, .env.example, etc. are all valid project files. False positives
+# like `foo.bar` are harmless: git log finds no commits and they're ignored.
+_ALLOWED_FILE_EXT_RE = re.compile(r"`([^\s`\n]+\.[a-zA-Z][\w-]*)`")
+
+# Heading variants seen across DLD projects (case-insensitive):
+#   ## Allowed Files
+#   ## Allowed Files (whitelist|canonical|STRICT|...)
+#   ## Updated Allowed Files
+#   ## Files Allowed to Modify
+_ALLOWED_FILES_HEADING_RE = re.compile(
+    r"^##\s+(?:(?:Updated\s+)?Allowed\s+Files\b|Files\s+Allowed\s+to\s+Modify\b)",
+    re.IGNORECASE,
 )
-_ALLOWED_FILES_HEADING_RE = re.compile(r"^##\s+Allowed\s+Files\b", re.IGNORECASE)
 _NEXT_H2_RE = re.compile(r"^##\s+\S")
 
 
