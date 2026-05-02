@@ -9,7 +9,7 @@ created: 2026-05-02
 
 # TECH-173 — Rewrite orchestrator documentation (single source of truth)
 
-**Status:** queued
+**Status:** done
 **Priority:** P1
 **Risk:** R2
 
