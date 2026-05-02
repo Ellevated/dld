@@ -9,7 +9,8 @@ created: 2026-05-02
 
 # TECH-172 — Single Status write path: callback is the only writer
 
-**Status:** queued
+**Status:** blocked
+**Blocked Reason:** no_implementation_commits
 **Priority:** P1
 **Risk:** R1
 
