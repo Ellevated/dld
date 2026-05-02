@@ -1,0 +1,9 @@
+{
+  "shape": "multi-section",
+  "v1_marker": false,
+  "expected_paths": [
+    "src/api/worker.py"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from dowry_TECH-207__multi-section.md"
+}

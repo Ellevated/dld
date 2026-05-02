@@ -1,0 +1,16 @@
+{
+  "shape": "canonical",
+  "v1_marker": false,
+  "expected_paths": [
+    "src/domains/intelligence/tg_parser_connection.py",
+    "src/domains/intelligence/models.py",
+    "src/domains/intelligence/tg_parser_runner.py",
+    "src/domains/intelligence/tg_parser.py",
+    "src/api/scheduler_jobs/intelligence_jobs.py",
+    "supabase/migrations/<NNN>_kickstart_backfill_cursor.sql",
+    "tests/unit/domains/intelligence/test_tg_parser_connection.py",
+    "src/domains/intelligence/tg_parser_distribution.py"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from dowry_BUG-394.md"
+}

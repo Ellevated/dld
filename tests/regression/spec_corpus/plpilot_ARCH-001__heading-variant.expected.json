@@ -1,0 +1,9 @@
+{
+  "shape": "heading-variant",
+  "v1_marker": false,
+  "expected_paths": [
+    "package.json"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from plpilot_ARCH-001__heading-variant.md"
+}

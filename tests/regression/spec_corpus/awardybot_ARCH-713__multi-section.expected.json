@@ -1,0 +1,32 @@
+{
+  "shape": "multi-section",
+  "v1_marker": false,
+  "expected_paths": [
+    "supabase/migrations/2026XXXX_arch713_seller_controlled_cashback.sql",
+    "src/domains/campaigns/services/pricing.py",
+    "src/domains/campaigns/models.py",
+    "src/domains/buyer/services/offers_take.py",
+    "src/domains/buyer/services/offers_utils.py",
+    "src/domains/buyer/services/offers_listing.py",
+    "src/domains/buyer/handlers/offers_take.py",
+    "src/domains/buyer/handlers/offers_view.py",
+    "src/domains/buyer/services/slots_handler.py",
+    "src/domains/seller/tools/campaigns/create_handler.py",
+    "src/domains/seller/tools/campaigns/manage_handler.py",
+    "src/domains/seller/tools/definitions/campaigns.py",
+    "src/api/seller/promotions.py",
+    "src/domains/billing/services/invoice.py",
+    "tests/integration/test_pricing_postgresql.py",
+    "tests/integration/test_launch_campaign_flow.py",
+    "tests/regression/test_seller_bugs.py",
+    "tests/domains/campaigns/services/pricing_test.py",
+    "tests/contracts/db/test_rpc_functions.py",
+    "tests/domains/campaigns/campaigns_advanced_test.py",
+    "tests/domains/buyer/handlers/offers_take_photo_test.py",
+    "tests/domains/buyer/handlers/offers_take_ugc_test.py",
+    "tests/api/http/test_invoices.py",
+    "scripts/migrate_active_campaigns.py"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from awardybot_ARCH-713__multi-section.md"
+}
