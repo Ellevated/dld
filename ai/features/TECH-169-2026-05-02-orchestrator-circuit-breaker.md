@@ -10,6 +10,7 @@ created: 2026-05-02
 # TECH-169 — Orchestrator circuit-breaker on mass-demote
 
 **Status:** blocked
+**Blocked Reason:** no_implementation_commits
 **Priority:** P0
 **Risk:** R1 (затрагивает callback и orchestrator decision flow)
 
