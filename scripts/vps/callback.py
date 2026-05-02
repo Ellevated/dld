@@ -907,6 +907,153 @@ def is_merged_to_develop(project_path: str, spec_id: str) -> bool:
     return bool(r.stdout.strip())
 
 
+# --- TECH-169: Circuit-breaker -----------------------------------------------
+
+# Threshold: more than this many demotes within WINDOW_MIN → circuit OPEN.
+CIRCUIT_THRESHOLD = 3
+CIRCUIT_WINDOW_MIN = 10
+# Healing: if there were no demotes in the last HEAL_MIN minutes, circuit
+# auto-closes (lazy check inside is_circuit_open).
+CIRCUIT_HEAL_MIN = 30
+# Reset CLI clears decisions newer than this (matches HEAL_MIN by design).
+CIRCUIT_RESET_CLEAR_MIN = 30
+# Pueue group paused on OPEN / resumed on RESET.
+CIRCUIT_PUEUE_GROUP = "claude-runner"
+
+
+def is_circuit_open() -> bool:
+    """Return True if circuit-breaker is currently OPEN.
+
+    Logic:
+      1. Count demotes in last CIRCUIT_WINDOW_MIN minutes.
+      2. If count > CIRCUIT_THRESHOLD → OPEN.
+      3. Auto-heal: if count == 0 over CIRCUIT_HEAL_MIN window → CLOSED
+         (cheap because we just compared to 0 above; no extra query).
+
+    Pure function over DB state — no in-memory flag (callback is short-lived
+    per pueue completion).
+    """
+    try:
+        recent = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
+    except Exception as exc:  # noqa: BLE001 — callback must not crash
+        log.warning("CIRCUIT: count_demotes_since failed: %s", exc)
+        return False
+    if recent > CIRCUIT_THRESHOLD:
+        # Lazy auto-heal: if last 30 min were quiet, ignore stale window.
+        try:
+            heal = db.count_demotes_since(CIRCUIT_HEAL_MIN)
+        except Exception:
+            heal = recent
+        if heal == 0:
+            log.info("CIRCUIT: auto-heal — no demotes in %d min", CIRCUIT_HEAL_MIN)
+            return False
+        return True
+    return False
+
+
+def _pueue_pause(group: str = CIRCUIT_PUEUE_GROUP) -> bool:
+    """Best-effort pause of a pueue group. Returns True on success.
+
+    Never raises — pueue might be missing, socket mismatch, etc.
+    """
+    try:
+        r = subprocess.run(
+            ["pueue", "pause", "--group", group],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if r.returncode == 0:
+            log.warning("CIRCUIT: paused pueue group=%s", group)
+            return True
+        log.warning(
+            "CIRCUIT: pause failed (rc=%s) stderr=%s",
+            r.returncode,
+            r.stderr.strip()[:200],
+        )
+        return False
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("CIRCUIT: pause subprocess error: %s", exc)
+        return False
+
+
+def _pueue_resume(group: str = CIRCUIT_PUEUE_GROUP) -> bool:
+    """Best-effort resume of a pueue group. Returns True on success."""
+    try:
+        r = subprocess.run(
+            ["pueue", "start", "--group", group],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if r.returncode == 0:
+            log.warning("CIRCUIT: resumed pueue group=%s", group)
+            return True
+        log.warning(
+            "CIRCUIT: resume failed (rc=%s) stderr=%s",
+            r.returncode,
+            r.stderr.strip()[:200],
+        )
+        return False
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("CIRCUIT: resume subprocess error: %s", exc)
+        return False
+
+
+def _trip_circuit(project_id: str, spec_id: str | None, count: int) -> None:
+    """Side-effects fired exactly once when circuit transitions to OPEN.
+
+    1. Log structured warning.
+    2. Record an explicit 'circuit_open' decision (NOT counted as demote).
+    3. Notify via event_writer (Telegram-equivalent).
+    4. Pause claude-runner pueue group (best-effort).
+    """
+    log.error(
+        "CIRCUIT_OPEN: %d demotes in %d min, refusing further status mutations until reset",
+        count,
+        CIRCUIT_WINDOW_MIN,
+    )
+    try:
+        db.record_decision(project_id, spec_id, "circuit_open",
+                           f"threshold_exceeded:{count}/{CIRCUIT_WINDOW_MIN}min",
+                           demoted=False)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("CIRCUIT: record_decision(circuit_open) failed: %s", exc)
+    try:
+        event_writer.notify_circuit_event(
+            action="open",
+            count=count,
+            window_min=CIRCUIT_WINDOW_MIN,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("CIRCUIT: notify_circuit_event(open) failed: %s", exc)
+    _pueue_pause()
+
+
+def _reset_circuit_cli() -> None:
+    """Operator-triggered circuit reset.
+
+    Steps:
+      1. Clear callback_decisions newer than CIRCUIT_RESET_CLEAR_MIN.
+      2. Resume claude-runner pueue group.
+      3. Send reset event (Telegram-equivalent).
+    """
+    try:
+        deleted = db.clear_decisions(CIRCUIT_RESET_CLEAR_MIN)
+        log.warning("CIRCUIT_RESET: cleared %d decision row(s)", deleted)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("CIRCUIT_RESET: clear_decisions failed: %s", exc)
+    _pueue_resume()
+    try:
+        event_writer.notify_circuit_event(action="reset", count=0,
+                                          window_min=CIRCUIT_WINDOW_MIN)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("CIRCUIT_RESET: notify failed: %s", exc)
+    print(f"circuit reset: cleared decisions, resumed {CIRCUIT_PUEUE_GROUP}")
+
+
 # -----------------------------------------------------------------------------
 
 
@@ -966,6 +1113,19 @@ def verify_status_sync(
     start_wall = time.monotonic()
     project_id = Path(project_path).name
 
+    # TECH-169: Circuit-breaker — refuse all status mutations when OPEN.
+    if is_circuit_open():
+        log.warning(
+            "CIRCUIT_OPEN: skipping verify_status_sync(%s, target=%s) — circuit is open",
+            spec_id, target,
+        )
+        try:
+            db.record_decision(project_id, spec_id, "noop",
+                               "circuit_open", demoted=False)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("CIRCUIT: record_decision(noop) failed: %s", exc)
+        return
+
     p = Path(project_path)
 
     # Resolve spec path + read HEAD content
@@ -1012,6 +1172,15 @@ def verify_status_sync(
             )
             _, spec_text = _apply_blocked_reason(spec_text, guard_reason)
             target = "blocked"
+            # TECH-169: feed circuit-breaker
+            try:
+                db.record_decision(project_id, spec_id, "demote",
+                                   guard_reason, demoted=True)
+                count = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
+                if count > CIRCUIT_THRESHOLD:
+                    _trip_circuit(project_id, spec_id, count)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("CIRCUIT: record/check failed: %s", exc)
         else:
             # TECH-170: positive path — tell apart "merged to develop" vs "feature-only"
             if is_merged_to_develop(project_path, spec_id):
@@ -1030,6 +1199,11 @@ def verify_status_sync(
                 "STATUS_SYNC: %s — spec is blocked at HEAD, skipping done; resync backlog",
                 spec_id,
             )
+            try:
+                db.record_decision(project_id, spec_id, "sync",
+                                   "spec_already_blocked", demoted=False)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("CIRCUIT: record_decision failed: %s", exc)
             _emit_audit(
                 project_id, spec_id, pueue_id, target_in, "blocked",
                 "spec_already_blocked",
@@ -1045,6 +1219,11 @@ def verify_status_sync(
                 "(work likely on feature branch); resync backlog",
                 spec_id,
             )
+            try:
+                db.record_decision(project_id, spec_id, "sync",
+                                   "spec_already_done", demoted=False)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("CIRCUIT: record_decision failed: %s", exc)
             _emit_audit(
                 project_id, spec_id, pueue_id, target_in, "done",
                 "spec_already_done",
@@ -1078,6 +1257,12 @@ def verify_status_sync(
         len(allowed) if allowed is not None else 0,
         code_loc, test_loc, code_commits, started_at, start_wall,
     )
+    try:
+        db.record_decision(project_id, spec_id,
+                           "sync" if fixes else "noop",
+                           final_reason, demoted=False)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("CIRCUIT: record_decision failed: %s", exc)
 
     if not fixes:
         log.info("STATUS_SYNC: %s — both spec and backlog are %s ✓", spec_id, target)
@@ -1121,10 +1306,20 @@ def write_event_for_skill(project_path: str, skill: str, status: str, task_label
 
 
 def main() -> None:
-    """Main callback entry point. ALWAYS exits 0."""
+    """Main callback entry point. ALWAYS exits 0.
+
+    Two modes:
+      • Pueue callback: argv = [pueue_id, group, result]  — fired by daemon.
+      • Operator CLI:   argv = ['--reset-circuit']        — manual reset.
+    """
     try:
         _load_env()
         _setup_logging()
+
+        # TECH-169: operator CLI mode
+        if len(sys.argv) > 1 and sys.argv[1] == "--reset-circuit":
+            _reset_circuit_cli()
+            return
 
         pueue_id = sys.argv[1] if len(sys.argv) > 1 else "0"
         group = sys.argv[2] if len(sys.argv) > 2 else "unknown"

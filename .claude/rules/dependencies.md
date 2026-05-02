@@ -67,7 +67,7 @@ Dependency map between project components.
 | What | Where | Function |
 |------|-------|----------|
 | sqlite3 | stdlib | connection, Row, contextmanager |
-| schema.sql | scripts/vps/schema.sql | project_state, compute_slots, task_log, night_findings |
+| schema.sql | scripts/vps/schema.sql | project_state, compute_slots, task_log, night_findings, callback_decisions |
 
 ### Used by (←)
 
@@ -75,6 +75,7 @@ Dependency map between project components.
 |-----|-----------|----------|
 | orchestrator.py | scripts/vps/orchestrator.py | seed_projects_from_json(), get_all_projects(), get_project_state(), try_acquire_slot(), log_task(), update_project_phase() |
 | callback.py | scripts/vps/callback.py | release_slot(), finish_task(), update_project_phase(), get_project_state() |
+| callback.py | scripts/vps/callback.py | record_decision(), count_demotes_since(), clear_decisions() (TECH-169) |
 | night-reviewer.sh | scripts/vps/night-reviewer.sh (FTR-147 Task 4) | CLI: save-finding, get-new-findings, update-phase |
 
 ### When changing API, check
@@ -186,9 +187,12 @@ Dependency map between project components.
 | What | Where | Function |
 |------|-------|----------|
 | db.py | scripts/vps/db.py | release_slot(), finish_task(), update_project_phase(), get_project_state(), try_acquire_slot(), log_task(), get_task_by_pueue_id() |
+| db.py | scripts/vps/db.py | record_decision(), count_demotes_since(), clear_decisions() (TECH-169) |
 | event_writer.py | scripts/vps/event_writer.py | notify() — send OpenClaw event |
+| event_writer.py | scripts/vps/event_writer.py | notify_circuit_event() (TECH-169) |
 | run-agent.sh | scripts/vps/run-agent.sh | pueue add for QA/Reflect dispatch |
 | pueue CLI | PATH | pueue status --json, pueue log --json, pueue add |
+| pueue CLI | PATH | pueue pause/start --group claude-runner (TECH-169 circuit) |
 | spec files | ai/features/{SPEC_ID}*.md | verify_status_sync() reads/fixes **Status:** field |
 | backlog.md | ai/backlog.md | verify_status_sync() reads/fixes status column |
 | git CLI | PATH | _git_commit_push() — auto-fix commit + push to develop |
@@ -225,6 +229,7 @@ Dependency map between project components.
 | Who | File:line | Function |
 |-----|-----------|----------|
 | callback.py | scripts/vps/callback.py | import: notify() |
+| callback.py | scripts/vps/callback.py | import: notify_circuit_event() (TECH-169) |
 | night-reviewer.sh | scripts/vps/night-reviewer.sh | CLI: python3 event_writer.py <project_id> <msg> |
 
 ### When changing API, check
@@ -353,3 +358,4 @@ Dependency map between project components.
 | 2026-03-19 | Orphan slot watchdog: get_occupied_slots (db.py), get_live_pueue_ids + release_orphan_slots (orchestrator.py) (BUG-162) | coder |
 | 2026-03-28 | callback.py: QA/Reflect slot+log, phase fix, spark events, resolve_label dedup | manual |
 | 2026-03-28 | callback.py: verify_status_sync — auto-fix spec+backlog status after autopilot | manual |
+| 2026-05-02 | callback circuit-breaker (TECH-169): callback_decisions table, record_decision/count_demotes_since/clear_decisions (db.py), notify_circuit_event (event_writer.py), --reset-circuit CLI (callback.py) | autopilot |

@@ -69,3 +69,20 @@ CREATE TABLE IF NOT EXISTS night_findings (
     reviewed_at  TEXT,
     UNIQUE(project_id, fingerprint)
 );
+
+-- TECH-169: Callback decision audit for circuit-breaker
+CREATE TABLE IF NOT EXISTS callback_decisions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    project_id   TEXT NOT NULL,
+    spec_id      TEXT,
+    verdict      TEXT NOT NULL,        -- 'demote' | 'sync' | 'noop' | 'circuit_open'
+    reason       TEXT,
+    demoted      INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_callback_decisions_ts
+    ON callback_decisions(ts);
+
+CREATE INDEX IF NOT EXISTS idx_callback_decisions_demoted_ts
+    ON callback_decisions(demoted, ts);

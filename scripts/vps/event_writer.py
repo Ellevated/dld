@@ -97,6 +97,42 @@ def notify(
     wake_openclaw()
 
 
+def notify_circuit_event(action: str, count: int, window_min: int) -> None:
+    """Emit a circuit-breaker event via the OpenClaw pipeline.
+
+    TECH-169: distinct from regular notify() — uses skill='circuit_breaker'
+    so OpenClaw can route to a dedicated alerts channel.
+
+    Args:
+        action: 'open' | 'reset' | 'heal'.
+        count: Number of demotes that triggered (or 0 for reset/heal).
+        window_min: Window minutes used in threshold calc.
+    """
+    # Use SCRIPT_DIR as project_path so the event lands in scripts/vps/
+    # ai/openclaw/pending-events/ — separate from per-project pipelines.
+    project_path = str(Path(__file__).resolve().parent)
+    if action == "open":
+        message = (
+            f"CIRCUIT_OPEN: {count} demotes in {window_min} min — "
+            f"callback halted, claude-runner paused. "
+            f"Run `python3 callback.py --reset-circuit` to resume."
+        )
+        status = "failed"
+    elif action == "reset":
+        message = (
+            "CIRCUIT_RESET: operator reset — decisions cleared, "
+            "claude-runner resumed."
+        )
+        status = "done"
+    elif action == "heal":
+        message = f"CIRCUIT_HEAL: auto-closed after {window_min} min idle."
+        status = "done"
+    else:
+        message = f"circuit event: {action}"
+        status = "done"
+    notify(project_path, "circuit_breaker", status, message, "")
+
+
 def main() -> None:
     """CLI entrypoint for bash callers (night-reviewer.sh).
 
