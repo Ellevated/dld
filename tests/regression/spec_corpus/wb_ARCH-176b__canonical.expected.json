@@ -1,0 +1,16 @@
+{
+  "shape": "canonical",
+  "v1_marker": false,
+  "expected_paths": [
+    "infra/wb_api/client.py",
+    "domains/reviews/cli.py",
+    "domains/reviews/response_pipeline.py",
+    "infra/telegram/handlers.py",
+    "infra/telegram/bot.py",
+    "tests/test_wb_client_token_resolution.py",
+    "infra/wb_api/token_manager.py",
+    "tools/sabsabi_*.py"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from wb_ARCH-176b__canonical.md"
+}

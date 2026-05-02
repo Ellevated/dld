@@ -1,0 +1,28 @@
+{
+  "shape": "canonical",
+  "v1_marker": false,
+  "expected_paths": [
+    "supabase/functions/_shared/infra/cron-auth.ts",
+    "supabase/functions/tests/_shared/cron-auth-test.ts",
+    "supabase/migrations/00037_cron_invocations.sql",
+    "supabase/functions/renew-subscription/index.ts",
+    "supabase/functions/verify-telegram-webapp/index.ts",
+    "supabase/functions/telegram-webhook/handlers/commands.ts",
+    "supabase/functions/_shared/infra/rate-limit.ts",
+    "supabase/functions/expire-subscriptions/index.ts",
+    "supabase/functions/send-dunning-notification/index.ts",
+    "supabase/functions/send-winback/index.ts",
+    "supabase/functions/check-reminders/index.ts",
+    "supabase/functions/update-exchange-rates/index.ts",
+    "supabase/functions/send-monthly-summary/index.ts",
+    "supabase/functions/content-publish/index.ts",
+    "supabase/functions/content-research/index.ts",
+    "supabase/functions/content-factory/index.ts",
+    "supabase/functions/blog-expander/index.ts",
+    "supabase/functions/tests/renew-subscription-test.ts",
+    "supabase/functions/tests/_shared/rate-limit-test.ts",
+    "supabase/functions/tests/check-reminders-test.ts"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from plpilot_BUG-182__fenced-block.md"
+}

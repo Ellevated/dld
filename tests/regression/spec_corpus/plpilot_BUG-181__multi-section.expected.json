@@ -1,0 +1,19 @@
+{
+  "shape": "multi-section",
+  "v1_marker": false,
+  "expected_paths": [
+    "supabase/functions/_shared/billing/plan-limits.ts",
+    "supabase/functions/tests/plan-limits-test.ts",
+    "supabase/functions/scan-receipt/index.ts",
+    "supabase/functions/telegram-webhook/handlers/receipts.ts",
+    "src/features/payments/components/payments-primary-buttons.tsx",
+    "src/features/cards/components/cards-primary-buttons.tsx",
+    "src/features/billing/components/paywall-overlay.tsx",
+    "src/features/receipts/components/receipt-scan-button.tsx",
+    "src/hooks/__tests__/use-plan-limits.test.ts",
+    "src/features/billing/components/__tests__/paywall-overlay.test.tsx",
+    "src/features/cards/components/__tests__/cards-primary-buttons.test.tsx"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from plpilot_BUG-181__multi-section.md"
+}

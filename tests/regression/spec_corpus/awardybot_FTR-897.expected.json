@@ -1,0 +1,24 @@
+{
+  "shape": "canonical",
+  "v1_marker": false,
+  "expected_paths": [
+    "src/domains/buyer/handlers/onboarding.py",
+    "src/domains/buyer/handlers/onboarding_service.py",
+    "src/domains/buyer/handlers/__init__.py",
+    "src/domains/buyer/models.py",
+    "src/domains/buyer/repositories/buyers.py",
+    "src/domains/buyer/locales/ru.yaml",
+    "src/api/v2/buyer/onboarding.py",
+    "src/api/v2/buyer/__init__.py",
+    "src/api/telegram/buyer_bot.py",
+    "supabase/migrations/20260501120001_ftr897_buyer_onboarding_columns.sql",
+    "supabase/migrations/20260501120002_ftr897_onboarding_events.sql",
+    "supabase/migrations/20260501120003_ftr897_consents.sql",
+    "src/locales/ru.yaml",
+    "onboarding.service",
+    "onboarding.py",
+    "onboarding_service.py"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from awardybot_FTR-897.md"
+}

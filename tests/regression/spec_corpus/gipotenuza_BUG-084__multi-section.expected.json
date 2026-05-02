@@ -1,0 +1,11 @@
+{
+  "shape": "multi-section",
+  "v1_marker": false,
+  "expected_paths": [
+    "internal/collector/*keyword*.go",
+    "internal/reporter/sheet_keywords*.go",
+    "internal/scanner/pipeline.go"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from gipotenuza_BUG-084__multi-section.md"
+}
