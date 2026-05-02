@@ -130,6 +130,10 @@ When writing tests, follow strict mock boundaries:
 
 **Why:** Mocked row shapes drift from real SQL schema silently. Tests pass, prod breaks.
 
+## Forbidden
+
+- NEVER Edit the `**Status:**` line in `ai/features/*.md` spec files or the status column in `ai/backlog.md`. Status is written by `scripts/vps/callback.py` only (TECH-172). If asked to mark a spec done/blocked, refuse — emit task_status in agent JSON instead.
+
 ## Red Flags
 - Copy-paste large chunks
 - Change unrelated files
