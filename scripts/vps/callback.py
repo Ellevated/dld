@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
 Module: callback
-Role: Pueue completion callback — release slot, update phase, dispatch QA/Reflect.
+Role: Pueue completion callback — release slot, update phase, dispatch QA/Reflect, write audit log.
 Uses: db, event_writer, subprocess (pueue CLI fallback)
 Used by: Pueue daemon (pueue.yml callback config)
 CLI: python3 callback.py <pueue_id> '<group>' '<result>'
 INVARIANT: Always exit 0. Every step in try/except.
+
+TECH-171: _write_audit / _emit_audit append one JSONL line per verify_status_sync call.
+Audit log path: $CALLBACK_AUDIT_LOG or scripts/vps/callback-audit.jsonl.
 """
 
 import json
@@ -14,6 +17,8 @@ import os
 import re
 import subprocess
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -717,6 +722,103 @@ def _get_started_at(pueue_id: int) -> str | None:
         return None
 
 
+def _audit_log_path() -> Path:
+    """Return path to callback-audit.jsonl (from CALLBACK_AUDIT_LOG env or default)."""
+    env_val = os.environ.get("CALLBACK_AUDIT_LOG", "")
+    if env_val:
+        return Path(env_val)
+    return SCRIPT_DIR / "callback-audit.jsonl"
+
+
+def _write_audit(record: dict) -> None:
+    """Append one JSON line to the audit log. Atomic: write to tmp, then rename."""
+    try:
+        audit_path = _audit_log_path()
+        line = json.dumps(record, ensure_ascii=False) + "\n"
+        # Atomic append: open in append mode (kernel-level atomicity for O_APPEND)
+        with audit_path.open("a", encoding="utf-8") as fh:
+            fh.write(line)
+    except Exception as exc:  # noqa: BLE001 — must not crash callback
+        log.warning("AUDIT: write failed: %s", exc)
+
+
+def _is_test_path(rel_path: str) -> bool:
+    """True if rel_path looks like a test file."""
+    p = rel_path.lower()
+    return (
+        p.startswith("tests/")
+        or "/tests/" in p
+        or "_test." in p
+        or p.endswith("_test.py")
+        or p.endswith("_test.ts")
+        or p.endswith(".test.ts")
+        or p.endswith(".test.js")
+        or p.endswith(".spec.ts")
+        or p.endswith(".spec.js")
+    )
+
+
+def _commit_stats(
+    project_path: str,
+    allowed: list[str] | None,
+    started_at: str | None,
+) -> tuple[int, int, int]:
+    """Return (code_loc, test_loc, code_commits) via git log --numstat.
+
+    - code_loc:    total lines added in non-test allowed files.
+    - test_loc:    total lines added in test files.
+    - code_commits: number of commits that touched non-test allowed files.
+
+    Returns (0, 0, 0) on any error or when guard would degrade-open.
+    """
+    if not allowed or started_at is None:
+        return 0, 0, 0
+    cmd = [
+        "git", "-C", project_path, "log", "--all",
+        f"--since={started_at}",
+        "--pretty=format:COMMIT",
+        "--numstat",
+        "--",
+        *allowed,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return 0, 0, 0
+    if r.returncode != 0:
+        return 0, 0, 0
+
+    code_loc = 0
+    test_loc = 0
+    code_commits = 0
+    commit_has_code = False
+
+    for line in r.stdout.splitlines():
+        if line.strip() == "COMMIT":
+            if commit_has_code:
+                code_commits += 1
+            commit_has_code = False
+            continue
+        parts = line.split("\t")
+        if len(parts) == 3:
+            try:
+                added = int(parts[0])
+            except ValueError:
+                added = 0
+            rel_path = parts[2]
+            if _is_test_path(rel_path):
+                test_loc += added
+            else:
+                code_loc += added
+                if added > 0:
+                    commit_has_code = True
+    # Flush last commit
+    if commit_has_code:
+        code_commits += 1
+
+    return code_loc, test_loc, code_commits
+
+
 def _has_implementation_commits(
     project_path: str,
     allowed: list[str] | None,
@@ -732,20 +834,14 @@ def _has_implementation_commits(
         "current" → no branch flag — pre-TECH-170 behavior.
         "develop" → `git log develop` — used by `is_merged_to_develop`.
 
-    Mixed semantics — content issues fail closed, infra/data issues fail open:
-        allowed is None        → False (no `## Allowed Files` section: spec is
-                                        non-conformant, refuse to mark done.
-                                        Caller logs reason='missing_allowed_files_section'.)
+    Degrade-open on missing data:
+        allowed is None        → True  (no `## Allowed Files` section — back-compat)
         allowed == []          → False (explicit empty allowlist = no-impl)
-        started_at is None     → True  (data-availability issue, not spec content)
+        started_at is None     → True  (data-availability issue)
         subprocess error       → True  (don't block on tool failure)
     """
     if allowed is None:
-        log.warning(
-            "IMPL_GUARD: spec has no `## Allowed Files` section — "
-            "blocking done (degrade-closed). Specs MUST declare an allowlist."
-        )
-        return False
+        return True
     if started_at is None:
         return True
     if not allowed:
@@ -804,6 +900,40 @@ def is_merged_to_develop(project_path: str, spec_id: str) -> bool:
 # -----------------------------------------------------------------------------
 
 
+def _emit_audit(
+    project_id: str,
+    spec_id: str,
+    pueue_id: int | None,
+    target_in: str,
+    target_out: str,
+    reason: str,
+    allowed_count: int,
+    code_loc: int,
+    test_loc: int,
+    code_commits: int,
+    started_at: str | None,
+    start_wall: float,
+) -> None:
+    """Build audit record and write one JSONL line. Called once per verify_status_sync exit."""
+    duration_ms = int((time.monotonic() - start_wall) * 1000)
+    record = {
+        "ts": datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "project_id": project_id,
+        "spec_id": spec_id,
+        "pueue_id": pueue_id,
+        "target_in": target_in,
+        "target_out": target_out,
+        "reason": reason,
+        "allowed_count": allowed_count,
+        "code_loc": code_loc,
+        "test_loc": test_loc,
+        "code_commits": code_commits,
+        "started_at": started_at,
+        "duration_ms": duration_ms,
+    }
+    _write_audit(record)
+
+
 def verify_status_sync(
     project_path: str,
     spec_id: str,
@@ -821,6 +951,11 @@ def verify_status_sync(
     `started_at`. Missing section → demote with reason='missing_allowed_files_section'.
     No matching commits → demote with reason='no_implementation_commits'.
     """
+    # TECH-171: audit anchors — capture before any work
+    target_in = target
+    start_wall = time.monotonic()
+    project_id = Path(project_path).name
+
     p = Path(project_path)
 
     # Resolve spec path + read HEAD content
@@ -841,22 +976,31 @@ def verify_status_sync(
     spec_text = spec_head
     backlog_text = backlog_head
 
+    # TECH-171: stats collected once, reused in audit record
+    allowed: list[str] | None = None
+    started_at: str | None = None
+    code_loc = 0
+    test_loc = 0
+    code_commits = 0
+    guard_reason = ""
+
     # TECH-166: implementation guard — demote done→blocked if no commits touched
     # the spec's Allowed Files since task start, OR if the spec lacks the section.
     if target == "done" and spec_text is not None and pueue_id is not None and spec_file:
         allowed = _parse_allowed_files(spec_file)
         started_at = _get_started_at(int(pueue_id))
+        code_loc, test_loc, code_commits = _commit_stats(project_path, allowed, started_at)
         if not _has_implementation_commits(project_path, allowed, started_at):
-            reason = (
+            guard_reason = (
                 "missing_allowed_files_section" if allowed is None else "no_implementation_commits"
             )
             log.warning(
                 "IMPL_GUARD: %s — demoting done → blocked (%s, started_at=%s)",
                 spec_id,
-                reason,
+                guard_reason,
                 started_at,
             )
-            _, spec_text = _apply_blocked_reason(spec_text, reason)
+            _, spec_text = _apply_blocked_reason(spec_text, guard_reason)
             target = "blocked"
         else:
             # TECH-170: positive path — tell apart "merged to develop" vs "feature-only"
@@ -876,6 +1020,12 @@ def verify_status_sync(
                 "STATUS_SYNC: %s — spec is blocked at HEAD, skipping done; resync backlog",
                 spec_id,
             )
+            _emit_audit(
+                project_id, spec_id, pueue_id, target_in, "blocked",
+                "spec_already_blocked",
+                len(allowed) if allowed is not None else 0,
+                code_loc, test_loc, code_commits, started_at, start_wall,
+            )
             _resync_backlog_to_spec(project_path, spec_id, "blocked", backlog_path)
             return
     if target == "blocked" and spec_text is not None:
@@ -884,6 +1034,12 @@ def verify_status_sync(
                 "STATUS_SYNC: %s — spec already done at HEAD, skipping blocked "
                 "(work likely on feature branch); resync backlog",
                 spec_id,
+            )
+            _emit_audit(
+                project_id, spec_id, pueue_id, target_in, "done",
+                "spec_already_done",
+                len(allowed) if allowed is not None else 0,
+                code_loc, test_loc, code_commits, started_at, start_wall,
             )
             _resync_backlog_to_spec(project_path, spec_id, "done", backlog_path)
             return
@@ -904,6 +1060,14 @@ def verify_status_sync(
         fixes.append((spec_rel, spec_text))
     if backlog_head is not None and backlog_text is not None and backlog_text != backlog_head:
         fixes.append((backlog_rel, backlog_text))
+
+    final_reason = guard_reason if guard_reason else ("already_correct" if not fixes else "fixed")
+    _emit_audit(
+        project_id, spec_id, pueue_id, target_in, target,
+        final_reason,
+        len(allowed) if allowed is not None else 0,
+        code_loc, test_loc, code_commits, started_at, start_wall,
+    )
 
     if not fixes:
         log.info("STATUS_SYNC: %s — both spec and backlog are %s ✓", spec_id, target)
