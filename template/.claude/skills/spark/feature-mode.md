@@ -366,13 +366,27 @@ Write spec using selected approach from Phase 4:
 ---
 
 ## Allowed Files
-**ONLY these files may be modified during implementation:**
-1. `path/to/file1.py` — reason
-2. `path/to/file2.py` — reason
-3. `path/to/file3.py` — reason
 
-**New files allowed:**
-- `path/to/new_file.py` — reason
+<!-- callback-allowlist v1: backticked paths only, one per row -->
+
+ONLY the files listed below may be modified during implementation.
+
+- `path/to/file1.py` — reason (modify)
+- `path/to/file2.py` — reason (modify)
+- `path/to/new_file.py` — reason (NEW)
+- `tests/path/to/test_file.py` — reason (NEW)
+
+**Format contract (enforced by Spark linter — see Phase 5.5):**
+- Heading is exactly `## Allowed Files` (case-sensitive H2, no suffix, no
+  qualifier in parentheses).
+- The HTML comment marker `<!-- callback-allowlist v1 -->` (or
+  `<!-- callback-allowlist v1: ... -->`) is REQUIRED and must appear
+  before the first path.
+- Each path lives on its own bullet `- ` line, wrapped in single backticks.
+  Optional free-text after the closing backtick is allowed.
+- No fenced code blocks, no nested lists, no tables. One path per line.
+- Minimum one path. Empty Allowed Files = block the spec (Spark refuses to
+  write).
 
 **FORBIDDEN:** All other files. Autopilot must refuse changes outside this list.
 
@@ -598,9 +612,76 @@ DO NOT proceed to Phase 6 until:
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "I'll fill the remaining sections later"
 </HARD-GATE>
-
 ---
 
+## Phase 5.5: ALLOWLIST LINTER (Pre-Validate Hard Gate)
+
+After Write, before Validate. Deterministic check against the spec's
+`## Allowed Files` section. ANY failure here → DELETE spec file, escalate
+to Telegram with the exact error code, do NOT advance to Phase 6.
+
+### Linter rules (regex SSOT — must match callback.py v2)
+
+```
+HEADING_RE   = ^##[ \t]+Allowed Files[ \t]*$            (case-sensitive, exact)
+MARKER_RE    = <!--\s*callback-allowlist\s+v1\b[^>]*-->
+BULLET_RE    = ^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$
+SECTION_END  = ^##[ \t]+\S          (next H2 heading)
+```
+
+### Algorithm
+
+1. Read the just-written spec file.
+2. Find the FIRST line matching `HEADING_RE`. If absent → fail
+   `ALLOWLIST_E001_NO_HEADING`.
+3. Forbid duplicates: if more than one line matches `HEADING_RE` → fail
+   `ALLOWLIST_E002_DUPLICATE_HEADING`.
+4. Slice section = lines after heading until first `SECTION_END` (or EOF).
+5. Search section for `MARKER_RE`. Absent → fail `ALLOWLIST_E003_NO_MARKER`.
+6. Iterate non-blank, non-comment lines in section. For each line:
+   - If line starts with `- ` (bullet) and does NOT match `BULLET_RE` → fail
+     `ALLOWLIST_E004_BAD_BULLET` with offending line.
+   - Lines that are not bullets and not the marker comment and not free
+     prose paragraphs (heuristic: contain a backtick) → fail
+     `ALLOWLIST_E005_PATH_OUTSIDE_BULLET` (catches "paths in fenced code
+     blocks" anti-pattern).
+7. Collect all paths captured by `BULLET_RE`. If count == 0 → fail
+   `ALLOWLIST_E006_EMPTY_LIST`.
+
+### On failure
+
+1. `Bash`: `rm -f ai/features/{TASK_ID}-*.md` (delete the bad spec).
+2. Roll back the backlog edit if it was already added (Edit tool to remove
+   the row).
+3. Set `state.json: write = failed, error = <code>`.
+4. Return JSON to caller:
+
+```yaml
+status: blocked
+error_code: ALLOWLIST_E00X
+error_message: "Spark allowlist linter rejected spec: <human description>"
+remediation: "Re-run /spark and follow the canonical Allowed Files format
+              documented in feature-mode.md Phase 5.5."
+```
+
+5. Telegram notification (via `result_preview`):
+   `Spark linter blocked spec — <error_code>. Manual fix needed.`
+
+### On success
+
+- state.json: `lint = done, allowlist_paths = [<list>]`.
+- Proceed to Phase 6.
+
+<HARD-GATE>
+DO NOT proceed to Phase 6 until:
+- [ ] Phase 5.5 linter run on freshly-written spec file
+- [ ] Linter exit = success (no E001..E006)
+- [ ] state.json updated: lint = done, allowlist_paths = [<paths>]
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "the section looks fine to me"
+</HARD-GATE>
+
+---
 ## Phase 6: VALIDATE
 
 Before marking spec `queued`, run 6 structural validation gates.
