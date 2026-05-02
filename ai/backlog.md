@@ -134,7 +134,7 @@
 | TECH-168 | Callback test suite — unit + integration + regression corpus (R0, защита от silent regression) | done | P0 | [spec](features/TECH-168-2026-05-02-callback-test-suite.md) |
 | TECH-169 | Orchestrator circuit-breaker on mass-demote (>3 demotes/10min → pause + alert) | blocked | P0 | [spec](features/TECH-169-2026-05-02-orchestrator-circuit-breaker.md) |
 | TECH-170 | Implementation guard видит feature-branch коммиты (`git log --all`) | blocked | P1 | [spec](features/TECH-170-2026-05-02-guard-feature-branch-awareness.md) |
-| TECH-171 | Guard structured audit log + daily Telegram digest | queued | P1 | [spec](features/TECH-171-2026-05-02-guard-structured-audit-log.md) |
+| TECH-171 | Guard structured audit log + daily Telegram digest | done | P1 | [spec](features/TECH-171-2026-05-02-guard-structured-audit-log.md) |
 | TECH-172 | Single Status write path — callback единственный writer, autopilot не трогает | queued | P1 | [spec](features/TECH-172-2026-05-02-single-status-write-path.md) |
 | TECH-173 | Rewrite `dld-orchestrator.md` — single source of truth + runbook + diagram | queued | P1 | [spec](features/TECH-173-2026-05-02-orchestrator-docs-rewrite.md) |
 | TECH-174 | Manual spec verification protocol + spec_verify.py + operator.py CLI | queued | P2 | [spec](features/TECH-174-2026-05-02-manual-verification-protocol.md) |
