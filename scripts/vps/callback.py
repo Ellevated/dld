@@ -942,6 +942,61 @@ def _has_implementation_commits(
     return bool(result.stdout.strip())
 
 
+def _spec_has_merged_implementation(
+    project_path: str,
+    spec_id: str,
+    allowed: list[str] | None,
+) -> tuple[bool, list[str]]:
+    """True if the repo (any branch) already contains commits implementing spec_id.
+
+    Stricter than `is_merged_to_develop`: a commit only counts if BOTH
+        (a) its subject contains spec_id (case-sensitive), AND
+        (b) it touches at least one path in `allowed`.
+
+    Catches the "already merged before started_at" gap in the activity-window
+    guard (`_has_implementation_commits`):
+        - autopilot re-run on a spec that was merged days ago → activity window
+          empty, but this helper sees the historical commits → auto-close.
+
+    Returns (matched, hashes):
+        matched : bool — True iff at least one qualifying commit exists.
+        hashes  : list[str] — short SHAs of qualifying commits (for log line).
+                  Empty when matched is False or on error.
+
+    Degrade rules (mirrored from `_has_implementation_commits`):
+        spec_id falsy        → (False, [])
+        allowed is None      → (False, [])  # no allowlist = can't qualify
+        allowed == []        → (False, [])  # explicit empty allowlist
+        subprocess error     → (False, [])  # silent — caller falls through
+                                            # to demote (existing behaviour)
+    """
+    if not spec_id or not allowed:
+        return (False, [])
+    cmd = [
+        "git", "-C", project_path, "log", "--all",
+        "--grep", re.escape(spec_id),
+        "--pretty=%h",
+        "--",
+        *allowed,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.info(
+            "MERGED_IMPL_CHECK: git log failed for %s: %s",
+            spec_id, exc,
+        )
+        return (False, [])
+    if r.returncode != 0:
+        log.info(
+            "MERGED_IMPL_CHECK: git log rc=%s stderr=%s",
+            r.returncode, r.stderr.strip()[:200],
+        )
+        return (False, [])
+    hashes = [h for h in r.stdout.split() if h]
+    return (bool(hashes), hashes)
+
+
 def is_merged_to_develop(project_path: str, spec_id: str) -> bool:
     """Best-effort check: does `develop` contain a commit mentioning spec_id?
 
@@ -1225,26 +1280,50 @@ def verify_status_sync(
         started_at = _get_started_at(int(pueue_id))
         code_loc, test_loc, code_commits = _commit_stats(project_path, allowed, started_at)
         if not _has_implementation_commits(project_path, allowed, started_at):
-            guard_reason = (
-                "missing_allowed_files_section" if allowed is None else "no_implementation_commits"
+            # TECH-176: before demoting, ask "is the work *already* merged?"
+            # If yes (commits in Allowed Files mention spec_id on any branch),
+            # treat as auto-close — not a guard failure.
+            already_merged, merged_hashes = _spec_has_merged_implementation(
+                project_path, spec_id, allowed,
             )
-            log.warning(
-                "IMPL_GUARD: %s — demoting done → blocked (%s, started_at=%s)",
-                spec_id,
-                guard_reason,
-                started_at,
-            )
-            _, spec_text = _apply_blocked_reason(spec_text, guard_reason)
-            target = "blocked"
-            # TECH-169: feed circuit-breaker
-            try:
-                db.record_decision(project_id, spec_id, "demote",
-                                   guard_reason, demoted=True)
-                count = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
-                if count > CIRCUIT_THRESHOLD:
-                    _trip_circuit(project_id, spec_id, count)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("CIRCUIT: record/check failed: %s", exc)
+            if already_merged:
+                log.warning(
+                    "IMPL_GUARD: %s — already merged in repo (commits: %s) → auto-close to done",
+                    spec_id,
+                    ",".join(merged_hashes[:5]),
+                )
+                guard_reason = "already_merged"
+                try:
+                    db.record_decision(
+                        project_id, spec_id, "auto_close",
+                        f"already_merged:{','.join(merged_hashes[:5])}",
+                        demoted=False,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("CIRCUIT: record_decision(auto_close) failed: %s", exc)
+                # Leave target = "done"; flow falls through to the normal
+                # status-write path which flips spec+backlog and commits.
+            else:
+                guard_reason = (
+                    "missing_allowed_files_section" if allowed is None else "no_implementation_commits"
+                )
+                log.warning(
+                    "IMPL_GUARD: %s — demoting done → blocked (%s, started_at=%s)",
+                    spec_id,
+                    guard_reason,
+                    started_at,
+                )
+                _, spec_text = _apply_blocked_reason(spec_text, guard_reason)
+                target = "blocked"
+                # TECH-169: feed circuit-breaker
+                try:
+                    db.record_decision(project_id, spec_id, "demote",
+                                       guard_reason, demoted=True)
+                    count = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
+                    if count > CIRCUIT_THRESHOLD:
+                        _trip_circuit(project_id, spec_id, count)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("CIRCUIT: record/check failed: %s", exc)
         else:
             # TECH-170: positive path — tell apart "merged to develop" vs "feature-only"
             if is_merged_to_develop(project_path, spec_id):
