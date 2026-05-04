@@ -141,7 +141,7 @@
 | TECH-175 | Spark spec template hardening — DO-NOT-REMOVE markers + schema versioning | blocked | P2 | [spec](features/TECH-175-2026-05-02-spark-spec-template-hardening.md) |
 | TECH-176 | IMPL_GUARD: detect "already merged before started_at" → auto-close instead of demote | blocked | P1 | [spec](features/TECH-176-2026-05-04-guard-already-merged-detection.md) |
 | TECH-177 | Callback: tighten `_spec_has_merged_implementation` matcher — subject-only ID match (cross-spec body mention false-positive) | done | P1 | [spec](features/TECH-177-2026-05-04-callback-cross-spec-id-mention.md) |
-| TECH-178 | Pre-commit hook откатывает коммиты на trailing whitespace в research-md (autopilot retry-loop) | queued | P2 | [spec](features/TECH-178-2026-05-04-precommit-whitespace-rollback.md) |
+| TECH-178 | Pre-commit hook откатывает коммиты на trailing whitespace в research-md (autopilot retry-loop) | done | P2 | [spec](features/TECH-178-2026-05-04-precommit-whitespace-rollback.md) |
 
 ---
 

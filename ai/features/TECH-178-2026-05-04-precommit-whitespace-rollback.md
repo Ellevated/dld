@@ -1,6 +1,6 @@
 # TECH-178 — Pre-commit hook откатывает коммиты на trailing whitespace в research-md
 
-**Status:** queued
+**Status:** done
 **Priority:** P2
 **Risk:** R2
 **Created:** 2026-05-04
