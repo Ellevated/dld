@@ -1,6 +1,6 @@
 # TECH-177 — Callback: cross-spec ID mention causes false-positive done
 
-**Status:** queued
+**Status:** done
 **Priority:** P1
 **Risk:** R1
 **Created:** 2026-05-04

@@ -942,6 +942,47 @@ def _has_implementation_commits(
     return bool(result.stdout.strip())
 
 
+def _subject_implements(subject: str, spec_id: str) -> bool:
+    """Return True iff the commit *subject* (first line) declares it implements spec_id.
+
+    TECH-177: Body/footer/trailer mentions DO NOT count. Cross-references in
+    body (e.g. `see also FTR-925`, `Refs: FTR-925`) caused false-positive
+    auto-close in awardybot 2026-05-04 incident.
+
+    Accepted forms (canonical):
+      - Conventional Commits with spec_id in scope:
+          `feat(FTR-925): ...`
+          `fix(FTR-925)!: ...`
+          `feat(FTR-925,FTR-926): ...`        # multi-spec scope
+          `chore(area, FTR-925): ...`         # whitespace tolerated
+      - Merge commit:
+          `merge FTR-925`
+          `merge FTR-925: ...`
+      - Legacy bare prefix:
+          `FTR-925: ...`
+
+    Rejected:
+      - body / footer / trailer mentions
+      - `feat(other): ... see FTR-925`        # ID after ':' is not a scope
+      - `feat: FTR-925 something`             # no scope, ID inside message
+    """
+    if not subject or not spec_id:
+        return False
+    # Conventional: <type>(<scope>)[!]: <description>
+    m = re.match(r"^[a-z]+\(([^)]*)\)!?:", subject)
+    if m:
+        scopes = [s.strip() for s in m.group(1).split(",")]
+        if spec_id in scopes:
+            return True
+    # Merge commit: `merge SPEC-ID` (start, optionally followed by ':' or space)
+    if re.match(rf"^merge\s+{re.escape(spec_id)}\b", subject, re.IGNORECASE):
+        return True
+    # Legacy bare: `SPEC-ID: <description>`
+    if re.match(rf"^{re.escape(spec_id)}:\s", subject):
+        return True
+    return False
+
+
 def _spec_has_merged_implementation(
     project_path: str,
     spec_id: str,
@@ -950,8 +991,15 @@ def _spec_has_merged_implementation(
     """True if the repo (any branch) already contains commits implementing spec_id.
 
     Stricter than `is_merged_to_develop`: a commit only counts if BOTH
-        (a) its subject contains spec_id (case-sensitive), AND
+        (a) its **subject** (first line) declares spec_id in canonical form
+            (see `_subject_implements`), AND
         (b) it touches at least one path in `allowed`.
+
+    TECH-177: replaced `git log --grep <ID>` with a post-filter on the subject
+    line. `--grep` matched ANY occurrence of the ID anywhere in the message
+    (body, footer, trailers, `see also`/`Refs:` lines), causing cross-spec
+    false-positive auto-close when neighbour-spec commits cross-referenced
+    a queued spec ID.
 
     Catches the "already merged before started_at" gap in the activity-window
     guard (`_has_implementation_commits`):
@@ -972,10 +1020,11 @@ def _spec_has_merged_implementation(
     """
     if not spec_id or not allowed:
         return (False, [])
+    # NUL-separate hash from subject so we can split safely even if subject
+    # contains pretty much anything except a NUL byte.
     cmd = [
         "git", "-C", project_path, "log", "--all",
-        "--grep", re.escape(spec_id),
-        "--pretty=%h",
+        "--pretty=%h%x00%s",
         "--",
         *allowed,
     ]
@@ -993,7 +1042,13 @@ def _spec_has_merged_implementation(
             r.returncode, r.stderr.strip()[:200],
         )
         return (False, [])
-    hashes = [h for h in r.stdout.split() if h]
+    hashes: list[str] = []
+    for line in r.stdout.splitlines():
+        if not line:
+            continue
+        sha, _, subject = line.partition("\x00")
+        if _subject_implements(subject, spec_id):
+            hashes.append(sha)
     return (bool(hashes), hashes)
 
 
@@ -1292,7 +1347,11 @@ def verify_status_sync(
                     spec_id,
                     ",".join(merged_hashes[:5]),
                 )
-                guard_reason = "already_merged"
+                # TECH-177: include matched SHAs in audit log for traceability
+                guard_reason = (
+                    f"already_merged:{','.join(merged_hashes[:5])}"
+                    if merged_hashes else "already_merged"
+                )
                 try:
                     db.record_decision(
                         project_id, spec_id, "auto_close",
