@@ -43,7 +43,7 @@ Sequential ID assignment is NOT atomic. If two spark instances run concurrently:
 3. [ ] **Spec file created** — ai/features/TYPE-XXX-YYYY-MM-DD-name.md
 4. [ ] **Entry added to backlog** — in active tasks table
 5. [ ] **Status = queued** — spec ready for orchestrator pickup!
-6. [ ] **Allowlist Linter passed** (Phase 5.5) — `grep '<!-- callback-allowlist v1' ai/features/{TASK_ID}*.md` returns 1 line, and `## Allowed Files` heading exists exactly once
+6. [ ] **Allowlist Linter passed** (Phase 5.5) — `grep '<!-- callback-allowlist v1' ai/features/{TASK_ID}*.md` returns ≥1 line, `grep '<!-- DLD-CALLBACK-MARKER-START v1 -->' ai/features/{TASK_ID}*.md` returns ≥2 lines (Allowed Files + Status), and `## Allowed Files` heading exists exactly once
 7. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
 8. [ ] **Auto-commit done** — `git add ai/ && git commit` (no push!)

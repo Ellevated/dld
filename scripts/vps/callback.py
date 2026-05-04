@@ -574,6 +574,13 @@ def _resync_backlog_to_spec(
 # like `foo.bar` are harmless: git log finds no commits and they're ignored.
 _ALLOWED_FILE_EXT_RE = re.compile(r"`([^\s`\n]+\.[a-zA-Z][\w-]*)`")
 
+# --- TECH-175: outer DLD-CALLBACK-MARKER pair --------------------------------
+_DLD_MARKER_START_RE = re.compile(
+    r"^<!--\s*DLD-CALLBACK-MARKER-START\s+v(?P<ver>\d+)\s*-->\s*$"
+)
+_DLD_MARKER_END_RE = re.compile(r"^<!--\s*DLD-CALLBACK-MARKER-END\s*-->\s*$")
+_DLD_SUPPORTED_MARKER_VERSIONS: frozenset[str] = frozenset({"1"})
+
 # --- TECH-167 v1 canonical format -------------------------------------------
 # Strict heading: "## Allowed Files" (case-sensitive, no suffix, no qualifier).
 _ALLOWED_FILES_V1_HEADING_RE = re.compile(r"^##[ \t]+Allowed Files[ \t]*$")
@@ -597,6 +604,53 @@ _ALLOWED_FILES_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 _NEXT_H2_RE = re.compile(r"^##\s+\S")
+
+
+def _parse_allowed_files_marker(spec_text: str) -> list[str] | None:
+    """Marker-aware parser (TECH-175). Returns:
+
+        list[str]: >=0 paths inside a v1 marker block containing
+                   ## Allowed Files (success or empty=degrade-closed).
+        None     : no DLD-CALLBACK-MARKER blocks present (caller falls
+                   back to TECH-167 v1 / legacy parsers).
+    """
+    lines = spec_text.splitlines()
+    i = 0
+    while i < len(lines):
+        m = _DLD_MARKER_START_RE.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        ver = m.group("ver")
+        # Find matching END (no nesting allowed; first END wins).
+        j = i + 1
+        while j < len(lines) and not _DLD_MARKER_END_RE.match(lines[j]):
+            j += 1
+        if j >= len(lines):
+            log.warning(
+                "ALLOWED_FILES: unmatched DLD-CALLBACK-MARKER-START at line %d"
+                " → degrade-closed",
+                i + 1,
+            )
+            return []
+        block = lines[i + 1:j]
+        has_af_heading = any(_ALLOWED_FILES_V1_HEADING_RE.match(ln) for ln in block)
+        if has_af_heading:
+            if ver not in _DLD_SUPPORTED_MARKER_VERSIONS:
+                log.warning(
+                    "ALLOWED_FILES: unknown marker version v%s → degrade-closed",
+                    ver,
+                )
+                return []
+            # Reuse v1 strict bullet matcher.
+            paths = [
+                bm.group(1)
+                for ln in block
+                if (bm := _ALLOWED_FILES_V1_BULLET_RE.match(ln))
+            ]
+            return paths  # may be [] (marker present, no bullets)
+        i = j + 1  # block didn't contain Allowed Files; keep scanning
+    return None  # no relevant marker blocks
 
 
 def _parse_allowed_files_v1(spec_text: str) -> list[str] | None:
@@ -681,10 +735,20 @@ def _parse_allowed_files(spec_path: Path) -> list[str] | None:
         log.warning("ALLOWED_FILES: read failed for %s: %s", spec_path, exc)
         return None
 
+    # TECH-175: marker-aware first
+    marker = _parse_allowed_files_marker(text)
+    if marker is not None:
+        log.info(
+            "ALLOWED_FILES: marker-aware parse for %s → %d path(s)",
+            spec_path.name,
+            len(marker),
+        )
+        return marker
+
     v1 = _parse_allowed_files_v1(text)
     if v1 is not None:
         log.info(
-            "ALLOWED_FILES: v1 canonical parse for %s \u2192 %d path(s)",
+            "ALLOWED_FILES: v1 canonical parse for %s → %d path(s)",
             spec_path.name,
             len(v1),
         )
@@ -693,7 +757,7 @@ def _parse_allowed_files(spec_path: Path) -> list[str] | None:
     legacy = _parse_allowed_files_legacy(text)
     if legacy is not None:
         log.info(
-            "ALLOWED_FILES: legacy fallback parse for %s \u2192 %d path(s)",
+            "ALLOWED_FILES: legacy fallback parse for %s → %d path(s)",
             spec_path.name,
             len(legacy),
         )

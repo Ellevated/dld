@@ -321,7 +321,13 @@ Write spec using selected approach from Phase 4:
 
 ```markdown
 # Feature: [FTR-XXX] Title
+<!-- DLD-CALLBACK-MARKER-START v1 -->
 **Status:** queued | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
+<!-- DLD-CALLBACK-MARKER-END -->
+
+<!-- DLD-CALLBACK-MARKER-START v1 -->
+<!-- **Blocked Reason:** populated by callback.py when guard demotes to blocked -->
+<!-- DLD-CALLBACK-MARKER-END -->
 
 ## Why
 [Problem statement from Socratic Dialogue]
@@ -365,9 +371,12 @@ Write spec using selected approach from Phase 4:
 
 ---
 
+<!-- DLD-CALLBACK-MARKER-START v1 -->
 ## Allowed Files
 
-<!-- callback-allowlist v1: backticked paths only, one per row -->
+<!-- callback-allowlist v1: backticked paths only, one per row.
+     DO NOT EDIT THIS BLOCK manually after autopilot starts.
+     Format is parsed by scripts/vps/callback.py — see TECH-167/175. -->
 
 ONLY the files listed below may be modified during implementation.
 
@@ -375,6 +384,8 @@ ONLY the files listed below may be modified during implementation.
 - `path/to/file2.py` — reason (modify)
 - `path/to/new_file.py` — reason (NEW)
 - `tests/path/to/test_file.py` — reason (NEW)
+
+<!-- DLD-CALLBACK-MARKER-END -->
 
 **Format contract (enforced by Spark linter — see Phase 5.5):**
 - Heading is exactly `## Allowed Files` (case-sensitive H2, no suffix, no
@@ -627,6 +638,8 @@ HEADING_RE   = ^##[ \t]+Allowed Files[ \t]*$            (case-sensitive, exact)
 MARKER_RE    = <!--\s*callback-allowlist\s+v1\b[^>]*-->
 BULLET_RE    = ^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$
 SECTION_END  = ^##[ \t]+\S          (next H2 heading)
+DLD_START_RE = ^<!--\s*DLD-CALLBACK-MARKER-START\s+v(?P<ver>\d+)\s*-->\s*$
+DLD_END_RE   = ^<!--\s*DLD-CALLBACK-MARKER-END\s*-->\s*$
 ```
 
 ### Algorithm
@@ -647,6 +660,11 @@ SECTION_END  = ^##[ \t]+\S          (next H2 heading)
      blocks" anti-pattern).
 7. Collect all paths captured by `BULLET_RE`. If count == 0 → fail
    `ALLOWLIST_E006_EMPTY_LIST`.
+8. Verify `## Allowed Files` heading sits inside a `DLD_START_RE … DLD_END_RE`
+   block of supported version (v1). Mismatch → fail
+   `ALLOWLIST_E007_NOT_IN_MARKER_BLOCK`.
+9. Verify inner `<!-- callback-allowlist v1 -->` marker is present inside the
+   DLD marker block. Absent → fail `ALLOWLIST_E008_INNER_MARKER_MISSING`.
 
 ### On failure
 
@@ -675,7 +693,7 @@ remediation: "Re-run /spark and follow the canonical Allowed Files format
 <HARD-GATE>
 DO NOT proceed to Phase 6 until:
 - [ ] Phase 5.5 linter run on freshly-written spec file
-- [ ] Linter exit = success (no E001..E006)
+- [ ] Linter exit = success (no E001..E008)
 - [ ] state.json updated: lint = done, allowlist_paths = [<paths>]
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "the section looks fine to me"
