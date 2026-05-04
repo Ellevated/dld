@@ -139,7 +139,7 @@
 | TECH-173 | Rewrite `dld-orchestrator.md` — single source of truth + runbook + diagram | done | P1 | [spec](features/TECH-173-2026-05-02-orchestrator-docs-rewrite.md) |
 | TECH-174 | Manual spec verification protocol + spec_verify.py + operator.py CLI | done | P2 | [spec](features/TECH-174-2026-05-02-manual-verification-protocol.md) |
 | TECH-175 | Spark spec template hardening — DO-NOT-REMOVE markers + schema versioning | blocked | P2 | [spec](features/TECH-175-2026-05-02-spark-spec-template-hardening.md) |
-| TECH-176 | IMPL_GUARD: detect "already merged before started_at" → auto-close instead of demote | queued | P1 | [spec](features/TECH-176-2026-05-04-guard-already-merged-detection.md) |
+| TECH-176 | IMPL_GUARD: detect "already merged before started_at" → auto-close instead of demote | blocked | P1 | [spec](features/TECH-176-2026-05-04-guard-already-merged-detection.md) |
 
 ---
 
