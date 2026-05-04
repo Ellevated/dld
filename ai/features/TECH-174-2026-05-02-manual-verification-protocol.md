@@ -9,7 +9,7 @@ created: 2026-05-02
 
 # TECH-174 — Manual spec verification protocol (operator checklist)
 
-**Status:** queued
+**Status:** blocked
 **Priority:** P2
 **Risk:** R2
 
