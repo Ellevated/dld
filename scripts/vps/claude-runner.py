@@ -122,6 +122,15 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
             "CLAUDE_PROJECT_DIR": str(project_path),
             "CLAUDE_CURRENT_SPEC_PATH": os.environ.get("CLAUDE_CURRENT_SPEC_PATH", ""),
             "ENABLE_PROMPT_CACHING_1H": os.environ.get("ENABLE_PROMPT_CACHING_1H", "1"),
+            # TECH-178: bypass cosmetic pre-commit fixers that auto-fix + exit 1
+            # (trailing-whitespace, end-of-file-fixer, mixed-line-ending) so that
+            # research-md commits don't trigger autopilot retry-loops. Lint-only
+            # hooks (ruff/mypy/etc.) remain active. Operators can override per-task
+            # by exporting SKIP="" before pueue add.
+            "SKIP": os.environ.get(
+                "SKIP",
+                "trailing-whitespace,end-of-file-fixer,mixed-line-ending",
+            ),
         },
     )
 
