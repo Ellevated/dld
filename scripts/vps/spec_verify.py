@@ -19,6 +19,7 @@ Exit codes:
     1  — missing files OR Task with zero plausible code matches (HARD-FAIL).
     2  — usage / IO error.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,8 +37,7 @@ if str(_HERE) not in sys.path:
 try:
     from callback import _parse_allowed_files  # type: ignore
 except Exception as exc:  # noqa: BLE001
-    print(f"spec_verify: cannot import callback._parse_allowed_files: {exc}",
-          file=sys.stderr)
+    print(f"spec_verify: cannot import callback._parse_allowed_files: {exc}", file=sys.stderr)
     sys.exit(2)
 
 
@@ -48,18 +48,34 @@ _TASK_BULLET_RE = re.compile(r"^\s*(?:\d+[.)]|[-*])\s+(.*?)\s*$")
 # Plausible code symbols inside Task descriptions:
 #   snake_case, camelCase, CamelCase, dotted.paths, route/paths, file.ext.
 _SYMBOL_RE = re.compile(
-    r"`([^`]+)`"                                 # backticked identifiers
-    r"|\b([A-Z][A-Za-z0-9]+(?:[A-Z][A-Za-z0-9]+)+)\b"   # CamelCase
-    r"|\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b"      # snake_case
+    r"`([^`]+)`"  # backticked identifiers
+    r"|\b([A-Z][A-Za-z0-9]+(?:[A-Z][A-Za-z0-9]+)+)\b"  # CamelCase
+    r"|\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b"  # snake_case
     r"|/(/?[A-Za-z0-9_\-]+(?:/[A-Za-z0-9_\-]+)+)"  # /route/like
 )
 
 # Stoplist: too generic to be a useful grep keyword.
-_STOPWORDS = frozenset({
-    "todo", "fixme", "task", "tasks", "test", "tests", "spec", "specs",
-    "the", "and", "for", "with", "into", "from",
-    "true", "false", "none",
-})
+_STOPWORDS = frozenset(
+    {
+        "todo",
+        "fixme",
+        "task",
+        "tasks",
+        "test",
+        "tests",
+        "spec",
+        "specs",
+        "the",
+        "and",
+        "for",
+        "with",
+        "into",
+        "from",
+        "true",
+        "false",
+        "none",
+    }
+)
 
 
 @dataclass
@@ -155,12 +171,9 @@ def grep_count(project: Path, symbol: str, search_paths: list[str]) -> int:
     """
     cmd: list[str]
     if (project / ".git").exists():
-        cmd = ["git", "-C", str(project), "grep", "-I", "-c", "-F", "--",
-               symbol] + search_paths
+        cmd = ["git", "-C", str(project), "grep", "-I", "-c", "-F", "--", symbol] + search_paths
     else:
-        cmd = ["grep", "-rIcF", "--", symbol] + [
-            str(project / p) for p in search_paths
-        ]
+        cmd = ["grep", "-rIcF", "--", symbol] + [str(project / p) for p in search_paths]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.SubprocessError):
@@ -184,9 +197,20 @@ def recent_commit_count(project: Path, rel_path: str, since_days: int = 60) -> i
         return 0
     try:
         r = subprocess.run(
-            ["git", "-C", str(project), "log",
-             f"--since={since_days}.days", "--oneline", "--all", "--", rel_path],
-            capture_output=True, text=True, timeout=10,
+            [
+                "git",
+                "-C",
+                str(project),
+                "log",
+                f"--since={since_days}.days",
+                "--oneline",
+                "--all",
+                "--",
+                rel_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return 0
@@ -198,14 +222,12 @@ def recent_commit_count(project: Path, rel_path: str, since_days: int = 60) -> i
 def build_report(project: Path, spec_id: str) -> Report:
     spec_path = find_spec_file(project, spec_id)
     if spec_path is None:
-        raise FileNotFoundError(
-            f"spec not found: {project}/ai/features/{spec_id}*.md")
+        raise FileNotFoundError(f"spec not found: {project}/ai/features/{spec_id}*.md")
 
     spec_text = spec_path.read_text(errors="replace")
     allowed = _parse_allowed_files(spec_path)
 
-    rep = Report(spec_id=spec_id, spec_path=spec_path, project=project,
-                 allowed=allowed)
+    rep = Report(spec_id=spec_id, spec_path=spec_path, project=project, allowed=allowed)
 
     # File existence + recency
     if allowed:
@@ -288,8 +310,10 @@ def render(rep: Report) -> str:
         if bad_tasks:
             bits.append(f"task(s) with zero matches: {bad_tasks}")
         lines.append("VERDICT: HARD-FAIL — " + "; ".join(bits))
-        lines.append("Next: python3 scripts/vps/operator.py demote "
-                     f"{rep.project.name} {rep.spec_id} '<reason>'")
+        lines.append(
+            "Next: python3 scripts/vps/spec_operator.py demote "
+            f"{rep.project.name} {rep.spec_id} '<reason>'"
+        )
     else:
         lines.append("VERDICT: heuristic-OK (Steps 1–3 green; Steps 4–6 still manual)")
     return "\n".join(lines)
@@ -297,7 +321,8 @@ def render(rep: Report) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Automated Steps 1–3 of the manual spec verification protocol.")
+        description="Automated Steps 1–3 of the manual spec verification protocol."
+    )
     parser.add_argument("project", help="Path to project repo (e.g. ~/projects/awardybot)")
     parser.add_argument("spec_id", help="Spec ID, e.g. FTR-897")
     args = parser.parse_args(argv)

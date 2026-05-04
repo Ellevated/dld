@@ -16,9 +16,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import importlib.util as _ilu  # noqa: E402
 
-_op_spec = _ilu.spec_from_file_location(
-    "operator_cli", str(SCRIPT_DIR / "operator.py")
-)
+_op_spec = _ilu.spec_from_file_location("operator_cli", str(SCRIPT_DIR / "spec_operator.py"))
 operator_cli = _ilu.module_from_spec(_op_spec)  # type: ignore[arg-type]
 _op_spec.loader.exec_module(operator_cli)  # type: ignore[union-attr]
 
@@ -109,9 +107,7 @@ def test_spec_verify_reports_missing_file(tmp_path: Path) -> None:
     """EC-1 — missing allowed file → HARD-FAIL (FTR-897 Task 11 case)."""
     repo = _make_repo(tmp_path)
     _write_spec(repo, "TEST-002", _SPEC_BODY_MISSING)
-    (repo / "src" / "present_module.py").write_text(
-        "def do_thing_now():\n    pass\n"
-    )
+    (repo / "src" / "present_module.py").write_text("def do_thing_now():\n    pass\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "partial")
 
@@ -128,12 +124,8 @@ def test_spec_verify_ok_when_files_and_symbols_present(tmp_path: Path) -> None:
     """EC-2 — all allowed files exist + each Task has grep hits → OK."""
     repo = _make_repo(tmp_path)
     _write_spec(repo, "TEST-001", _SPEC_BODY_OK)
-    (repo / "src" / "buyer_onboarding.py").write_text(
-        "def register_buyer(req):\n    return None\n"
-    )
-    (repo / "src" / "awardybot_core.py").write_text(
-        "class AwardyBotCore:\n    pass\n"
-    )
+    (repo / "src" / "buyer_onboarding.py").write_text("def register_buyer(req):\n    return None\n")
+    (repo / "src" / "awardybot_core.py").write_text("class AwardyBotCore:\n    pass\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "impl")
 
@@ -150,9 +142,7 @@ def test_spec_verify_cli_exit_codes(tmp_path: Path) -> None:
     """CLI: HARD-FAIL spec → exit 1, OK spec → exit 0."""
     repo = _make_repo(tmp_path)
     _write_spec(repo, "TEST-002", _SPEC_BODY_MISSING)
-    (repo / "src" / "present_module.py").write_text(
-        "def do_thing_now():\n    pass\n"
-    )
+    (repo / "src" / "present_module.py").write_text("def do_thing_now():\n    pass\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "partial")
 
@@ -173,8 +163,7 @@ def test_operator_demote_via_plumbing_does_not_touch_working_tree(
     repo = _make_repo(tmp_path)
     _write_spec(repo, "TEST-003", _SPEC_BODY_OK.replace("TEST-001", "TEST-003"))
     (repo / "ai" / "backlog.md").write_text(
-        "| ID | Title | Status | P |\n|---|---|---|---|\n"
-        "| TEST-003 | demo | done | P1 |\n"
+        "| ID | Title | Status | P |\n|---|---|---|---|\n| TEST-003 | demo | done | P1 |\n"
     )
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "seed spec")
@@ -192,9 +181,7 @@ def test_operator_demote_via_plumbing_does_not_touch_working_tree(
     assert head_before != head_after, "demote should produce a new commit"
 
     # Spec status flipped at HEAD.
-    spec_at_head = _git(
-        repo, "show", f"HEAD:ai/features/TEST-003.md"
-    ).stdout
+    spec_at_head = _git(repo, "show", f"HEAD:ai/features/TEST-003.md").stdout
     assert "**Status:** queued" in spec_at_head
     assert "Blocked Reason:** task_2_missing" in spec_at_head
 
@@ -215,8 +202,7 @@ def test_operator_force_done(tmp_path: Path) -> None:
     )
     _write_spec(repo, "TEST-004", body)
     (repo / "ai" / "backlog.md").write_text(
-        "| ID | Title | Status | P |\n|---|---|---|---|\n"
-        "| TEST-004 | demo | blocked | P1 |\n"
+        "| ID | Title | Status | P |\n|---|---|---|---|\n| TEST-004 | demo | blocked | P1 |\n"
     )
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "seed")
@@ -243,13 +229,15 @@ def test_operator_demote_unknown_spec_returns_3(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(
-    not (Path.home() / ".claude" / "projects" / "-root" / "memory"
-         / "spec-verification-protocol.md").exists(),
+    not (
+        Path.home() / ".claude" / "projects" / "-root" / "memory" / "spec-verification-protocol.md"
+    ).exists(),
     reason="protocol doc not installed in this environment",
 )
 def test_protocol_doc_has_seven_steps() -> None:
-    doc = (Path.home() / ".claude" / "projects" / "-root" / "memory"
-           / "spec-verification-protocol.md").read_text()
+    doc = (
+        Path.home() / ".claude" / "projects" / "-root" / "memory" / "spec-verification-protocol.md"
+    ).read_text()
     for n in range(1, 8):
         assert f"## Step {n}" in doc, f"missing Step {n} heading"
     # Has at least one example command per step
