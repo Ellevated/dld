@@ -9,7 +9,7 @@ created: 2026-05-02
 
 # TECH-175 — Spark spec template hardening (DO-NOT-REMOVE markers)
 
-**Status:** queued
+**Status:** blocked
 **Priority:** P2
 **Risk:** R2
 
@@ -47,7 +47,7 @@ created: 2026-05-02
 4. **Spark template — full spec skeleton** с маркерами на всех "владеемых callback'ом" секциях:
    - `<!-- DLD-CALLBACK-MARKER-START v1 -->` `## Allowed Files` `<!-- END -->`
    - `<!-- DLD-CALLBACK-MARKER-START v1 -->` `**Status:**` `<!-- END -->`
-   - `<!-- DLD-CALLBACK-MARKER-START v1 -->` `**Blocked Reason:**` `<!-- END -->`
+   - `<!-- DLD-CALLBACK-MARKER-START v1 -->` `**Blocked Reason:** no_implementation_commits
 
 5. **Spec linter** — `scripts/vps/spec_lint.py <spec_path>` проверяет:
    - Маркеры присутствуют и парные.
