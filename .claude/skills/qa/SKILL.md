@@ -648,6 +648,28 @@ Source code is OUT OF SCOPE. You test the product, not the code. If you find you
 
 ---
 
+## Spec Verification Protocol (when QA-ing a closed spec)
+
+When the user asks to QA a spec that is already marked `done` (e.g.
+"check FTR-897 was actually delivered"), follow the operator checklist:
+
+`~/.claude/projects/-root/memory/spec-verification-protocol.md`
+
+Quick path:
+
+```bash
+# Steps 1-3 automated
+python3 scripts/vps/spec_verify.py <project_dir> <SPEC_ID>
+
+# Step 7 - if you need to demote a false-done
+python3 scripts/vps/spec_operator.py demote <project> <SPEC_ID> "<reason>"
+```
+
+Steps 4-6 (tests, migrations, acceptance) stay manual — exercise the product
+yourself, do NOT just trust the heuristic report.
+
+---
+
 ## Notification Output Format
 
 Your final JSON `result_preview` is sent to the user via Telegram. Keep it concise:
