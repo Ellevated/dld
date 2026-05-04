@@ -132,7 +132,7 @@
 | TECH-166 | Callback implementation guard — git-diff проверка allowed files перед mark-done (закрывает дыру с FTR-896 false-done) | done | P1 | [spec](features/TECH-166-2026-05-01-callback-implementation-guard.md) |
 | TECH-167 | Spark canonical `## Allowed Files` section + emit-time linter (R1, корень format-drift'а) | done | P0 | [spec](features/TECH-167-2026-05-02-spark-canonical-allowed-files.md) |
 | TECH-168 | Callback test suite — unit + integration + regression corpus (R0, защита от silent regression) | done | P0 | [spec](features/TECH-168-2026-05-02-callback-test-suite.md) |
-| TECH-169 | Orchestrator circuit-breaker on mass-demote (>3 demotes/10min → pause + alert) | blocked | P0 | [spec](features/TECH-169-2026-05-02-orchestrator-circuit-breaker.md) |
+| TECH-169 | Orchestrator circuit-breaker on mass-demote (>3 demotes/10min → pause + alert) | done | P0 | [spec](features/TECH-169-2026-05-02-orchestrator-circuit-breaker.md) |
 | TECH-170 | Implementation guard видит feature-branch коммиты (`git log --all`) | done | P1 | [spec](features/TECH-170-2026-05-02-guard-feature-branch-awareness.md) |
 | TECH-171 | Guard structured audit log + daily Telegram digest | done | P1 | [spec](features/TECH-171-2026-05-02-guard-structured-audit-log.md) |
 | TECH-172 | Single Status write path — callback единственный writer, autopilot не трогает | done | P1 | [spec](features/TECH-172-2026-05-02-single-status-write-path.md) |

@@ -1,7 +1,7 @@
 ---
 id: TECH-169
 type: TECH
-status: queued
+status: done
 priority: P0
 risk: R1
 created: 2026-05-02
@@ -9,8 +9,8 @@ created: 2026-05-02
 
 # TECH-169 — Orchestrator circuit-breaker on mass-demote
 
-**Status:** blocked
-**Blocked Reason:** no_implementation_commits
+**Status:** done
+**Closed:** 2026-05-04 (manual operator close — реализация в develop: 8d8756a + merge 66e3800; tests 7/7; петля queued↔blocked размотана)
 **Priority:** P0
 **Risk:** R1 (затрагивает callback и orchestrator decision flow)
 
