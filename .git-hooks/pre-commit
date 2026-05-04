@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# .git-hooks/pre-commit — TECH-175 spec marker drift warner.
+# Warns (never blocks) when a commit touches a DLD-CALLBACK-MARKER block
+# inside ai/features/*.md files.
+#
+# Activate via: git config core.hooksPath .git-hooks
+#
+# Exit code: always 0 (warning only, per ADR-004 fail-safe pattern).
+set -uo pipefail
+
+changed=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^ai/features/.*\.md$' || true)
+[[ -z "$changed" ]] && exit 0
+
+warned=0
+while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    # Let spec_lint do structural check via --diff-warn mode.
+    # exit 2 = diff intersects marker block; anything else = ok or error (ignore).
+    if python3 scripts/vps/spec_lint.py --diff-warn "$f" 2>/dev/null; then
+        :
+    elif [[ $? -eq 2 ]]; then
+        echo "[pre-commit warn] $f: edit touches DLD-CALLBACK-MARKER block." >&2
+        echo "                 Are you sure? Markers are owned by Spark/callback." >&2
+        echo "                 (TECH-175 — warning only, commit proceeds)" >&2
+        warned=1
+    fi
+done <<< "$changed"
+
+# Always exit 0 — warning only (per ADR-004).
+exit 0

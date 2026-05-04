@@ -211,12 +211,15 @@ linter described in `feature-mode.md` Phase 5.5.
 ### What you do
 
 1. Read the freshly written spec (`Read` tool).
-2. Apply the four regexes from `feature-mode.md` Phase 5.5:
+2. Apply the regexes from `feature-mode.md` Phase 5.5:
    - `HEADING_RE = ^##[ \t]+Allowed Files[ \t]*$`
    - `MARKER_RE = <!--\s*callback-allowlist\s+v1\b[^>]*-->`
    - `BULLET_RE = ^-[ \t]+\`([^\s\`\n]+\.[A-Za-z][\w-]*)\`(?:[ \t]+.*)?$`
+   - `DLD_START_RE = ^<!--\s*DLD-CALLBACK-MARKER-START\s+v(?P<ver>\d+)\s*-->\s*$`
+   - `DLD_END_RE   = ^<!--\s*DLD-CALLBACK-MARKER-END\s*-->\s*$`
    - section ends at next `^##[ \t]+\S` heading.
-3. Map any failure to error codes E001..E006 (see feature-mode.md).
+   - Verify `## Allowed Files` is enclosed in a DLD-CALLBACK-MARKER block with ver in {"1"}.
+3. Map any failure to error codes E001..E008 (see feature-mode.md).
 4. On failure: `Bash rm -f ai/features/{TASK_ID}-*.md`, undo backlog row,
    set `state.json: lint = failed`, return:
    `status: blocked, error_code: ALLOWLIST_E00X`.
