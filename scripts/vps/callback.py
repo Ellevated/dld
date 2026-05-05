@@ -575,9 +575,7 @@ def _resync_backlog_to_spec(
 _ALLOWED_FILE_EXT_RE = re.compile(r"`([^\s`\n]+\.[a-zA-Z][\w-]*)`")
 
 # --- TECH-175: outer DLD-CALLBACK-MARKER pair --------------------------------
-_DLD_MARKER_START_RE = re.compile(
-    r"^<!--\s*DLD-CALLBACK-MARKER-START\s+v(?P<ver>\d+)\s*-->\s*$"
-)
+_DLD_MARKER_START_RE = re.compile(r"^<!--\s*DLD-CALLBACK-MARKER-START\s+v(?P<ver>\d+)\s*-->\s*$")
 _DLD_MARKER_END_RE = re.compile(r"^<!--\s*DLD-CALLBACK-MARKER-END\s*-->\s*$")
 _DLD_SUPPORTED_MARKER_VERSIONS: frozenset[str] = frozenset({"1"})
 
@@ -585,13 +583,9 @@ _DLD_SUPPORTED_MARKER_VERSIONS: frozenset[str] = frozenset({"1"})
 # Strict heading: "## Allowed Files" (case-sensitive, no suffix, no qualifier).
 _ALLOWED_FILES_V1_HEADING_RE = re.compile(r"^##[ \t]+Allowed Files[ \t]*$")
 # Marker comment that opts a spec into v1 strict parsing.
-_ALLOWED_FILES_V1_MARKER_RE = re.compile(
-    r"<!--\s*callback-allowlist\s+v1\b[^>]*-->"
-)
+_ALLOWED_FILES_V1_MARKER_RE = re.compile(r"<!--\s*callback-allowlist\s+v1\b[^>]*-->")
 # Canonical bullet: "- `path/with.ext` optional trailing prose".
-_ALLOWED_FILES_V1_BULLET_RE = re.compile(
-    r"^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$"
-)
+_ALLOWED_FILES_V1_BULLET_RE = re.compile(r"^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$")
 
 # --- TECH-166 legacy fallback (kept for specs without the v1 marker) --------
 # Heading variants seen across DLD projects (case-insensitive):
@@ -609,10 +603,10 @@ _NEXT_H2_RE = re.compile(r"^##\s+\S")
 def _parse_allowed_files_marker(spec_text: str) -> list[str] | None:
     """Marker-aware parser (TECH-175). Returns:
 
-        list[str]: >=0 paths inside a v1 marker block containing
-                   ## Allowed Files (success or empty=degrade-closed).
-        None     : no DLD-CALLBACK-MARKER blocks present (caller falls
-                   back to TECH-167 v1 / legacy parsers).
+    list[str]: >=0 paths inside a v1 marker block containing
+               ## Allowed Files (success or empty=degrade-closed).
+    None     : no DLD-CALLBACK-MARKER blocks present (caller falls
+               back to TECH-167 v1 / legacy parsers).
     """
     lines = spec_text.splitlines()
     i = 0
@@ -628,12 +622,11 @@ def _parse_allowed_files_marker(spec_text: str) -> list[str] | None:
             j += 1
         if j >= len(lines):
             log.warning(
-                "ALLOWED_FILES: unmatched DLD-CALLBACK-MARKER-START at line %d"
-                " → degrade-closed",
+                "ALLOWED_FILES: unmatched DLD-CALLBACK-MARKER-START at line %d → degrade-closed",
                 i + 1,
             )
             return []
-        block = lines[i + 1:j]
+        block = lines[i + 1 : j]
         has_af_heading = any(_ALLOWED_FILES_V1_HEADING_RE.match(ln) for ln in block)
         if has_af_heading:
             if ver not in _DLD_SUPPORTED_MARKER_VERSIONS:
@@ -643,11 +636,7 @@ def _parse_allowed_files_marker(spec_text: str) -> list[str] | None:
                 )
                 return []
             # Reuse v1 strict bullet matcher.
-            paths = [
-                bm.group(1)
-                for ln in block
-                if (bm := _ALLOWED_FILES_V1_BULLET_RE.match(ln))
-            ]
+            paths = [bm.group(1) for ln in block if (bm := _ALLOWED_FILES_V1_BULLET_RE.match(ln))]
             return paths  # may be [] (marker present, no bullets)
         i = j + 1  # block didn't contain Allowed Files; keep scanning
     return None  # no relevant marker blocks
@@ -656,15 +645,14 @@ def _parse_allowed_files_marker(spec_text: str) -> list[str] | None:
 def _parse_allowed_files_v1(spec_text: str) -> list[str] | None:
     """Strict canonical v1 parser. Returns:
 
-        list[str]: \u22651 paths (success).
-        []        : marker present but ZERO valid bullets \u2014 degrade-closed.
-        None      : v1 marker not present (caller should try legacy fallback).
+    list[str]: \u22651 paths (success).
+    []        : marker present but ZERO valid bullets \u2014 degrade-closed.
+    None      : v1 marker not present (caller should try legacy fallback).
     """
     lines = spec_text.splitlines()
 
     # Locate the canonical heading (must be EXACT \u2014 case-sensitive, no suffix).
-    heading_idxs = [i for i, ln in enumerate(lines)
-                    if _ALLOWED_FILES_V1_HEADING_RE.match(ln)]
+    heading_idxs = [i for i, ln in enumerate(lines) if _ALLOWED_FILES_V1_HEADING_RE.match(ln)]
     if not heading_idxs:
         return None  # caller falls back to legacy
     # Use the first canonical heading; section ends at next H2.
@@ -764,7 +752,6 @@ def _parse_allowed_files(spec_path: Path) -> list[str] | None:
     return legacy
 
 
-
 def _append_blocked_reason(spec_path: Path, reason: str) -> bool:
     """Path-taking wrapper around _apply_blocked_reason — preserves the
     pre-TECH-167 helper signature used by existing unit tests.
@@ -779,6 +766,7 @@ def _append_blocked_reason(spec_path: Path, reason: str) -> bool:
     if changed and new_text != text:
         spec_path.write_text(new_text)
     return changed
+
 
 def _get_started_at(pueue_id: int) -> str | None:
     """Read started_at for a pueue task from task_log (read-only db access)."""
@@ -848,7 +836,11 @@ def _commit_stats(
     if not allowed or started_at is None:
         return 0, 0, 0
     cmd = [
-        "git", "-C", project_path, "log", "--all",
+        "git",
+        "-C",
+        project_path,
+        "log",
+        "--all",
         f"--since={started_at}",
         "--pretty=format:COMMIT",
         "--numstat",
@@ -1023,7 +1015,11 @@ def _spec_has_merged_implementation(
     # NUL-separate hash from subject so we can split safely even if subject
     # contains pretty much anything except a NUL byte.
     cmd = [
-        "git", "-C", project_path, "log", "--all",
+        "git",
+        "-C",
+        project_path,
+        "log",
+        "--all",
         "--pretty=%h%x00%s",
         "--",
         *allowed,
@@ -1033,13 +1029,15 @@ def _spec_has_merged_implementation(
     except (OSError, subprocess.SubprocessError) as exc:
         log.info(
             "MERGED_IMPL_CHECK: git log failed for %s: %s",
-            spec_id, exc,
+            spec_id,
+            exc,
         )
         return (False, [])
     if r.returncode != 0:
         log.info(
             "MERGED_IMPL_CHECK: git log rc=%s stderr=%s",
-            r.returncode, r.stderr.strip()[:200],
+            r.returncode,
+            r.stderr.strip()[:200],
         )
         return (False, [])
     hashes: list[str] = []
@@ -1066,10 +1064,16 @@ def is_merged_to_develop(project_path: str, spec_id: str) -> bool:
     if not spec_id:
         return False
     cmd = [
-        "git", "-C", project_path, "log", "develop",
-        "--grep", re.escape(spec_id),
+        "git",
+        "-C",
+        project_path,
+        "log",
+        "develop",
+        "--grep",
+        re.escape(spec_id),
         "--pretty=%H",
-        "-n", "1",
+        "-n",
+        "1",
     ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=False)
@@ -1190,9 +1194,13 @@ def _trip_circuit(project_id: str, spec_id: str | None, count: int) -> None:
         CIRCUIT_WINDOW_MIN,
     )
     try:
-        db.record_decision(project_id, spec_id, "circuit_open",
-                           f"threshold_exceeded:{count}/{CIRCUIT_WINDOW_MIN}min",
-                           demoted=False)
+        db.record_decision(
+            project_id,
+            spec_id,
+            "circuit_open",
+            f"threshold_exceeded:{count}/{CIRCUIT_WINDOW_MIN}min",
+            demoted=False,
+        )
     except Exception as exc:  # noqa: BLE001
         log.warning("CIRCUIT: record_decision(circuit_open) failed: %s", exc)
     try:
@@ -1221,8 +1229,7 @@ def _reset_circuit_cli() -> None:
         log.warning("CIRCUIT_RESET: clear_decisions failed: %s", exc)
     _pueue_resume()
     try:
-        event_writer.notify_circuit_event(action="reset", count=0,
-                                          window_min=CIRCUIT_WINDOW_MIN)
+        event_writer.notify_circuit_event(action="reset", count=0, window_min=CIRCUIT_WINDOW_MIN)
     except Exception as exc:  # noqa: BLE001
         log.warning("CIRCUIT_RESET: notify failed: %s", exc)
     print(f"circuit reset: cleared decisions, resumed {CIRCUIT_PUEUE_GROUP}")
@@ -1291,11 +1298,11 @@ def verify_status_sync(
     if is_circuit_open():
         log.warning(
             "CIRCUIT_OPEN: skipping verify_status_sync(%s, target=%s) — circuit is open",
-            spec_id, target,
+            spec_id,
+            target,
         )
         try:
-            db.record_decision(project_id, spec_id, "noop",
-                               "circuit_open", demoted=False)
+            db.record_decision(project_id, spec_id, "noop", "circuit_open", demoted=False)
         except Exception as exc:  # noqa: BLE001
             log.warning("CIRCUIT: record_decision(noop) failed: %s", exc)
         return
@@ -1309,6 +1316,31 @@ def verify_status_sync(
     spec_head = _read_head_blob(project_path, spec_rel) if spec_rel else None
     if not spec_files:
         log.warning("STATUS_SYNC: spec file not found for %s", spec_id)
+        if target == "done":
+            log.warning(
+                "STATUS_SYNC: refuse auto-close %s → done — spec file missing in "
+                "ai/features/. Callback never invents a spec; treat as no-op.",
+                spec_id,
+            )
+            try:
+                db.record_decision(project_id, spec_id, "noop", "spec_file_missing", demoted=False)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("CIRCUIT: record_decision(noop) failed: %s", exc)
+            _emit_audit(
+                project_id,
+                spec_id,
+                pueue_id,
+                target_in,
+                target_in,
+                "spec_file_missing",
+                0,
+                0,
+                0,
+                0,
+                None,
+                start_wall,
+            )
+            return
 
     # Backlog HEAD content
     backlog_path = p / "ai" / "backlog.md"
@@ -1339,7 +1371,9 @@ def verify_status_sync(
             # If yes (commits in Allowed Files mention spec_id on any branch),
             # treat as auto-close — not a guard failure.
             already_merged, merged_hashes = _spec_has_merged_implementation(
-                project_path, spec_id, allowed,
+                project_path,
+                spec_id,
+                allowed,
             )
             if already_merged:
                 log.warning(
@@ -1350,11 +1384,14 @@ def verify_status_sync(
                 # TECH-177: include matched SHAs in audit log for traceability
                 guard_reason = (
                     f"already_merged:{','.join(merged_hashes[:5])}"
-                    if merged_hashes else "already_merged"
+                    if merged_hashes
+                    else "already_merged"
                 )
                 try:
                     db.record_decision(
-                        project_id, spec_id, "auto_close",
+                        project_id,
+                        spec_id,
+                        "auto_close",
                         f"already_merged:{','.join(merged_hashes[:5])}",
                         demoted=False,
                     )
@@ -1364,7 +1401,9 @@ def verify_status_sync(
                 # status-write path which flips spec+backlog and commits.
             else:
                 guard_reason = (
-                    "missing_allowed_files_section" if allowed is None else "no_implementation_commits"
+                    "missing_allowed_files_section"
+                    if allowed is None
+                    else "no_implementation_commits"
                 )
                 log.warning(
                     "IMPL_GUARD: %s — demoting done → blocked (%s, started_at=%s)",
@@ -1376,8 +1415,7 @@ def verify_status_sync(
                 target = "blocked"
                 # TECH-169: feed circuit-breaker
                 try:
-                    db.record_decision(project_id, spec_id, "demote",
-                                       guard_reason, demoted=True)
+                    db.record_decision(project_id, spec_id, "demote", guard_reason, demoted=True)
                     count = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
                     if count > CIRCUIT_THRESHOLD:
                         _trip_circuit(project_id, spec_id, count)
@@ -1402,15 +1440,24 @@ def verify_status_sync(
                 spec_id,
             )
             try:
-                db.record_decision(project_id, spec_id, "sync",
-                                   "spec_already_blocked", demoted=False)
+                db.record_decision(
+                    project_id, spec_id, "sync", "spec_already_blocked", demoted=False
+                )
             except Exception as exc:  # noqa: BLE001
                 log.warning("CIRCUIT: record_decision failed: %s", exc)
             _emit_audit(
-                project_id, spec_id, pueue_id, target_in, "blocked",
+                project_id,
+                spec_id,
+                pueue_id,
+                target_in,
+                "blocked",
                 "spec_already_blocked",
                 len(allowed) if allowed is not None else 0,
-                code_loc, test_loc, code_commits, started_at, start_wall,
+                code_loc,
+                test_loc,
+                code_commits,
+                started_at,
+                start_wall,
             )
             _resync_backlog_to_spec(project_path, spec_id, "blocked", backlog_path)
             return
@@ -1422,15 +1469,22 @@ def verify_status_sync(
                 spec_id,
             )
             try:
-                db.record_decision(project_id, spec_id, "sync",
-                                   "spec_already_done", demoted=False)
+                db.record_decision(project_id, spec_id, "sync", "spec_already_done", demoted=False)
             except Exception as exc:  # noqa: BLE001
                 log.warning("CIRCUIT: record_decision failed: %s", exc)
             _emit_audit(
-                project_id, spec_id, pueue_id, target_in, "done",
+                project_id,
+                spec_id,
+                pueue_id,
+                target_in,
+                "done",
                 "spec_already_done",
                 len(allowed) if allowed is not None else 0,
-                code_loc, test_loc, code_commits, started_at, start_wall,
+                code_loc,
+                test_loc,
+                code_commits,
+                started_at,
+                start_wall,
             )
             _resync_backlog_to_spec(project_path, spec_id, "done", backlog_path)
             return
@@ -1454,15 +1508,23 @@ def verify_status_sync(
 
     final_reason = guard_reason if guard_reason else ("already_correct" if not fixes else "fixed")
     _emit_audit(
-        project_id, spec_id, pueue_id, target_in, target,
+        project_id,
+        spec_id,
+        pueue_id,
+        target_in,
+        target,
         final_reason,
         len(allowed) if allowed is not None else 0,
-        code_loc, test_loc, code_commits, started_at, start_wall,
+        code_loc,
+        test_loc,
+        code_commits,
+        started_at,
+        start_wall,
     )
     try:
-        db.record_decision(project_id, spec_id,
-                           "sync" if fixes else "noop",
-                           final_reason, demoted=False)
+        db.record_decision(
+            project_id, spec_id, "sync" if fixes else "noop", final_reason, demoted=False
+        )
     except Exception as exc:  # noqa: BLE001
         log.warning("CIRCUIT: record_decision failed: %s", exc)
 
@@ -1574,7 +1636,12 @@ def main() -> None:
         skill, preview, task_status = "", "", ""
         try:
             skill, preview, task_status = extract_agent_output(pueue_id, project_id)
-            log.info("agent output: skill=%s preview_len=%d task_status=%s", skill, len(preview), task_status)
+            log.info(
+                "agent output: skill=%s preview_len=%d task_status=%s",
+                skill,
+                len(preview),
+                task_status,
+            )
         except Exception as exc:
             log.warning("extract_agent_output failed: %s", exc)
 
