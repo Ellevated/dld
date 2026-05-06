@@ -5,8 +5,15 @@ Build lessons index from project archive.
 Reads BUG tasks from ai/archive/ (or ai/features/ for closed BUGs),
 classifies by root_cause_class, writes structured lessons to ai/lessons/.
 
+Classification strategy:
+  1. Keyword matching (fast, free). Confidence = number of matched keywords.
+  2. If confidence < CONFIDENCE_MIN for domain OR root_cause → read the full
+     spec and ask Claude Haiku to classify. Requires ANTHROPIC_API_KEY.
+     Falls back to keyword result if API unavailable.
+
 Usage:
-    python scripts/build-lessons-index.py [--dry-run] [--domain DOMAIN] [--min-severity LEVEL]
+    python3 scripts/build-lessons-index.py [--dry-run] [--domain DOMAIN] [--min-severity LEVEL]
+    python3 scripts/build-lessons-index.py --dry-run --archive-dir ai/archive
 
 Output:
     ai/lessons/<domain>/L-NNN.md   — individual lesson files
@@ -19,6 +26,8 @@ import os
 import re
 import sys
 from pathlib import Path
+
+CONFIDENCE_MIN = 2  # keyword hits below this → fall back to LLM
 
 
 ROOT_CAUSE_TAXONOMY = {
@@ -181,8 +190,25 @@ DOMAIN_PATTERNS = {
 
 SEVERITY_ORDER = {"critical": 3, "high": 2, "medium": 1}
 
+# Descriptions used in LLM prompt — human-readable, not keyword lists
+ROOT_CAUSE_DESCRIPTIONS = {
+    "money-precision": "Wrong type or unit for money (float instead of int kopecks, rub/rubles instead of kopecks)",
+    "race-condition": "Concurrent writes without locking — two requests modify the same row simultaneously",
+    "ssot-violation": "Same data stored in two places that can diverge; no single source of truth",
+    "migration-drift": "DB schema migration out of sync with code; column exists in one but not the other",
+    "atomicity": "Multi-step operation fails halfway, leaving data in partial state; missing transaction",
+    "idempotency": "Same operation produces different results on retry; double-write, double-charge",
+    "boolean-trap": "Ambiguous boolean field that can't represent all required states",
+    "fsm-deadlock": "State machine gets stuck or makes illegal transition; slot/status lifecycle bug",
+    "cross-layer-import": "Import direction violation — domain imports api, or circular imports",
+    "pydantic-coercion": "Pydantic silently coerces a wrong type instead of raising a validation error",
+    "case-mismatch": "snake_case vs camelCase mismatch between DB field and code/API field",
+    "null-safety": "Unhandled None/null — missing check crashes at runtime",
+}
 
-def detect_domain(text: str) -> str:
+
+def detect_domain(text: str) -> tuple[str, int]:
+    """Returns (domain, confidence_score)."""
     text_lower = text.lower()
     scores = {}
     for domain, keywords in DOMAIN_PATTERNS.items():
@@ -190,12 +216,13 @@ def detect_domain(text: str) -> str:
         if score > 0:
             scores[domain] = score
     if not scores:
-        return "general"
-    return max(scores, key=scores.get)
+        return "general", 0
+    best = max(scores, key=scores.get)
+    return best, scores[best]
 
 
-def classify_root_cause(text: str) -> tuple[str, str]:
-    """Returns (root_cause_class, severity)."""
+def classify_root_cause(text: str) -> tuple[str, str, int]:
+    """Returns (root_cause_class, severity, confidence_score)."""
     text_lower = text.lower()
     scores = {}
     for cls, meta in ROOT_CAUSE_TAXONOMY.items():
@@ -204,22 +231,93 @@ def classify_root_cause(text: str) -> tuple[str, str]:
             scores[cls] = (score, meta["severity"])
 
     if not scores:
-        return "general", "medium"
+        return "general", "medium", 0
 
     best = max(scores, key=lambda c: (scores[c][0], SEVERITY_ORDER[scores[c][1]]))
-    return best, scores[best][1]
+    return best, scores[best][1], scores[best][0]
+
+
+def classify_with_llm(text: str, task_id: str) -> dict | None:
+    """
+    Read the full spec with Claude Haiku and extract structured classification.
+    Returns dict with domain/root_cause_class/prevention_rule/severity/keywords,
+    or None if API unavailable.
+    """
+    try:
+        import anthropic
+    except ImportError:
+        print(f"  [LLM] anthropic not installed — pip install anthropic", file=sys.stderr)
+        return None
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        print(f"  [LLM] ANTHROPIC_API_KEY not set — skipping LLM fallback", file=sys.stderr)
+        return None
+
+    taxonomy_desc = "\n".join(f'  "{cls}": {desc}' for cls, desc in ROOT_CAUSE_DESCRIPTIONS.items())
+    domain_list = ", ".join(DOMAIN_PATTERNS.keys()) + ", general"
+
+    prompt = f"""You are classifying a bug report for a knowledge base.
+
+<bug_spec>
+{text[:4000]}
+</bug_spec>
+
+Task ID: {task_id}
+
+Classify this bug using ONLY the taxonomy below. Read the spec carefully — title alone is not enough.
+
+Root cause classes:
+{taxonomy_desc}
+
+Available domains: {domain_list}
+
+Respond with valid JSON only, no commentary:
+{{
+  "domain": "<domain from list above>",
+  "root_cause_class": "<class from taxonomy above>",
+  "prevention_rule": "<one concrete actionable sentence — what to do differently next time>",
+  "severity": "<critical|high|medium>",
+  "keywords": ["<3-6 specific terms from this bug>"]
+}}"""
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        # Strip markdown code fences if present
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE).strip()
+        result = json.loads(raw)
+        # Validate required fields
+        required = {"domain", "root_cause_class", "prevention_rule", "severity", "keywords"}
+        if not required.issubset(result.keys()):
+            raise ValueError(f"Missing fields: {required - result.keys()}")
+        if (
+            result["root_cause_class"] not in ROOT_CAUSE_DESCRIPTIONS
+            and result["root_cause_class"] != "general"
+        ):
+            result["root_cause_class"] = "general"
+        if result["severity"] not in SEVERITY_ORDER:
+            result["severity"] = "medium"
+        return result
+    except Exception as e:
+        print(f"  [LLM] Failed for {task_id}: {e}", file=sys.stderr)
+        return None
 
 
 def extract_prevention_rule(text: str, root_cause: str) -> str:
     """Try to extract a one-line prevention rule from task body."""
-    # Look for Resolution / Fix / How to prevent sections
     for pattern in [
-        r"(?:resolution|fix|solution|prevent)[:\s]+(.+?)(?:\n|$)",
-        r"(?:use|always|never|must|should)[^\n]+(?:\n|$)",
+        r"(?:resolution|fix|solution|prevent|правило|решение)[:\s]+(.+?)(?:\n|$)",
+        r"(?:use|always|never|must|should|использовать|никогда)[^\n]{10,}(?:\n|$)",
     ]:
         m = re.search(pattern, text, re.IGNORECASE)
         if m:
-            rule = m.group(0 if "use|always" in pattern else 1).strip()
+            rule = m.group(0 if re.search(r"use\|always", pattern) else 1).strip()
             if len(rule) > 10:
                 return rule[:200]
 
@@ -251,21 +349,37 @@ def parse_task_file(path: Path) -> dict | None:
     title_m = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
     title = title_m.group(1).strip() if title_m else name
 
-    domain = detect_domain(text)
-    root_cause, severity = classify_root_cause(text)
-    prevention = extract_prevention_rule(text, root_cause)
+    domain, domain_conf = detect_domain(text)
+    root_cause, severity, rc_conf = classify_root_cause(text)
 
-    keywords = list(
-        {
+    method = "kw"  # classification method used
+
+    # Fall back to LLM when keyword confidence is low
+    if domain_conf < CONFIDENCE_MIN or rc_conf < CONFIDENCE_MIN:
+        llm_result = classify_with_llm(text, task_id)
+        if llm_result:
+            domain = llm_result["domain"]
+            root_cause = llm_result["root_cause_class"]
+            severity = llm_result["severity"]
+            prevention = llm_result["prevention_rule"]
+            keywords = llm_result["keywords"][:8]
+            method = "llm"
+        else:
+            # LLM unavailable — keep keyword result, note low confidence
+            prevention = extract_prevention_rule(text, root_cause)
+            keywords = [
+                kw
+                for kw in ROOT_CAUSE_TAXONOMY.get(root_cause, {}).get("keywords", [])
+                if kw in text.lower()
+            ][:8] or root_cause.split("-")
+            method = "kw-low"
+    else:
+        prevention = extract_prevention_rule(text, root_cause)
+        keywords = [
             kw
-            for kw, meta in ROOT_CAUSE_TAXONOMY.items()
-            if root_cause == kw
-            for kw in meta["keywords"]
+            for kw in ROOT_CAUSE_TAXONOMY.get(root_cause, {}).get("keywords", [])
             if kw in text.lower()
-        }
-    )[:8]
-    if not keywords:
-        keywords = root_cause.split("-")
+        ][:8] or root_cause.split("-")
 
     return {
         "task_id": task_id,
@@ -275,6 +389,7 @@ def parse_task_file(path: Path) -> dict | None:
         "severity": severity,
         "prevention_rule": prevention,
         "keywords": keywords,
+        "_method": method,  # for logging only, not written to lesson
     }
 
 
@@ -344,6 +459,7 @@ def main():
 
     min_sev = SEVERITY_ORDER[args.min_severity]
     processed = skipped = written = 0
+    counts = {"kw": 0, "llm": 0, "kw-low": 0}
 
     for path in sorted(archive_dir.glob("*.md")):
         data = parse_task_file(path)
@@ -352,6 +468,8 @@ def main():
             continue
 
         processed += 1
+        method = data.pop("_method", "kw")
+
         if SEVERITY_ORDER[data["severity"]] < min_sev:
             skipped += 1
             continue
@@ -363,7 +481,7 @@ def main():
         domain_dir = lessons_dir / data["domain"]
         lesson_id = next_lesson_id(domain_dir)
 
-        lesson_path = write_lesson(lessons_dir, lesson_id, data, args.dry_run)
+        write_lesson(lessons_dir, lesson_id, data, args.dry_run)
         index_entry = {
             "id": lesson_id,
             "domain": data["domain"],
@@ -377,14 +495,18 @@ def main():
         }
         update_index(index_file, index_entry, args.dry_run)
 
-        status = "DRY-RUN" if args.dry_run else "WRITTEN"
+        action = "DRY-RUN" if args.dry_run else "WRITTEN"
+        tag = {"kw": "KW ", "llm": "LLM", "kw-low": "LOW"}.get(method, "???")
         print(
-            f"[{status}] {lesson_id} ({data['domain']}/{data['root_cause_class']}) ← {data['task_id']}"
+            f"[{action}][{tag}] {lesson_id} {data['domain']}/{data['root_cause_class']} ← {data['task_id']}"
         )
+        counts[method] = counts.get(method, 0) + 1
         written += 1
 
+    verb = "would be written" if args.dry_run else "written"
+    print(f"\nDone: {written} lessons {verb}, {skipped} skipped, {processed} processed")
     print(
-        f"\nDone: {written} lessons {'would be ' if args.dry_run else ''}written, {skipped} skipped, {processed} processed"
+        f"  KW (confident): {counts['kw']}  |  LLM (fallback): {counts['llm']}  |  LOW (uncertain, no LLM): {counts['kw-low']}"
     )
 
 
