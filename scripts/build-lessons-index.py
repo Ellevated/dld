@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
 """
-Build lessons index from project archive.
+Build lessons index from project archive — keyword-only, no LLM.
 
-Reads BUG tasks from ai/archive/ (or ai/features/ for closed BUGs),
-classifies by root_cause_class, writes structured lessons to ai/lessons/.
-
-Classification strategy:
-  1. Keyword matching (fast, free). Confidence = number of matched keywords.
-  2. If confidence < CONFIDENCE_MIN for domain OR root_cause → read the full
-     spec and ask Claude Haiku to classify. Requires ANTHROPIC_API_KEY.
-     Falls back to keyword result if API unavailable.
+For intelligent classification use: /seed-lessons skill in Claude Code.
+This script is for CI/automation where no LLM is available.
 
 Usage:
-    python3 scripts/build-lessons-index.py [--dry-run] [--domain DOMAIN] [--min-severity LEVEL]
+    python3 scripts/build-lessons-index.py [--dry-run] [--domain DOMAIN]
     python3 scripts/build-lessons-index.py --dry-run --archive-dir ai/archive
 
 Output:
@@ -22,492 +16,185 @@ Output:
 
 import argparse
 import json
-import os
 import re
 import sys
 from pathlib import Path
 
-CONFIDENCE_MIN = 2  # keyword hits below this → fall back to LLM
-
-
 ROOT_CAUSE_TAXONOMY = {
-    "money-precision": {
-        "keywords": [
-            "kopecks",
-            "rub",
-            "ruble",
-            "float",
-            "decimal",
-            "amount",
-            "price",
-            "balance",
-            "kopeck",
-            "money",
-            "currency",
-        ],
-        "severity": "critical",
-    },
-    "race-condition": {
-        "keywords": [
-            "concurrent",
-            "race",
-            "lock",
-            "advisory",
-            "simultaneous",
-            "deadlock",
-            "locking",
-            "atomic",
-            "transaction",
-            "isolation",
-        ],
-        "severity": "critical",
-    },
-    "ssot-violation": {
-        "keywords": [
-            "ssot",
-            "duplicate",
-            "sync",
-            "diverge",
-            "inconsistent",
-            "mismatch",
-            "two sources",
-            "multiple sources",
-        ],
-        "severity": "high",
-    },
-    "migration-drift": {
-        "keywords": [
-            "migration",
-            "migrate",
-            "schema",
-            "column",
-            "table",
-            "alembic",
-            "alter",
-            "add column",
-            "drop column",
-        ],
-        "severity": "critical",
-    },
-    "atomicity": {
-        "keywords": [
-            "partial",
-            "rollback",
-            "mid-flight",
-            "halfway",
-            "incomplete",
-            "transaction",
-            "multi-step",
-        ],
-        "severity": "high",
-    },
-    "idempotency": {
-        "keywords": [
-            "idempotent",
-            "duplicate",
-            "double",
-            "twice",
-            "replay",
-            "retry",
-            "webhook",
-            "re-run",
-        ],
-        "severity": "high",
-    },
-    "boolean-trap": {
-        "keywords": [
-            "is_active",
-            "is_deleted",
-            "bool",
-            "boolean",
-            "flag",
-            "status",
-            "state",
-            "nullable bool",
-        ],
-        "severity": "medium",
-    },
-    "fsm-deadlock": {
-        "keywords": [
-            "state machine",
-            "fsm",
-            "stuck",
-            "transition",
-            "slot",
-            "pickup",
-            "lifecycle",
-            "status flow",
-        ],
-        "severity": "high",
-    },
-    "cross-layer-import": {
-        "keywords": ["import", "circular", "layer", "domain", "api import", "shared", "direction"],
-        "severity": "medium",
-    },
-    "pydantic-coercion": {
-        "keywords": [
-            "pydantic",
-            "coerce",
-            "coercion",
-            "validation",
-            "type cast",
-            "string to int",
-            "none to",
-        ],
-        "severity": "medium",
-    },
-    "case-mismatch": {
-        "keywords": ["snake_case", "camelcase", "camel", "field name", "naming", "case"],
-        "severity": "medium",
-    },
-    "null-safety": {
-        "keywords": [
-            "none",
-            "null",
-            "nullable",
-            "missing",
-            "undefined",
-            "optional",
-            "not found",
-            "keyerror",
-            "attributeerror",
-        ],
-        "severity": "medium",
-    },
+    "money-precision": [
+        "kopecks",
+        "kopeck",
+        "rub",
+        "ruble",
+        "float",
+        "decimal",
+        "amount",
+        "price",
+        "balance",
+        "money",
+    ],
+    "race-condition": [
+        "concurrent",
+        "race",
+        "lock",
+        "advisory",
+        "simultaneous",
+        "locking",
+        "isolation",
+    ],
+    "ssot-violation": ["ssot", "diverge", "inconsistent", "two sources", "multiple sources"],
+    "migration-drift": ["migration", "migrate", "alembic", "alter", "add column", "drop column"],
+    "atomicity": ["partial", "rollback", "mid-flight", "halfway", "incomplete", "multi-step"],
+    "idempotency": ["idempotent", "double", "twice", "replay", "webhook", "re-run"],
+    "boolean-trap": ["is_active", "is_deleted", "nullable bool", "boolean trap"],
+    "fsm-deadlock": ["state machine", "fsm", "stuck", "status flow", "lifecycle"],
+    "cross-layer-import": ["circular import", "import direction", "cross-layer"],
+    "pydantic-coercion": ["pydantic", "coerce", "coercion", "type cast"],
+    "case-mismatch": ["snake_case", "camelcase", "field name mismatch"],
+    "null-safety": ["keyerror", "attributeerror", "nonetype", "none check"],
 }
 
 DOMAIN_PATTERNS = {
-    "billing": ["billing", "balance", "payment", "invoice", "charge", "refund", "money", "kopeck"],
-    "campaigns": ["campaign", "slot", "proof", "screenshot", "pickup", "substep", "buyer_task"],
-    "buyer": ["buyer", "ugc", "creator", "identity", "onboarding", "merge"],
+    "billing": ["billing", "balance", "payment", "invoice", "charge", "refund", "kopeck"],
+    "campaigns": ["campaign", "slot", "proof", "screenshot", "pickup", "substep"],
+    "buyer": ["buyer", "ugc", "creator", "identity", "onboarding"],
     "seller": ["seller", "brand", "advertiser", "offer"],
-    "llm": ["llm", "gpt", "claude", "openai", "vision", "prompt", "tool_call", "agent"],
-    "db": ["migration", "schema", "database", "sql", "postgres", "sqlite", "index", "table"],
-    "security": ["auth", "token", "permission", "secret", "key", "csrf", "injection"],
-    "api": ["api", "webhook", "endpoint", "handler", "route", "http"],
-    "storage": ["file", "upload", "s3", "bucket", "media", "image", "storage"],
+    "llm": ["llm", "gpt", "claude", "openai", "vision", "prompt", "tool_call"],
+    "db": ["migration", "schema", "database", "sql", "postgres", "sqlite"],
+    "security": ["auth", "token", "permission", "secret", "csrf", "injection"],
+    "api": ["webhook", "endpoint", "handler", "route"],
+    "storage": ["upload", "s3", "bucket", "media", "storage"],
 }
 
-SEVERITY_ORDER = {"critical": 3, "high": 2, "medium": 1}
+SEVERITY = {
+    "money-precision": "critical",
+    "race-condition": "critical",
+    "migration-drift": "critical",
+    "atomicity": "high",
+    "idempotency": "high",
+    "ssot-violation": "high",
+    "fsm-deadlock": "high",
+}
 
-# Descriptions used in LLM prompt — human-readable, not keyword lists
-ROOT_CAUSE_DESCRIPTIONS = {
-    "money-precision": "Wrong type or unit for money (float instead of int kopecks, rub/rubles instead of kopecks)",
-    "race-condition": "Concurrent writes without locking — two requests modify the same row simultaneously",
-    "ssot-violation": "Same data stored in two places that can diverge; no single source of truth",
-    "migration-drift": "DB schema migration out of sync with code; column exists in one but not the other",
-    "atomicity": "Multi-step operation fails halfway, leaving data in partial state; missing transaction",
-    "idempotency": "Same operation produces different results on retry; double-write, double-charge",
-    "boolean-trap": "Ambiguous boolean field that can't represent all required states",
-    "fsm-deadlock": "State machine gets stuck or makes illegal transition; slot/status lifecycle bug",
-    "cross-layer-import": "Import direction violation — domain imports api, or circular imports",
-    "pydantic-coercion": "Pydantic silently coerces a wrong type instead of raising a validation error",
-    "case-mismatch": "snake_case vs camelCase mismatch between DB field and code/API field",
-    "null-safety": "Unhandled None/null — missing check crashes at runtime",
+DEFAULTS = {
+    "money-precision": "Использовать int (kopecks), никогда float/Decimal для денег",
+    "race-condition": "Использовать advisory lock перед concurrent writes",
+    "ssot-violation": "Один источник правды — не хранить одно и то же в двух местах",
+    "migration-drift": "Миграция и код меняются в одном PR",
+    "atomicity": "Все шаги — в одной транзакции",
+    "idempotency": "Проверять на duplicate перед записью, использовать upsert",
+    "fsm-deadlock": "Описать все легальные переходы FSM явно",
 }
 
 
-def detect_domain(text: str) -> tuple[str, int]:
-    """Returns (domain, confidence_score)."""
-    text_lower = text.lower()
-    scores = {}
-    for domain, keywords in DOMAIN_PATTERNS.items():
-        score = sum(1 for kw in keywords if kw in text_lower)
-        if score > 0:
-            scores[domain] = score
-    if not scores:
-        return "general", 0
-    best = max(scores, key=scores.get)
-    return best, scores[best]
+def best_match(text: str, patterns: dict) -> tuple[str, int]:
+    t = text.lower()
+    scores = {k: sum(1 for kw in v if kw in t) for k, v in patterns.items()}
+    best = max(scores, key=scores.get, default="general")
+    return (best if scores.get(best, 0) > 0 else "general"), scores.get(best, 0)
 
 
-def classify_root_cause(text: str) -> tuple[str, str, int]:
-    """Returns (root_cause_class, severity, confidence_score)."""
-    text_lower = text.lower()
-    scores = {}
-    for cls, meta in ROOT_CAUSE_TAXONOMY.items():
-        score = sum(1 for kw in meta["keywords"] if kw in text_lower)
-        if score > 0:
-            scores[cls] = (score, meta["severity"])
-
-    if not scores:
-        return "general", "medium", 0
-
-    best = max(scores, key=lambda c: (scores[c][0], SEVERITY_ORDER[scores[c][1]]))
-    return best, scores[best][1], scores[best][0]
-
-
-def classify_with_llm(text: str, task_id: str) -> dict | None:
-    """
-    Read the full spec with Claude Haiku and extract structured classification.
-    Returns dict with domain/root_cause_class/prevention_rule/severity/keywords,
-    or None if API unavailable.
-    """
-    try:
-        import anthropic
-    except ImportError:
-        print(f"  [LLM] anthropic not installed — pip install anthropic", file=sys.stderr)
-        return None
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        print(f"  [LLM] ANTHROPIC_API_KEY not set — skipping LLM fallback", file=sys.stderr)
-        return None
-
-    taxonomy_desc = "\n".join(f'  "{cls}": {desc}' for cls, desc in ROOT_CAUSE_DESCRIPTIONS.items())
-    domain_list = ", ".join(DOMAIN_PATTERNS.keys()) + ", general"
-
-    prompt = f"""You are classifying a bug report for a knowledge base.
-
-<bug_spec>
-{text[:4000]}
-</bug_spec>
-
-Task ID: {task_id}
-
-Classify this bug using ONLY the taxonomy below. Read the spec carefully — title alone is not enough.
-
-Root cause classes:
-{taxonomy_desc}
-
-Available domains: {domain_list}
-
-Respond with valid JSON only, no commentary:
-{{
-  "domain": "<domain from list above>",
-  "root_cause_class": "<class from taxonomy above>",
-  "prevention_rule": "<one concrete actionable sentence — what to do differently next time>",
-  "severity": "<critical|high|medium>",
-  "keywords": ["<3-6 specific terms from this bug>"]
-}}"""
-
-    try:
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=400,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = response.content[0].text.strip()
-        # Strip markdown code fences if present
-        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE).strip()
-        result = json.loads(raw)
-        # Validate required fields
-        required = {"domain", "root_cause_class", "prevention_rule", "severity", "keywords"}
-        if not required.issubset(result.keys()):
-            raise ValueError(f"Missing fields: {required - result.keys()}")
-        if (
-            result["root_cause_class"] not in ROOT_CAUSE_DESCRIPTIONS
-            and result["root_cause_class"] != "general"
-        ):
-            result["root_cause_class"] = "general"
-        if result["severity"] not in SEVERITY_ORDER:
-            result["severity"] = "medium"
-        return result
-    except Exception as e:
-        print(f"  [LLM] Failed for {task_id}: {e}", file=sys.stderr)
-        return None
-
-
-def extract_prevention_rule(text: str, root_cause: str) -> str:
-    """Try to extract a one-line prevention rule from task body."""
-    for pattern in [
-        r"(?:resolution|fix|solution|prevent|правило|решение)[:\s]+(.+?)(?:\n|$)",
-        r"(?:use|always|never|must|should|использовать|никогда)[^\n]{10,}(?:\n|$)",
-    ]:
-        m = re.search(pattern, text, re.IGNORECASE)
-        if m:
-            rule = m.group(0 if re.search(r"use\|always", pattern) else 1).strip()
-            if len(rule) > 10:
-                return rule[:200]
-
-    defaults = {
-        "money-precision": "Использовать int (kopecks), никогда float/Decimal для денег",
-        "race-condition": "Использовать advisory lock или transaction isolation перед concurrent writes",
-        "ssot-violation": "Один источник правды — не хранить одно и то же в двух местах",
-        "migration-drift": "Миграция и код меняются в одном PR, CI применяет миграцию",
-        "atomicity": "Все шаги — в одной транзакции или с компенсирующей операцией",
-        "idempotency": "Проверять на duplicate перед записью, использовать upsert",
-        "fsm-deadlock": "Описать все легальные переходы FSM явно, запретить остальные",
-        "general": "Добавить тест на граничный случай",
-    }
-    return defaults.get(root_cause, defaults["general"])
-
-
-def parse_task_file(path: Path) -> dict | None:
-    """Parse a task spec file (BUG- prefix expected)."""
-    text = path.read_text(encoding="utf-8")
-    name = path.stem  # e.g. BUG-350-2026-02-15-kopecks-migration
-
-    # Only process BUG tasks
-    if not re.match(r"BUG-\d+", name, re.IGNORECASE):
-        return None
-
-    task_id = re.match(r"(BUG-\d+)", name, re.IGNORECASE).group(1).upper()
-
-    # Extract title from first H1 or filename
-    title_m = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
-    title = title_m.group(1).strip() if title_m else name
-
-    domain, domain_conf = detect_domain(text)
-    root_cause, severity, rc_conf = classify_root_cause(text)
-
-    method = "kw"  # classification method used
-
-    # Fall back to LLM when keyword confidence is low
-    if domain_conf < CONFIDENCE_MIN or rc_conf < CONFIDENCE_MIN:
-        llm_result = classify_with_llm(text, task_id)
-        if llm_result:
-            domain = llm_result["domain"]
-            root_cause = llm_result["root_cause_class"]
-            severity = llm_result["severity"]
-            prevention = llm_result["prevention_rule"]
-            keywords = llm_result["keywords"][:8]
-            method = "llm"
-        else:
-            # LLM unavailable — keep keyword result, note low confidence
-            prevention = extract_prevention_rule(text, root_cause)
-            keywords = [
-                kw
-                for kw in ROOT_CAUSE_TAXONOMY.get(root_cause, {}).get("keywords", [])
-                if kw in text.lower()
-            ][:8] or root_cause.split("-")
-            method = "kw-low"
-    else:
-        prevention = extract_prevention_rule(text, root_cause)
-        keywords = [
-            kw
-            for kw in ROOT_CAUSE_TAXONOMY.get(root_cause, {}).get("keywords", [])
-            if kw in text.lower()
-        ][:8] or root_cause.split("-")
-
-    return {
-        "task_id": task_id,
-        "title": title[:100],
-        "domain": domain,
-        "root_cause_class": root_cause,
-        "severity": severity,
-        "prevention_rule": prevention,
-        "keywords": keywords,
-        "_method": method,  # for logging only, not written to lesson
-    }
-
-
-def next_lesson_id(lessons_dir: Path) -> str:
-    existing = [f.stem for f in lessons_dir.glob("L-*.md") if re.match(r"L-\d+", f.stem)]
-    nums = [int(re.search(r"\d+", s).group()) for s in existing if re.search(r"\d+", s)]
-    n = max(nums, default=0) + 1
-    return f"L-{n:03d}"
-
-
-def write_lesson(lessons_dir: Path, lesson_id: str, data: dict, dry_run: bool) -> Path:
-    domain_dir = lessons_dir / data["domain"]
-    lesson_file = domain_dir / f"{lesson_id}.md"
-
-    content = f"""---
-id: {lesson_id}
-domain: {data["domain"]}
-root_cause_class: {data["root_cause_class"]}
-severity: {data["severity"]}
-created: {__import__("datetime").date.today()}
-occurrence_count: 1
-related: [{data["task_id"]}]
----
-
-# {data["root_cause_class"]}: {data["title"][:60]}
-
-## Prevention Rule
-{data["prevention_rule"]}
-
-## Context
-Extracted from {data["task_id"]}.
-
-## Keywords
-{", ".join(data["keywords"])}
-"""
-    if not dry_run:
-        domain_dir.mkdir(parents=True, exist_ok=True)
-        lesson_file.write_text(content, encoding="utf-8")
-
-    return lesson_file
-
-
-def update_index(index_file: Path, entry: dict, dry_run: bool):
-    line = json.dumps(entry, ensure_ascii=False)
-    if not dry_run:
-        with index_file.open("a", encoding="utf-8") as f:
-            f.write(line + "\n")
+def next_id(domain_dir: Path) -> str:
+    nums = [
+        int(m.group(1)) for f in domain_dir.glob("L-*.md") if (m := re.search(r"L-(\d+)", f.stem))
+    ]
+    return f"L-{max(nums, default=0) + 1:03d}"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build ai/lessons/ from archive")
-    parser.add_argument("--dry-run", action="store_true", help="Preview only, no writes")
-    parser.add_argument("--domain", help="Process only this domain")
-    parser.add_argument("--min-severity", choices=["critical", "high", "medium"], default="medium")
-    parser.add_argument("--archive-dir", default="ai/archive", help="Source directory")
-    parser.add_argument("--lessons-dir", default="ai/lessons", help="Output directory")
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--domain")
+    ap.add_argument("--archive-dir", default="ai/archive")
+    ap.add_argument("--lessons-dir", default="ai/lessons")
+    args = ap.parse_args()
 
-    archive_dir = Path(args.archive_dir)
-    lessons_dir = Path(args.lessons_dir)
-    index_file = lessons_dir / "index.jsonl"
+    archive = Path(args.archive_dir)
+    lessons = Path(args.lessons_dir)
 
-    if not archive_dir.exists():
-        print(f"Archive directory not found: {archive_dir}", file=sys.stderr)
-        print("Create ai/archive/ with BUG task spec files first.")
-        sys.exit(0)  # Not an error — project may not have archive yet
+    if not archive.exists():
+        print("Archive not found. Run /seed-lessons in Claude Code for intelligent seeding.")
+        sys.exit(0)
 
-    min_sev = SEVERITY_ORDER[args.min_severity]
-    processed = skipped = written = 0
-    counts = {"kw": 0, "llm": 0, "kw-low": 0}
-
-    for path in sorted(archive_dir.glob("*.md")):
-        data = parse_task_file(path)
-        if data is None:
+    written = skipped = 0
+    for path in sorted(archive.glob("*.md")):
+        if not re.match(r"BUG-\d+", path.stem, re.IGNORECASE):
             skipped += 1
             continue
 
-        processed += 1
-        method = data.pop("_method", "kw")
+        task_id = re.match(r"(BUG-\d+)", path.stem, re.IGNORECASE).group(1).upper()
+        text = path.read_text(encoding="utf-8")
+        title_m = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+        title = (title_m.group(1).strip() if title_m else path.stem)[:80]
 
-        if SEVERITY_ORDER[data["severity"]] < min_sev:
+        domain, _ = best_match(text, DOMAIN_PATTERNS)
+        root_cause, _ = best_match(text, ROOT_CAUSE_TAXONOMY)
+        severity = SEVERITY.get(root_cause, "medium")
+
+        if args.domain and domain != args.domain:
             skipped += 1
             continue
 
-        if args.domain and data["domain"] != args.domain:
-            skipped += 1
-            continue
+        rule_m = re.search(
+            r"(?:resolution|fix|solution|правило)[:\s]+(.+?)(?:\n|$)", text, re.IGNORECASE
+        )
+        prevention = (
+            rule_m.group(1).strip()[:200]
+            if rule_m and len(rule_m.group(1)) > 10
+            else DEFAULTS.get(root_cause, "Добавить тест на граничный случай")
+        )
 
-        domain_dir = lessons_dir / data["domain"]
-        lesson_id = next_lesson_id(domain_dir)
+        keywords = [kw for kw in ROOT_CAUSE_TAXONOMY.get(root_cause, []) if kw in text.lower()][:6]
 
-        write_lesson(lessons_dir, lesson_id, data, args.dry_run)
-        index_entry = {
+        domain_dir = lessons / domain
+        lesson_id = next_id(domain_dir)
+
+        content = f"""---
+id: {lesson_id}
+domain: {domain}
+root_cause_class: {root_cause}
+severity: {severity}
+created: {__import__("datetime").date.today()}
+occurrence_count: 1
+related: [{task_id}]
+---
+
+# {root_cause}: {title}
+
+## Prevention Rule
+{prevention}
+
+## Context
+Extracted from {task_id}.
+
+## Keywords
+{", ".join(keywords) or root_cause}
+"""
+        entry = {
             "id": lesson_id,
-            "domain": data["domain"],
-            "root_cause_class": data["root_cause_class"],
-            "prevention_rule": data["prevention_rule"],
-            "keywords": data["keywords"],
-            "severity": data["severity"],
-            "related": [data["task_id"]],
+            "domain": domain,
+            "root_cause_class": root_cause,
+            "prevention_rule": prevention,
+            "keywords": keywords,
+            "severity": severity,
+            "related": [task_id],
             "created": str(__import__("datetime").date.today()),
             "occurrence_count": 1,
         }
-        update_index(index_file, index_entry, args.dry_run)
 
-        action = "DRY-RUN" if args.dry_run else "WRITTEN"
-        tag = {"kw": "KW ", "llm": "LLM", "kw-low": "LOW"}.get(method, "???")
-        print(
-            f"[{action}][{tag}] {lesson_id} {data['domain']}/{data['root_cause_class']} ← {data['task_id']}"
-        )
-        counts[method] = counts.get(method, 0) + 1
+        if not args.dry_run:
+            domain_dir.mkdir(parents=True, exist_ok=True)
+            (domain_dir / f"{lesson_id}.md").write_text(content, encoding="utf-8")
+            with (lessons / "index.jsonl").open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        tag = "DRY" if args.dry_run else "  OK"
+        print(f"[{tag}] {lesson_id} {domain}/{root_cause} ← {task_id}")
         written += 1
 
-    verb = "would be written" if args.dry_run else "written"
-    print(f"\nDone: {written} lessons {verb}, {skipped} skipped, {processed} processed")
-    print(
-        f"  KW (confident): {counts['kw']}  |  LLM (fallback): {counts['llm']}  |  LOW (uncertain, no LLM): {counts['kw-low']}"
-    )
+    print(f"\n{written} lessons {'(dry-run) ' if args.dry_run else ''}| {skipped} skipped")
+    if written == 0:
+        print("Tip: use /seed-lessons in Claude Code for intelligent classification.")
 
 
 if __name__ == "__main__":
