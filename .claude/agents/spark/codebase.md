@@ -280,6 +280,55 @@ git log --oneline -5 -- src/domains/campaigns/
 **Observation:** Pricing was just refactored — good time to add budget logic to new module.
 ```
 
+## Lessons Retrieval (Step 6: Historical Risks)
+
+After completing the Impact Tree and Affected Files sections, check the project lesson bank.
+
+**Step 1: Check if lessons exist**
+
+```bash
+ls ai/lessons/ 2>/dev/null && echo "EXISTS" || echo "NONE"
+```
+
+**Step 2: If EXISTS — read domain lessons**
+
+- Glob `ai/lessons/{primary_domain}/*.md` (primary domain = most frequent domain in files_changed)
+- Read `ai/lessons/index.jsonl` if it exists — filter lines where `keywords` overlap with feature description terms
+- Select TOP-5 by: same domain first → keyword overlap count → severity (critical > high > medium)
+
+**Step 3: Append to research-codebase.md**
+
+```markdown
+## Historical Risks (from ai/lessons/)
+
+| ID | Class | Rule | Sources |
+|----|-------|------|---------|
+| L-001 | money-precision | Использовать kopecks (int) | BUG-350, BUG-386 |
+```
+
+If nothing found, write:
+
+```markdown
+## Historical Risks (from ai/lessons/)
+
+_No lessons bank for domain '{domain}' yet. Run `python3 scripts/build-lessons-index.py` to seed from archive._
+```
+
+If `ai/lessons/` does not exist at all:
+
+```markdown
+## Historical Risks (from ai/lessons/)
+
+_No lessons bank in this project yet._
+```
+
+**Rules:**
+- Never skip this step — even "no lessons" is valid output
+- MAX 5 lessons to avoid flooding the spec
+- Include full prevention_rule text, not just keywords
+
+---
+
 ## Rules
 
 1. **Grep first** — no assumptions about "probably exists"
@@ -288,3 +337,4 @@ git log --oneline -5 -- src/domains/campaigns/
 4. **Git history matters** — recent changes = potential conflicts
 5. **Reuse over rebuild** — if it exists and works, use it
 6. **No external sources** — you are the codebase expert, not web researcher
+7. **Lessons Retrieval mandatory** — Step 6 always runs, output always in research-codebase.md

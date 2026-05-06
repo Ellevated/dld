@@ -421,6 +421,20 @@ database: false
 
 ---
 
+## Historical Risks
+
+<!-- lessons-binding v1 -->
+
+_Auto-populated by spark-codebase from `ai/lessons/{domain}/`. Copy from `## Historical Risks` section of research-codebase.md._
+
+| ID | Class | Rule | Sources |
+|----|-------|------|---------|
+| {L-ID} | {root_cause_class} | {prevention_rule} | {TASK-IDs} |
+
+_Write "none" explicitly if spark-codebase found no historical lessons for this domain._
+
+---
+
 ## Approaches
 
 ### Approach 1: [Name] (based on [source])
@@ -774,13 +788,23 @@ Smaller specs = higher success rate and cheaper.
 □ If N/A — reason is valid and documented?
 ```
 
+### Gate 7: Historical Risks
+```
+□ ## Historical Risks section present in spec?
+□ <!-- lessons-binding v1 --> marker present?
+□ Has ≥1 lesson row OR explicit "none"?
+```
+
+**Soft gate:** If `ai/lessons/` does not exist in the project → Gate 7 auto-passes.
+Write in gate result: "Gate 7: auto-pass (no lessons bank)".
+
 **GATE RESULT:** pass / reject with reasons
 
 **If any gate fails →** spec stays in current state, return to Phase 3 (re-synthesize with feedback).
 
 <HARD-GATE>
 DO NOT proceed to Phase 7 until:
-- [ ] All 6 validation gates pass
+- [ ] All 7 validation gates pass
 - [ ] state.json updated: validate = done
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "gates are just a formality, spec looks good"
@@ -869,3 +893,4 @@ When you feel tempted to skip a phase, consult this table:
 | "The user said 'just do it'" | Ask 2-3 minimum clarifying questions anyway. |
 | "Validation gates are a formality" | Gates catch real issues. Run them honestly. |
 | "Nothing to reflect on" | There's always a process signal. Did auto-decide work? |
+| "No need for Historical Risks — this is a new feature" | ai/lessons/ exists? Run Gate 7. If it passes with 'none', you did the right thing. If you skip, the next kopecks-chain starts here. |

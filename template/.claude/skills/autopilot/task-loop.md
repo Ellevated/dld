@@ -355,6 +355,77 @@ If Step 2.5 created a regression test:
 | {YYYY-MM-DD} | {TASK_ID} | regression | {test_name} from debug fix | — | — | pending |
 ```
 
+### Lesson Extraction (conditional — fires only when debug_attempts > 0)
+
+**Trigger:** `debug_attempts > 0` (something broke and was fixed)
+
+Inline extraction — no subagent (ADR-007). Best-effort: never block commit if extraction fails.
+
+**Steps:**
+
+1. **Derive domain** from `files_changed` paths:
+   - Pattern: first `src/domains/<X>/` segment → `<X>`
+   - If no domain segment found → skip silently
+
+2. **Map category → root_cause_class** (from diary category + error keywords):
+
+   | Diary category + keywords in error/resolution | root_cause_class |
+   |------------------------------------------------|-----------------|
+   | code_bug + money\|kopeck\|rub\|float | money-precision |
+   | code_bug + lock\|race\|concurrent | race-condition |
+   | code_bug + transaction\|atomic\|partial | atomicity |
+   | code_bug + webhook\|duplicate\|idempotent | idempotency |
+   | code_bug + fsm\|state\|slot\|stuck | fsm-deadlock |
+   | code_bug + migration\|schema\|column | migration-drift |
+   | architecture + import\|layer\|circular | cross-layer-import |
+   | spec_gap + ssot\|duplicate\|sync | ssot-violation |
+   | Default (no match) | use diary category as-is |
+
+3. **Extract prevention_rule** — 1 sentence from Resolution in diary detail file. Fallback: standard rule for root_cause_class.
+
+4. **Assign severity**: critical if P0 spec, high if P1, medium if P2.
+
+5. **Determine next L-ID** (bash):
+   ```bash
+   ls ai/lessons/{domain}/ 2>/dev/null | grep -oE "L-[0-9]+" | sort -t- -k2 -n | tail -1
+   # Increment by 1, zero-pad to 3 digits → L-NNN
+   ```
+
+6. **Write** `ai/lessons/{domain}/L-{NNN}.md` (create dir if missing):
+   ```markdown
+   ---
+   id: L-{NNN}
+   domain: {domain}
+   root_cause_class: {class}
+   severity: {severity}
+   created: {YYYY-MM-DD}
+   occurrence_count: 1
+   related: [{TASK_ID}]
+   ---
+
+   # {root_cause_class}: {brief title from error}
+
+   ## Prevention Rule
+   {prevention_rule — 1 sentence}
+
+   ## Context
+   {last_error_message, 1-2 sentences}
+
+   ## Keywords
+   {comma-separated terms from error}
+   ```
+
+7. **Append to `ai/lessons/index.jsonl`**:
+   ```json
+   {"id":"L-NNN","domain":"...","root_cause_class":"...","prevention_rule":"...","keywords":[...],"severity":"...","related":["TASK_ID"],"created":"YYYY-MM-DD","occurrence_count":1}
+   ```
+
+**Rules:**
+- Only fires when `debug_attempts > 0` — no lesson for first-pass successes
+- Never block commit — if extraction fails, log and proceed
+- Deduplicate: if `index.jsonl` already contains same `TASK_ID` → skip
+- Do NOT create lesson for out-of-scope test failures
+
 ### Rules
 
 - **Factual** — what happened, not interpretation
@@ -367,6 +438,7 @@ If Step 2.5 created a regression test:
 DO NOT proceed to Step 7 until:
 - [ ] Index row added to ai/diary/index.md
 - [ ] If debug_attempts > 0: detail file created with Category
+- [ ] If debug_attempts > 0: lesson extraction attempted (success or skipped with reason)
 - [ ] autopilot-state.json updated: task.diary = "recorded"
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "diary is optional, I'll do it later"

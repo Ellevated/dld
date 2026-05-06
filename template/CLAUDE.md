@@ -352,6 +352,9 @@ ai/
 ├── blueprint/  # Business Blueprint + System Blueprint
 │   ├── business-blueprint.md
 │   └── system-blueprint/
+├── lessons/    # Domain-scoped lessons bank (Historical Risks)
+│   ├── index.jsonl          # Machine-readable index
+│   └── {domain}/L-NNN.md   # Individual lessons
 ├── reflect/    # Upstream signals between levels
 ├── diary/      # Session learnings
 ├── features/   # Task specs from /spark
