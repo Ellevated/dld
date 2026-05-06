@@ -1,5 +1,5 @@
 # Feature: [TECH-180] Knowledge Feedback Loop — Historical Risks в спеках
-**Status:** queued | **Priority:** P1 | **Date:** 2026-05-06
+**Status:** done | **Priority:** P1 | **Date:** 2026-05-06
 
 ## Why
 
