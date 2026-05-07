@@ -1,0 +1,12 @@
+{
+  "shape": "heading-variant",
+  "v1_marker": false,
+  "expected_paths": [
+    "internal/analyzer/claude.go",
+    "internal/analyzer/diagnostic_alerts.go",
+    "internal/analyzer/analyzer_test.go",
+    "internal/analyzer/diagnostic_alerts_test.go"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from gipotenuza_TECH-081__heading-variant.md"
+}

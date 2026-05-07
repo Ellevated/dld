@@ -321,7 +321,13 @@ Write spec using selected approach from Phase 4:
 
 ```markdown
 # Feature: [FTR-XXX] Title
+<!-- DLD-CALLBACK-MARKER-START v1 -->
 **Status:** queued | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
+<!-- DLD-CALLBACK-MARKER-END -->
+
+<!-- DLD-CALLBACK-MARKER-START v1 -->
+<!-- **Blocked Reason:** populated by callback.py when guard demotes to blocked -->
+<!-- DLD-CALLBACK-MARKER-END -->
 
 ## Why
 [Problem statement from Socratic Dialogue]
@@ -365,14 +371,33 @@ Write spec using selected approach from Phase 4:
 
 ---
 
+<!-- DLD-CALLBACK-MARKER-START v1 -->
 ## Allowed Files
-**ONLY these files may be modified during implementation:**
-1. `path/to/file1.py` — reason
-2. `path/to/file2.py` — reason
-3. `path/to/file3.py` — reason
 
-**New files allowed:**
-- `path/to/new_file.py` — reason
+<!-- callback-allowlist v1: backticked paths only, one per row.
+     DO NOT EDIT THIS BLOCK manually after autopilot starts.
+     Format is parsed by scripts/vps/callback.py — see TECH-167/175. -->
+
+ONLY the files listed below may be modified during implementation.
+
+- `path/to/file1.py` — reason (modify)
+- `path/to/file2.py` — reason (modify)
+- `path/to/new_file.py` — reason (NEW)
+- `tests/path/to/test_file.py` — reason (NEW)
+
+<!-- DLD-CALLBACK-MARKER-END -->
+
+**Format contract (enforced by Spark linter — see Phase 5.5):**
+- Heading is exactly `## Allowed Files` (case-sensitive H2, no suffix, no
+  qualifier in parentheses).
+- The HTML comment marker `<!-- callback-allowlist v1 -->` (or
+  `<!-- callback-allowlist v1: ... -->`) is REQUIRED and must appear
+  before the first path.
+- Each path lives on its own bullet `- ` line, wrapped in single backticks.
+  Optional free-text after the closing backtick is allowed.
+- No fenced code blocks, no nested lists, no tables. One path per line.
+- Minimum one path. Empty Allowed Files = block the spec (Spark refuses to
+  write).
 
 **FORBIDDEN:** All other files. Autopilot must refuse changes outside this list.
 
@@ -393,6 +418,20 @@ database: false
 **Domain:** {which domain from domain-map.md}
 **Cross-cutting:** {Money? Auth? Errors? — from cross-cutting.md}
 **Data model:** {which entities from data-architecture.md are affected}
+
+---
+
+## Historical Risks
+
+<!-- lessons-binding v1 -->
+
+_Auto-populated by spark-codebase from `ai/lessons/{domain}/`. Copy from `## Historical Risks` section of research-codebase.md._
+
+| ID | Class | Rule | Sources |
+|----|-------|------|---------|
+| {L-ID} | {root_cause_class} | {prevention_rule} | {TASK-IDs} |
+
+_Write "none" explicitly if spark-codebase found no historical lessons for this domain._
 
 ---
 
@@ -598,9 +637,83 @@ DO NOT proceed to Phase 6 until:
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "I'll fill the remaining sections later"
 </HARD-GATE>
-
 ---
 
+## Phase 5.5: ALLOWLIST LINTER (Pre-Validate Hard Gate)
+
+After Write, before Validate. Deterministic check against the spec's
+`## Allowed Files` section. ANY failure here → DELETE spec file, escalate
+to Telegram with the exact error code, do NOT advance to Phase 6.
+
+### Linter rules (regex SSOT — must match callback.py v2)
+
+```
+HEADING_RE   = ^##[ \t]+Allowed Files[ \t]*$            (case-sensitive, exact)
+MARKER_RE    = <!--\s*callback-allowlist\s+v1\b[^>]*-->
+BULLET_RE    = ^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$
+SECTION_END  = ^##[ \t]+\S          (next H2 heading)
+DLD_START_RE = ^<!--\s*DLD-CALLBACK-MARKER-START\s+v(?P<ver>\d+)\s*-->\s*$
+DLD_END_RE   = ^<!--\s*DLD-CALLBACK-MARKER-END\s*-->\s*$
+```
+
+### Algorithm
+
+1. Read the just-written spec file.
+2. Find the FIRST line matching `HEADING_RE`. If absent → fail
+   `ALLOWLIST_E001_NO_HEADING`.
+3. Forbid duplicates: if more than one line matches `HEADING_RE` → fail
+   `ALLOWLIST_E002_DUPLICATE_HEADING`.
+4. Slice section = lines after heading until first `SECTION_END` (or EOF).
+5. Search section for `MARKER_RE`. Absent → fail `ALLOWLIST_E003_NO_MARKER`.
+6. Iterate non-blank, non-comment lines in section. For each line:
+   - If line starts with `- ` (bullet) and does NOT match `BULLET_RE` → fail
+     `ALLOWLIST_E004_BAD_BULLET` with offending line.
+   - Lines that are not bullets and not the marker comment and not free
+     prose paragraphs (heuristic: contain a backtick) → fail
+     `ALLOWLIST_E005_PATH_OUTSIDE_BULLET` (catches "paths in fenced code
+     blocks" anti-pattern).
+7. Collect all paths captured by `BULLET_RE`. If count == 0 → fail
+   `ALLOWLIST_E006_EMPTY_LIST`.
+8. Verify `## Allowed Files` heading sits inside a `DLD_START_RE … DLD_END_RE`
+   block of supported version (v1). Mismatch → fail
+   `ALLOWLIST_E007_NOT_IN_MARKER_BLOCK`.
+9. Verify inner `<!-- callback-allowlist v1 -->` marker is present inside the
+   DLD marker block. Absent → fail `ALLOWLIST_E008_INNER_MARKER_MISSING`.
+
+### On failure
+
+1. `Bash`: `rm -f ai/features/{TASK_ID}-*.md` (delete the bad spec).
+2. Roll back the backlog edit if it was already added (Edit tool to remove
+   the row).
+3. Set `state.json: write = failed, error = <code>`.
+4. Return JSON to caller:
+
+```yaml
+status: blocked
+error_code: ALLOWLIST_E00X
+error_message: "Spark allowlist linter rejected spec: <human description>"
+remediation: "Re-run /spark and follow the canonical Allowed Files format
+              documented in feature-mode.md Phase 5.5."
+```
+
+5. Telegram notification (via `result_preview`):
+   `Spark linter blocked spec — <error_code>. Manual fix needed.`
+
+### On success
+
+- state.json: `lint = done, allowlist_paths = [<list>]`.
+- Proceed to Phase 6.
+
+<HARD-GATE>
+DO NOT proceed to Phase 6 until:
+- [ ] Phase 5.5 linter run on freshly-written spec file
+- [ ] Linter exit = success (no E001..E008)
+- [ ] state.json updated: lint = done, allowlist_paths = [<paths>]
+Skipping this gate = VIOLATION. No rationalization accepted.
+Common rationalization to REJECT: "the section looks fine to me"
+</HARD-GATE>
+
+---
 ## Phase 6: VALIDATE
 
 Before marking spec `queued`, run 6 structural validation gates.
@@ -675,13 +788,23 @@ Smaller specs = higher success rate and cheaper.
 □ If N/A — reason is valid and documented?
 ```
 
+### Gate 7: Historical Risks
+```
+□ ## Historical Risks section present in spec?
+□ <!-- lessons-binding v1 --> marker present?
+□ Has ≥1 lesson row OR explicit "none"?
+```
+
+**Soft gate:** If `ai/lessons/` does not exist in the project → Gate 7 auto-passes.
+Write in gate result: "Gate 7: auto-pass (no lessons bank)".
+
 **GATE RESULT:** pass / reject with reasons
 
 **If any gate fails →** spec stays in current state, return to Phase 3 (re-synthesize with feedback).
 
 <HARD-GATE>
 DO NOT proceed to Phase 7 until:
-- [ ] All 6 validation gates pass
+- [ ] All 7 validation gates pass
 - [ ] state.json updated: validate = done
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "gates are just a formality, spec looks good"
@@ -770,3 +893,4 @@ When you feel tempted to skip a phase, consult this table:
 | "The user said 'just do it'" | Ask 2-3 minimum clarifying questions anyway. |
 | "Validation gates are a formality" | Gates catch real issues. Run them honestly. |
 | "Nothing to reflect on" | There's always a process signal. Did auto-decide work? |
+| "No need for Historical Risks — this is a new feature" | ai/lessons/ exists? Run Gate 7. If it passes with 'none', you did the right thing. If you skip, the next kopecks-chain starts here. |

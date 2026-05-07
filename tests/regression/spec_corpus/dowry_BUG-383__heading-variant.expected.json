@@ -1,0 +1,16 @@
+{
+  "shape": "heading-variant",
+  "v1_marker": false,
+  "expected_paths": [
+    "deploy/docker-compose.prod.yml",
+    "src/domains/marketing/pipeline.py",
+    "src/api/scheduler_jobs/agent_jobs.py",
+    "src/api/scheduler_jobs/job_registrars.py",
+    "src/domains/intelligence/tg_parser.py",
+    ".claude/rules/domains/intelligence.md",
+    "tests/integration/domains/intelligence/test_tg_parser.py",
+    "scripts/pipeline/run_tg_pipeline.py"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from dowry_BUG-383__heading-variant.md"
+}

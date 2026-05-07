@@ -17,6 +17,48 @@ from typing import Optional
 
 DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent / "orchestrator.db"))
 _UNSET = object()
+_MIGRATIONS_APPLIED = False
+
+
+def _ensure_migrations(conn: sqlite3.Connection) -> None:
+    """Idempotent runtime migrations. Process-cached after first success.
+
+    TECH-170: add task_log.branch column for feature-branch awareness.
+    TECH-169: add callback_decisions table + indexes.
+    """
+    global _MIGRATIONS_APPLIED
+    if _MIGRATIONS_APPLIED:
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(task_log)").fetchall()}
+    if "branch" not in cols:
+        try:
+            conn.execute("ALTER TABLE task_log ADD COLUMN branch TEXT")
+        except sqlite3.OperationalError:
+            # Race: another process added it between PRAGMA and ALTER.
+            pass
+    # TECH-169: callback_decisions table — idempotent CREATE
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS callback_decisions ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+            "project_id TEXT NOT NULL,"
+            "spec_id TEXT,"
+            "verdict TEXT NOT NULL,"
+            "reason TEXT,"
+            "demoted INTEGER NOT NULL DEFAULT 0"
+            ")"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_callback_decisions_ts ON callback_decisions(ts)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_callback_decisions_demoted_ts "
+            "ON callback_decisions(demoted, ts)"
+        )
+    except sqlite3.OperationalError:
+        pass
+    _MIGRATIONS_APPLIED = True
 
 
 @contextmanager
@@ -36,6 +78,7 @@ def get_db(immediate: bool = False):
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
+    _ensure_migrations(conn)  # TECH-170: idempotent, process-cached
     begin = "BEGIN IMMEDIATE" if immediate else "BEGIN"
     conn.execute(begin)
     try:
@@ -141,13 +184,21 @@ def log_task(
     skill: str,
     status: str,
     pueue_id: int = None,
+    branch: str | None = None,
 ) -> int:
-    """Create a task_log entry. Returns the row id."""
+    """Create a task_log entry. Returns the row id.
+
+    Args:
+        branch: Git branch name (e.g. 'feature/TECH-170'). Used by the
+            implementation guard to differentiate work merged to develop
+            vs. work still on a feature branch (TECH-170).
+    """
     with get_db() as conn:
         cursor = conn.execute(
-            "INSERT INTO task_log (project_id, task_label, skill, status, pueue_id) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (project_id, task_label, skill, status, pueue_id),
+            "INSERT INTO task_log "
+            "(project_id, task_label, skill, status, pueue_id, branch) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (project_id, task_label, skill, status, pueue_id, branch),
         )
         return cursor.lastrowid
 
@@ -196,6 +247,56 @@ def get_task_by_pueue_id(pueue_id: int) -> Optional[dict]:
             (pueue_id,),
         ).fetchone()
         return dict(row) if row else None
+
+
+def record_decision(
+    project_id: str,
+    spec_id: Optional[str],
+    verdict: str,
+    reason: Optional[str],
+    demoted: bool,
+) -> int:
+    """Insert one callback decision row. Returns row id.
+
+    TECH-169: Used by callback.verify_status_sync to feed the circuit-breaker.
+    `verdict` is one of: 'demote', 'sync', 'noop', 'circuit_open'.
+    """
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO callback_decisions "
+            "(project_id, spec_id, verdict, reason, demoted) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (project_id, spec_id, verdict, reason, 1 if demoted else 0),
+        )
+        return cursor.lastrowid
+
+
+def count_demotes_since(min_ago: int) -> int:
+    """Count callback_decisions rows with demoted=1 in the last `min_ago` minutes.
+
+    TECH-169: Window query for circuit-breaker threshold check.
+    """
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM callback_decisions "
+            "WHERE demoted = 1 "
+            "AND ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)",
+            (f"-{int(min_ago)} minutes",),
+        ).fetchone()
+        return int(row["cnt"]) if row else 0
+
+
+def clear_decisions(min_ago: int) -> int:
+    """Delete callback_decisions rows newer than `min_ago` minutes. Returns deleted count.
+
+    TECH-169: Used by --reset-circuit to flush the recent window.
+    """
+    with get_db(immediate=True) as conn:
+        cursor = conn.execute(
+            "DELETE FROM callback_decisions WHERE ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)",
+            (f"-{int(min_ago)} minutes",),
+        )
+        return cursor.rowcount or 0
 
 
 def seed_projects_from_json(projects: list[dict]) -> None:

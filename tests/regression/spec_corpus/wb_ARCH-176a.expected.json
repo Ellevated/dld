@@ -1,0 +1,14 @@
+{
+  "shape": "canonical",
+  "v1_marker": false,
+  "expected_paths": [
+    "shared/projects.py",
+    "shared/project_config.py",
+    "infra/db/migrations/044_seed_existing_projects.sql",
+    "tests/test_project_config_schema.py",
+    "tests/test_get_active_projects.py",
+    "infra/db/seed.py"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from wb_ARCH-176a.md"
+}

@@ -1,0 +1,9 @@
+{{LOG_PATH}} {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

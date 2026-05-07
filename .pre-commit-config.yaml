@@ -1,0 +1,58 @@
+# DLD canonical pre-commit configuration (SSOT for downstream projects).
+#
+# DLD itself does NOT execute pre-commit on its own commits — this file is
+# a reference/template. Downstream projects (e.g. awardybot) should copy
+# this verbatim, then add language-specific hooks (ruff, mypy, eslint, etc.)
+# below the `# project-specific hooks` marker.
+#
+# Why the `exclude:` regex on cosmetic fixers?
+# Scout/Spark/Bughunt write large amounts of research markdown into
+# ai/.spark/**, ai/.bughunt/**, ai/diary/**, ai/reflect/**. These files are
+# disposable: their formatting is not load-bearing. Running
+# trailing-whitespace / end-of-file-fixer on them produces a fix-then-fail
+# cycle that blocks autopilot commits and triggers retry-loops (TECH-178,
+# incident: awardybot 2026-05-04).
+#
+# Belt-and-suspenders: the DLD orchestrator also exports
+# `SKIP=trailing-whitespace,end-of-file-fixer,mixed-line-ending` in
+# scripts/vps/run-agent.sh and scripts/vps/claude-runner.py so that even
+# projects that haven't adopted this exclude pattern are protected.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: |
+          (?x)^(
+            ai/\.spark/.*|
+            ai/\.bughunt/.*|
+            ai/diary/.*|
+            ai/reflect/.*|
+            ai/features/.*\.md
+          )$
+      - id: end-of-file-fixer
+        exclude: |
+          (?x)^(
+            ai/\.spark/.*|
+            ai/\.bughunt/.*|
+            ai/diary/.*|
+            ai/reflect/.*|
+            ai/features/.*\.md
+          )$
+      - id: mixed-line-ending
+        exclude: |
+          (?x)^(
+            ai/\.spark/.*|
+            ai/\.bughunt/.*|
+            ai/diary/.*|
+            ai/reflect/.*|
+            ai/features/.*\.md
+          )$
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=2000']
+
+  # project-specific hooks
+  # Add ruff/mypy/eslint/etc. below this marker.

@@ -42,6 +42,13 @@ check_ram() {
 
 check_ram
 
+# TECH-178: bypass pre-commit cosmetic fixers (trailing-whitespace,
+# end-of-file-fixer, mixed-line-ending) so autopilot commits of research-md
+# files (ai/.spark/**, ai/.bughunt/**, ai/diary/**, ai/reflect/**) don't
+# trigger the fix-then-exit-1 retry-loop. Lint-only hooks remain active.
+# Operator override: `SKIP="" pueue add ...` to disable the bypass.
+export SKIP="${SKIP:-trailing-whitespace,end-of-file-fixer,mixed-line-ending}"
+
 # Validate project directory exists
 if [[ ! -d "$PROJECT_DIR" ]]; then
     jq -n --arg path "$PROJECT_DIR" '{"error":"project_dir_not_found","path":$path}' >&2

@@ -1,0 +1,12 @@
+{
+  "shape": "fenced-block",
+  "v1_marker": false,
+  "expected_paths": [
+    "supabase/migrations/20260125190126_rebalance_cron_schedule.sql",
+    "src/domains/campaigns/services/sla_checker.py",
+    "src/domains/campaigns/services/sla_checker_reminders.py",
+    "src/domains/campaigns/services/slot_machine.py"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from awardybot_FTR-882__fenced-block.md"
+}

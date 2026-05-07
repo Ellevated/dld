@@ -32,7 +32,7 @@ Transforms raw ideas into specs via 4 parallel scouts + research + structured di
 4. **AI-First** — Can we solve via prompt change?
 5. **Socratic Dialogue** — Ask 5-7 deep questions before designing (human-initiated features)
 6. **YAGNI** — Only what's necessary
-7. **Explicit Allowlist** — Spec must list ONLY files that can be modified
+7. **Explicit Allowlist (Canonical Format)** — `## Allowed Files` section uses canonical block: H2 heading + `<!-- callback-allowlist v1 -->` marker + bullet+backtick paths. Phase 5.5 linter enforces this — see `feature-mode.md`.
 8. **Learn from Corrections** — Auto-capture user corrections to diary
 9. **Blueprint Compliance** — All decisions within System Blueprint constraints
 

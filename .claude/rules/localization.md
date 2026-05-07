@@ -28,6 +28,7 @@ When user triggers a skill in native language, invoke the corresponding slash co
 | "оценка агентов", "эвал", "проверь агентов" | `/eval` |
 | "обнови DLD", "апгрейд", "обнови скиллы", "обнови фреймворк" | `/upgrade` |
 | "протестируй", "потыкай", "проверь как работает", "QA", "ручное тестирование" | `/qa` |
+| "засей уроки", "заполни банк уроков", "seed lessons", "populate lessons" | `/seed-lessons` |
 
 ## Action
 

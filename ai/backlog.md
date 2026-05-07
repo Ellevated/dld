@@ -129,6 +129,20 @@
 | BUG-164 | Fix callback.py pueue socket mismatch — read agent output from log files + DB | done | P0 | [spec](features/BUG-164-2026-03-20-callback-pueue-socket-mismatch.md) |
 | TECH-149 | Deterministic Worktree Cleanup After Merge | done | P1 | [spec](features/TECH-149-2026-03-25-worktree-cleanup.md) |
 | TECH-165 | Anthropic Pipeline Optimization (SDK 0.1.48→0.1.63 + model routing + observability) | done | P1 | [spec](features/TECH-165-2026-04-18-anthropic-pipeline-optimization.md) |
+| TECH-166 | Callback implementation guard — git-diff проверка allowed files перед mark-done (закрывает дыру с FTR-896 false-done) | done | P1 | [spec](features/TECH-166-2026-05-01-callback-implementation-guard.md) |
+| TECH-167 | Spark canonical `## Allowed Files` section + emit-time linter (R1, корень format-drift'а) | done | P0 | [spec](features/TECH-167-2026-05-02-spark-canonical-allowed-files.md) |
+| TECH-168 | Callback test suite — unit + integration + regression corpus (R0, защита от silent regression) | done | P0 | [spec](features/TECH-168-2026-05-02-callback-test-suite.md) |
+| TECH-169 | Orchestrator circuit-breaker on mass-demote (>3 demotes/10min → pause + alert) | done | P0 | [spec](features/TECH-169-2026-05-02-orchestrator-circuit-breaker.md) |
+| TECH-170 | Implementation guard видит feature-branch коммиты (`git log --all`) | done | P1 | [spec](features/TECH-170-2026-05-02-guard-feature-branch-awareness.md) |
+| TECH-171 | Guard structured audit log + daily Telegram digest | done | P1 | [spec](features/TECH-171-2026-05-02-guard-structured-audit-log.md) |
+| TECH-172 | Single Status write path — callback единственный writer, autopilot не трогает | done | P1 | [spec](features/TECH-172-2026-05-02-single-status-write-path.md) |
+| TECH-173 | Rewrite `dld-orchestrator.md` — single source of truth + runbook + diagram | done | P1 | [spec](features/TECH-173-2026-05-02-orchestrator-docs-rewrite.md) |
+| TECH-174 | Manual spec verification protocol + spec_verify.py + operator.py CLI | done | P2 | [spec](features/TECH-174-2026-05-02-manual-verification-protocol.md) |
+| TECH-175 | Spark spec template hardening — DO-NOT-REMOVE markers + schema versioning | blocked | P2 | [spec](features/TECH-175-2026-05-02-spark-spec-template-hardening.md) |
+| TECH-176 | IMPL_GUARD: detect "already merged before started_at" → auto-close instead of demote | blocked | P1 | [spec](features/TECH-176-2026-05-04-guard-already-merged-detection.md) |
+| TECH-177 | Callback: tighten `_spec_has_merged_implementation` matcher — subject-only ID match (cross-spec body mention false-positive) | done | P1 | [spec](features/TECH-177-2026-05-04-callback-cross-spec-id-mention.md) |
+| TECH-178 | Pre-commit hook откатывает коммиты на trailing whitespace в research-md (autopilot retry-loop) | done | P2 | [spec](features/TECH-178-2026-05-04-precommit-whitespace-rollback.md) |
+| TECH-180 | Knowledge Feedback Loop — Historical Risks в спеках (ingestion + retrieval + binding + closing loop) | done | P1 | [spec](features/TECH-180-2026-05-06-knowledge-feedback-loop.md) |
 
 ---
 

@@ -92,6 +92,40 @@ if [[ "${1:-}" == "--phase3" ]]; then
         ok "Schema updated (gemini slot seeded)"
     fi
 
+    # 8. Cron for daily callback audit digest @ 09:00 UTC (TECH-171)
+    DIGEST_SCRIPT="${SCRIPT_DIR}/audit_digest.py"
+    if [[ -f "$DIGEST_SCRIPT" ]]; then
+        AUDIT_LOG_PATH="${CALLBACK_AUDIT_LOG:-${SCRIPT_DIR}/callback-audit.jsonl}"
+        DIGEST_CRON_LINE="0 9 * * * CALLBACK_AUDIT_LOG=${AUDIT_LOG_PATH} ${SCRIPT_DIR}/venv/bin/python3 ${DIGEST_SCRIPT} >> /var/log/dld-orchestrator/audit-digest.log 2>&1"
+        (crontab -l 2>/dev/null | grep -v "audit_digest.py"; echo "$DIGEST_CRON_LINE") | crontab -
+        ok "Cron installed: audit_digest.py daily @ 09:00 UTC"
+    else
+        warn "audit_digest.py not found — cron not installed"
+    fi
+
+    # 9. Logrotate config for callback-audit.jsonl (TECH-171)
+    LOGROTATE_TEMPLATE="${SCRIPT_DIR}/logrotate.callback-audit"
+    LOGROTATE_DEST="/etc/logrotate.d/dld-callback-audit"
+    AUDIT_LOG_FOR_ROTATE="${CALLBACK_AUDIT_LOG:-${SCRIPT_DIR}/callback-audit.jsonl}"
+    if [[ -f "$LOGROTATE_TEMPLATE" ]]; then
+        if command -v logrotate &>/dev/null; then
+            LOGROTATE_CONTENT=$(sed "s|{{LOG_PATH}}|${AUDIT_LOG_FOR_ROTATE}|g" "$LOGROTATE_TEMPLATE")
+            if [[ -w "$(dirname "$LOGROTATE_DEST")" ]]; then
+                echo "$LOGROTATE_CONTENT" > "$LOGROTATE_DEST"
+                ok "logrotate config installed: ${LOGROTATE_DEST}"
+            else
+                # Fallback: install with sudo
+                echo "$LOGROTATE_CONTENT" | sudo tee "$LOGROTATE_DEST" > /dev/null 2>/dev/null \
+                    && ok "logrotate config installed (sudo): ${LOGROTATE_DEST}" \
+                    || warn "logrotate install failed — run manually: sudo tee ${LOGROTATE_DEST} < ${LOGROTATE_TEMPLATE}"
+            fi
+        else
+            warn "logrotate not found — skipping config install"
+        fi
+    else
+        warn "logrotate.callback-audit template not found"
+    fi
+
     echo ""
     echo "=== Phase 3 Setup complete ==="
     exit 0

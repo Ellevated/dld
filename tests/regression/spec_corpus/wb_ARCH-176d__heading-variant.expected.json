@@ -1,0 +1,11 @@
+{
+  "shape": "heading-variant",
+  "v1_marker": false,
+  "expected_paths": [
+    ".claude/rules/dependencies.md",
+    "docs/building-blocks.md",
+    "docs/multi-tenancy-audit.md"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from wb_ARCH-176d__heading-variant.md"
+}

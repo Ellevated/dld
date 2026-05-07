@@ -1,0 +1,16 @@
+{
+  "shape": "canonical",
+  "v1_marker": false,
+  "expected_paths": [
+    "internal/reporter/sheet_svodka.go",
+    "internal/reporter/sheet_svodka_helpers.go",
+    "internal/reporter/types.go",
+    "internal/reporter/generate.go",
+    "ProductData.MainPhoto.URL",
+    "internal/reporter/sheet_svodka_test.go",
+    "go.mod",
+    "go.sum"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from gipotenuza_FTR-092__fenced-block.md"
+}

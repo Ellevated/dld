@@ -8,6 +8,9 @@ template/
 # LLM-generated artifacts (not human-authored, content-of-record)
 ai/
 
+# LLM agent prompts (regex patterns trigger MD052 false positives)
+.claude/
+
 # Eval golden files (LLM outputs under test/)
 test/
 

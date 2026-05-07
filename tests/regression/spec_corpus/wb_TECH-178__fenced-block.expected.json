@@ -1,0 +1,7 @@
+{
+  "shape": "fenced-block",
+  "v1_marker": true,
+  "expected_paths": [],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from wb_TECH-178__fenced-block.md"
+}

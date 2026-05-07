@@ -1,0 +1,15 @@
+{
+  "shape": "canonical",
+  "v1_marker": false,
+  "expected_paths": [
+    "supabase/functions/content-factory/index.ts",
+    "supabase/functions/content-factory-finalize/index.ts",
+    "supabase/functions/_shared/ai/llm-client.ts",
+    "supabase/functions/content-bot-webhook/handlers/commands.ts",
+    "supabase/functions/tests/content-factory-error-handling-test.ts",
+    "supabase/functions/tests/content-finalize-fallback-test.ts",
+    ".claude/rules/domains/content.md"
+  ],
+  "expected_return_type": "list",
+  "_comment": "Generated 2026-05-02 from plpilot_BUG-326.md"
+}

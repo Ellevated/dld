@@ -8,6 +8,7 @@ exclude_path = [
   "test/",
   "node_modules/",
   ".worktrees/",
+  "tests/regression/spec_corpus/",
 ]
 
 # URL patterns to skip (regex)
@@ -17,6 +18,8 @@ exclude = [
   # Known 404s on third-party docs (sites moved/renamed pages)
   "martinfowler\\.com/bliki/FitnessFunction",
   "redis\\.io/docs/manual/patterns/rate-limiter",
+  # LinkedIn often returns 999/404 for bots
+  "linkedin\\.com",
 ]
 
 # Per-run behavior
