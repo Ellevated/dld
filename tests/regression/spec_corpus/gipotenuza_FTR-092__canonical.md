@@ -122,158 +122,158 @@ Self-contained helper that owns the network fetch, webp→PNG conversion, and `e
 package reporter
 
 import (
-	"bytes"
-	"image"
-	"image/png"
-	"net/http"
-	"net/http/httptest"
-	"testing"
+    "bytes"
+    "image"
+    "image/png"
+    "net/http"
+    "net/http/httptest"
+    "testing"
 
-	"github.com/xuri/excelize/v2"
-	xwebp "golang.org/x/image/webp"
+    "github.com/xuri/excelize/v2"
+    xwebp "golang.org/x/image/webp"
 )
 
 // fixtureWebP returns a 800×800 magenta webp blob suitable for decode tests.
 // Note: we generate the fixture on-the-fly using image/draw so the test stays
 // hermetic (no checked-in binaries).
 func fixtureWebP(t *testing.T) []byte {
-	t.Helper()
-	// golang.org/x/image/webp is decode-only; build the test fixture in PNG and
-	// stream it back as bytes — the SUT switches on Content-Type, not extension.
-	img := image.NewRGBA(image.Rect(0, 0, 800, 800))
-	for x := 0; x < 800; x++ {
-		for y := 0; y < 800; y++ {
-			img.Set(x, y, image.NewUniform(image.Black).At(0, 0))
-		}
-	}
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		t.Fatalf("encode png: %v", err)
-	}
-	_ = xwebp.Decoder // ensures import is used in real test path below
-	return buf.Bytes()
+    t.Helper()
+    // golang.org/x/image/webp is decode-only; build the test fixture in PNG and
+    // stream it back as bytes — the SUT switches on Content-Type, not extension.
+    img := image.NewRGBA(image.Rect(0, 0, 800, 800))
+    for x := 0; x < 800; x++ {
+        for y := 0; y < 800; y++ {
+            img.Set(x, y, image.NewUniform(image.Black).At(0, 0))
+        }
+    }
+    var buf bytes.Buffer
+    if err := png.Encode(&buf, img); err != nil {
+        t.Fatalf("encode png: %v", err)
+    }
+    _ = xwebp.Decoder // ensures import is used in real test path below
+    return buf.Bytes()
 }
 
 func TestFetchAndResizePhoto_HappyPath_PNG(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		w.Write(fixtureWebP(t))
-	}))
-	defer srv.Close()
+    srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "image/png")
+        w.Write(fixtureWebP(t))
+    }))
+    defer srv.Close()
 
-	got, err := fetchAndResizePhoto(srv.Client(), srv.URL, 200, 200)
-	if err != nil {
-		t.Fatalf("fetchAndResizePhoto: %v", err)
-	}
-	if len(got) == 0 {
-		t.Fatal("expected non-empty PNG bytes")
-	}
-	// Verify it decodes as PNG and dimensions are 200×200.
-	cfg, err := png.DecodeConfig(bytes.NewReader(got))
-	if err != nil {
-		t.Fatalf("DecodeConfig: %v", err)
-	}
-	if cfg.Width != 200 || cfg.Height != 200 {
-		t.Errorf("dims = %dx%d, want 200x200", cfg.Width, cfg.Height)
-	}
+    got, err := fetchAndResizePhoto(srv.Client(), srv.URL, 200, 200)
+    if err != nil {
+        t.Fatalf("fetchAndResizePhoto: %v", err)
+    }
+    if len(got) == 0 {
+        t.Fatal("expected non-empty PNG bytes")
+    }
+    // Verify it decodes as PNG and dimensions are 200×200.
+    cfg, err := png.DecodeConfig(bytes.NewReader(got))
+    if err != nil {
+        t.Fatalf("DecodeConfig: %v", err)
+    }
+    if cfg.Width != 200 || cfg.Height != 200 {
+        t.Errorf("dims = %dx%d, want 200x200", cfg.Width, cfg.Height)
+    }
 }
 
 func TestFetchAndResizePhoto_404Returns_Empty(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
+    srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusNotFound)
+    }))
+    defer srv.Close()
 
-	got, err := fetchAndResizePhoto(srv.Client(), srv.URL, 200, 200)
-	if err == nil {
-		t.Errorf("expected error on 404, got nil")
-	}
-	if got != nil {
-		t.Errorf("expected nil bytes on 404, got %d bytes", len(got))
-	}
+    got, err := fetchAndResizePhoto(srv.Client(), srv.URL, 200, 200)
+    if err == nil {
+        t.Errorf("expected error on 404, got nil")
+    }
+    if got != nil {
+        t.Errorf("expected nil bytes on 404, got %d bytes", len(got))
+    }
 }
 
 func TestFetchAndResizePhoto_NetworkError_NoPanic(t *testing.T) {
-	// Bad URL — no server.
-	got, err := fetchAndResizePhoto(http.DefaultClient, "http://127.0.0.1:1/bad", 200, 200)
-	if err == nil {
-		t.Errorf("expected error on unreachable host, got nil")
-	}
-	if got != nil {
-		t.Errorf("expected nil bytes on net error, got %d bytes", len(got))
-	}
+    // Bad URL — no server.
+    got, err := fetchAndResizePhoto(http.DefaultClient, "http://127.0.0.1:1/bad", 200, 200)
+    if err == nil {
+        t.Errorf("expected error on unreachable host, got nil")
+    }
+    if got != nil {
+        t.Errorf("expected nil bytes on net error, got %d bytes", len(got))
+    }
 }
 
 func TestEmbedCoverPhoto_HappyPath_PictureInserted(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		w.Write(fixtureWebP(t))
-	}))
-	defer srv.Close()
+    srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "image/png")
+        w.Write(fixtureWebP(t))
+    }))
+    defer srv.Close()
 
-	f := excelize.NewFile()
-	defer f.Close()
-	f.NewSheet(sheet)
+    f := excelize.NewFile()
+    defer f.Close()
+    f.NewSheet(sheet)
 
-	httpClient := srv.Client()
-	if err := embedCoverPhoto(f, sheet, "A1", srv.URL, httpClient); err != nil {
-		t.Fatalf("embedCoverPhoto: %v", err)
-	}
-	pics, err := f.GetPictures(sheet, "A1")
-	if err != nil {
-		t.Fatalf("GetPictures: %v", err)
-	}
-	if len(pics) == 0 {
-		t.Errorf("expected ≥1 picture in A1, got 0")
-	}
+    httpClient := srv.Client()
+    if err := embedCoverPhoto(f, sheet, "A1", srv.URL, httpClient); err != nil {
+        t.Fatalf("embedCoverPhoto: %v", err)
+    }
+    pics, err := f.GetPictures(sheet, "A1")
+    if err != nil {
+        t.Fatalf("GetPictures: %v", err)
+    }
+    if len(pics) == 0 {
+        t.Errorf("expected ≥1 picture in A1, got 0")
+    }
 }
 
 func TestEmbedCoverPhoto_404_ReturnsErrorNoPicture(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
+    srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusNotFound)
+    }))
+    defer srv.Close()
 
-	f := excelize.NewFile()
-	defer f.Close()
-	f.NewSheet(sheet)
+    f := excelize.NewFile()
+    defer f.Close()
+    f.NewSheet(sheet)
 
-	err := embedCoverPhoto(f, sheet, "A1", srv.URL, srv.Client())
-	if err == nil {
-		t.Errorf("expected error on 404, got nil — caller decides how to render placeholder")
-	}
-	pics, _ := f.GetPictures(sheet, "A1")
-	if len(pics) != 0 {
-		t.Errorf("expected 0 pictures after 404, got %d", len(pics))
-	}
+    err := embedCoverPhoto(f, sheet, "A1", srv.URL, srv.Client())
+    if err == nil {
+        t.Errorf("expected error on 404, got nil — caller decides how to render placeholder")
+    }
+    pics, _ := f.GetPictures(sheet, "A1")
+    if len(pics) != 0 {
+        t.Errorf("expected 0 pictures after 404, got %d", len(pics))
+    }
 }
 
 func TestWriteCoverHeader_NoURL_RendersPlaceholderText(t *testing.T) {
-	f := excelize.NewFile()
-	defer f.Close()
-	f.NewSheet(sheet)
-	styles := createStyles(f)
+    f := excelize.NewFile()
+    defer f.Close()
+    f.NewSheet(sheet)
+    styles := createStyles(f)
 
-	rowsUsed := writeCoverHeader(f, styles, &ReportData{
-		CoverPhotoURL: "",
-		Product: &collector.ProductData{
-			NmID: 174236476,
-			Card: &collector.WBCardData{Brand: "Acme", Name: "Блузка летняя"},
-		},
-	}, http.DefaultClient)
+    rowsUsed := writeCoverHeader(f, styles, &ReportData{
+        CoverPhotoURL: "",
+        Product: &collector.ProductData{
+            NmID: 174236476,
+            Card: &collector.WBCardData{Brand: "Acme", Name: "Блузка летняя"},
+        },
+    }, http.DefaultClient)
 
-	if rowsUsed != coverHeaderRows {
-		t.Errorf("rowsUsed = %d, want %d", rowsUsed, coverHeaderRows)
-	}
-	val, _ := f.GetCellValue(sheet, "B1")
-	if !strings.Contains(val, "174236476") {
-		t.Errorf("nmID expected in B1, got %q", val)
-	}
-	// Placeholder text — brand-safe, no emoji.
-	cell, _ := f.GetCellValue(sheet, "A2")
-	if cell != "" && !strings.Contains(cell, "Фото недоступно") {
-		t.Errorf("A2 placeholder = %q, want 'Фото недоступно'", cell)
-	}
+    if rowsUsed != coverHeaderRows {
+        t.Errorf("rowsUsed = %d, want %d", rowsUsed, coverHeaderRows)
+    }
+    val, _ := f.GetCellValue(sheet, "B1")
+    if !strings.Contains(val, "174236476") {
+        t.Errorf("nmID expected in B1, got %q", val)
+    }
+    // Placeholder text — brand-safe, no emoji.
+    cell, _ := f.GetCellValue(sheet, "A2")
+    if cell != "" && !strings.Contains(cell, "Фото недоступно") {
+        t.Errorf("A2 placeholder = %q, want 'Фото недоступно'", cell)
+    }
 }
 ```
 
@@ -303,38 +303,38 @@ Expected: FAIL `undefined: fetchAndResizePhoto`, `undefined: embedCoverPhoto`, `
 package reporter
 
 import (
-	"bytes"
-	"context"
-	"fmt"
-	"image"
-	"image/jpeg"
-	"image/png"
-	"io"
-	"log/slog"
-	"net/http"
-	"time"
+    "bytes"
+    "context"
+    "fmt"
+    "image"
+    "image/jpeg"
+    "image/png"
+    "io"
+    "log/slog"
+    "net/http"
+    "time"
 
-	"github.com/ellevated/gipotenuza/internal/collector"
-	"github.com/xuri/excelize/v2"
-	"golang.org/x/image/draw"
-	xwebp "golang.org/x/image/webp"
+    "github.com/ellevated/gipotenuza/internal/collector"
+    "github.com/xuri/excelize/v2"
+    "golang.org/x/image/draw"
+    xwebp "golang.org/x/image/webp"
 )
 
 const (
-	// coverPhotoSizePx — fixed embedded image dimensions (request from spec).
-	coverPhotoSizePx = 200
+    // coverPhotoSizePx — fixed embedded image dimensions (request from spec).
+    coverPhotoSizePx = 200
 
-	// coverHeaderRows — total Excel rows the header block occupies.
-	// Layout: 12 rows tall × 4 columns (A..D) wide for photo + B..I for meta.
-	coverHeaderRows = 12
+    // coverHeaderRows — total Excel rows the header block occupies.
+    // Layout: 12 rows tall × 4 columns (A..D) wide for photo + B..I for meta.
+    coverHeaderRows = 12
 
-	// coverFetchTimeout — HARD ceiling on the cover-photo fetch.
-	// 5s is generous for basket-NN.wbbasket.ru CDN + decode budget.
-	coverFetchTimeout = 5 * time.Second
+    // coverFetchTimeout — HARD ceiling on the cover-photo fetch.
+    // 5s is generous for basket-NN.wbbasket.ru CDN + decode budget.
+    coverFetchTimeout = 5 * time.Second
 
-	// coverMaxBytes — refuse to decode anything larger to keep xlsx <500KB
-	// after embedding multiple photos in a future iteration.
-	coverMaxBytes = 2 * 1024 * 1024 // 2 MB upstream cap (post-resize ≈40KB)
+    // coverMaxBytes — refuse to decode anything larger to keep xlsx <500KB
+    // after embedding multiple photos in a future iteration.
+    coverMaxBytes = 2 * 1024 * 1024 // 2 MB upstream cap (post-resize ≈40KB)
 )
 
 // fetchAndResizePhoto downloads url, decodes (webp/png/jpeg autodetect via the
@@ -345,50 +345,50 @@ const (
 // Caller is responsible for the HTTP client (test injection). If client is nil
 // a default 5s-timeout client is used.
 func fetchAndResizePhoto(client *http.Client, url string, width, height int) ([]byte, error) {
-	if client == nil {
-		client = &http.Client{Timeout: coverFetchTimeout}
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), coverFetchTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("reporter.cover: build request: %w", err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("reporter.cover: fetch %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("reporter.cover: fetch %s: status %d", url, resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, coverMaxBytes))
-	if err != nil {
-		return nil, fmt.Errorf("reporter.cover: read body: %w", err)
-	}
-	img, err := decodeImage(body)
-	if err != nil {
-		return nil, fmt.Errorf("reporter.cover: decode: %w", err)
-	}
-	resized := image.NewRGBA(image.Rect(0, 0, width, height))
-	draw.BiLinear.Scale(resized, resized.Bounds(), img, img.Bounds(), draw.Over, nil)
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, resized); err != nil {
-		return nil, fmt.Errorf("reporter.cover: encode png: %w", err)
-	}
-	return buf.Bytes(), nil
+    if client == nil {
+        client = &http.Client{Timeout: coverFetchTimeout}
+    }
+    ctx, cancel := context.WithTimeout(context.Background(), coverFetchTimeout)
+    defer cancel()
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+    if err != nil {
+        return nil, fmt.Errorf("reporter.cover: build request: %w", err)
+    }
+    resp, err := client.Do(req)
+    if err != nil {
+        return nil, fmt.Errorf("reporter.cover: fetch %s: %w", url, err)
+    }
+    defer resp.Body.Close()
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("reporter.cover: fetch %s: status %d", url, resp.StatusCode)
+    }
+    body, err := io.ReadAll(io.LimitReader(resp.Body, coverMaxBytes))
+    if err != nil {
+        return nil, fmt.Errorf("reporter.cover: read body: %w", err)
+    }
+    img, err := decodeImage(body)
+    if err != nil {
+        return nil, fmt.Errorf("reporter.cover: decode: %w", err)
+    }
+    resized := image.NewRGBA(image.Rect(0, 0, width, height))
+    draw.BiLinear.Scale(resized, resized.Bounds(), img, img.Bounds(), draw.Over, nil)
+    var buf bytes.Buffer
+    if err := png.Encode(&buf, resized); err != nil {
+        return nil, fmt.Errorf("reporter.cover: encode png: %w", err)
+    }
+    return buf.Bytes(), nil
 }
 
 // decodeImage tries webp first (since WB serves webp), then falls back to the
 // stdlib image.Decode (PNG/JPEG via standard registrations).
 func decodeImage(body []byte) (image.Image, error) {
-	// Try webp — WB main path.
-	if img, err := xwebp.Decode(bytes.NewReader(body)); err == nil {
-		return img, nil
-	}
-	// Fallback: image.Decode (PNG, JPEG via blank imports below).
-	img, _, err := image.Decode(bytes.NewReader(body))
-	return img, err
+    // Try webp — WB main path.
+    if img, err := xwebp.Decode(bytes.NewReader(body)); err == nil {
+        return img, nil
+    }
+    // Fallback: image.Decode (PNG, JPEG via blank imports below).
+    img, _, err := image.Decode(bytes.NewReader(body))
+    return img, err
 }
 
 // Force-link decoders for non-webp payloads (test fixtures, fallback hosts).
@@ -402,26 +402,26 @@ var _ = jpeg.Encode
 // excelize.AddPictureFromBytes positions the image OVER cells (not in-cell);
 // the caller is responsible for sizing rows/cols so the 200×200 PNG sits flush.
 func embedCoverPhoto(f *excelize.File, sheet, anchor, url string, client *http.Client) error {
-	pngBytes, err := fetchAndResizePhoto(client, url, coverPhotoSizePx, coverPhotoSizePx)
-	if err != nil {
-		return err
-	}
-	pic := &excelize.Picture{
-		Extension: ".png",
-		File:      pngBytes,
-		Format: &excelize.GraphicOptions{
-			AltText:         "Главное фото карточки",
-			LockAspectRatio: true,
-			OffsetX:         4,
-			OffsetY:         4,
-			ScaleX:          1.0,
-			ScaleY:          1.0,
-			Hyperlink:       url,
-			HyperlinkType:   "External",
-			Positioning:     "oneCell",
-		},
-	}
-	return f.AddPictureFromBytes(sheet, anchor, pic)
+    pngBytes, err := fetchAndResizePhoto(client, url, coverPhotoSizePx, coverPhotoSizePx)
+    if err != nil {
+        return err
+    }
+    pic := &excelize.Picture{
+        Extension: ".png",
+        File:      pngBytes,
+        Format: &excelize.GraphicOptions{
+            AltText:         "Главное фото карточки",
+            LockAspectRatio: true,
+            OffsetX:         4,
+            OffsetY:         4,
+            ScaleX:          1.0,
+            ScaleY:          1.0,
+            Hyperlink:       url,
+            HyperlinkType:   "External",
+            Positioning:     "oneCell",
+        },
+    }
+    return f.AddPictureFromBytes(sheet, anchor, pic)
 }
 
 // writeCoverHeader renders the FTR-092 cover block at the top of the Svodka
@@ -440,77 +440,77 @@ func embedCoverPhoto(f *excelize.File, sheet, anchor, url string, client *http.C
 // On photo fetch failure, the photo cell shows "Фото недоступно" placeholder
 // in `s.manual` style — never panics, never blocks report generation.
 func writeCoverHeader(
-	f *excelize.File, s *reportStyles, data *ReportData, client *http.Client,
+    f *excelize.File, s *reportStyles, data *ReportData, client *http.Client,
 ) int {
-	if data == nil || data.Product == nil {
-		return 0
-	}
-	pd := data.Product
+    if data == nil || data.Product == nil {
+        return 0
+    }
+    pd := data.Product
 
-	// Pre-size column A wider so the 200px image fits visually.
-	// (col A is otherwise width=4 — too narrow for a 200px image.)
-	// We'll restore the original widths AFTER rendering by NOT touching
-	// col A here — instead we set row heights so 200px height fits in 12 rows.
-	for r := 1; r <= coverHeaderRows; r++ {
-		_ = f.SetRowHeight(sheet, r, 18) // 12 rows × 18pt ≈ 216px ≥ 200px image
-	}
+    // Pre-size column A wider so the 200px image fits visually.
+    // (col A is otherwise width=4 — too narrow for a 200px image.)
+    // We'll restore the original widths AFTER rendering by NOT touching
+    // col A here — instead we set row heights so 200px height fits in 12 rows.
+    for r := 1; r <= coverHeaderRows; r++ {
+        _ = f.SetRowHeight(sheet, r, 18) // 12 rows × 18pt ≈ 216px ≥ 200px image
+    }
 
-	// Cover block label
-	labelCell := "A1"
-	f.SetCellValue(sheet, labelCell, "Карточка")
-	f.SetCellStyle(sheet, labelCell, labelCell, s.bold)
+    // Cover block label
+    labelCell := "A1"
+    f.SetCellValue(sheet, labelCell, "Карточка")
+    f.SetCellStyle(sheet, labelCell, labelCell, s.bold)
 
-	// Photo OR placeholder
-	if data.CoverPhotoURL != "" {
-		if err := embedCoverPhoto(f, sheet, "A2", data.CoverPhotoURL, client); err != nil {
-			svodkaLogger.Warn("reporter.cover.fetch_failed",
-				slog.String("url", data.CoverPhotoURL),
-				slog.Int64("nm_id", pd.NmID),
-				slog.String("error", err.Error()))
-			writePlaceholderCell(f, s, "A2")
-		}
-	} else {
-		writePlaceholderCell(f, s, "A2")
-	}
+    // Photo OR placeholder
+    if data.CoverPhotoURL != "" {
+        if err := embedCoverPhoto(f, sheet, "A2", data.CoverPhotoURL, client); err != nil {
+            svodkaLogger.Warn("reporter.cover.fetch_failed",
+                slog.String("url", data.CoverPhotoURL),
+                slog.Int64("nm_id", pd.NmID),
+                slog.String("error", err.Error()))
+            writePlaceholderCell(f, s, "A2")
+        }
+    } else {
+        writePlaceholderCell(f, s, "A2")
+    }
 
-	// Right-side meta — uses cols E..I to leave A..D free for the photo.
-	// (col widths C..G are 30 each per existing writeSvodka layout.)
-	wbLink := fmt.Sprintf("https://www.wildberries.ru/catalog/%d/detail.aspx", pd.NmID)
-	nmTxt := fmt.Sprintf("Артикул %d", pd.NmID)
-	f.SetCellValue(sheet, "E1", nmTxt)
-	f.SetCellHyperLink(sheet, "E1", wbLink, "External")
-	f.SetCellStyle(sheet, "E1", "I1", s.bold)
-	f.MergeCell(sheet, "E1", "I1")
+    // Right-side meta — uses cols E..I to leave A..D free for the photo.
+    // (col widths C..G are 30 each per existing writeSvodka layout.)
+    wbLink := fmt.Sprintf("https://www.wildberries.ru/catalog/%d/detail.aspx", pd.NmID)
+    nmTxt := fmt.Sprintf("Артикул %d", pd.NmID)
+    f.SetCellValue(sheet, "E1", nmTxt)
+    f.SetCellHyperLink(sheet, "E1", wbLink, "External")
+    f.SetCellStyle(sheet, "E1", "I1", s.bold)
+    f.MergeCell(sheet, "E1", "I1")
 
-	if pd.Card != nil {
-		f.SetCellValue(sheet, "E3", "Бренд: "+pd.Card.Brand)
-		f.MergeCell(sheet, "E3", "I3")
-		f.SetCellStyle(sheet, "E3", "I3", s.data)
+    if pd.Card != nil {
+        f.SetCellValue(sheet, "E3", "Бренд: "+pd.Card.Brand)
+        f.MergeCell(sheet, "E3", "I3")
+        f.SetCellStyle(sheet, "E3", "I3", s.data)
 
-		name := pd.Card.Name
-		if len([]rune(name)) > 80 {
-			name = string([]rune(name)[:80]) + "…"
-		}
-		f.SetCellValue(sheet, "E5", "Название: "+name)
-		f.MergeCell(sheet, "E5", "I5")
-		f.SetCellStyle(sheet, "E5", "I5", s.data)
+        name := pd.Card.Name
+        if len([]rune(name)) > 80 {
+            name = string([]rune(name)[:80]) + "…"
+        }
+        f.SetCellValue(sheet, "E5", "Название: "+name)
+        f.MergeCell(sheet, "E5", "I5")
+        f.SetCellStyle(sheet, "E5", "I5", s.data)
 
-		if pd.Card.SalePriceU > 0 {
-			rub := pd.Card.SalePriceU / 100 / 100 // SalePriceU = kopecks * 100
-			f.SetCellValue(sheet, "E7", fmt.Sprintf("Цена: %d ₽", rub))
-			f.MergeCell(sheet, "E7", "I7")
-			f.SetCellStyle(sheet, "E7", "I7", s.data)
-		}
-	}
+        if pd.Card.SalePriceU > 0 {
+            rub := pd.Card.SalePriceU / 100 / 100 // SalePriceU = kopecks * 100
+            f.SetCellValue(sheet, "E7", fmt.Sprintf("Цена: %d ₽", rub))
+            f.MergeCell(sheet, "E7", "I7")
+            f.SetCellStyle(sheet, "E7", "I7", s.data)
+        }
+    }
 
-	return coverHeaderRows
+    return coverHeaderRows
 }
 
 // writePlaceholderCell renders a brand-safe text fallback when the photo
 // cannot be fetched or decoded. No emoji, no exclamation marks (brand rules).
 func writePlaceholderCell(f *excelize.File, s *reportStyles, cell string) {
-	f.SetCellValue(sheet, cell, "Фото недоступно")
-	f.SetCellStyle(sheet, cell, cell, s.manual)
+    f.SetCellValue(sheet, cell, "Фото недоступно")
+    f.SetCellStyle(sheet, cell, cell, s.manual)
 }
 
 // guard: ensure collector import is used (writeCoverHeader uses pd.Card field
@@ -551,20 +551,20 @@ Add the explicit `CoverPhotoURL string` field so the caller (pipeline) can pass 
 ```go
 // internal/reporter/types.go (modify ReportData struct)
 type ReportData struct {
-	Analysis    *analyzer.ScanAnalysis
-	Product     *collector.ProductData
-	Competitors []*collector.ProductData
-	ScanType    string
-	GeneratedAt time.Time
-	Class       criteria.ProductClass
-	SubjectText string
-	MediaFacts  *media.Facts
-	SkippedCriteria []int
+    Analysis    *analyzer.ScanAnalysis
+    Product     *collector.ProductData
+    Competitors []*collector.ProductData
+    ScanType    string
+    GeneratedAt time.Time
+    Class       criteria.ProductClass
+    SubjectText string
+    MediaFacts  *media.Facts
+    SkippedCriteria []int
 
-	// FTR-092: full URL of the WB CDN webp main photo (basket-NN host pre-resolved).
-	// Empty → reporter renders "Фото недоступно" placeholder.
-	// Format: https://basket-NN.wbbasket.ru/vol{V}/part{P}/{nmID}/images/big/1.webp
-	CoverPhotoURL string
+    // FTR-092: full URL of the WB CDN webp main photo (basket-NN host pre-resolved).
+    // Empty → reporter renders "Фото недоступно" placeholder.
+    // Format: https://basket-NN.wbbasket.ru/vol{V}/part{P}/{nmID}/images/big/1.webp
+    CoverPhotoURL string
 }
 ```
 
@@ -594,33 +594,33 @@ Caller (pipeline) needs to materialise the URL. Currently URL construction lives
 ```go
 // internal/collector/wb_basket_test.go (append)
 func TestMainPhotoURL_Construction(t *testing.T) {
-	cases := []struct {
-		nmID int64
-		host string
-		want string
-	}{
-		{
-			nmID: 174236476, host: "07",
-			want: "https://basket-07.wbbasket.ru/vol1742/part174236/174236476/images/big/1.webp",
-		},
-		{
-			nmID: 1234567, host: "01",
-			want: "https://basket-01.wbbasket.ru/vol12/part1234/1234567/images/big/1.webp",
-		},
-	}
-	for _, c := range cases {
-		got := MainPhotoURL(c.nmID, c.host)
-		if got != c.want {
-			t.Errorf("MainPhotoURL(%d, %q) = %q, want %q", c.nmID, c.host, got, c.want)
-		}
-	}
+    cases := []struct {
+        nmID int64
+        host string
+        want string
+    }{
+        {
+            nmID: 174236476, host: "07",
+            want: "https://basket-07.wbbasket.ru/vol1742/part174236/174236476/images/big/1.webp",
+        },
+        {
+            nmID: 1234567, host: "01",
+            want: "https://basket-01.wbbasket.ru/vol12/part1234/1234567/images/big/1.webp",
+        },
+    }
+    for _, c := range cases {
+        got := MainPhotoURL(c.nmID, c.host)
+        if got != c.want {
+            t.Errorf("MainPhotoURL(%d, %q) = %q, want %q", c.nmID, c.host, got, c.want)
+        }
+    }
 }
 
 func TestMainPhotoURL_EmptyHost_ReturnsEmpty(t *testing.T) {
-	got := MainPhotoURL(174236476, "")
-	if got != "" {
-		t.Errorf("MainPhotoURL with empty host should return empty, got %q", got)
-	}
+    got := MainPhotoURL(174236476, "")
+    if got != "" {
+        t.Errorf("MainPhotoURL with empty host should return empty, got %q", got)
+    }
 }
 ```
 
@@ -638,15 +638,15 @@ func TestMainPhotoURL_EmptyHost_ReturnsEmpty(t *testing.T) {
 //
 // Used by: scanner.Pipeline (FTR-092 cover photo plumbing into ReportData).
 func MainPhotoURL(nmID int64, host string) string {
-	if host == "" || nmID <= 0 {
-		return ""
-	}
-	vol := nmID / 100000
-	part := nmID / 1000
-	return fmt.Sprintf(
-		"https://basket-%s.wbbasket.ru/vol%d/part%d/%d/images/big/1.webp",
-		host, vol, part, nmID,
-	)
+    if host == "" || nmID <= 0 {
+        return ""
+    }
+    vol := nmID / 100000
+    part := nmID / 1000
+    return fmt.Sprintf(
+        "https://basket-%s.wbbasket.ru/vol%d/part%d/%d/images/big/1.webp",
+        host, vol, part, nmID,
+    )
 }
 ```
 
@@ -689,12 +689,12 @@ grep -rn "scanner.NewPipeline\|NewPipeline(" cmd/ internal/scanner/
 ```go
 // internal/scanner/pipeline_test.go (extend existing)
 func TestNewPipeline_AcceptsBasketResolver(t *testing.T) {
-	// ... existing test setup ...
-	basket := collector.NewBasketResolver("")
-	p := scanner.NewPipeline(/* ...all existing args..., */ basket)
-	if p == nil {
-		t.Fatal("NewPipeline returned nil")
-	}
+    // ... existing test setup ...
+    basket := collector.NewBasketResolver("")
+    p := scanner.NewPipeline(/* ...all existing args..., */ basket)
+    if p == nil {
+        t.Fatal("NewPipeline returned nil")
+    }
 }
 ```
 
@@ -704,43 +704,43 @@ func TestNewPipeline_AcceptsBasketResolver(t *testing.T) {
 // internal/scanner/pipeline.go (struct + ctor)
 
 type Pipeline struct {
-	registry *collector.ProviderRegistry
-	jam      JamScraper
-	analyzer analyzer.Analyzer
-	media    MediaPipeline
-	criteria *criteria.Registry
-	store    ScanStore
-	tmpDir   string
-	logger   *slog.Logger
-	// ... other existing fields ...
+    registry *collector.ProviderRegistry
+    jam      JamScraper
+    analyzer analyzer.Analyzer
+    media    MediaPipeline
+    criteria *criteria.Registry
+    store    ScanStore
+    tmpDir   string
+    logger   *slog.Logger
+    // ... other existing fields ...
 
-	// FTR-092: basket-NN resolver — used to materialise the main-photo URL
-	// for ReportData.CoverPhotoURL. May be nil → photo block renders placeholder.
-	basket *collector.BasketResolver
+    // FTR-092: basket-NN resolver — used to materialise the main-photo URL
+    // for ReportData.CoverPhotoURL. May be nil → photo block renders placeholder.
+    basket *collector.BasketResolver
 }
 
 func NewPipeline(
-	registry *collector.ProviderRegistry,
-	jam JamScraper,
-	mediaPipe MediaPipeline,
-	an analyzer.Analyzer,
-	reg *criteria.Registry,
-	store ScanStore,
-	tmpDir string,
-	logger *slog.Logger,
-	basket *collector.BasketResolver, // NEW — last param to minimise call-site churn
+    registry *collector.ProviderRegistry,
+    jam JamScraper,
+    mediaPipe MediaPipeline,
+    an analyzer.Analyzer,
+    reg *criteria.Registry,
+    store ScanStore,
+    tmpDir string,
+    logger *slog.Logger,
+    basket *collector.BasketResolver, // NEW — last param to minimise call-site churn
 ) *Pipeline {
-	return &Pipeline{
-		registry: registry,
-		jam:      jam,
-		analyzer: an,
-		media:    mediaPipe,
-		criteria: reg,
-		store:    store,
-		tmpDir:   tmpDir,
-		logger:   logger,
-		basket:   basket,
-	}
+    return &Pipeline{
+        registry: registry,
+        jam:      jam,
+        analyzer: an,
+        media:    mediaPipe,
+        criteria: reg,
+        store:    store,
+        tmpDir:   tmpDir,
+        logger:   logger,
+        basket:   basket,
+    }
 }
 ```
 
@@ -750,20 +750,20 @@ func NewPipeline(
 // FTR-092: cover photo URL — empty if basket resolver missing or nmID invalid.
 var coverURL string
 if p.basket != nil && scanData.WBCard != nil {
-	coverURL = collector.MainPhotoURL(scanData.WBCard.NmID, p.basket.Host(scanData.WBCard.NmID))
+    coverURL = collector.MainPhotoURL(scanData.WBCard.NmID, p.basket.Host(scanData.WBCard.NmID))
 }
 
 reportData := &reporter.ReportData{
-	Analysis:        analysis,
-	Product:         scanData.WBCard,
-	Competitors:     scanData.Competitors,
-	ScanType:        string(req.ScanType),
-	GeneratedAt:     time.Now(),
-	Class:           productClass,
-	SubjectText:     subjRoot,
-	MediaFacts:      mediaFacts,
-	SkippedCriteria: skippedIDs,
-	CoverPhotoURL:   coverURL, // NEW
+    Analysis:        analysis,
+    Product:         scanData.WBCard,
+    Competitors:     scanData.Competitors,
+    ScanType:        string(req.ScanType),
+    GeneratedAt:     time.Now(),
+    Class:           productClass,
+    SubjectText:     subjRoot,
+    MediaFacts:      mediaFacts,
+    SkippedCriteria: skippedIDs,
+    CoverPhotoURL:   coverURL, // NEW
 }
 ```
 
@@ -772,8 +772,8 @@ reportData := &reporter.ReportData{
 // Find existing scanner.NewPipeline(...) call and append basketResolver as last arg.
 
 pipeline := scanner.NewPipeline(
-	registry, jamScraper, mediaPipe, an, reg, store, tmpDir, logger,
-	basketResolver, // FTR-092: cover photo URL plumbing
+    registry, jamScraper, mediaPipe, an, reg, store, tmpDir, logger,
+    basketResolver, // FTR-092: cover photo URL plumbing
 )
 ```
 
@@ -806,65 +806,65 @@ Existing `writeSvodka` writes title at row 1, banner at row 2, headers at row 3,
 // internal/reporter/sheet_svodka.go (replace writeSvodka function preamble)
 
 func writeSvodka(f *excelize.File, s *reportStyles, data *ReportData) {
-	// Column widths (unchanged)
-	f.SetColWidth(sheet, "A", "A", 4)
-	f.SetColWidth(sheet, "B", "B", 30)
-	f.SetColWidth(sheet, "C", "G", 30)
-	f.SetColWidth(sheet, "H", "I", 38)
+    // Column widths (unchanged)
+    f.SetColWidth(sheet, "A", "A", 4)
+    f.SetColWidth(sheet, "B", "B", 30)
+    f.SetColWidth(sheet, "C", "G", 30)
+    f.SetColWidth(sheet, "H", "I", 38)
 
-	// FTR-092: cover photo header block (rows 1..coverHeaderRows).
-	// On nil/empty CoverPhotoURL, renders text-only placeholder — never panics.
-	coverRows := writeCoverHeader(f, s, data, http.DefaultClient)
+    // FTR-092: cover photo header block (rows 1..coverHeaderRows).
+    // On nil/empty CoverPhotoURL, renders text-only placeholder — never panics.
+    coverRows := writeCoverHeader(f, s, data, http.DefaultClient)
 
-	// Row N (was 1): title merged A:I
-	titleRow := coverRows + 1   // = 13 when cover=12
-	bannerRow := coverRows + 2  // = 14
-	headerRow := coverRows + 3  // = 15
+    // Row N (was 1): title merged A:I
+    titleRow := coverRows + 1   // = 13 when cover=12
+    bannerRow := coverRows + 2  // = 14
+    headerRow := coverRows + 3  // = 15
 
-	title := "Диагональное сканирование"
-	if !data.GeneratedAt.IsZero() {
-		title = fmt.Sprintf("Диагональное сканирование %s", data.GeneratedAt.Format("02.01.2006"))
-	}
-	titleCell := fmt.Sprintf("A%d", titleRow)
-	f.SetCellValue(sheet, titleCell, title)
-	f.MergeCell(sheet, titleCell, fmt.Sprintf("I%d", titleRow))
-	f.SetCellStyle(sheet, titleCell, fmt.Sprintf("I%d", titleRow), s.header)
+    title := "Диагональное сканирование"
+    if !data.GeneratedAt.IsZero() {
+        title = fmt.Sprintf("Диагональное сканирование %s", data.GeneratedAt.Format("02.01.2006"))
+    }
+    titleCell := fmt.Sprintf("A%d", titleRow)
+    f.SetCellValue(sheet, titleCell, title)
+    f.MergeCell(sheet, titleCell, fmt.Sprintf("I%d", titleRow))
+    f.SetCellStyle(sheet, titleCell, fmt.Sprintf("I%d", titleRow), s.header)
 
-	// Row N+1 (was 2): price anomaly banner — only if PriceAnomaly set.
-	if data.Analysis != nil && data.Analysis.PriceAnomaly {
-		bannerTxt := fmt.Sprintf(
-			"ВНИМАНИЕ: данные о цене выглядят аномально. Наша цена: %d ₽. Медиана конкурентов: %d ₽. Перед выполнением рекомендаций проверьте отображение цены в личном кабинете WB. Часть критериев может быть построена на ошибочной цене.",
-			data.Analysis.PriceAnomalyOurRub, data.Analysis.PriceAnomalyMedRub,
-		)
-		bCell := fmt.Sprintf("A%d", bannerRow)
-		f.SetCellValue(sheet, bCell, bannerTxt)
-		f.MergeCell(sheet, bCell, fmt.Sprintf("I%d", bannerRow))
-		f.SetCellStyle(sheet, bCell, fmt.Sprintf("I%d", bannerRow), s.manual)
-		f.SetRowHeight(sheet, bannerRow, 60)
-	}
+    // Row N+1 (was 2): price anomaly banner — only if PriceAnomaly set.
+    if data.Analysis != nil && data.Analysis.PriceAnomaly {
+        bannerTxt := fmt.Sprintf(
+            "ВНИМАНИЕ: данные о цене выглядят аномально. Наша цена: %d ₽. Медиана конкурентов: %d ₽. Перед выполнением рекомендаций проверьте отображение цены в личном кабинете WB. Часть критериев может быть построена на ошибочной цене.",
+            data.Analysis.PriceAnomalyOurRub, data.Analysis.PriceAnomalyMedRub,
+        )
+        bCell := fmt.Sprintf("A%d", bannerRow)
+        f.SetCellValue(sheet, bCell, bannerTxt)
+        f.MergeCell(sheet, bCell, fmt.Sprintf("I%d", bannerRow))
+        f.SetCellStyle(sheet, bCell, fmt.Sprintf("I%d", bannerRow), s.manual)
+        f.SetRowHeight(sheet, bannerRow, 60)
+    }
 
-	// Row N+2 (was 3): header row
-	headers := []string{"№", "Критерий", "МЫ", "ТОП-1", "ТОП-2", "ТОП-3", "Слабый", "Выводы", "Задачи"}
-	for i, h := range headers {
-		cell := fmt.Sprintf("%s%d", colLetter(i), headerRow)
-		f.SetCellValue(sheet, cell, h)
-		f.SetCellStyle(sheet, cell, cell, s.header)
-	}
+    // Row N+2 (was 3): header row
+    headers := []string{"№", "Критерий", "МЫ", "ТОП-1", "ТОП-2", "ТОП-3", "Слабый", "Выводы", "Задачи"}
+    for i, h := range headers {
+        cell := fmt.Sprintf("%s%d", colLetter(i), headerRow)
+        f.SetCellValue(sheet, cell, h)
+        f.SetCellStyle(sheet, cell, cell, s.header)
+    }
 
-	// Freeze panes — was C5 (rows 1..4 frozen). Now: rows 1..(headerRow+1) frozen.
-	f.SetPanes(sheet, &excelize.Panes{
-		Freeze:      true,
-		Split:       false,
-		XSplit:      2,
-		YSplit:      headerRow + 1,
-		TopLeftCell: fmt.Sprintf("C%d", headerRow+2),
-		ActivePane:  "bottomRight",
-	})
+    // Freeze panes — was C5 (rows 1..4 frozen). Now: rows 1..(headerRow+1) frozen.
+    f.SetPanes(sheet, &excelize.Panes{
+        Freeze:      true,
+        Split:       false,
+        XSplit:      2,
+        YSplit:      headerRow + 1,
+        TopLeftCell: fmt.Sprintf("C%d", headerRow+2),
+        ActivePane:  "bottomRight",
+    })
 
-	// ... existing logic continues — only the starting row variable changes:
-	//   row := 4   →   row := headerRow + 1
-	row := headerRow + 1
-	// ... (rest of writeSvodka body unchanged) ...
+    // ... existing logic continues — only the starting row variable changes:
+    //   row := 4   →   row := headerRow + 1
+    row := headerRow + 1
+    // ... (rest of writeSvodka body unchanged) ...
 }
 ```
 
@@ -909,61 +909,61 @@ Expected: ALL pass (including pre-existing 30+ tests after row-shift fixes).
 // internal/reporter/sheet_svodka_test.go (append)
 
 func TestWriteSvodka_WithCoverPhotoURL_PictureEmbedded(t *testing.T) {
-	// Spin a local httptest server serving a tiny PNG (no need for real webp).
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		// 100×100 black PNG
-		img := image.NewRGBA(image.Rect(0, 0, 100, 100))
-		_ = png.Encode(w, img)
-	}))
-	defer srv.Close()
+    // Spin a local httptest server serving a tiny PNG (no need for real webp).
+    srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "image/png")
+        // 100×100 black PNG
+        img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+        _ = png.Encode(w, img)
+    }))
+    defer srv.Close()
 
-	f := excelize.NewFile()
-	defer f.Close()
-	f.NewSheet(sheet)
+    f := excelize.NewFile()
+    defer f.Close()
+    f.NewSheet(sheet)
 
-	data := &ReportData{
-		Analysis: &analyzer.ScanAnalysis{Criteria: []analyzer.CriterionResult{}},
-		Product: &collector.ProductData{
-			NmID: 174236476,
-			Card: &collector.WBCardData{Name: "Тест", Brand: "Acme", SalePriceU: 250000_00},
-		},
-		Class:         criteria.ClassApparel,
-		CoverPhotoURL: srv.URL,
-	}
-	writeSvodka(f, createStyles(f), data)
+    data := &ReportData{
+        Analysis: &analyzer.ScanAnalysis{Criteria: []analyzer.CriterionResult{}},
+        Product: &collector.ProductData{
+            NmID: 174236476,
+            Card: &collector.WBCardData{Name: "Тест", Brand: "Acme", SalePriceU: 250000_00},
+        },
+        Class:         criteria.ClassApparel,
+        CoverPhotoURL: srv.URL,
+    }
+    writeSvodka(f, createStyles(f), data)
 
-	// Cover photo present at A2.
-	pics, err := f.GetPictures(sheet, "A2")
-	if err != nil {
-		t.Fatalf("GetPictures: %v", err)
-	}
-	if len(pics) == 0 {
-		t.Errorf("expected picture in A2 after writeSvodka with CoverPhotoURL, got 0")
-	}
-	// Brand text in B/E1 (right-side meta).
-	val, _ := f.GetCellValue(sheet, "E1")
-	if !strings.Contains(val, "174236476") {
-		t.Errorf("E1 = %q, want contains nmID", val)
-	}
+    // Cover photo present at A2.
+    pics, err := f.GetPictures(sheet, "A2")
+    if err != nil {
+        t.Fatalf("GetPictures: %v", err)
+    }
+    if len(pics) == 0 {
+        t.Errorf("expected picture in A2 after writeSvodka with CoverPhotoURL, got 0")
+    }
+    // Brand text in B/E1 (right-side meta).
+    val, _ := f.GetCellValue(sheet, "E1")
+    if !strings.Contains(val, "174236476") {
+        t.Errorf("E1 = %q, want contains nmID", val)
+    }
 }
 
 func TestWriteSvodka_NoCoverPhotoURL_Placeholder(t *testing.T) {
-	f := excelize.NewFile()
-	defer f.Close()
-	f.NewSheet(sheet)
+    f := excelize.NewFile()
+    defer f.Close()
+    f.NewSheet(sheet)
 
-	data := &ReportData{
-		Analysis: &analyzer.ScanAnalysis{Criteria: []analyzer.CriterionResult{}},
-		Product:  &collector.ProductData{NmID: 1, Card: &collector.WBCardData{Name: "x"}},
-		Class:    criteria.ClassUnknown,
-		// CoverPhotoURL intentionally empty
-	}
-	writeSvodka(f, createStyles(f), data) // must not panic
-	val, _ := f.GetCellValue(sheet, "A2")
-	if val != "Фото недоступно" {
-		t.Errorf("A2 placeholder = %q, want 'Фото недоступно'", val)
-	}
+    data := &ReportData{
+        Analysis: &analyzer.ScanAnalysis{Criteria: []analyzer.CriterionResult{}},
+        Product:  &collector.ProductData{NmID: 1, Card: &collector.WBCardData{Name: "x"}},
+        Class:    criteria.ClassUnknown,
+        // CoverPhotoURL intentionally empty
+    }
+    writeSvodka(f, createStyles(f), data) // must not panic
+    val, _ := f.GetCellValue(sheet, "A2")
+    if val != "Фото недоступно" {
+        t.Errorf("A2 placeholder = %q, want 'Фото недоступно'", val)
+    }
 }
 ```
 
@@ -971,26 +971,26 @@ func TestWriteSvodka_NoCoverPhotoURL_Placeholder(t *testing.T) {
 
 ```go
 func TestGenerate_WithCoverPhoto_FileSizeUnder500KB(t *testing.T) {
-	// integration: full Generate() round-trip with a CoverPhotoURL pointing
-	// at a 800×800 webp (loaded from a tiny test fixture; we generate a JPEG
-	// in-process and serve it via httptest).
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		img := image.NewRGBA(image.Rect(0, 0, 800, 800))
-		_ = jpeg.Encode(w, img, &jpeg.Options{Quality: 85})
-	}))
-	defer srv.Close()
+    // integration: full Generate() round-trip with a CoverPhotoURL pointing
+    // at a 800×800 webp (loaded from a tiny test fixture; we generate a JPEG
+    // in-process and serve it via httptest).
+    srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "image/jpeg")
+        img := image.NewRGBA(image.Rect(0, 0, 800, 800))
+        _ = jpeg.Encode(w, img, &jpeg.Options{Quality: 85})
+    }))
+    defer srv.Close()
 
-	data := newMinimalReportData()  // helper from reporter_test.go
-	data.CoverPhotoURL = srv.URL
-	bytes, err := Generate(data)
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	const cap = 500 * 1024
-	if len(bytes) > cap {
-		t.Errorf("xlsx size = %d bytes, exceeds 500KB cap", len(bytes))
-	}
+    data := newMinimalReportData()  // helper from reporter_test.go
+    data.CoverPhotoURL = srv.URL
+    bytes, err := Generate(data)
+    if err != nil {
+        t.Fatalf("Generate: %v", err)
+    }
+    const cap = 500 * 1024
+    if len(bytes) > cap {
+        t.Errorf("xlsx size = %d bytes, exceeds 500KB cap", len(bytes))
+    }
 }
 ```
 

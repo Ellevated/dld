@@ -51,11 +51,10 @@ jobs:
 
       - name: Coverage gate (callback.py >= 85%)
         run: |
-          pytest \
+          PYTHONPATH=scripts/vps pytest \
             tests/unit/test_callback_*.py \
             tests/integration/test_callback_*.py \
             tests/regression/ \
-            --pythonpath scripts/vps \
             --cov=callback \
             --cov-report=term-missing \
             --cov-report=xml \
