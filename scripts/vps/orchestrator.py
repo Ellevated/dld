@@ -303,24 +303,29 @@ def _pueue_add(group: str, label: str, cmd: list, env: dict | None = None) -> in
 
 
 def scan_inbox(project_id: str, project_dir: str) -> int:
-    """Scan ai/inbox/ for Status: new files, dispatch each via pueue."""
+    """Scan ai/inbox/ for Status: queued files (Hermes-promoted), dispatch each via pueue.
+
+    TECH-181: status gate — only files explicitly promoted by Hermes to `queued`
+    are dispatched. Legacy `new`, `draft`, `clarifying`, `stale`, `rejected` are
+    ignored. Clean break, no auto-migration (see spec rationale).
+    """
     inbox_dir = Path(project_dir) / "ai" / "inbox"
     if not inbox_dir.is_dir():
         return 0
 
-    _inbox_new_re = re.compile(r"\*\*Status:\*\*\s*new", re.IGNORECASE)
+    _inbox_queued_re = re.compile(r"\*\*Status:\*\*\s*queued", re.IGNORECASE)
 
     count = 0
     for inbox_file in sorted(inbox_dir.glob("*.md")):
         text = inbox_file.read_text(errors="replace")
-        if not _inbox_new_re.search(text):
+        if not _inbox_queued_re.search(text):
             continue
 
         log.info("processing inbox: %s/%s", project_id, inbox_file.name)
         meta = _parse_inbox_file(inbox_file)
         skill = _ROUTE_SKILL_MAP.get(meta["route"], "spark")
 
-        text = _inbox_new_re.sub("**Status:** processing", text)
+        text = _inbox_queued_re.sub("**Status:** processing", text)
         inbox_file.write_text(text)
         done_dir = inbox_dir / "done"
         done_dir.mkdir(exist_ok=True)

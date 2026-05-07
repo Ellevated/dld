@@ -100,6 +100,7 @@ Hooks must never crash — a crashing hook breaks Claude Code. See ADR-004.
 | TECH-172 | Single status write path: callback is the only writer | 2026-05 | См. dld-orchestrator.md§6 |
 | TECH-174 | Manual spec verification protocol (operator checklist) | 2026-05 | См. dld-orchestrator.md§8 |
 | TECH-176 | Guard auto-close path: detect "already merged before started_at" via `_spec_has_merged_implementation` (`--grep <spec_id>` ∩ `-- <allowed>`) | 2026-05 | См. dld-orchestrator.md§6 |
+| ADR-021 | Hermes intake gate: orchestrator `scan_inbox` диспатчит только `Status: queued` (Hermes-promoted); `new`/`draft`/`clarifying`/`stale`/`rejected` игнорируются. Clean break, no auto-migration. | 2026-05 | TECH-181: business-gate перед Spark, разделение Hermes (бизнес) / Spark (техника) |
 
 ---
 

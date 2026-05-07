@@ -316,3 +316,103 @@ class TestWatchdogIntegration:
             released = orchestrator.release_orphan_slots()
         assert released == 1
         assert db.get_available_slots("claude") == initial_available
+
+
+# --- TECH-181: Hermes intake status gate ---
+
+
+import pytest
+
+
+def _write_inbox_file(inbox_dir: Path, name: str, status: str | None) -> Path:
+    inbox_dir.mkdir(parents=True, exist_ok=True)
+    parts = ["# Test inbox item"]
+    if status is not None:
+        parts.append(f"**Status:** {status}")
+    parts += [
+        "**Route:** spark",
+        "**Source:** test",
+        "",
+        "---",
+        "",
+        "Idea body text.",
+    ]
+    f = inbox_dir / name
+    f.write_text("\n".join(parts))
+    return f
+
+
+class TestScanInboxStatusGate:
+    """TECH-181: orchestrator dispatches only Status: queued, ignores all others."""
+
+    def test_scan_inbox_dispatches_queued(self, tmp_path, seed_project):
+        inbox_dir = tmp_path / "ai" / "inbox"
+        f = _write_inbox_file(inbox_dir, "20260507-queued.md", "queued")
+
+        with patch("orchestrator._pueue_add", return_value=42) as mock_add, \
+             patch("orchestrator.pueue_has_active_label", return_value=False), \
+             patch("orchestrator.db.try_acquire_slot"), \
+             patch("orchestrator.db.log_task"), \
+             patch("orchestrator.db.update_project_phase"), \
+             patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}):
+            count = orchestrator.scan_inbox("testproject", str(tmp_path))
+
+        assert count == 1
+        assert mock_add.called
+        # File moved to inbox/done/
+        assert not f.exists()
+        done_file = inbox_dir / "done" / "20260507-queued.md"
+        assert done_file.exists()
+        text = done_file.read_text()
+        assert "**Status:** processing" in text
+        assert "**Status:** queued" not in text
+
+    def test_scan_inbox_ignores_draft(self, tmp_path, seed_project):
+        inbox_dir = tmp_path / "ai" / "inbox"
+        f = _write_inbox_file(inbox_dir, "20260507-draft.md", "draft")
+        original = f.read_text()
+
+        with patch("orchestrator._pueue_add") as mock_add:
+            count = orchestrator.scan_inbox("testproject", str(tmp_path))
+
+        assert count == 0
+        assert not mock_add.called
+        assert f.exists()
+        assert f.read_text() == original
+
+    @pytest.mark.parametrize("status", ["clarifying", "stale", "rejected"])
+    def test_scan_inbox_ignores_clarifying_stale_rejected(self, tmp_path, seed_project, status):
+        inbox_dir = tmp_path / "ai" / "inbox"
+        f = _write_inbox_file(inbox_dir, f"20260507-{status}.md", status)
+
+        with patch("orchestrator._pueue_add") as mock_add:
+            count = orchestrator.scan_inbox("testproject", str(tmp_path))
+
+        assert count == 0
+        assert not mock_add.called
+        assert f.exists()
+
+    def test_scan_inbox_ignores_legacy_new(self, tmp_path, seed_project):
+        """Regression guard for clean break: legacy `Status: new` MUST NOT dispatch."""
+        inbox_dir = tmp_path / "ai" / "inbox"
+        f = _write_inbox_file(inbox_dir, "20260507-legacy.md", "new")
+        original = f.read_text()
+
+        with patch("orchestrator._pueue_add") as mock_add:
+            count = orchestrator.scan_inbox("testproject", str(tmp_path))
+
+        assert count == 0
+        assert not mock_add.called
+        assert f.exists()
+        assert f.read_text() == original
+
+    def test_scan_inbox_no_status_field(self, tmp_path, seed_project):
+        inbox_dir = tmp_path / "ai" / "inbox"
+        f = _write_inbox_file(inbox_dir, "20260507-nostatus.md", None)
+
+        with patch("orchestrator._pueue_add") as mock_add:
+            count = orchestrator.scan_inbox("testproject", str(tmp_path))
+
+        assert count == 0
+        assert not mock_add.called
+        assert f.exists()
