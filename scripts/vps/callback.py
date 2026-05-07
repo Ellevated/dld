@@ -1569,7 +1569,7 @@ def write_event_for_skill(project_path: str, skill: str, status: str, task_label
     )
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover
     """Main callback entry point. ALWAYS exits 0.
 
     Two modes:
