@@ -1,7 +1,7 @@
 # TECH-181 — Hermes intake bridge: status gate before Spark
 
 <!-- DLD-CALLBACK-MARKER-START -->
-**Status:** queued
+**Status:** done
 **Priority:** P1
 **Risk:** R1
 **Type:** TECH
