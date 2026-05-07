@@ -295,12 +295,8 @@ class TestSubjectImplements:
         assert callback._subject_implements("fix(FTR-925)!: breaking", "FTR-925")
 
     def test_conventional_multi_scope_match(self):
-        assert callback._subject_implements(
-            "feat(FTR-925,FTR-926): both", "FTR-925"
-        )
-        assert callback._subject_implements(
-            "feat(FTR-925, FTR-926): both", "FTR-926"
-        )
+        assert callback._subject_implements("feat(FTR-925,FTR-926): both", "FTR-925")
+        assert callback._subject_implements("feat(FTR-925, FTR-926): both", "FTR-926")
 
     def test_legacy_bare_match(self):
         assert callback._subject_implements("FTR-925: impl Y", "FTR-925")
@@ -318,14 +314,10 @@ class TestSubjectImplements:
         )
 
     def test_id_after_colon_does_not_match(self):
-        assert not callback._subject_implements(
-            "feat: FTR-925 something", "FTR-925"
-        )
+        assert not callback._subject_implements("feat: FTR-925 something", "FTR-925")
 
     def test_wrong_scope_does_not_match(self):
-        assert not callback._subject_implements(
-            "feat(FTR-923): impl", "FTR-925"
-        )
+        assert not callback._subject_implements("feat(FTR-923): impl", "FTR-925")
 
     def test_empty_inputs(self):
         assert not callback._subject_implements("", "FTR-925")
@@ -337,15 +329,21 @@ class TestSubjectImplements:
 
 def _git(repo: Path, *args: str) -> str:
     import subprocess
+
     env = {
-        "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
-        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
         "HOME": str(repo),
     }
     import os
+
     r = subprocess.run(
         ["git", "-C", str(repo), *args],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
         env={**os.environ, **env},
     )
     return r.stdout
@@ -381,10 +379,11 @@ class TestSpecHasMergedImplementation:
         and touches a file that is also in FTR-925's Allowed Files. Must NOT
         be treated as FTR-925 implementation.
         """
-        _commit(git_repo, "feat(FTR-923): impl X", body="see also FTR-925",
-                files={"a.py": "v1"})
+        _commit(git_repo, "feat(FTR-923): impl X", body="see also FTR-925", files={"a.py": "v1"})
         matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo), "FTR-925", ["a.py"],
+            str(git_repo),
+            "FTR-925",
+            ["a.py"],
         )
         assert matched is False
         assert hashes == []
@@ -392,7 +391,9 @@ class TestSpecHasMergedImplementation:
     def test_subject_scope_match(self, git_repo):
         _commit(git_repo, "feat(FTR-925): impl Y", files={"a.py": "v1"})
         matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo), "FTR-925", ["a.py"],
+            str(git_repo),
+            "FTR-925",
+            ["a.py"],
         )
         assert matched is True
         assert len(hashes) == 1
@@ -400,7 +401,9 @@ class TestSpecHasMergedImplementation:
     def test_legacy_bare_subject_match(self, git_repo):
         _commit(git_repo, "FTR-925: impl", files={"a.py": "v1"})
         matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo), "FTR-925", ["a.py"],
+            str(git_repo),
+            "FTR-925",
+            ["a.py"],
         )
         assert matched is True
         assert len(hashes) == 1
@@ -408,17 +411,24 @@ class TestSpecHasMergedImplementation:
     def test_merge_subject_match(self, git_repo):
         _commit(git_repo, "merge FTR-925: rollup", files={"a.py": "v1"})
         matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo), "FTR-925", ["a.py"],
+            str(git_repo),
+            "FTR-925",
+            ["a.py"],
         )
         assert matched is True
         assert len(hashes) == 1
 
     def test_footer_trailer_does_not_match(self, git_repo):
-        _commit(git_repo, "feat(other): unrelated",
-                body="Refs: FTR-925\nCo-authored-by: x <x@x>",
-                files={"a.py": "v1"})
+        _commit(
+            git_repo,
+            "feat(other): unrelated",
+            body="Refs: FTR-925\nCo-authored-by: x <x@x>",
+            files={"a.py": "v1"},
+        )
         matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo), "FTR-925", ["a.py"],
+            str(git_repo),
+            "FTR-925",
+            ["a.py"],
         )
         assert matched is False
         assert hashes == []
@@ -427,20 +437,26 @@ class TestSpecHasMergedImplementation:
         """Subject match alone is not enough — file must be in allowed list."""
         _commit(git_repo, "feat(FTR-925): impl", files={"other.py": "v1"})
         matched, _ = callback._spec_has_merged_implementation(
-            str(git_repo), "FTR-925", ["a.py"],
+            str(git_repo),
+            "FTR-925",
+            ["a.py"],
         )
         assert matched is False
 
     def test_empty_allowed(self, git_repo):
         matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo), "FTR-925", [],
+            str(git_repo),
+            "FTR-925",
+            [],
         )
         assert matched is False
         assert hashes == []
 
     def test_none_allowed(self, git_repo):
         matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo), "FTR-925", None,
+            str(git_repo),
+            "FTR-925",
+            None,
         )
         assert matched is False
         assert hashes == []

@@ -51,9 +51,7 @@ def stub_pueue_bin(tmp_path, monkeypatch):
     stub_dir.mkdir()
     log_file = tmp_path / "pueue-calls.log"
     stub = stub_dir / "pueue"
-    stub.write_text(
-        f'#!/usr/bin/env bash\necho "$@" >> "{log_file}"\nexit 0\n'
-    )
+    stub.write_text(f'#!/usr/bin/env bash\necho "$@" >> "{log_file}"\nexit 0\n')
     stub.chmod(0o755)
     monkeypatch.setenv("PATH", f"{stub_dir}:{os.environ['PATH']}")
     return log_file
@@ -78,8 +76,7 @@ def stub_event_writer(tmp_path, monkeypatch):
 def _seed_state(project_id: str = "proj") -> None:
     with db.get_db() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO project_state (project_id, path) "
-            "VALUES (?, ?)",
+            "INSERT OR IGNORE INTO project_state (project_id, path) VALUES (?, ?)",
             (project_id, "/tmp/ignored"),
         )
 
@@ -175,8 +172,7 @@ def test_ec6_decisions_table_shape(tmp_db):
     with db.get_db() as conn:
         cnt = conn.execute("SELECT COUNT(*) FROM callback_decisions").fetchone()[0]
         idx_rows = conn.execute(
-            "SELECT name FROM sqlite_master "
-            "WHERE type='index' AND tbl_name='callback_decisions'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='callback_decisions'"
         ).fetchall()
     assert cnt == 10
     idx_names = {r[0] for r in idx_rows}
@@ -205,8 +201,7 @@ def _make_project(tmp_path: Path, idx: int, spec_id: str) -> Path:
         f"## Allowed Files\n\n<!-- callback-allowlist v1 -->\n\n- `src/x.py`\n\n## Tests\n"
     )
     (repo / "ai" / "backlog.md").write_text(
-        f"| ID | Title | Status | P |\n|---|---|---|---|\n"
-        f"| {spec_id} | demo | in_progress | P1 |\n"
+        f"| ID | Title | Status | P |\n|---|---|---|---|\n| {spec_id} | demo | in_progress | P1 |\n"
     )
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "init")
@@ -233,8 +228,7 @@ def test_e2e_5th_call_is_noop_circuit_open(
         repo = _make_project(tmp_path, i, spec_id)
         with db.get_db() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO project_state (project_id, path) "
-                "VALUES (?, ?)",
+                "INSERT OR IGNORE INTO project_state (project_id, path) VALUES (?, ?)",
                 (f"proj{i}", str(repo)),
             )
             conn.execute(
@@ -253,7 +247,9 @@ def test_e2e_5th_call_is_noop_circuit_open(
         """Read file content from git HEAD (callback writes via plumbing, not working tree)."""
         r = subprocess.run(
             ["git", "-C", str(repo), "show", f"HEAD:{rel}"],
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         return r.stdout
 
@@ -266,8 +262,7 @@ def test_e2e_5th_call_is_noop_circuit_open(
     repo5 = _make_project(tmp_path, 99, "TECH-905")
     with db.get_db() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO project_state (project_id, path) "
-            "VALUES (?, ?)",
+            "INSERT OR IGNORE INTO project_state (project_id, path) VALUES (?, ?)",
             ("proj99", str(repo5)),
         )
         conn.execute(
@@ -287,7 +282,6 @@ def test_e2e_5th_call_is_noop_circuit_open(
     # Decision recorded as noop:circuit_open
     with db.get_db() as conn:
         rows = conn.execute(
-            "SELECT verdict, reason FROM callback_decisions "
-            "WHERE spec_id = 'TECH-905'"
+            "SELECT verdict, reason FROM callback_decisions WHERE spec_id = 'TECH-905'"
         ).fetchall()
     assert any(r[0] == "noop" and r[1] == "circuit_open" for r in rows)

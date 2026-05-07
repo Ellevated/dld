@@ -27,7 +27,9 @@ def _spec(tmp_path: Path, body: str, name: str = "TECH-XXX.md") -> Path:
 
 
 def test_ec1_v1_canonical_basic(tmp_path):
-    spec = _spec(tmp_path, """\
+    spec = _spec(
+        tmp_path,
+        """\
 # TECH-XXX
 
 ## Allowed Files
@@ -39,7 +41,8 @@ def test_ec1_v1_canonical_basic(tmp_path):
 - `db/schema.sql` — schema bump
 
 ## Tests
-""")
+""",
+    )
     assert callback._parse_allowed_files(spec) == [
         "scripts/vps/callback.py",
         "tests/unit/test_x.py",
@@ -48,7 +51,9 @@ def test_ec1_v1_canonical_basic(tmp_path):
 
 
 def test_ec1_v1_marker_with_inline_comment(tmp_path):
-    spec = _spec(tmp_path, """\
+    spec = _spec(
+        tmp_path,
+        """\
 ## Allowed Files
 
 <!-- callback-allowlist v1: backticked paths only, one per row -->
@@ -57,12 +62,15 @@ def test_ec1_v1_marker_with_inline_comment(tmp_path):
 - `b/c.py`
 
 ## Next
-""")
+""",
+    )
     assert callback._parse_allowed_files(spec) == ["a.py", "b/c.py"]
 
 
 def test_ec1_v1_extra_prose_after_marker_is_ignored(tmp_path):
-    spec = _spec(tmp_path, """\
+    spec = _spec(
+        tmp_path,
+        """\
 ## Allowed Files
 
 <!-- callback-allowlist v1 -->
@@ -72,7 +80,8 @@ This intro line is fine.
 - `x.py`
 
 ## End
-""")
+""",
+    )
     assert callback._parse_allowed_files(spec) == ["x.py"]
 
 
@@ -81,7 +90,9 @@ This intro line is fine.
 
 def test_ec3_v1_marker_no_bullets_returns_empty(tmp_path):
     """v1 marker but zero canonical bullets → [] (caller blocks done)."""
-    spec = _spec(tmp_path, """\
+    spec = _spec(
+        tmp_path,
+        """\
 ## Allowed Files
 
 <!-- callback-allowlist v1 -->
@@ -89,13 +100,16 @@ def test_ec3_v1_marker_no_bullets_returns_empty(tmp_path):
 (no files specified yet)
 
 ## Next
-""")
+""",
+    )
     assert callback._parse_allowed_files(spec) == []
 
 
 def test_ec3_v1_marker_paths_in_fence_ignored(tmp_path):
     """Paths inside a fenced code block are NOT bullets → ignored under v1."""
-    spec = _spec(tmp_path, """\
+    spec = _spec(
+        tmp_path,
+        """\
 ## Allowed Files
 
 <!-- callback-allowlist v1 -->
@@ -106,13 +120,16 @@ src/bar.py
 ```
 
 ## Next
-""")
+""",
+    )
     assert callback._parse_allowed_files(spec) == []
 
 
 def test_ec3_v1_marker_numbered_list_ignored(tmp_path):
     """v1 strictly requires `- ` bullets; numbered list does not match."""
-    spec = _spec(tmp_path, """\
+    spec = _spec(
+        tmp_path,
+        """\
 ## Allowed Files
 
 <!-- callback-allowlist v1 -->
@@ -121,7 +138,8 @@ def test_ec3_v1_marker_numbered_list_ignored(tmp_path):
 2. `bar.py`
 
 ## Next
-""")
+""",
+    )
     assert callback._parse_allowed_files(spec) == []
 
 
@@ -130,14 +148,17 @@ def test_ec3_v1_marker_numbered_list_ignored(tmp_path):
 
 def test_ec2_legacy_no_marker_uses_old_parser(tmp_path):
     """No v1 marker → fall back to TECH-166 heading-variant parser."""
-    spec = _spec(tmp_path, """\
+    spec = _spec(
+        tmp_path,
+        """\
 ## Allowed Files
 
 1. `scripts/vps/callback.py` — modify
 2. `tests/unit/test_x.py` — NEW
 
 ## Tests
-""")
+""",
+    )
     assert callback._parse_allowed_files(spec) == [
         "scripts/vps/callback.py",
         "tests/unit/test_x.py",
@@ -152,21 +173,19 @@ def test_ec2_legacy_section_absent_returns_none(tmp_path):
 # --- EC-7: regression — real-world heading variants still work ---------------
 
 
-@pytest.mark.parametrize("heading", [
-    "## Allowed Files (whitelist)",
-    "## Allowed Files (canonical)",
-    "## Allowed Files (STRICT)",
-    "## Updated Allowed Files",
-    "## Files Allowed to Modify",
-])
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "## Allowed Files (whitelist)",
+        "## Allowed Files (canonical)",
+        "## Allowed Files (STRICT)",
+        "## Updated Allowed Files",
+        "## Files Allowed to Modify",
+    ],
+)
 def test_ec7_legacy_heading_variants_regression(tmp_path, heading):
     """awardybot/dowry/gipotenuza heading variants must still parse via legacy."""
-    body = (
-        f"{heading}\n\n"
-        "1. `src/a.py`\n"
-        "2. `src/b.py`\n\n"
-        "## Tests\n"
-    )
+    body = f"{heading}\n\n1. `src/a.py`\n2. `src/b.py`\n\n## Tests\n"
     spec = _spec(tmp_path, body)
     assert callback._parse_allowed_files(spec) == ["src/a.py", "src/b.py"]
 
@@ -177,7 +196,9 @@ def test_ec7_legacy_heading_variants_regression(tmp_path, heading):
 def test_v1_marker_wins_over_legacy_heading(tmp_path):
     """If a spec uses a legacy-style heading suffix BUT also includes the v1
     marker, callback should treat it as v1 strict (no legacy fallback)."""
-    spec = _spec(tmp_path, """\
+    spec = _spec(
+        tmp_path,
+        """\
 ## Allowed Files
 
 <!-- callback-allowlist v1 -->
@@ -187,7 +208,8 @@ def test_v1_marker_wins_over_legacy_heading(tmp_path):
 ## Tests
 
 (legacy parser would also have caught `decoy.py` here outside section)
-""")
+""",
+    )
     assert callback._parse_allowed_files(spec) == ["only/this.py"]
 
 
@@ -196,7 +218,9 @@ def test_v1_marker_wins_over_legacy_heading(tmp_path):
 
 def test_v1_marker_outside_section_ignored(tmp_path):
     """Marker must appear INSIDE the ## Allowed Files section to count."""
-    spec = _spec(tmp_path, """\
+    spec = _spec(
+        tmp_path,
+        """\
 <!-- callback-allowlist v1 -->
 
 ## Allowed Files
@@ -204,7 +228,8 @@ def test_v1_marker_outside_section_ignored(tmp_path):
 1. `legacy.py`
 
 ## Tests
-""")
+""",
+    )
     # Marker is above the heading → v1 dispatch does not fire → legacy parser
     # picks `legacy.py`.
     assert callback._parse_allowed_files(spec) == ["legacy.py"]

@@ -181,7 +181,7 @@ def test_operator_demote_via_plumbing_does_not_touch_working_tree(
     assert head_before != head_after, "demote should produce a new commit"
 
     # Spec status flipped at HEAD.
-    spec_at_head = _git(repo, "show", f"HEAD:ai/features/TEST-003.md").stdout
+    spec_at_head = _git(repo, "show", "HEAD:ai/features/TEST-003.md").stdout
     assert "**Status:** queued" in spec_at_head
     assert "Blocked Reason:** task_2_missing" in spec_at_head
 

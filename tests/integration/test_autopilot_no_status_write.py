@@ -33,6 +33,7 @@ TMPL_CODER_MD = PROJECT_ROOT / "template" / ".claude" / "agents" / "coder.md"
 # EC-1 — finishing.md no longer contains Status-write instructions
 # ---------------------------------------------------------------------------
 
+
 def test_finishing_md_has_no_status_edit_instruction():
     """finishing.md must contain 'Status Writes — Callback Only' section."""
     text = FINISHING_MD.read_text(encoding="utf-8")
@@ -44,6 +45,7 @@ def test_finishing_md_has_no_status_edit_instruction():
 # ---------------------------------------------------------------------------
 # EC-1 — task-loop.md forbids Status writes
 # ---------------------------------------------------------------------------
+
 
 def test_task_loop_md_forbids_status_writes():
     """task-loop.md must contain 'Status Writes — Forbidden' section."""
@@ -57,6 +59,7 @@ def test_task_loop_md_forbids_status_writes():
 # EC-1 — SKILL.md documents task_status field
 # ---------------------------------------------------------------------------
 
+
 def test_skill_md_documents_task_status():
     """SKILL.md must mention task_status in Notification Output Format."""
     text = SKILL_MD.read_text(encoding="utf-8")
@@ -68,6 +71,7 @@ def test_skill_md_documents_task_status():
 # ---------------------------------------------------------------------------
 # EC-1 — coder.md forbids Status edit and mentions callback
 # ---------------------------------------------------------------------------
+
 
 def test_coder_md_forbids_status_edit():
     """coder.md must contain both '**Status:**' and 'callback' in forbidden rules."""
@@ -83,6 +87,7 @@ def test_coder_md_forbids_status_edit():
 # ---------------------------------------------------------------------------
 # EC-2 — callback._parse_log_file returns 3-tuple with task_status
 # ---------------------------------------------------------------------------
+
 
 def test_callback_parses_task_status(tmp_path):
     """_parse_log_file must return (skill, preview, task_status) triple."""
@@ -137,6 +142,7 @@ def test_callback_parses_task_status_from_preview_json(tmp_path):
 # EC-2 — extract_agent_output returns 3-tuple (smoke test)
 # ---------------------------------------------------------------------------
 
+
 def test_callback_extract_returns_triple():
     """extract_agent_output must return a 3-tuple even for unknown pueue_id."""
     scripts_vps = str(PROJECT_ROOT / "scripts" / "vps")
@@ -159,28 +165,32 @@ def test_callback_extract_returns_triple():
 # EC-3 — template mirrors root (new section headers present in both)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("root_path,tmpl_path,section_header", [
-    (
-        FINISHING_MD,
-        TMPL_FINISHING_MD,
-        "Status Writes — Callback Only",
-    ),
-    (
-        TASK_LOOP_MD,
-        TMPL_TASK_LOOP_MD,
-        "Status Writes — Forbidden",
-    ),
-    (
-        SKILL_MD,
-        TMPL_SKILL_MD,
-        "task_status",
-    ),
-    (
-        CODER_MD,
-        TMPL_CODER_MD,
-        "**Status:**",
-    ),
-])
+
+@pytest.mark.parametrize(
+    "root_path,tmpl_path,section_header",
+    [
+        (
+            FINISHING_MD,
+            TMPL_FINISHING_MD,
+            "Status Writes — Callback Only",
+        ),
+        (
+            TASK_LOOP_MD,
+            TMPL_TASK_LOOP_MD,
+            "Status Writes — Forbidden",
+        ),
+        (
+            SKILL_MD,
+            TMPL_SKILL_MD,
+            "task_status",
+        ),
+        (
+            CODER_MD,
+            TMPL_CODER_MD,
+            "**Status:**",
+        ),
+    ],
+)
 def test_template_mirrors_root(root_path, tmpl_path, section_header):
     """Both root and template versions must contain the new TECH-172 markers."""
     root_text = root_path.read_text(encoding="utf-8")

@@ -55,7 +55,8 @@ jobs:
             tests/unit/test_callback_*.py \
             tests/integration/test_callback_*.py \
             tests/regression/ \
-            --cov=scripts/vps/callback \
+            --pythonpath scripts/vps \
+            --cov=callback \
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-fail-under=85

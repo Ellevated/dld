@@ -8,6 +8,7 @@ parser output for any fixture fails this test.
 Naming convention: {project}_{spec_id}[__{shape}].md
                    {project}_{spec_id}[__{shape}].expected.json
 """
+
 from __future__ import annotations
 
 import json
@@ -43,9 +44,7 @@ def test_corpus_parse_matches_expected(spec_path, expected):
     """Parser output for each fixture matches its hand-verified .expected.json."""
     actual = callback._parse_allowed_files(spec_path)
     if expected["expected_return_type"] == "None":
-        assert actual is None, (
-            f"{spec_path.name}: expected None, got {actual!r}"
-        )
+        assert actual is None, f"{spec_path.name}: expected None, got {actual!r}"
     else:
         assert actual == expected["expected_paths"], (
             f"{spec_path.name}: parser drift\n"
@@ -56,10 +55,7 @@ def test_corpus_parse_matches_expected(spec_path, expected):
 
 def test_corpus_has_at_least_25_specs():
     """Coverage gate: <25 means a project slot is missing."""
-    md_files = [
-        p for p in CORPUS_DIR.glob("*.md")
-        if not p.name.upper().startswith("README")
-    ]
+    md_files = [p for p in CORPUS_DIR.glob("*.md") if not p.name.upper().startswith("README")]
     assert len(md_files) >= 25, f"Corpus has only {len(md_files)} specs (need >= 25)"
 
 
@@ -72,9 +68,7 @@ def test_corpus_all_5_projects_represented():
     }
     required = {"awardybot", "dowry", "gipotenuza", "plpilot", "wb"}
     missing = required - prefixes
-    assert not missing, (
-        f"Missing projects: {missing} (have: {prefixes})"
-    )
+    assert not missing, f"Missing projects: {missing} (have: {prefixes})"
 
 
 def test_corpus_all_shapes_represented():

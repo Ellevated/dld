@@ -21,8 +21,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import event_writer  # noqa: E402
 
-
 # ── Audit log path ────────────────────────────────────────────────────────────
+
 
 def _audit_log_path() -> Path:
     """Return path from CALLBACK_AUDIT_LOG env or default."""
@@ -33,6 +33,7 @@ def _audit_log_path() -> Path:
 
 
 # ── Reading + filtering ───────────────────────────────────────────────────────
+
 
 def read_records(audit_path: Path, since_hours: int = 24) -> list[dict]:
     """Read JSONL records from audit_path written within the last `since_hours`.
@@ -68,6 +69,7 @@ def read_records(audit_path: Path, since_hours: int = 24) -> list[dict]:
 
 # ── Aggregation ───────────────────────────────────────────────────────────────
 
+
 def aggregate(records: list[dict]) -> dict[str, dict]:
     """Group records by project_id.
 
@@ -89,6 +91,7 @@ def aggregate(records: list[dict]) -> dict[str, dict]:
 
 
 # ── Formatting ────────────────────────────────────────────────────────────────
+
 
 def format_digest(aggregated: dict[str, dict], audit_path: Path, date_label: str) -> str:
     """Build human-readable digest message.
@@ -128,6 +131,7 @@ def format_digest(aggregated: dict[str, dict], audit_path: Path, date_label: str
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
 
 def _find_project_path() -> str:
     """Best-effort: find a project path to anchor the event_writer output.
@@ -181,7 +185,9 @@ def main() -> None:
         status="done",
         message=message,
     )
-    print(f"Digest sent ({len(records)} records, {sum(len(v['demotes']) for v in aggregated.values())} demotes)")
+    print(
+        f"Digest sent ({len(records)} records, {sum(len(v['demotes']) for v in aggregated.values())} demotes)"
+    )
 
 
 if __name__ == "__main__":

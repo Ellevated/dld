@@ -214,7 +214,7 @@ linter described in `feature-mode.md` Phase 5.5.
 2. Apply the regexes from `feature-mode.md` Phase 5.5:
    - `HEADING_RE = ^##[ \t]+Allowed Files[ \t]*$`
    - `MARKER_RE = <!--\s*callback-allowlist\s+v1\b[^>]*-->`
-   - `BULLET_RE = ^-[ \t]+\`([^\s\`\n]+\.[A-Za-z][\w-]*)\`(?:[ \t]+.*)?$`
+   - `BULLET_RE = ^-[ \t]+\`([^\s\`\n]+\.[A-Za-z][\w\-]*)\`(?:[ \t]+.*)?$`
    - `DLD_START_RE = ^<!--\s*DLD-CALLBACK-MARKER-START\s+v(?P<ver>\d+)\s*-->\s*$`
    - `DLD_END_RE   = ^<!--\s*DLD-CALLBACK-MARKER-END\s*-->\s*$`
    - section ends at next `^##[ \t]+\S` heading.

@@ -5,12 +5,12 @@ test_callback_implementation_guard.py (TECH-166) by exercising
 heading regex variants, section-boundary edge cases, path extraction
 (Unicode, dotfiles, hyphen-in-ext), and v1 marker dispatch corners.
 """
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-import pytest
 
 SCRIPT_DIR = Path(__file__).resolve().parent.parent.parent / "scripts" / "vps"
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -51,12 +51,10 @@ def test_legacy_heading_case_sensitivity(tmp_path):
 def test_legacy_heading_v1_strict_sensitivity(tmp_path):
     """`## ALLOWED FILES` — v1 regex is case-SENSITIVE, so v1 branch must NOT fire.
     Parser falls back to legacy and succeeds."""
-    spec = _spec(tmp_path, (
-        "## ALLOWED FILES\n\n"
-        "<!-- callback-allowlist v1 -->\n\n"
-        "- `src/foo.py`\n\n"
-        "## Tests\n"
-    ))
+    spec = _spec(
+        tmp_path,
+        ("## ALLOWED FILES\n\n<!-- callback-allowlist v1 -->\n\n- `src/foo.py`\n\n## Tests\n"),
+    )
     # v1 heading regex requires "## Allowed Files" (exact case).
     # Upper-case heading → v1 parser returns None → legacy fallback used.
     out = callback._parse_allowed_files(spec)
@@ -70,12 +68,7 @@ def test_legacy_heading_v1_strict_sensitivity(tmp_path):
 
 def test_section_ends_at_next_h2(tmp_path):
     """Backticked paths after first H2 boundary are NOT collected."""
-    spec = _spec(tmp_path, (
-        "## Allowed Files\n\n"
-        "1. `src/a.py`\n\n"
-        "## Tests\n\n"
-        "1. `tests/b.py`\n"
-    ))
+    spec = _spec(tmp_path, ("## Allowed Files\n\n1. `src/a.py`\n\n## Tests\n\n1. `tests/b.py`\n"))
     out = callback._parse_allowed_files(spec)
     assert out == ["src/a.py"]
     assert "tests/b.py" not in (out or [])
@@ -83,13 +76,16 @@ def test_section_ends_at_next_h2(tmp_path):
 
 def test_multiple_allowed_files_sections_first_wins(tmp_path):
     """Two `## Allowed Files` blocks — only first parsed (legacy iter breaks at first H2)."""
-    spec = _spec(tmp_path, (
-        "## Allowed Files\n\n"
-        "1. `src/first.py`\n\n"
-        "## Other Section\n\n"
-        "## Allowed Files\n\n"
-        "1. `src/second.py`\n"
-    ))
+    spec = _spec(
+        tmp_path,
+        (
+            "## Allowed Files\n\n"
+            "1. `src/first.py`\n\n"
+            "## Other Section\n\n"
+            "## Allowed Files\n\n"
+            "1. `src/second.py`\n"
+        ),
+    )
     out = callback._parse_allowed_files(spec)
     assert "src/first.py" in (out or [])
     assert "src/second.py" not in (out or [])
@@ -147,36 +143,34 @@ def test_path_with_dash_in_extension(tmp_path):
 
 def test_v1_marker_after_bullets_section_terminates(tmp_path):
     """Marker placed AFTER bullets in same section — still triggers v1."""
-    spec = _spec(tmp_path, (
-        "## Allowed Files\n\n"
-        "- `src/foo.py`\n"
-        "<!-- callback-allowlist v1 -->\n\n"
-        "## Tests\n"
-    ))
+    spec = _spec(
+        tmp_path,
+        ("## Allowed Files\n\n- `src/foo.py`\n<!-- callback-allowlist v1 -->\n\n## Tests\n"),
+    )
     out = callback._parse_allowed_files(spec)
     assert out == ["src/foo.py"]
 
 
 def test_v1_marker_in_html_comment_with_attrs(tmp_path):
     """Marker with extra attributes: `<!-- callback-allowlist v1 attrs="x" -->`."""
-    spec = _spec(tmp_path, (
-        '## Allowed Files\n\n'
-        '<!-- callback-allowlist v1 attr="x" -->\n\n'
-        '- `src/foo.py`\n\n'
-        '## Tests\n'
-    ))
+    spec = _spec(
+        tmp_path,
+        (
+            "## Allowed Files\n\n"
+            '<!-- callback-allowlist v1 attr="x" -->\n\n'
+            "- `src/foo.py`\n\n"
+            "## Tests\n"
+        ),
+    )
     out = callback._parse_allowed_files(spec)
     assert out == ["src/foo.py"]
 
 
 def test_v1_marker_truncated_no_terminator(tmp_path):
     """`<!-- callback-allowlist v1` with no `-->` — must NOT match (requires `-->`)."""
-    spec = _spec(tmp_path, (
-        "## Allowed Files\n\n"
-        "<!-- callback-allowlist v1\n\n"
-        "- `src/foo.py`\n\n"
-        "## Tests\n"
-    ))
+    spec = _spec(
+        tmp_path, ("## Allowed Files\n\n<!-- callback-allowlist v1\n\n- `src/foo.py`\n\n## Tests\n")
+    )
     # Without closing -->, v1 marker not matched → legacy fallback used.
     # Legacy extracts any backtick paths in section.
     out = callback._parse_allowed_files(spec)
@@ -188,14 +182,17 @@ def test_v1_marker_truncated_no_terminator(tmp_path):
 
 def test_v1_marker_with_table_format_returns_empty(tmp_path):
     """v1 marker + markdown table instead of bullets → [] (degrade-closed)."""
-    spec = _spec(tmp_path, (
-        "## Allowed Files\n\n"
-        "<!-- callback-allowlist v1 -->\n\n"
-        "| File | Action |\n"
-        "|------|--------|\n"
-        "| `src/foo.py` | modify |\n\n"
-        "## Tests\n"
-    ))
+    spec = _spec(
+        tmp_path,
+        (
+            "## Allowed Files\n\n"
+            "<!-- callback-allowlist v1 -->\n\n"
+            "| File | Action |\n"
+            "|------|--------|\n"
+            "| `src/foo.py` | modify |\n\n"
+            "## Tests\n"
+        ),
+    )
     out = callback._parse_allowed_files(spec)
     assert out == []
 
@@ -205,14 +202,17 @@ def test_v1_marker_with_table_format_returns_empty(tmp_path):
 
 def test_legacy_with_h3_subheadings_under_section(tmp_path):
     """H3 under section — H3 != H2, section continues, both bullet lists collected."""
-    spec = _spec(tmp_path, (
-        "## Allowed Files\n\n"
-        "### New files\n\n"
-        "- `src/new.py`\n\n"
-        "### Existing files\n\n"
-        "- `src/existing.py`\n\n"
-        "## Tests\n"
-    ))
+    spec = _spec(
+        tmp_path,
+        (
+            "## Allowed Files\n\n"
+            "### New files\n\n"
+            "- `src/new.py`\n\n"
+            "### Existing files\n\n"
+            "- `src/existing.py`\n\n"
+            "## Tests\n"
+        ),
+    )
     out = callback._parse_allowed_files(spec)
     assert "src/new.py" in (out or [])
     assert "src/existing.py" in (out or [])

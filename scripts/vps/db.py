@@ -50,8 +50,7 @@ def _ensure_migrations(conn: sqlite3.Connection) -> None:
             ")"
         )
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_callback_decisions_ts "
-            "ON callback_decisions(ts)"
+            "CREATE INDEX IF NOT EXISTS idx_callback_decisions_ts ON callback_decisions(ts)"
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_callback_decisions_demoted_ts "
@@ -79,7 +78,7 @@ def get_db(immediate: bool = False):
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
-    _ensure_migrations(conn)   # TECH-170: idempotent, process-cached
+    _ensure_migrations(conn)  # TECH-170: idempotent, process-cached
     begin = "BEGIN IMMEDIATE" if immediate else "BEGIN"
     conn.execute(begin)
     try:
@@ -294,8 +293,7 @@ def clear_decisions(min_ago: int) -> int:
     """
     with get_db(immediate=True) as conn:
         cursor = conn.execute(
-            "DELETE FROM callback_decisions "
-            "WHERE ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)",
+            "DELETE FROM callback_decisions WHERE ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)",
             (f"-{int(min_ago)} minutes",),
         )
         return cursor.rowcount or 0

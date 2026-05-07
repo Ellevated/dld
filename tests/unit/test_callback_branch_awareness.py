@@ -60,9 +60,7 @@ def test_ec1_all_sees_feature_branch_commit(feature_repo):
     started_at = _now_iso()
     time.sleep(1.1)
     _commit(feature_repo, "src/x.py", "y=1\n", "feat: TECH-170 work")
-    assert callback._has_implementation_commits(
-        str(feature_repo), ["src/x.py"], started_at
-    ) is True
+    assert callback._has_implementation_commits(str(feature_repo), ["src/x.py"], started_at) is True
 
 
 def test_ec1_current_misses_feature_branch_commit_from_develop(feature_repo):
@@ -72,13 +70,19 @@ def test_ec1_current_misses_feature_branch_commit_from_develop(feature_repo):
     time.sleep(1.1)
     _commit(feature_repo, "src/x.py", "y=1\n", "feat: TECH-170 work")
     _git(feature_repo, "checkout", "-q", "develop")
-    assert callback._has_implementation_commits(
-        str(feature_repo), ["src/x.py"], started_at, branches="current"
-    ) is False
+    assert (
+        callback._has_implementation_commits(
+            str(feature_repo), ["src/x.py"], started_at, branches="current"
+        )
+        is False
+    )
     # Sanity: --all still finds it from develop checkout.
-    assert callback._has_implementation_commits(
-        str(feature_repo), ["src/x.py"], started_at, branches="all"
-    ) is True
+    assert (
+        callback._has_implementation_commits(
+            str(feature_repo), ["src/x.py"], started_at, branches="all"
+        )
+        is True
+    )
 
 
 # --- EC-3: no commits anywhere ---------------------------------------------
@@ -88,9 +92,9 @@ def test_ec3_no_commits_anywhere_returns_false(feature_repo):
     """No commits in window on any branch → False (degrade closed for content)."""
     time.sleep(1.1)
     started_at = _now_iso()
-    assert callback._has_implementation_commits(
-        str(feature_repo), ["src/x.py"], started_at
-    ) is False
+    assert (
+        callback._has_implementation_commits(str(feature_repo), ["src/x.py"], started_at) is False
+    )
 
 
 # --- EC-5: regression — branches='current' is the pre-TECH-170 command -----
@@ -102,7 +106,12 @@ def test_ec5_current_branch_matches_legacy_behavior(feature_repo, monkeypatch):
     real_run = subprocess.run
 
     def spy(cmd, *a, **kw):
-        if isinstance(cmd, list) and len(cmd) >= 4 and cmd[:3] == ["git", "-C", str(feature_repo)] and cmd[3] == "log":
+        if (
+            isinstance(cmd, list)
+            and len(cmd) >= 4
+            and cmd[:3] == ["git", "-C", str(feature_repo)]
+            and cmd[3] == "log"
+        ):
             captured.append(list(cmd))
         return real_run(cmd, *a, **kw)
 
@@ -136,6 +145,7 @@ def test_is_merged_to_develop_handles_missing_branch(tmp_path):
     """Repo without develop branch → graceful False, no exception."""
     repo = tmp_path / "norepo"
     repo.mkdir()
-    subprocess.run(["git", "-C", str(repo), "init", "-q", "-b", "main"],
-                   check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "init", "-q", "-b", "main"], check=True, capture_output=True
+    )
     assert callback.is_merged_to_develop(str(repo), "TECH-170") is False

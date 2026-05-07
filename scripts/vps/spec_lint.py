@@ -22,9 +22,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 # --- Regex SSOT (TECH-175) ---------------------------------------------------
-START_RE = re.compile(
-    r"^<!--\s*DLD-CALLBACK-MARKER-START\s+v(?P<ver>\d+)\s*-->\s*$"
-)
+START_RE = re.compile(r"^<!--\s*DLD-CALLBACK-MARKER-START\s+v(?P<ver>\d+)\s*-->\s*$")
 END_RE = re.compile(r"^<!--\s*DLD-CALLBACK-MARKER-END\s*-->\s*$")
 SUPPORTED_VERSIONS: frozenset[str] = frozenset({"1"})
 ALLOWED_HEAD_RE = re.compile(r"^##[ \t]+Allowed Files[ \t]*$")
@@ -81,7 +79,7 @@ def lint_spec(text: str) -> list[LintError]:
 
     # Inner TECH-167 marker required in each Allowed Files block
     for s, e, _ in blocks:
-        block_lines = lines[s + 1:e]
+        block_lines = lines[s + 1 : e]
         has_af = any(ALLOWED_HEAD_RE.match(ln) for ln in block_lines)
         if has_af and not TECH167_INNER_RE.search("\n".join(block_lines)):
             errs.append(LintError("LINT_E008_INNER_TECH167_MISSING", s, ""))
@@ -112,9 +110,7 @@ def lint_spec_blocks(path: str | Path) -> list[tuple[int, int, str]]:
     return blocks
 
 
-def _diff_intersects_marker_block(
-    diff_text: str, blocks: list[tuple[int, int, str]]
-) -> bool:
+def _diff_intersects_marker_block(diff_text: str, blocks: list[tuple[int, int, str]]) -> bool:
     """Return True if any +/- diff line falls inside a marker block.
 
     Parses unified diff hunk headers: @@ -old +new,count @@
@@ -138,10 +134,12 @@ def main(argv: list[str]) -> int:
     """CLI entry. Exit 0=ok, 1=lint errors, 2=diff-warn hit."""
     parser = argparse.ArgumentParser(description="DLD spec marker linter (TECH-175)")
     parser.add_argument("paths", nargs="+")
-    parser.add_argument("--legacy-ok", action="store_true",
-                        help="downgrade LINT_E001_NO_MARKERS to warning")
-    parser.add_argument("--diff-warn", action="store_true",
-                        help="exit 2 if staged diff touches a marker block")
+    parser.add_argument(
+        "--legacy-ok", action="store_true", help="downgrade LINT_E001_NO_MARKERS to warning"
+    )
+    parser.add_argument(
+        "--diff-warn", action="store_true", help="exit 2 if staged diff touches a marker block"
+    )
     args = parser.parse_args(argv)
 
     rc = 0

@@ -471,54 +471,54 @@ func TestMPStats_Keywords_LatestPos_OrderingNewestFirst(t *testing.T) {
 package integration
 
 import (
-	"context"
-	"net/http"
-	"os"
-	"testing"
-	"time"
+    "context"
+    "net/http"
+    "os"
+    "testing"
+    "time"
 
-	"github.com/ellevated/gipotenuza/internal/collector"
+    "github.com/ellevated/gipotenuza/internal/collector"
 )
 
 // TestMPStats_ByKeywords_HasData_LiveAPI hits the real MPStats /by_keywords
 // endpoint for an nmID that is guaranteed to be indexed (popular product).
 // Skips if MPSTATS_TOKEN is unset.
 func TestMPStats_ByKeywords_HasData_LiveAPI(t *testing.T) {
-	token := os.Getenv("MPSTATS_TOKEN")
-	if token == "" {
-		t.Skip("MPSTATS_TOKEN not set")
-	}
+    token := os.Getenv("MPSTATS_TOKEN")
+    if token == "" {
+        t.Skip("MPSTATS_TOKEN not set")
+    }
 
-	// Popular nmID indexed in MPStats — выбираем из калибровочного прогона.
-	// 212237368 = боди (одежда, очень частотное), используется в run-2026-04-13.
-	const popularNmID int64 = 212237368
+    // Popular nmID indexed in MPStats — выбираем из калибровочного прогона.
+    // 212237368 = боди (одежда, очень частотное), используется в run-2026-04-13.
+    const popularNmID int64 = 212237368
 
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	p := collector.NewMPStatsProvider(httpClient, token, nil)
+    httpClient := &http.Client{Timeout: 30 * time.Second}
+    p := collector.NewMPStatsProvider(httpClient, token, nil)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+    ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+    defer cancel()
 
-	pd, err := p.FetchProduct(ctx, popularNmID)
-	if err != nil {
-		t.Fatalf("FetchProduct(%d): %v", popularNmID, err)
-	}
+    pd, err := p.FetchProduct(ctx, popularNmID)
+    if err != nil {
+        t.Fatalf("FetchProduct(%d): %v", popularNmID, err)
+    }
 
-	if len(pd.Keywords) == 0 {
-		t.Fatalf("BUG-084 regression: pd.Keywords is empty for popular nmID %d. Warnings: %v",
-			popularNmID, pd.Warnings)
-	}
+    if len(pd.Keywords) == 0 {
+        t.Fatalf("BUG-084 regression: pd.Keywords is empty for popular nmID %d. Warnings: %v",
+            popularNmID, pd.Warnings)
+    }
 
-	// Sanity checks on first keyword
-	first := pd.Keywords[0]
-	if first.Word == "" {
-		t.Errorf("first keyword has empty Word")
-	}
-	if first.LatestPos < 0 {
-		t.Errorf("first keyword LatestPos = %d, want >= 0", first.LatestPos)
-	}
-	t.Logf("OK: %d keywords, first = {Word:%q Freq:%d LatestPos:%d}",
-		len(pd.Keywords), first.Word, first.Freq, first.LatestPos)
+    // Sanity checks on first keyword
+    first := pd.Keywords[0]
+    if first.Word == "" {
+        t.Errorf("first keyword has empty Word")
+    }
+    if first.LatestPos < 0 {
+        t.Errorf("first keyword LatestPos = %d, want >= 0", first.LatestPos)
+    }
+    t.Logf("OK: %d keywords, first = {Word:%q Freq:%d LatestPos:%d}",
+        len(pd.Keywords), first.Word, first.Freq, first.LatestPos)
 }
 ```
 

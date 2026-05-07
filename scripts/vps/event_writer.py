@@ -119,10 +119,7 @@ def notify_circuit_event(action: str, count: int, window_min: int) -> None:
         )
         status = "failed"
     elif action == "reset":
-        message = (
-            "CIRCUIT_RESET: operator reset — decisions cleared, "
-            "claude-runner resumed."
-        )
+        message = "CIRCUIT_RESET: operator reset — decisions cleared, claude-runner resumed."
         status = "done"
     elif action == "heal":
         message = f"CIRCUIT_HEAL: auto-closed after {window_min} min idle."

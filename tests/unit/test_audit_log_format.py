@@ -5,6 +5,7 @@ EC-2: The record contains all required keys.
 
 No DB, no subprocess calls — only the JSONL write/read helpers are exercised.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,10 +40,12 @@ REQUIRED_KEYS = {
 
 # ── _write_audit / _audit_log_path ────────────────────────────────────────────
 
+
 def test_write_audit_creates_file(tmp_path):
     """_write_audit creates the file if it doesn't exist."""
     audit_file = tmp_path / "test-audit.jsonl"
     import os
+
     os.environ["CALLBACK_AUDIT_LOG"] = str(audit_file)
     try:
         record = {
@@ -70,6 +73,7 @@ def test_write_audit_appends_lines(tmp_path):
     """_write_audit appends one line per call (EC-1 — N calls → N lines)."""
     audit_file = tmp_path / "test-audit.jsonl"
     import os
+
     os.environ["CALLBACK_AUDIT_LOG"] = str(audit_file)
     try:
         for i in range(3):
@@ -84,6 +88,7 @@ def test_write_audit_each_line_valid_json(tmp_path):
     """Each appended line is parseable JSON."""
     audit_file = tmp_path / "test-audit.jsonl"
     import os
+
     os.environ["CALLBACK_AUDIT_LOG"] = str(audit_file)
     try:
         callback._write_audit({"key": "value", "num": 1})
@@ -97,10 +102,12 @@ def test_write_audit_each_line_valid_json(tmp_path):
 
 # ── _emit_audit ───────────────────────────────────────────────────────────────
 
+
 def test_emit_audit_all_required_keys_present(tmp_path):
     """EC-2 — record contains all required keys."""
     audit_file = tmp_path / "emit-test.jsonl"
     import os
+
     os.environ["CALLBACK_AUDIT_LOG"] = str(audit_file)
     try:
         start = time.monotonic()
@@ -131,6 +138,7 @@ def test_emit_audit_duration_nonnegative(tmp_path):
     """duration_ms is non-negative."""
     audit_file = tmp_path / "dur-test.jsonl"
     import os
+
     os.environ["CALLBACK_AUDIT_LOG"] = str(audit_file)
     try:
         start = time.monotonic()
@@ -159,6 +167,7 @@ def test_emit_audit_ts_format(tmp_path):
     """ts field has ISO 8601 format ending in Z."""
     audit_file = tmp_path / "ts-test.jsonl"
     import os
+
     os.environ["CALLBACK_AUDIT_LOG"] = str(audit_file)
     try:
         callback._emit_audit(
@@ -179,7 +188,8 @@ def test_emit_audit_ts_format(tmp_path):
         ts = record["ts"]
         assert ts.endswith("Z"), f"ts should end with Z: {ts}"
         # Should parse without error
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
         assert dt.tzinfo is not None
     finally:
@@ -188,21 +198,26 @@ def test_emit_audit_ts_format(tmp_path):
 
 # ── _is_test_path ─────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("path,expected", [
-    ("tests/unit/test_foo.py", True),
-    ("tests/integration/test_bar.py", True),
-    ("src/domains/foo/foo_test.py", True),
-    ("src/domains/foo/foo.test.ts", True),
-    ("src/domains/foo/foo.spec.ts", True),
-    ("src/domains/foo/service.py", False),
-    ("scripts/vps/callback.py", False),
-    ("ai/features/FTR-001.md", False),
-])
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("tests/unit/test_foo.py", True),
+        ("tests/integration/test_bar.py", True),
+        ("src/domains/foo/foo_test.py", True),
+        ("src/domains/foo/foo.test.ts", True),
+        ("src/domains/foo/foo.spec.ts", True),
+        ("src/domains/foo/service.py", False),
+        ("scripts/vps/callback.py", False),
+        ("ai/features/FTR-001.md", False),
+    ],
+)
 def test_is_test_path(path, expected):
     assert callback._is_test_path(path) == expected
 
 
 # ── _commit_stats ─────────────────────────────────────────────────────────────
+
 
 def test_commit_stats_returns_zeros_on_empty_allowed():
     """Empty allowed list → (0, 0, 0) — no subprocess needed."""

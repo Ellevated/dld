@@ -81,15 +81,13 @@ def _make_project(tmp_path: Path, spec_id: str, allowed_files: list[str]) -> Pat
 """
     (repo / "ai" / "features" / f"{spec_id}.md").write_text(spec_body)
     (repo / "ai" / "backlog.md").write_text(
-        f"| ID | Title | Status | P |\n|---|---|---|---|\n"
-        f"| {spec_id} | demo | in_progress | P1 |\n"
+        f"| ID | Title | Status | P |\n|---|---|---|---|\n| {spec_id} | demo | in_progress | P1 |\n"
     )
     # Commit README + spec + backlog so git show HEAD: resolves all three.
     # verify_status_sync reads spec/backlog from HEAD (not working tree) —
     # files not in HEAD are invisible to it (spec_head=None → guard skipped).
     (repo / "README.md").write_text("init\n")
-    _git(repo, "add", "README.md",
-         f"ai/features/{spec_id}.md", "ai/backlog.md")
+    _git(repo, "add", "README.md", f"ai/features/{spec_id}.md", "ai/backlog.md")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
 
@@ -214,12 +212,16 @@ def test_ec4_log_task_persists_branch(tmp_db):
             "INSERT INTO project_state (project_id, path) VALUES (?, ?)",
             ("proj", "/tmp/ignored"),
         )
-    db.log_task("proj", "autopilot-TECH-904", "autopilot", "running",
-                pueue_id=904, branch="feature/TECH-904")
+    db.log_task(
+        "proj",
+        "autopilot-TECH-904",
+        "autopilot",
+        "running",
+        pueue_id=904,
+        branch="feature/TECH-904",
+    )
     with db.get_db() as conn:
-        row = conn.execute(
-            "SELECT branch FROM task_log WHERE pueue_id = ?", (904,)
-        ).fetchone()
+        row = conn.execute("SELECT branch FROM task_log WHERE pueue_id = ?", (904,)).fetchone()
     assert row is not None
     assert row["branch"] == "feature/TECH-904"
 
@@ -233,8 +235,6 @@ def test_ec4_log_task_default_branch_is_null(tmp_db):
         )
     db.log_task("proj", "qa-TECH-905", "qa", "running", pueue_id=905)
     with db.get_db() as conn:
-        row = conn.execute(
-            "SELECT branch FROM task_log WHERE pueue_id = ?", (905,)
-        ).fetchone()
+        row = conn.execute("SELECT branch FROM task_log WHERE pueue_id = ?", (905,)).fetchone()
     assert row is not None
     assert row["branch"] is None

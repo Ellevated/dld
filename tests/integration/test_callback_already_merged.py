@@ -46,7 +46,8 @@ def _commit(repo: Path, rel: str, body: str, msg: str) -> None:
 def _head_file(repo: Path, rel: str) -> str | None:
     r = subprocess.run(
         ["git", "-C", str(repo), "show", f"HEAD:{rel}"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     return r.stdout if r.returncode == 0 else None
 
@@ -71,12 +72,10 @@ def _make_project(tmp_path: Path, spec_id: str, allowed_files: list[str]) -> Pat
 """
     (repo / "ai" / "features" / f"{spec_id}.md").write_text(spec_body)
     (repo / "ai" / "backlog.md").write_text(
-        f"| ID | Title | Status | P |\n|---|---|---|---|\n"
-        f"| {spec_id} | demo | in_progress | P1 |\n"
+        f"| ID | Title | Status | P |\n|---|---|---|---|\n| {spec_id} | demo | in_progress | P1 |\n"
     )
     (repo / "README.md").write_text("init\n")
-    _git(repo, "add", "README.md",
-         f"ai/features/{spec_id}.md", "ai/backlog.md")
+    _git(repo, "add", "README.md", f"ai/features/{spec_id}.md", "ai/backlog.md")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
 
@@ -126,8 +125,7 @@ def _count_decisions(verdict: str, demoted: int | None = None) -> int:
             ).fetchone()
         else:
             row = conn.execute(
-                "SELECT COUNT(*) AS c FROM callback_decisions "
-                "WHERE verdict = ? AND demoted = ?",
+                "SELECT COUNT(*) AS c FROM callback_decisions WHERE verdict = ? AND demoted = ?",
                 (verdict, demoted),
             ).fetchone()
         return int(row["c"]) if row else 0
@@ -136,6 +134,7 @@ def _count_decisions(verdict: str, demoted: int | None = None) -> int:
 # --- EC-1 -------------------------------------------------------------------
 # Pre-existing commit with spec_id in subject + zero activity since started_at
 # → auto-close to done.
+
 
 def test_ec1_already_merged_before_started_at_auto_close(tmp_path, tmp_db, monkeypatch, caplog):
     spec_id = "TECH-871"
@@ -159,13 +158,15 @@ def test_ec1_already_merged_before_started_at_auto_close(tmp_path, tmp_db, monke
     assert "**Status:** blocked" not in spec_text
     assert backlog_text is not None
     assert "| done |" in backlog_text
-    assert any("already merged" in rec.message and "auto-close" in rec.message
-               for rec in caplog.records), "auto-close log line must fire"
+    assert any(
+        "already merged" in rec.message and "auto-close" in rec.message for rec in caplog.records
+    ), "auto-close log line must fire"
 
 
 # --- EC-2 -------------------------------------------------------------------
 # Merge commit (`Merge TECH-XXX: ...`) on an Allowed File, no other activity
 # → auto-close to done. Confirms `--grep` matches merge subjects too.
+
 
 def test_ec2_merge_commit_subject_auto_close(tmp_path, tmp_db, monkeypatch):
     spec_id = "TECH-872"
@@ -186,6 +187,7 @@ def test_ec2_merge_commit_subject_auto_close(tmp_path, tmp_db, monkeypatch):
 
 # --- EC-3 -------------------------------------------------------------------
 # Regression: zero commits anywhere (even historically) → still demotes.
+
 
 def test_ec3_no_commits_anywhere_still_demotes(tmp_path, tmp_db, monkeypatch):
     spec_id = "TECH-873"
@@ -211,6 +213,7 @@ def test_ec3_no_commits_anywhere_still_demotes(tmp_path, tmp_db, monkeypatch):
 # Subject mentions spec_id but commit touches only an UNALLOWED path → does
 # NOT trigger auto-close (proves the `-- *allowed` filter actually filters).
 
+
 def test_ec4_grep_matches_but_path_unallowed_demotes(tmp_path, tmp_db, monkeypatch):
     spec_id = "TECH-874"
     repo = _make_project(tmp_path, spec_id, ["src/x.py"])
@@ -224,14 +227,16 @@ def test_ec4_grep_matches_but_path_unallowed_demotes(tmp_path, tmp_db, monkeypat
 
     spec_text = _head_file(repo, f"ai/features/{spec_id}.md")
     assert spec_text is not None
-    assert "**Status:** blocked" in spec_text, \
+    assert "**Status:** blocked" in spec_text, (
         "grep-only match without Allowed Files touch must demote, not auto-close"
+    )
     assert "**Blocked Reason:** no_implementation_commits" in spec_text
 
 
 # --- EC-5 -------------------------------------------------------------------
 # Deterministic: auto-close writes verdict='auto_close', demoted=0, NOT counted
 # by count_demotes_since (so circuit-breaker is unaffected).
+
 
 def test_ec5_auto_close_decision_not_counted_by_circuit(tmp_path, tmp_db, monkeypatch):
     spec_id = "TECH-875"
@@ -247,12 +252,11 @@ def test_ec5_auto_close_decision_not_counted_by_circuit(tmp_path, tmp_db, monkey
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=875)
 
     # 1. auto_close row exists, demoted=0.
-    assert _count_decisions("auto_close", demoted=0) == 1, \
-        "auto_close decision row missing"
+    assert _count_decisions("auto_close", demoted=0) == 1, "auto_close decision row missing"
     # 2. No demote row written.
-    assert _count_decisions("demote") == 0, \
-        "auto_close path must not record demote"
+    assert _count_decisions("demote") == 0, "auto_close path must not record demote"
     # 3. count_demotes_since unchanged → circuit threshold not advanced.
     demotes_after = db.count_demotes_since(callback.CIRCUIT_WINDOW_MIN)
-    assert demotes_after == demotes_before, \
+    assert demotes_after == demotes_before, (
         "auto_close must not count toward circuit-breaker threshold"
+    )

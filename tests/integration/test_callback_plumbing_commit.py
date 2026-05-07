@@ -9,6 +9,7 @@ If anyone replaces this with `git add <file>`, these tests must fail.
 Real fs + real git subprocess + no mocks of git (per ADR-013).
 Push suppressed via monkeypatch (no remote available).
 """
+
 from __future__ import annotations
 
 import subprocess
