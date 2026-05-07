@@ -99,7 +99,7 @@ def test_extract_agent_output_from_logfile(tmp_db, tmp_logs):
     log_file = tmp_logs / "testproj-20260320-120000.log"
     log_file.write_text(json.dumps(log_data))
 
-    skill, preview = callback.extract_agent_output("42", "testproj")
+    skill, preview, _ = callback.extract_agent_output("42", "testproj")
     assert skill == "autopilot"
     assert "Fixed callback" in preview
 
@@ -113,7 +113,7 @@ def test_extract_agent_output_no_logfile(tmp_db, tmp_logs):
         )
 
     with patch("subprocess.run", side_effect=Exception("no pueue")):
-        skill, preview = callback.extract_agent_output("99", "emptyproj")
+        skill, preview, _ = callback.extract_agent_output("99", "emptyproj")
     assert skill == ""
     assert preview == ""
 
@@ -133,7 +133,7 @@ def test_extract_agent_output_db_skill_fallback(tmp_db, tmp_logs):
 
     # No log file for proj3, but DB has the skill
     with patch("subprocess.run", side_effect=Exception("no pueue")):
-        skill, preview = callback.extract_agent_output("88", "proj3")
+        skill, preview, _ = callback.extract_agent_output("88", "proj3")
     assert skill == "autopilot"
     assert preview == ""  # no preview from DB
 
@@ -141,7 +141,7 @@ def test_extract_agent_output_db_skill_fallback(tmp_db, tmp_logs):
 def test_extract_agent_output_no_project_id():
     """No project_id → skips log file, tries DB + pueue fallback."""
     with patch("subprocess.run", side_effect=Exception("no pueue")):
-        skill, preview = callback.extract_agent_output("1")
+        skill, preview, _ = callback.extract_agent_output("1")
     assert skill == ""
     assert preview == ""
 
@@ -184,7 +184,7 @@ def test_callback_full_flow_without_pueue(tmp_db, tmp_logs):
     assert label == "dld:autopilot-BUG-164"
 
     # Verify extract works from log file
-    skill, preview = callback.extract_agent_output("100", "dld")
+    skill, preview, _ = callback.extract_agent_output("100", "dld")
     assert skill == "autopilot"
     assert "BUG-164" in preview
 
@@ -195,6 +195,57 @@ def test_callback_full_flow_without_pueue(tmp_db, tmp_logs):
 
 
 # --- verify_status_sync tests ---
+
+# Helpers shared by git-plumbing verify_status_sync tests.
+# verify_status_sync reads/writes via git HEAD (not disk), so tests need a real
+# git repo. Equivalent integration tests: tests/integration/test_callback_status_sync.py
+
+import subprocess as _subprocess
+
+
+def _git(repo: Path, *args: str) -> None:
+    _subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+
+def _make_git_repo(
+    tmp_path: Path, spec_id: str, spec_filename: str, spec_status: str, backlog_status: str
+) -> tuple:
+    """Init git repo with committed spec + backlog. Returns (repo, spec_path, backlog_path)."""
+    repo = tmp_path / "proj"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "develop")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "ai" / "features").mkdir(parents=True)
+    spec = repo / "ai" / "features" / spec_filename
+    spec.write_text(f"# Spec\n\n**Status:** {spec_status}\n")
+    backlog = repo / "ai" / "backlog.md"
+    backlog.write_text(f"| ID | Task | Status |\n| {spec_id} | task | {backlog_status} |\n")
+    (repo / "README.md").write_text("init\n")
+    _git(repo, "add", "README.md", f"ai/features/{spec_filename}", "ai/backlog.md")
+    _git(repo, "commit", "-q", "-m", "init")
+    return repo, spec, backlog
+
+
+def _head(repo: Path, rel: str) -> str:
+    """Read a path from git HEAD (not working tree)."""
+    r = _subprocess.run(
+        ["git", "-C", str(repo), "show", f"HEAD:{rel}"],
+        capture_output=True,
+        text=True,
+    )
+    return r.stdout if r.returncode == 0 else ""
+
+
+def _suppress_push_sync(monkeypatch) -> None:
+    real_run = _subprocess.run
+
+    def _fake(cmd, *a, **kw):
+        if isinstance(cmd, list) and "push" in cmd:
+            return _subprocess.CompletedProcess(cmd, 0, b"", b"")
+        return real_run(cmd, *a, **kw)
+
+    monkeypatch.setattr(callback.subprocess, "run", _fake)
 
 
 def test_verify_status_sync_both_done(tmp_path, caplog):
@@ -220,121 +271,86 @@ def test_verify_status_sync_both_done(tmp_path, caplog):
     )
 
 
-def test_verify_status_sync_fixes_spec(tmp_path, caplog):
-    """Spec in_progress → auto-fixed to done, file content updated."""
-    features = tmp_path / "ai" / "features"
-    features.mkdir(parents=True)
-    spec = features / "BUG-300-fix-thing.md"
-    spec.write_text("# Bug\n\n**Status:** in_progress | **Priority:** P0\n")
-
-    backlog = tmp_path / "ai" / "backlog.md"
-    backlog.write_text("| ID | Task | Status |\n| BUG-300 | Fix thing | done |\n")
-
+def test_verify_status_sync_fixes_spec(tmp_path, monkeypatch, caplog):
+    """Spec in_progress → auto-fixed to done in git HEAD."""
     import logging
 
-    with patch("callback.subprocess.run"):
-        with caplog.at_level(logging.INFO):
-            callback.verify_status_sync(str(tmp_path), "BUG-300")
+    repo, _, _ = _make_git_repo(tmp_path, "BUG-300", "BUG-300-fix-thing.md", "in_progress", "done")
+    _suppress_push_sync(monkeypatch)
 
-    assert "**Status:** done" in spec.read_text()
-    assert any("STATUS_FIX: spec BUG-300" in r.message for r in caplog.records)
+    with caplog.at_level(logging.INFO):
+        callback.verify_status_sync(str(repo), "BUG-300")
+
+    assert "**Status:** done" in _head(repo, "ai/features/BUG-300-fix-thing.md")
+    assert any("auto-fixed" in r.message for r in caplog.records)
 
 
-def test_verify_status_sync_fixes_backlog(tmp_path, caplog):
-    """Backlog in_progress → auto-fixed to done, file content updated."""
-    features = tmp_path / "ai" / "features"
-    features.mkdir(parents=True)
-    spec = features / "TECH-400-refactor.md"
-    spec.write_text("# Tech\n\n**Status:** done | **Priority:** P1\n")
-
-    backlog = tmp_path / "ai" / "backlog.md"
-    backlog.write_text("| ID | Task | Status |\n| TECH-400 | Refactor | in_progress |\n")
-
+def test_verify_status_sync_fixes_backlog(tmp_path, monkeypatch, caplog):
+    """Backlog in_progress → auto-fixed to done in git HEAD."""
     import logging
 
-    with patch("callback.subprocess.run"):
-        with caplog.at_level(logging.INFO):
-            callback.verify_status_sync(str(tmp_path), "TECH-400")
+    repo, _, _ = _make_git_repo(tmp_path, "TECH-400", "TECH-400-refactor.md", "done", "in_progress")
+    _suppress_push_sync(monkeypatch)
 
-    assert "done" in backlog.read_text().split("TECH-400")[1].split("\n")[0]
-    assert any("STATUS_FIX: backlog TECH-400" in r.message for r in caplog.records)
+    with caplog.at_level(logging.INFO):
+        callback.verify_status_sync(str(repo), "TECH-400")
+
+    assert "done" in _head(repo, "ai/backlog.md").split("TECH-400")[1].split("\n")[0]
+    assert any("auto-fixed" in r.message for r in caplog.records)
 
 
-def test_verify_status_sync_fixes_both(tmp_path, caplog):
-    """Neither done → both auto-fixed, git commit attempted."""
-    features = tmp_path / "ai" / "features"
-    features.mkdir(parents=True)
-    spec = features / "FTR-500-new-thing.md"
-    spec.write_text("# Feature\n\n**Status:** in_progress\n")
-
-    backlog = tmp_path / "ai" / "backlog.md"
-    backlog.write_text("| ID | Task | Status |\n| FTR-500 | New thing | in_progress |\n")
-
+def test_verify_status_sync_fixes_both(tmp_path, monkeypatch, caplog):
+    """Both in_progress → both auto-fixed to done, git plumbing commit runs."""
     import logging
 
-    with patch("callback.subprocess.run") as mock_run:
-        with caplog.at_level(logging.INFO):
-            callback.verify_status_sync(str(tmp_path), "FTR-500")
+    repo, _, _ = _make_git_repo(
+        tmp_path, "FTR-500", "FTR-500-new-thing.md", "in_progress", "in_progress"
+    )
+    _suppress_push_sync(monkeypatch)
 
-    # Files fixed
-    assert "**Status:** done" in spec.read_text()
-    assert "done" in backlog.read_text().split("FTR-500")[1].split("\n")[0]
-    # Git commit+push attempted (3 calls: add, commit, push)
-    assert mock_run.call_count == 3
+    with caplog.at_level(logging.INFO):
+        callback.verify_status_sync(str(repo), "FTR-500")
+
+    assert "**Status:** done" in _head(repo, "ai/features/FTR-500-new-thing.md")
+    assert "done" in _head(repo, "ai/backlog.md").split("FTR-500")[1].split("\n")[0]
     assert any("auto-fixed 2 file(s)" in r.message for r in caplog.records)
 
 
-def test_verify_status_sync_failed_sets_blocked(tmp_path, caplog):
-    """Failed autopilot → spec and backlog set to blocked."""
-    features = tmp_path / "ai" / "features"
-    features.mkdir(parents=True)
-    spec = features / "BUG-600-crash.md"
-    spec.write_text("# Bug\n\n**Status:** in_progress | **Priority:** P0\n")
-
-    backlog = tmp_path / "ai" / "backlog.md"
-    backlog.write_text("| ID | Task | Status |\n| BUG-600 | Crash | in_progress |\n")
-
+def test_verify_status_sync_failed_sets_blocked(tmp_path, monkeypatch, caplog):
+    """target=blocked → spec and backlog set to blocked in git HEAD."""
     import logging
 
-    with patch("callback.subprocess.run"):
-        with caplog.at_level(logging.INFO):
-            callback.verify_status_sync(str(tmp_path), "BUG-600", target="blocked")
-
-    assert "**Status:** blocked" in spec.read_text()
-    assert "blocked" in backlog.read_text().split("BUG-600")[1].split("\n")[0]
-
-
-def test_verify_status_sync_respects_blocked(tmp_path, caplog):
-    """Spec is blocked, target=done → do NOT overwrite, respect autopilot decision."""
-    features = tmp_path / "ai" / "features"
-    features.mkdir(parents=True)
-    spec = features / "FTR-700-blocked-task.md"
-    spec.write_text("# Feature\n\n**Status:** blocked | **Priority:** P0\n")
-
-    backlog = tmp_path / "ai" / "backlog.md"
-    backlog.write_text("| ID | Task | Status |\n| FTR-700 | Blocked task | blocked |\n")
-
-    import logging
+    repo, _, _ = _make_git_repo(
+        tmp_path, "BUG-600", "BUG-600-crash.md", "in_progress", "in_progress"
+    )
+    _suppress_push_sync(monkeypatch)
 
     with caplog.at_level(logging.INFO):
-        callback.verify_status_sync(str(tmp_path), "FTR-700", target="done")
+        callback.verify_status_sync(str(repo), "BUG-600", target="blocked")
 
-    # Spec must stay blocked — NOT overwritten to done
-    assert "**Status:** blocked" in spec.read_text()
-    assert any("spec is blocked, skipping auto-fix" in r.message for r in caplog.records)
+    assert "**Status:** blocked" in _head(repo, "ai/features/BUG-600-crash.md")
+    assert "blocked" in _head(repo, "ai/backlog.md").split("BUG-600")[1].split("\n")[0]
 
 
-def test_fix_spec_rejects_invalid_status(tmp_path, caplog):
-    """Invalid target status → rejected, file unchanged."""
-    features = tmp_path / "ai" / "features"
-    features.mkdir(parents=True)
-    spec = features / "BUG-800-test.md"
-    spec.write_text("# Bug\n\n**Status:** in_progress\n")
-
+def test_verify_status_sync_respects_blocked(tmp_path, monkeypatch, caplog):
+    """Spec blocked at HEAD, target=done → stays blocked (spec-authority guard)."""
     import logging
 
-    with caplog.at_level(logging.WARNING):
-        result = callback._fix_spec_status(spec, "BUG-800", "INVALID")
+    repo, _, _ = _make_git_repo(
+        tmp_path, "FTR-700", "FTR-700-blocked-task.md", "blocked", "blocked"
+    )
+    _suppress_push_sync(monkeypatch)
 
-    assert result is False
-    assert "**Status:** in_progress" in spec.read_text()  # unchanged
+    with caplog.at_level(logging.INFO):
+        callback.verify_status_sync(str(repo), "FTR-700", target="done")
+
+    assert "**Status:** blocked" in _head(repo, "ai/features/FTR-700-blocked-task.md")
+    assert any("spec is blocked at HEAD" in r.message for r in caplog.records)
+
+
+def test_apply_spec_status_rejects_invalid_status():
+    """Invalid target → _apply_spec_status returns (False, unchanged text)."""
+    text = "# Bug\n\n**Status:** in_progress\n"
+    ok, result = callback._apply_spec_status(text, "INVALID")
+    assert ok is False
+    assert result == text

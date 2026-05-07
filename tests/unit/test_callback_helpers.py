@@ -5,6 +5,7 @@ Part B (Task 3): parse_label, map_result, _skill_from_pueue_command (monkeypatch
 
 No subprocess / fs / db calls in Part A.
 """
+
 from __future__ import annotations
 
 import json
@@ -73,7 +74,7 @@ def test_apply_spec_status_only_replaces_first():
     assert new_text.count("**Status:**") == 2
     # First is done, second still queued
     lines = new_text.splitlines()
-    first_status = next(l for l in lines if "**Status:**" in l)
+    first_status = next(ln for ln in lines if "**Status:**" in ln)
     assert "done" in first_status
 
 
@@ -101,14 +102,13 @@ def test_apply_backlog_status_typical_row():
 def test_apply_backlog_status_spec_id_with_letter_suffix():
     """ARCH-176a — re.escape handles letter suffix; parent ARCH-176 row not matched."""
     text = (
-        "| ARCH-176 | parent | in_progress | P0 |\n"
-        "| ARCH-176a | foundation | in_progress | P0 |\n"
+        "| ARCH-176 | parent | in_progress | P0 |\n| ARCH-176a | foundation | in_progress | P0 |\n"
     )
     changed, new_text = callback._apply_backlog_status(text, "ARCH-176a", "done")
     assert changed is True
     lines = new_text.splitlines()
-    parent_line = next(l for l in lines if "| ARCH-176 |" in l and "ARCH-176a" not in l)
-    child_line = next(l for l in lines if "| ARCH-176a |" in l)
+    parent_line = next(ln for ln in lines if "| ARCH-176 |" in ln and "ARCH-176a" not in ln)
+    child_line = next(ln for ln in lines if "| ARCH-176a |" in ln)
     assert "in_progress" in parent_line  # parent unchanged
     assert "done" in child_line
 
@@ -148,7 +148,7 @@ def test_apply_blocked_reason_inserts_after_status():
     changed, new_text = callback._apply_blocked_reason(text, "no_implementation_commits")
     assert changed is True
     lines = new_text.splitlines()
-    status_idx = next(i for i, l in enumerate(lines) if "**Status:**" in l)
+    status_idx = next(i for i, ln in enumerate(lines) if "**Status:**" in ln)
     assert lines[status_idx + 1] == "**Blocked Reason:** no_implementation_commits"
 
 
@@ -203,6 +203,7 @@ def test_parse_label_with_colon():
 def test_parse_label_no_colon_warns(caplog):
     """'orphan' → ('orphan', 'orphan') + warning logged."""
     import logging
+
     with caplog.at_level(logging.WARNING, logger="callback"):
         result = callback.parse_label("orphan")
     assert result == ("orphan", "orphan")
@@ -217,13 +218,16 @@ def test_parse_label_multiple_colons_first_wins():
 # --- map_result --------------------------------------------------------------
 
 
-@pytest.mark.parametrize("result_str,expected", [
-    ("Success", ("done", 0)),
-    ("Successfully completed", ("done", 0)),
-    ("Failed", ("failed", 1)),
-    ("Killed", ("failed", 1)),
-    ("", ("failed", 1)),
-])
+@pytest.mark.parametrize(
+    "result_str,expected",
+    [
+        ("Success", ("done", 0)),
+        ("Successfully completed", ("done", 0)),
+        ("Failed", ("failed", 1)),
+        ("Killed", ("failed", 1)),
+        ("", ("failed", 1)),
+    ],
+)
 def test_map_result(result_str, expected):
     """Substring 'Success' → done; everything else → failed."""
     assert callback.map_result(result_str) == expected
@@ -246,7 +250,8 @@ def test_skill_from_pueue_extracts_4th_argv(monkeypatch):
         "1", "/bin/bash /srv/run-agent.sh /path claude autopilot /autopilot BUG-1"
     )
     monkeypatch.setattr(
-        callback.subprocess, "run",
+        callback.subprocess,
+        "run",
         lambda *a, **kw: subprocess.CompletedProcess([], 0, pueue_json, ""),
     )
     skill, _ = callback._skill_from_pueue_command("1")
@@ -255,11 +260,10 @@ def test_skill_from_pueue_extracts_4th_argv(monkeypatch):
 
 def test_skill_from_pueue_absolute_path_to_run_agent(monkeypatch):
     """Absolute path to run-agent.sh → skill extracted correctly."""
-    pueue_json = _make_pueue_json(
-        "2", "/srv/scripts/run-agent.sh /p claude qa /qa BUG-1"
-    )
+    pueue_json = _make_pueue_json("2", "/srv/scripts/run-agent.sh /p claude qa /qa BUG-1")
     monkeypatch.setattr(
-        callback.subprocess, "run",
+        callback.subprocess,
+        "run",
         lambda *a, **kw: subprocess.CompletedProcess([], 0, pueue_json, ""),
     )
     skill, _ = callback._skill_from_pueue_command("2")
@@ -270,7 +274,8 @@ def test_skill_from_pueue_no_run_agent_in_command(monkeypatch):
     """command='echo hello' → ('', 0.0)."""
     pueue_json = _make_pueue_json("3", "echo hello")
     monkeypatch.setattr(
-        callback.subprocess, "run",
+        callback.subprocess,
+        "run",
         lambda *a, **kw: subprocess.CompletedProcess([], 0, pueue_json, ""),
     )
     skill, ts = callback._skill_from_pueue_command("3")
@@ -280,8 +285,10 @@ def test_skill_from_pueue_no_run_agent_in_command(monkeypatch):
 
 def test_skill_from_pueue_subprocess_failure(monkeypatch):
     """subprocess raises → ('', 0.0), no exception propagates."""
+
     def _raise(*a, **kw):
         raise OSError("pueue socket not found")
+
     monkeypatch.setattr(callback.subprocess, "run", _raise)
     skill, ts = callback._skill_from_pueue_command("4")
     assert skill == ""
@@ -291,7 +298,8 @@ def test_skill_from_pueue_subprocess_failure(monkeypatch):
 def test_skill_from_pueue_returncode_nonzero(monkeypatch):
     """pueue rc=1 → ('', 0.0) (early return)."""
     monkeypatch.setattr(
-        callback.subprocess, "run",
+        callback.subprocess,
+        "run",
         lambda *a, **kw: subprocess.CompletedProcess([], 1, "", ""),
     )
     skill, ts = callback._skill_from_pueue_command("5")
@@ -307,7 +315,8 @@ def test_skill_from_pueue_start_ts_running_state(monkeypatch):
         "2026-05-02T12:00:00Z",
     )
     monkeypatch.setattr(
-        callback.subprocess, "run",
+        callback.subprocess,
+        "run",
         lambda *a, **kw: subprocess.CompletedProcess([], 0, pueue_json, ""),
     )
     skill, ts = callback._skill_from_pueue_command("6")
@@ -323,7 +332,8 @@ def test_skill_from_pueue_start_ts_done_state(monkeypatch):
     }
     pueue_json = json.dumps({"tasks": {"7": task}})
     monkeypatch.setattr(
-        callback.subprocess, "run",
+        callback.subprocess,
+        "run",
         lambda *a, **kw: subprocess.CompletedProcess([], 0, pueue_json, ""),
     )
     skill, ts = callback._skill_from_pueue_command("7")
@@ -339,7 +349,8 @@ def test_skill_from_pueue_malformed_iso_silent(monkeypatch):
         "not-a-date",
     )
     monkeypatch.setattr(
-        callback.subprocess, "run",
+        callback.subprocess,
+        "run",
         lambda *a, **kw: subprocess.CompletedProcess([], 0, pueue_json, ""),
     )
     skill, ts = callback._skill_from_pueue_command("8")

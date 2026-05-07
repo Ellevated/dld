@@ -4,6 +4,7 @@ EC-3: digest script correctly aggregates JSONL for last 24h.
 
 No mocks — uses real filesystem + real audit_digest module functions.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,6 +19,7 @@ import audit_digest  # noqa: E402
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _now_utc() -> datetime:
     return datetime.now(tz=timezone.utc)
@@ -34,6 +36,7 @@ def _write_jsonl(path: Path, records: list[dict]) -> None:
 
 
 # ── read_records ──────────────────────────────────────────────────────────────
+
 
 def test_read_records_empty_file(tmp_path):
     """Empty file → empty list."""
@@ -67,10 +70,7 @@ def test_read_records_filters_old_records(tmp_path):
 def test_read_records_includes_all_recent(tmp_path):
     """All records within window are returned."""
     now = _now_utc()
-    records = [
-        {"ts": _ts(now - timedelta(minutes=5)), "spec_id": f"FTR-{i}"}
-        for i in range(5)
-    ]
+    records = [{"ts": _ts(now - timedelta(minutes=5)), "spec_id": f"FTR-{i}"} for i in range(5)]
     audit_file = tmp_path / "audit.jsonl"
     _write_jsonl(audit_file, records)
     result = audit_digest.read_records(audit_file, since_hours=24)
@@ -99,6 +99,7 @@ def test_read_records_skips_missing_ts(tmp_path):
 
 # ── aggregate ─────────────────────────────────────────────────────────────────
 
+
 def test_aggregate_counts_done(tmp_path):
     """done records are counted per project."""
     records = [
@@ -115,8 +116,12 @@ def test_aggregate_counts_done(tmp_path):
 def test_aggregate_collects_demotes(tmp_path):
     """Non-done target_out goes into demotes list."""
     records = [
-        {"project_id": "alpha", "target_out": "blocked", "spec_id": "FTR-001",
-         "reason": "no_implementation_commits"},
+        {
+            "project_id": "alpha",
+            "target_out": "blocked",
+            "spec_id": "FTR-001",
+            "reason": "no_implementation_commits",
+        },
         {"project_id": "alpha", "target_out": "done"},
     ]
     agg = audit_digest.aggregate(records)
@@ -135,19 +140,30 @@ def test_aggregate_unknown_project_id(tmp_path):
 
 def test_aggregate_multiple_projects(tmp_path):
     """Multiple projects are aggregated independently."""
-    now = _now_utc()
     records = [
         {"project_id": "awardybot", "target_out": "done"},
         {"project_id": "awardybot", "target_out": "done"},
-        {"project_id": "awardybot", "target_out": "blocked", "spec_id": "FTR-897",
-         "reason": "no_implementation_commits"},
+        {
+            "project_id": "awardybot",
+            "target_out": "blocked",
+            "spec_id": "FTR-897",
+            "reason": "no_implementation_commits",
+        },
         {"project_id": "dowry", "target_out": "done"},
         {"project_id": "dowry", "target_out": "done"},
         {"project_id": "dowry", "target_out": "done"},
-        {"project_id": "wb", "target_out": "blocked", "spec_id": "ARCH-176a",
-         "reason": "no_implementation_commits"},
-        {"project_id": "wb", "target_out": "blocked", "spec_id": "ARCH-176b",
-         "reason": "no_implementation_commits"},
+        {
+            "project_id": "wb",
+            "target_out": "blocked",
+            "spec_id": "ARCH-176a",
+            "reason": "no_implementation_commits",
+        },
+        {
+            "project_id": "wb",
+            "target_out": "blocked",
+            "spec_id": "ARCH-176b",
+            "reason": "no_implementation_commits",
+        },
     ]
     agg = audit_digest.aggregate(records)
     assert agg["awardybot"]["done"] == 2
@@ -159,6 +175,7 @@ def test_aggregate_multiple_projects(tmp_path):
 
 
 # ── format_digest ─────────────────────────────────────────────────────────────
+
 
 def test_format_digest_header_contains_date():
     """Header line contains the date label."""

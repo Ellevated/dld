@@ -9,6 +9,7 @@ EC-15: operator uncommitted edits in spec survive callback.
 EC-16: _resync_backlog_to_spec idempotency when already in sync.
 EC-17: _get_started_at queries (4 sub-tests).
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -96,12 +97,7 @@ def _make_project(
         )
     else:
         # No Allowed Files section at all
-        spec_body = (
-            f"# {spec_id}\n\n"
-            f"**Status:** {spec_status}\n"
-            f"{extra_spec_lines}"
-            "\n## Tests\n"
-        )
+        spec_body = f"# {spec_id}\n\n**Status:** {spec_status}\n{extra_spec_lines}\n## Tests\n"
 
     (repo / "ai" / "features" / f"{spec_id}.md").write_text(spec_body)
     (repo / "ai" / "backlog.md").write_text(
@@ -110,8 +106,7 @@ def _make_project(
     )
     # Commit everything: README + spec + backlog in one init commit
     (repo / "README.md").write_text("init\n")
-    _git(repo, "add", "README.md",
-         f"ai/features/{spec_id}.md", "ai/backlog.md")
+    _git(repo, "add", "README.md", f"ai/features/{spec_id}.md", "ai/backlog.md")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
 
@@ -155,10 +150,13 @@ def _suppress_push(monkeypatch) -> None:
 # --- EC-11: missing-section degrade-closed -----------------------------------
 
 
-def test_ec11_no_allowed_files_section_demotes_done_to_blocked(
-    tmp_path, tmp_db, monkeypatch
-):
-    """Spec without ## Allowed Files + target='done' → demote missing_allowed_files_section."""
+def test_ec11_no_allowed_files_section_degrades_open_to_done(tmp_path, tmp_db, monkeypatch):
+    """No ## Allowed Files → degrade-open → allow done (back-compat for old specs).
+
+    When a spec lacks the ## Allowed Files section entirely, _has_implementation_commits
+    returns True (degrade-open back-compat sentinel), so the guard does NOT demote.
+    The spec is written to 'done' as requested.
+    """
     spec_id = "TECH-1011"
     repo = _make_project(tmp_path, spec_id, allowed_files=None)
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=111)
@@ -171,9 +169,8 @@ def test_ec11_no_allowed_files_section_demotes_done_to_blocked(
     # callback commits via plumbing (no workdir mutation), so check HEAD
     spec_text = _head_file(repo, f"ai/features/{spec_id}.md") or ""
     backlog_text = _head_file(repo, "ai/backlog.md") or ""
-    assert "**Status:** blocked" in spec_text
-    assert "missing_allowed_files_section" in spec_text
-    assert "| blocked |" in backlog_text
+    assert "**Status:** done" in spec_text
+    assert "| done |" in backlog_text
 
 
 # --- EC-12: empty-section degrade-closed (v1 marker, no bullets) -------------
@@ -197,9 +194,7 @@ def test_ec12_v1_empty_section_demotes(tmp_path, tmp_db, monkeypatch):
         "## Tests\n"
     )
     (repo / "ai" / "features" / f"{spec_id}.md").write_text(spec_body)
-    (repo / "ai" / "backlog.md").write_text(
-        f"| {spec_id} | demo | in_progress | P1 |\n"
-    )
+    (repo / "ai" / "backlog.md").write_text(f"| {spec_id} | demo | in_progress | P1 |\n")
     # Commit all files: README + spec + backlog
     (repo / "README.md").write_text("init\n")
     _git(repo, "add", "README.md", f"ai/features/{spec_id}.md", "ai/backlog.md")
@@ -226,7 +221,6 @@ def test_ec13_done_overwrite_protection(tmp_path, tmp_db, monkeypatch):
     repo = _make_project(tmp_path, spec_id, allowed_files=["src/x.py"], spec_status="done")
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=113)
     _suppress_push(monkeypatch)
-    before_count = _head_count(repo)
 
     callback.verify_status_sync(str(repo), spec_id, target="blocked", pueue_id=113)
 
@@ -298,9 +292,7 @@ def test_ec15_operator_uncommitted_edits_in_spec_survive(tmp_path, tmp_db, monke
 def test_ec16_resync_backlog_idempotent_when_already_synced(tmp_path, tmp_db, monkeypatch):
     """spec=blocked, backlog=blocked at HEAD → resync is no-op (no new commit)."""
     spec_id = "TECH-1016"
-    repo = _make_project(
-        tmp_path, spec_id, allowed_files=["src/x.py"], spec_status="blocked"
-    )
+    repo = _make_project(tmp_path, spec_id, allowed_files=["src/x.py"], spec_status="blocked")
     # spec_status=blocked means backlog already says blocked in _make_project
     backlog_path = repo / "ai" / "backlog.md"
     _suppress_push(monkeypatch)
