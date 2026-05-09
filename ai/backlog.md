@@ -143,6 +143,7 @@
 | TECH-177 | Callback: tighten `_spec_has_merged_implementation` matcher — subject-only ID match (cross-spec body mention false-positive) | done | P1 | [spec](features/TECH-177-2026-05-04-callback-cross-spec-id-mention.md) |
 | TECH-178 | Pre-commit hook откатывает коммиты на trailing whitespace в research-md (autopilot retry-loop) | done | P2 | [spec](features/TECH-178-2026-05-04-precommit-whitespace-rollback.md) |
 | TECH-180 | Knowledge Feedback Loop — Historical Risks в спеках (ingestion + retrieval + binding + closing loop) | done | P1 | [spec](features/TECH-180-2026-05-06-knowledge-feedback-loop.md) |
+| TECH-181 | Hermes intake bridge — orchestrator scan_inbox диспатчит только Status: queued (clean break от legacy new) | done | P1 | [spec](features/TECH-181-2026-05-07-hermes-intake-bridge-status-gate.md) |
 
 ---
 
