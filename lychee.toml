@@ -26,3 +26,7 @@ exclude = [
 max_redirects = 5
 no_progress = true
 accept = [200, 206, 429]
+
+# Retries for flaky transient errors (e.g. "Connection reset by peer")
+max_retries = 3
+retry_wait_time = 5
