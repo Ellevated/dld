@@ -394,6 +394,27 @@ def scan_backlog(project_id: str, project_dir: str) -> bool:
     if not spec_id:
         return False
 
+    # Skip dispatch if this spec was demoted in the last 30 minutes — avoids re-dispatch loops.
+    audit_log = SCRIPT_DIR / "callback-audit.jsonl"
+    if audit_log.is_file():
+        cutoff = datetime.now(tz=timezone.utc).timestamp() - 30 * 60
+        try:
+            for raw in audit_log.read_text().splitlines()[-200:]:
+                entry = json.loads(raw)
+                if (
+                    entry.get("spec_id") == spec_id
+                    and entry.get("target_out") == "blocked"
+                    and entry.get("reason") != "fixed"
+                ):
+                    ts = datetime.fromisoformat(entry["ts"].replace("Z", "+00:00")).timestamp()
+                    if ts > cutoff:
+                        log.info(
+                            "skip dispatch: %s demoted recently (%s)", spec_id, entry["reason"]
+                        )
+                        return False
+        except Exception:
+            pass
+
     state = db.get_project_state(project_id)
     provider = (state["provider"] if state else None) or "claude"
 
