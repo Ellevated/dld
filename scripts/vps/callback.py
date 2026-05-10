@@ -28,6 +28,10 @@ import event_writer  # noqa: E402
 
 log = logging.getLogger("callback")
 
+# Spec-id regex (TECH-182). `[a-z]*` captures sub-spec suffixes (ARCH-176a/b/c).
+# Mirrors orchestrator.scan_backlog regex (v3.15.8).
+_SPEC_ID_RE = re.compile(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*")
+
 
 def _load_env() -> None:
     """Load .env from SCRIPT_DIR. Manual parser."""
@@ -297,19 +301,14 @@ def extract_agent_output(pueue_id: str, project_id: str = "") -> tuple:
 
 def resolve_spec_id(task_label: str, preview: str, project_path: str) -> str | None:
     """Multi-layer spec_id resolution."""
-    # `[a-z]*` captures sub-spec suffixes (e.g. ARCH-176a/b/c/d). Mirrors
-    # orchestrator.scan_backlog regex (v3.15.8). Without it status_sync
-    # would target the parent ARCH-176 instead of ARCH-176a.
-    spec_re = re.compile(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*")
-
     # Layer 1: from task label
-    m = spec_re.search(task_label)
+    m = _SPEC_ID_RE.search(task_label)
     if m:
         return m.group(0)
 
     # Layer 2: from preview text
     if preview:
-        m = spec_re.search(preview)
+        m = _SPEC_ID_RE.search(preview)
         if m:
             return m.group(0)
 
@@ -321,7 +320,7 @@ def resolve_spec_id(task_label: str, preview: str, project_path: str) -> str | N
                 text = f.read_text(errors="replace")
                 m = re.search(r"\*\*SpecID:\*\*\s*(\S+)", text)
                 if m:
-                    sm = spec_re.search(m.group(1))
+                    sm = _SPEC_ID_RE.search(m.group(1))
                     if sm:
                         return sm.group(0)
     return None
@@ -768,19 +767,55 @@ def _parse_allowed_files(spec_path: Path) -> list[str] | None:
 
 
 def _append_blocked_reason(spec_path: Path, reason: str) -> bool:
-    """Path-taking wrapper around _apply_blocked_reason — preserves the
-    pre-TECH-167 helper signature used by existing unit tests.
+    """Append/replace **Blocked Reason:** line on a spec via git plumbing.
 
-    Reads spec_path, applies _apply_blocked_reason, writes back if changed.
-    Idempotent: calling twice with the same reason produces only one
-    `**Blocked Reason:**` line (re.subn count=1 ensures replacement, not
-    append).
+    TECH-182: switched from `spec_path.write_text(new_text)` (working-tree
+    mutation, vulnerable to upstream rebase/stash data-loss) to the same
+    HEAD-read + plumbing-commit path used by `_resync_backlog_to_spec` and
+    `verify_status_sync`. Operator's uncommitted edits in the working tree
+    are preserved; callback never touches them.
+
+    Resolves spec_path against its enclosing project (walks up to find the
+    `ai/features/` parent), reads the file at HEAD, applies
+    `_apply_blocked_reason`, and commits + pushes via `_git_commit_push`.
+
+    Returns True iff a commit was made (idempotent — calling twice with
+    the same reason yields no second commit because HEAD content already
+    matches).
     """
-    text = spec_path.read_text(errors="replace")
-    changed, new_text = _apply_blocked_reason(text, reason)
-    if changed and new_text != text:
-        spec_path.write_text(new_text)
-    return changed
+    # Walk up from spec_path to the project root (parent of ai/features/).
+    project_root: Path | None = None
+    for parent in spec_path.resolve().parents:
+        if (parent / "ai" / "features").is_dir() and (parent / ".git").exists():
+            project_root = parent
+            break
+    if project_root is None:
+        log.warning(
+            "BLOCKED_REASON: could not resolve project root for %s — skip",
+            spec_path,
+        )
+        return False
+
+    rel_path = str(spec_path.resolve().relative_to(project_root))
+    head_text = _read_head_blob(str(project_root), rel_path)
+    if head_text is None:
+        log.warning(
+            "BLOCKED_REASON: HEAD read failed for %s in %s — skip",
+            rel_path,
+            project_root,
+        )
+        return False
+
+    changed, new_text = _apply_blocked_reason(head_text, reason)
+    if not changed or new_text == head_text:
+        return False
+
+    # Best-effort spec_id for commit message — falls back to filename stem.
+    m = _SPEC_ID_RE.search(spec_path.name)
+    spec_id = m.group(0) if m else spec_path.stem
+
+    _git_commit_push(str(project_root), spec_id, "blocked", [(rel_path, new_text)])
+    return True
 
 
 def _get_started_at(pueue_id: int) -> str | None:
