@@ -1,16 +1,6 @@
 # Tech: [TECH-182] Orchestrator git rebase --autostash теряет uncommitted файлы
 <!-- DLD-CALLBACK-MARKER-START v1 -->
-**Status:** done | **Priority:** P1 | **Date:** 2026-05-10
-
-## ACTION REQUIRED (autopilot 2026-05-10)
-
-Спека лежит в репо `awardybot`, но `Allowed Files` указывают на `scripts/vps/orchestrator.py` и `scripts/vps/callback.py` — это файлы из **другого репозитория** (`/home/dld/projects/dld`, remote `Ellevated/dld`). В `awardybot` `scripts/vps/` отсутствует, autopilot не может закоммитить фикс в текущий репо.
-
-**Что нужно от человека (выбрать один путь):**
-1. Перенести спеку в репо `dld` (`/home/dld/projects/dld/ai/features/`) и запустить autopilot оттуда; либо
-2. Подтвердить, что фикс делается вручную в репо `dld`, а в backlog awardybot спеку закрыть как «moved».
-
-Plan уже сгенерирован планером (см. ниже) и валиден против `/home/dld/projects/dld/scripts/vps/*` — после перемещения спеки можно сразу запускать coder.
+**Status:** queued | **Priority:** P1 | **Date:** 2026-05-10
 <!-- DLD-CALLBACK-MARKER-END -->
 
 ## Why
