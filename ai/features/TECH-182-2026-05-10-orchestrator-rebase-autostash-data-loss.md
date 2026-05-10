@@ -1,6 +1,6 @@
 # Tech: [TECH-182] Orchestrator git rebase --autostash теряет uncommitted файлы
 <!-- DLD-CALLBACK-MARKER-START v1 -->
-**Status:** done | **Priority:** P1 | **Date:** 2026-05-10
+**Status:** queued | **Priority:** P1 | **Date:** 2026-05-10
 <!-- DLD-CALLBACK-MARKER-END -->
 
 ## Why
