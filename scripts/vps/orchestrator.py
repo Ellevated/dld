@@ -213,7 +213,13 @@ def is_agent_running(project_id: str) -> bool:
 
 
 def git_pull(project_id: str, project_dir: str) -> None:
-    """Pull develop branch. Skip if agent running or not a git repo."""
+    """Pull develop branch. Skip if agent running, not a git repo, or working tree dirty.
+
+    TECH-182: removed `rebase --autostash` — stash pop conflicts silently
+    discarded uncommitted callback writes (BUG-972/BUG-973). Now pull is
+    fast-forward-only on a clean tree, otherwise we log a warning and skip
+    this cycle. No working-tree mutation under any failure mode.
+    """
     if not os.path.isdir(os.path.join(project_dir, ".git")):
         return
     if is_agent_running(project_id):
@@ -227,12 +233,16 @@ def git_pull(project_id: str, project_dir: str) -> None:
         clean = _git("diff", "--quiet", timeout=30).returncode == 0
         staged = _git("diff", "--cached", "--quiet", timeout=30).returncode == 0
         if clean and staged:
-            _git("pull", "--rebase", "origin", "develop", text=True, timeout=120, check=True)
+            _git("pull", "--ff-only", "origin", "develop", text=True, timeout=120, check=True)
         else:
-            _git("fetch", "origin", "develop", timeout=60, check=True)
-            _git("rebase", "--autostash", "origin/develop", text=True, timeout=120, check=True)
+            log.warning(
+                "git pull skipped — working tree dirty (clean=%s staged=%s) for %s; "
+                "no autostash, data preserved",
+                clean,
+                staged,
+                project_dir,
+            )
     except subprocess.CalledProcessError as exc:
-        _git("rebase", "--abort", timeout=30)
         log.warning("git pull failed: %s — %s", project_dir, (exc.stderr or "")[:200])
 
 
