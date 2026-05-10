@@ -7,6 +7,7 @@ import { execSync, execFileSync } from 'child_process';
 import { createHash } from 'crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, readdirSync } from 'fs';
 import { join, relative, dirname } from 'path';
+import { tmpdir } from 'os';
 
 const REPO_URL = 'https://github.com/Ellevated/dld.git';
 const TEMPLATE_DIR = 'template';
@@ -62,7 +63,7 @@ function walkDir(dir, base) {
     if (entry.name === '.git' || entry.name === 'node_modules') continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) results.push(...walkDir(full, base));
-    else if (entry.isFile()) results.push(relative(base, full));
+    else if (entry.isFile()) results.push(relative(base, full).split(/[\\/]/).join('/'));
   }
   return results;
 }
@@ -281,7 +282,7 @@ function resolveSource(flags, projectDir) {
   }
   let tempCloneRoot = null;
   try {
-    tempCloneRoot = join('/tmp', `dld-upgrade-${Date.now()}`);
+    tempCloneRoot = join(tmpdir(), `dld-upgrade-${Date.now()}`);
     execSync(`git clone --depth 1 --filter=blob:none --sparse ${REPO_URL} ${tempCloneRoot}`, { stdio: 'pipe' });
     execSync(`git -C ${tempCloneRoot} sparse-checkout set ${TEMPLATE_DIR}`, { stdio: 'pipe' });
     return { sourceDir: join(tempCloneRoot, TEMPLATE_DIR), tempCloneRoot };
