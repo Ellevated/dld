@@ -519,7 +519,22 @@ def _git_commit_push(
             r.stderr.decode(errors="replace")[:200],
         )
         return
-    subprocess.run(git + ["push", "origin", "develop"], capture_output=True, timeout=60)
+    push = subprocess.run(
+        git + ["push", "origin", "develop"],
+        capture_output=True,
+        timeout=60,
+    )
+    if push.returncode != 0:
+        stderr = push.stderr or b""
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode(errors="replace")
+        log.warning(
+            "STATUS_FIX: push failed for %s (rc=%d): %s",
+            spec_id,
+            push.returncode,
+            stderr.strip()[:200],
+        )
+        return
     log.info(
         "STATUS_FIX: committed and pushed %s → %s (%d file(s), no working-tree mutation)",
         spec_id,
