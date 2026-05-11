@@ -1,7 +1,7 @@
 ---
 id: TECH-176
 type: TECH
-status: queued
+status: done
 priority: P1
 risk: R1
 created: 2026-05-04
@@ -9,7 +9,7 @@ created: 2026-05-04
 
 # TECH-176 — IMPL_GUARD: detect "already merged before started_at" instead of demoting
 
-**Status:** queued
+**Status:** done
 **Priority:** P1
 **Risk:** R1 (затрагивает callback decision flow для всех проектов)
 
