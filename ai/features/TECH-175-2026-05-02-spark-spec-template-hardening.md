@@ -1,7 +1,7 @@
 ---
 id: TECH-175
 type: TECH
-status: queued
+status: done
 priority: P2
 risk: R2
 created: 2026-05-02
@@ -9,7 +9,7 @@ created: 2026-05-02
 
 # TECH-175 — Spark spec template hardening (DO-NOT-REMOVE markers)
 
-**Status:** blocked
+**Status:** done
 **Priority:** P2
 **Risk:** R2
 
