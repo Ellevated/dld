@@ -145,6 +145,7 @@
 | TECH-180 | Knowledge Feedback Loop — Historical Risks в спеках (ingestion + retrieval + binding + closing loop) | done | P1 | [spec](features/TECH-180-2026-05-06-knowledge-feedback-loop.md) |
 | TECH-181 | Hermes intake bridge — orchestrator scan_inbox диспатчит только Status: queued (clean break от legacy new) | done | P1 | [spec](features/TECH-181-2026-05-07-hermes-intake-bridge-status-gate.md) |
 | TECH-182 | **Orchestrator `git rebase --autostash` теряет uncommitted файлы** — при конфликте stash pop данные остаются в stash. Инцидент 2026-05-10: BUG-972/973 потеряны. 3 fix-а: orchestrator.py → `pull --ff-only` (dirty tree → skip+warn); callback.py `_append_blocked_reason` → plumbing вместо `write_text`; логировать ошибку `git push`. | done | P1 | [spec](features/TECH-182-2026-05-10-orchestrator-rebase-autostash-data-loss.md) |
+| TECH-973 | Hermes intake contract — full status lifecycle SSOT (ai/inbox/README.md) + ADR-022 + OpenClaw→Hermes rename + scan_inbox regression tests | queued | P1 | [spec](features/TECH-973-2026-05-14-hermes-intake-contract.md) |
 
 ---
 
