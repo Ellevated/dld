@@ -188,7 +188,7 @@ Dependency map between project components.
 |------|-------|----------|
 | db.py | scripts/vps/db.py | release_slot(), finish_task(), update_project_phase(), get_project_state(), try_acquire_slot(), log_task(), get_task_by_pueue_id() |
 | db.py | scripts/vps/db.py | record_decision(), count_demotes_since(), clear_decisions() (TECH-169) |
-| event_writer.py | scripts/vps/event_writer.py | notify() — send OpenClaw event |
+| event_writer.py | scripts/vps/event_writer.py | notify() — send Hermes event |
 | event_writer.py | scripts/vps/event_writer.py | notify_circuit_event() (TECH-169) |
 | run-agent.sh | scripts/vps/run-agent.sh | pueue add for QA/Reflect dispatch |
 | pueue CLI | PATH | pueue status --json, pueue log --json, pueue add |

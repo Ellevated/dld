@@ -101,6 +101,7 @@ Hooks must never crash — a crashing hook breaks Claude Code. See ADR-004.
 | TECH-174 | Manual spec verification protocol (operator checklist) | 2026-05 | См. dld-orchestrator.md§8 |
 | TECH-176 | Guard auto-close path: detect "already merged before started_at" via `_spec_has_merged_implementation` (`--grep <spec_id>` ∩ `-- <allowed>`) | 2026-05 | См. dld-orchestrator.md§6 |
 | ADR-021 | Hermes intake gate: orchestrator `scan_inbox` диспатчит только `Status: queued` (Hermes-promoted); `new`/`draft`/`clarifying`/`stale`/`rejected` игнорируются. Clean break, no auto-migration. | 2026-05 | TECH-181: business-gate перед Spark, разделение Hermes (бизнес) / Spark (техника) |
+| ADR-022 | Hermes intake supervisor: Hermes — единственный writer статуса `queued` в `ai/inbox/`. QA, reflect, post-autopilot события и Telegram-бридж пишут intake-файлы со `Status: draft`; их артефакты живут в `ai/reflect/`, `ai/qa/` или внутри spec, но не в inbox со `queued`. SSOT по lifecycle — `ai/inbox/README.md`, статусы синхронизированы с regex в `scan_inbox` (`scripts/vps/orchestrator.py`). | 2026-05 | TECH-973: документационный слой поверх TECH-181 hard gate; единый язык вместо «OpenClaw» |
 
 ---
 
