@@ -1,67 +1,112 @@
-# ai/inbox/ — intake queue contract (TECH-181)
+# `ai/inbox/` — Intake SSOT
 
-Inbox — это short-lived очередь сырых идей/артефактов от founder и автоматических
-источников (Telegram, QA, reflect findings, pending events). **Hermes** —
-conversational supervisor — выступает business-gate'ом между inbox и Spark.
+Single source of truth for **intake file status lifecycle**.
 
-## Status contract
+`ai/inbox/` is the only entry point between the founder's stream of consciousness
+(Telegram, voice notes, ad-hoc thoughts) and the AI pipeline (Spark → autopilot).
+This directory is supervised by **Hermes** (the conversational supervisor agent,
+formerly known as "OpenClaw").
 
-Каждый `*.md` файл в `ai/inbox/` имеет YAML-стиль поле `**Status:** <state>`:
+> **Scope of this document:** statuses of *intake files in `ai/inbox/`*.
+> Do **not** confuse with **backlog spec** statuses
+> (`draft`/`queued`/`in_progress`/`blocked`/`resumed`/`done`) —
+> those live in `ai/backlog.md` / `ai/features/*.md` and are validated by
+> `_VALID_STATUSES` in `scripts/vps/callback.py:417`.
 
-| Status | Кто пишет | Eligible for Spark dispatch? | Описание |
-|--------|-----------|-------------------------------|----------|
-| `draft` | author / source-bridge | ❌ | Сырая идея, business-context может быть неполным |
-| `clarifying` | Hermes | ❌ | Hermes задал уточняющий вопрос Олегу |
-| `stale` | Hermes | ❌ | Идея устарела или дубль |
-| `rejected` | Hermes | ❌ | Out of scope / решено не делать |
-| `queued` | **Hermes only** | ✅ | Business-complete, готово к Spark |
-| `processing` | orchestrator | n/a | In-flight (выставляется `scan_inbox`) |
-| `done` | orchestrator | n/a | Файл перенесён в `inbox/done/` |
+---
 
-**Hard rule:** orchestrator (`scripts/vps/orchestrator.py::scan_inbox`) дисптачит
-**только** файлы с `**Status:** queued`. Любой другой статус игнорируется и
-остаётся на диске без изменений.
+## Status lifecycle
 
-## Lifecycle
+Every file in `ai/inbox/*.md` has exactly one `**Status:**` field.
+The orchestrator (`scan_inbox()` in `scripts/vps/orchestrator.py:315`)
+dispatches **only `queued`** to Spark — every other status is ignored.
 
-1. Источник (Telegram-сообщение, QA-репорт, reflect-finding и т.п.) создаёт
-   файл со `Status: draft`.
-2. Hermes сканирует draft'ы, ведёт диалог с Олегом:
-   - неполный контекст → `clarifying` + вопрос в Telegram;
-   - шум/устарело → `stale` или `rejected`;
-   - business-complete → `queued`.
-3. Orchestrator `scan_inbox()` подхватывает `queued`, переписывает в
-   `processing`, переносит файл в `inbox/done/<name>.md` и диспатчит Spark
-   через pueue.
-4. Spark создаёт спеку в `ai/features/`, добавляет в `ai/backlog.md`.
+| Status | Written by | Eligible for `scan_inbox` dispatch? | Meaning |
+|--------|-----------|-------------------------------------|---------|
+| `draft` | author / Telegram bridge / any source | ❌ | Raw thought, unstructured idea, not yet reviewed by Hermes. |
+| `clarifying` | Hermes | ❌ | Hermes has asked Oleg a clarifying question, awaiting answer. |
+| `stale` | Hermes | ❌ | Idea no longer relevant; archive candidate. |
+| `rejected` | Hermes | ❌ | Oleg said "no"; do not process. |
+| `queued` | **only Hermes** | ✅ | Business-complete brief; ready for Spark. |
+| `processing` | orchestrator (`scan_inbox`) | — | Already handed off to Spark/autopilot. |
+| `done` | autopilot / callback | — | Item converted into a spec or otherwise closed. |
 
-## Не делать
+**Hard gate:** the regex in `scan_inbox` is `\*\*Status:\*\*\s*queued` —
+literally only `queued` triggers dispatch.
+Legacy statuses (`new`, `processed`, etc.) are silently ignored. Clean break,
+no auto-migration (see TECH-181).
 
-- ❌ Писать `Status: queued` напрямую из автоматических bridge'ей (QA, reflect,
-  pending events). Все автоисточники пишут `draft`; решение «достоен ли Spark»
-  принимает Hermes.
-- ❌ Auto-migration `new` → `draft`. TECH-181 — clean break: legacy `new`-файлы
-  игнорируются, оператор/Hermes выставляет корректный статус вручную.
-- ❌ Использовать inbox как архив. Это short-lived очередь (≤5 активных файлов).
+---
+
+## Who writes what — invariants
+
+1. **Hermes is the only writer of `queued`** in `ai/inbox/`.
+   Every other source writes `Status: draft` and lets Hermes decide.
+2. **Reflect and QA do not self-loop into `queued`.**
+   - `reflect` writes its findings to `ai/reflect/findings-*.md`
+     (see `.claude/skills/reflect/SKILL.md` step 5).
+   - QA writes reports to `ai/qa/*.md`.
+   - Hermes reviews those artifacts later and **may** create an inbox item from them
+     — but never as `queued` without an explicit Oleg sign-off.
+3. **Autopilot does not write to `ai/inbox/` at all.**
+   Post-mortems and learnings go to `ai/diary/` or feed reflect via `ai/reflect/`.
+4. **Orchestrator does not change semantic status.**
+   `scan_inbox` flips `queued → processing` and moves the file to
+   `ai/inbox/done/` — purely a state machine of the file itself, not a
+   business decision.
+
+---
 
 ## File format
 
 ```markdown
-# Short title
+# Title — one line
 
 **Status:** draft
-**Route:** spark            # spark | architect | council | bughunt | qa | reflect | scout
-**Source:** telegram        # произвольная метка источника
-**Provider:** claude        # optional, default из project_state
-**Context:** ...            # optional
+**Source:** telegram | qa | reflect | autopilot | manual
+**Route:** spark            # optional, defaults to spark
+**Provider:** claude | codex # optional
+**Context:** TECH-NNN        # optional
+
+Free-form body. Hermes will tighten this into a brief before promoting to `queued`.
+```
+
+The orchestrator parses these fields via `_parse_inbox_file` in
+`scripts/vps/orchestrator.py`.
 
 ---
 
-Тело идеи / brief / описание.
+## Lifecycle diagram
+
+```
+                ┌────────────┐
+ Telegram ─────▶│            │
+ reflect  ─────▶│   draft    │──── Hermes asks ────▶  clarifying
+ QA       ─────▶│            │                              │
+                └─────┬──────┘                              │
+                      │                                     ▼
+                      │                          (Oleg answers / silence)
+                      │                                     │
+                      │       Hermes decides                │
+                      ▼                                     │
+                ┌────────────┐    Hermes ─▶  rejected       │
+                │  Hermes    │    Hermes ─▶  stale          │
+                │  review    │◀────────────────────────────┘
+                └─────┬──────┘
+                      │ Hermes promotes
+                      ▼
+                ┌────────────┐
+                │   queued   │── scan_inbox ─▶  processing  ─▶  done
+                └────────────┘     (orchestrator state machine only)
 ```
 
-## References
+---
 
-- TECH-181 spec: `ai/features/TECH-181-2026-05-07-hermes-intake-bridge-status-gate.md`
-- Orchestrator code: `scripts/vps/orchestrator.py::scan_inbox`
-- ADR-021 (architecture.md)
+## Related
+
+- **TECH-181** — added the `scan_inbox` hard gate (orchestrator side).
+- **TECH-973** — this document + ADR-022 (Hermes-side contract).
+- **ADR-021** (`.claude/rules/architecture.md`) — Hermes intake gate.
+- **ADR-022** (`.claude/rules/architecture.md`) — Hermes is the only writer of `queued`.
+- `scripts/vps/orchestrator.py:315` — `scan_inbox()` implementation.
+- `scripts/vps/tests/test_orchestrator.py` — regression suite.
