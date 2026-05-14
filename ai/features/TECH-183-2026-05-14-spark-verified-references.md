@@ -1,5 +1,5 @@
 # Feature: [TECH-183] Spark Verified References — grep-evidence gate for concrete refs in specs
-**Status:** queued | **Priority:** P1 | **Date:** 2026-05-14
+**Status:** done | **Priority:** P1 | **Date:** 2026-05-14
 
 > Draft passed from AwardyBot reflect session 2026-05-14 (Finding #1). Formalize via `/spark` in the DLD repo before implementation.
 
