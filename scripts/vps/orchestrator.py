@@ -213,12 +213,17 @@ def is_agent_running(project_id: str) -> bool:
 
 
 def git_pull(project_id: str, project_dir: str) -> None:
-    """Pull develop branch. Skip if agent running, not a git repo, or working tree dirty.
+    """Pull develop branch. Skip if agent running or not a git repo.
 
-    TECH-182: removed `rebase --autostash` — stash pop conflicts silently
-    discarded uncommitted callback writes (BUG-972/BUG-973). Now pull is
-    fast-forward-only on a clean tree, otherwise we log a warning and skip
-    this cycle. No working-tree mutation under any failure mode.
+    History:
+    - TECH-182 removed `rebase --autostash` after BUG-972/BUG-973: silent
+      `stash pop` conflicts dropped uncommitted callback writes. Pull then
+      became ff-only on clean tree → all 7 repos accumulated M-files and
+      never pulled (orchestrator log spammed "working tree dirty" indefinitely).
+    - Current: safe autostash. We stash explicitly, pull, then pop. If pop
+      conflicts, the stash is **left on the shelf** (never silently dropped)
+      and ERROR is logged with the stash message so the operator can
+      `git stash list && git stash pop` manually. No data loss path.
     """
     if not os.path.isdir(os.path.join(project_dir, ".git")):
         return
@@ -227,23 +232,61 @@ def git_pull(project_id: str, project_dir: str) -> None:
         return
 
     def _git(*a, **kw):
-        return subprocess.run(["git", "-C", project_dir] + list(a), capture_output=True, **kw)
+        return subprocess.run(
+            ["git", "-C", project_dir] + list(a),
+            capture_output=True,
+            text=True,
+            **kw,
+        )
 
     try:
         clean = _git("diff", "--quiet", timeout=30).returncode == 0
-        staged = _git("diff", "--cached", "--quiet", timeout=30).returncode == 0
-        if clean and staged:
-            _git("pull", "--ff-only", "origin", "develop", text=True, timeout=120, check=True)
-        else:
+        staged_clean = _git("diff", "--cached", "--quiet", timeout=30).returncode == 0
+        dirty = not (clean and staged_clean)
+
+        stash_ref: str | None = None
+        if dirty:
+            ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            stash_msg = f"orchestrator-autostash-{project_id}-{ts}"
+            r = _git("stash", "push", "-m", stash_msg, timeout=30)
+            if r.returncode != 0:
+                log.warning(
+                    "git stash push failed for %s: %s — skip pull this cycle",
+                    project_dir,
+                    (r.stderr or "")[:200],
+                )
+                return
+            combined = (r.stdout or "") + (r.stderr or "")
+            if "No local changes to save" in combined:
+                stash_ref = None
+            else:
+                stash_ref = stash_msg
+                log.info("autostash created: %s", stash_msg)
+
+        pull = _git("pull", "--ff-only", "origin", "develop", timeout=120)
+        if pull.returncode != 0:
             log.warning(
-                "git pull skipped — working tree dirty (clean=%s staged=%s) for %s; "
-                "no autostash, data preserved",
-                clean,
-                staged,
+                "git pull failed: %s — %s",
                 project_dir,
+                (pull.stderr or "")[:200],
             )
-    except subprocess.CalledProcessError as exc:
-        log.warning("git pull failed: %s — %s", project_dir, (exc.stderr or "")[:200])
+
+        if stash_ref:
+            pop = _git("stash", "pop", timeout=30)
+            if pop.returncode != 0:
+                log.error(
+                    "git stash pop CONFLICT — stash KEPT on shelf as '%s' "
+                    "in %s. Operator: cd %s && git stash list && "
+                    "git stash pop (resolve conflicts manually). stderr=%s",
+                    stash_ref,
+                    project_dir,
+                    project_dir,
+                    (pop.stderr or "")[:300],
+                )
+            else:
+                log.info("autostash popped cleanly: %s", stash_ref)
+    except subprocess.TimeoutExpired as exc:
+        log.warning("git_pull timeout for %s: %s", project_dir, exc)
 
 
 def _parse_inbox_file(filepath: Path) -> dict:
