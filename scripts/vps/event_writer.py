@@ -59,29 +59,36 @@ def write_event(
     return event_file
 
 
-def wake_openclaw() -> bool:
-    """Wake OpenClaw via CLI. Returns True on success.
+def wake_hermes(project_path: str, skill: str, status: str) -> bool:
+    """Wake Hermes via CLI in fire-and-forget mode. Returns True on dispatch.
 
-    Looks for openclaw binary at ~/.npm-global/bin/openclaw.
-    Timeout 5s. Best-effort wake, non-critical (BUG-163).
+    Hermes replaced OpenClaw (TECH-181). Unlike openclaw's `system event`,
+    Hermes is a chat agent (`hermes -q "<prompt>"`). We spawn it detached so
+    callback doesn't block on AI latency. Best-effort, non-critical.
+
+    Binary path: $HERMES_BIN or ~/.local/bin/hermes.
     """
-    openclaw_bin = os.path.expanduser("~/.npm-global/bin/openclaw")
-    if not os.path.isfile(openclaw_bin):
-        log.debug("openclaw binary not found at %s", openclaw_bin)
+    hermes_bin = os.environ.get("HERMES_BIN") or os.path.expanduser("~/.local/bin/hermes")
+    if not os.path.isfile(hermes_bin):
+        log.debug("hermes binary not found at %s", hermes_bin)
         return False
+    project_id = Path(project_path).name
+    prompt = (
+        f"Новое pipeline-событие: project={project_id} skill={skill} status={status}. "
+        f"Проверь {project_path}/ai/openclaw/pending-events/ и обработай."
+    )
     try:
-        subprocess.run(
-            [openclaw_bin, "system", "event", "--mode", "now", "--text", "pipeline event"],
-            timeout=5,
-            capture_output=True,
+        subprocess.Popen(
+            [hermes_bin, "-q", prompt],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
         )
-        log.info("openclaw wake sent")
+        log.info("hermes wake dispatched: project=%s skill=%s", project_id, skill)
         return True
-    except subprocess.TimeoutExpired:
-        log.debug("openclaw wake timed out (non-critical)")
-        return False
     except (FileNotFoundError, OSError) as exc:
-        log.debug("openclaw wake failed (non-critical): %s", exc)
+        log.debug("hermes wake failed (non-critical): %s", exc)
         return False
 
 
@@ -92,9 +99,9 @@ def notify(
     message: str,
     artifact_rel: str = "",
 ) -> None:
-    """Write event + wake OpenClaw. Main entry point for imports."""
+    """Write event + wake Hermes. Main entry point for imports."""
     write_event(project_path, skill, status, message, artifact_rel)
-    wake_openclaw()
+    wake_hermes(project_path, skill, status)
 
 
 def notify_circuit_event(action: str, count: int, window_min: int) -> None:
