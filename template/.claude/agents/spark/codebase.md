@@ -164,6 +164,36 @@ grep -rn "{term}" . --include="*.py"
 
 ---
 
+## Verified References
+
+**MANDATORY.** Каждая конкретная ссылка, попадающая в спеку (module path,
+API endpoint, schema-поле, FSM/state-ключ, migration filename,
+function/class name цитируемый как reuse target), верифицирована командой
+ниже. "not found" — тоже валидный результат (значит файл/endpoint надо
+создавать).
+
+| Reference | Kind | Verify command | Result |
+|-----------|------|----------------|--------|
+| `src/cli/flow_cost_guard.py` | module path | `find src -name flow_cost_guard.py` | `src/cli/flow_cost_guard.py` ✓ |
+| `GET /api/v2/buyer/earnings/balance` | endpoint | `grep -rn "earnings/balance" src/api/v2/buyer/` | `earnings.py:41` ✓ |
+| `_KEY_GENDER` | FSM state key | `grep -rn "_KEY_GENDER" src/domains/buyer/` | `creator_verify_profile.py:58` ✓ |
+| `BalanceView.available_kopecks` | schema field | `grep -rn "available_kopecks" src/api/v2/buyer/schemas.py` | `schemas.py:150` ✓ |
+
+**Kinds tracked:** module/file path · API endpoint · schema/model field ·
+FSM/state key · migration filename · function/class name cited as reuse
+target.
+
+**Rules:**
+- Every concrete reference cited in the spec MUST appear here with a verify
+  command and its actual output.
+- "Probably exists" / "assumed" entries are FORBIDDEN — either run the
+  command and report the real result, or do not cite the reference.
+- "not found" is a valid result and means the spec must mark the file/
+  endpoint as `create` (not `modify`).
+- This section is consumed by Spark Phase 6 Gate 8 (Verified References).
+
+---
+
 ## Reuse Opportunities
 
 ### Import (use as-is)
@@ -331,7 +361,7 @@ _No lessons bank in this project yet._
 
 ## Rules
 
-1. **Grep first** — no assumptions about "probably exists"
+1. **Grep-evidence required** — никакой path / endpoint / schema-field / state-key / migration filename / function name цитируемый как reuse target не попадает в output без verifying-команды и её фактического результата в `## Verified References`. "Probably exists" / "assumed" запрещено. "not found" — валидный результат (сигнал create-from-scratch для спеки).
 2. **Full Impact Tree** — all 5 steps mandatory
 3. **Count lines** — use `wc -l` for affected files
 4. **Git history matters** — recent changes = potential conflicts

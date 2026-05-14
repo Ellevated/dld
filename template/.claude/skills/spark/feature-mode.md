@@ -216,6 +216,7 @@ If < 4: launch extractor subagent for missing files (caller-writes fallback, ADR
 DO NOT proceed to Phase 3 until:
 - [ ] ALL 4 scout completion notifications received
 - [ ] Glob confirms 4 research files exist in SESSION_DIR
+- [ ] `research-codebase.md` contains a `## Verified References` section (grep `^## Verified References$` → ≥1 hit). Codebase scout in degraded mode is an acceptable exception — note "no codebase research" in state.json.
 - [ ] state.json updated: research = done, files = [list of 4 files]
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "this is simple enough to skip research"
@@ -716,7 +717,7 @@ Common rationalization to REJECT: "the section looks fine to me"
 ---
 ## Phase 6: VALIDATE
 
-Before marking spec `queued`, run 6 structural validation gates.
+Before marking spec `queued`, run 8 structural validation gates.
 
 ### Gate 1: Spec Completeness
 ```
@@ -798,13 +799,37 @@ Smaller specs = higher success rate and cheaper.
 **Soft gate:** If `ai/lessons/` does not exist in the project → Gate 7 auto-passes.
 Write in gate result: "Gate 7: auto-pass (no lessons bank)".
 
+### Gate 8: Verified References
+```
+□ research-codebase.md содержит секцию ## Verified References?
+□ Каждый concrete reference в спеке (Allowed Files paths, Implementation
+  Plan endpoints, schema/model fields, FSM/state keys, migration
+  filenames, function/class names cited as reuse target) трассируется
+  в research-codebase.md → ## Verified References?
+□ Нет reference со статусом "assumed" / без verify-команды?
+```
+
+**Soft sub-rule:** If Phase 2 codebase-скаут провалился (degraded mode,
+research-codebase.md missing or empty) → Gate 8 auto-pass с пометкой
+"Gate 8: auto-pass (no codebase research)".
+
+**Why this gate exists:** Spark писал в спеку конкретные пути/endpoint'ы/
+state-ключи без grep-верификации; расхождение ловилось только в runtime
+автопилота (planner) или code-quality reviewer'ом — уже после того как
+спека ушла как готовая (см. TECH-183, BUG-988/FTR-997/FTR-999).
+Gate 8 закрывает петлю: untraced reference → reject → возврат в Phase 3.
+
+**Note:** Gate 8 is LLM-проверка трассируемости (reference ↔ Verified
+References row). AST-based file-resolver — отдельный follow-up TECH (out
+of scope для TECH-183).
+
 **GATE RESULT:** pass / reject with reasons
 
 **If any gate fails →** spec stays in current state, return to Phase 3 (re-synthesize with feedback).
 
 <HARD-GATE>
 DO NOT proceed to Phase 7 until:
-- [ ] All 7 validation gates pass
+- [ ] All 8 validation gates pass
 - [ ] state.json updated: validate = done
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "gates are just a formality, spec looks good"
