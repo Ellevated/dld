@@ -146,7 +146,7 @@
 | TECH-181 | Hermes intake bridge — orchestrator scan_inbox диспатчит только Status: queued (clean break от legacy new) | done | P1 | [spec](features/TECH-181-2026-05-07-hermes-intake-bridge-status-gate.md) |
 | TECH-182 | **Orchestrator `git rebase --autostash` теряет uncommitted файлы** — при конфликте stash pop данные остаются в stash. Инцидент 2026-05-10: BUG-972/973 потеряны. 3 fix-а: orchestrator.py → `pull --ff-only` (dirty tree → skip+warn); callback.py `_append_blocked_reason` → plumbing вместо `write_text`; логировать ошибку `git push`. | done | P1 | [spec](features/TECH-182-2026-05-10-orchestrator-rebase-autostash-data-loss.md) |
 | TECH-183 | Spark Verified References — grep-evidence gate для concrete refs (paths/endpoints/schema/state-keys) в спеках; codebase.md `## Verified References` + feature-mode.md Gate 8 | done | P1 | [spec](features/TECH-183-2026-05-14-spark-verified-references.md) |
-| TECH-973 | Hermes intake contract — full status lifecycle SSOT (ai/inbox/README.md) + ADR-022 + OpenClaw→Hermes rename + scan_inbox regression tests | queued | P1 | [spec](features/TECH-973-2026-05-14-hermes-intake-contract.md) |
+| TECH-973 | Hermes intake contract — full status lifecycle SSOT (ai/inbox/README.md) + ADR-022 + OpenClaw→Hermes rename + scan_inbox regression tests | done | P1 | [spec](features/TECH-973-2026-05-14-hermes-intake-contract.md) |
 
 ---
 

@@ -1,6 +1,6 @@
 # Feature: [TECH-973] Hermes intake contract — full status lifecycle + supervisory docs
 <!-- DLD-CALLBACK-MARKER-START v1 -->
-**Status:** queued | **Priority:** P1 | **Date:** 2026-05-14
+**Status:** done | **Priority:** P1 | **Date:** 2026-05-14
 <!-- DLD-CALLBACK-MARKER-END -->
 
 <!-- DLD-CALLBACK-MARKER-START v1 -->
