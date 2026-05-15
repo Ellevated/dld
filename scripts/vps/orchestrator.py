@@ -24,6 +24,7 @@ from threading import Event
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
+from marker_utils import merge_callback_markers  # noqa: E402
 
 log = logging.getLogger("orchestrator")
 _stop = Event()
@@ -285,8 +286,67 @@ def git_pull(project_id: str, project_dir: str) -> None:
                 )
             else:
                 log.info("autostash popped cleanly: %s", stash_ref)
+                # BUG-974: clean pop CAN silently revert callback Status
+                # commits when stash and HEAD touch the same DLD-CALLBACK-
+                # MARKER block. Force-restore HEAD content for every
+                # touched marker block. ADR-018: callback is sole writer.
+                _restore_callback_markers_from_head(project_dir, _git)
     except subprocess.TimeoutExpired as exc:
         log.warning("git_pull timeout for %s: %s", project_dir, exc)
+
+
+def _restore_callback_markers_from_head(project_dir, _git) -> None:
+    """Compare working tree vs HEAD for files touched by the stash pop;
+    for any DLD-CALLBACK-MARKER block whose body diverges, restore the
+    HEAD body. Idempotent; degrades open on parsing/structure mismatch.
+
+    BUG-974: introduced to plug the no-conflict `git stash pop` revert path.
+    """
+    try:
+        diff = _git("diff", "--name-only", "HEAD", timeout=10)
+    except subprocess.TimeoutExpired:
+        log.warning("AUTOSTASH_CALLBACK_RESTORE: diff timeout — skip")
+        return
+    if diff.returncode != 0:
+        return
+    for rel_path in diff.stdout.splitlines():
+        rel_path = rel_path.strip()
+        if not rel_path:
+            continue
+        try:
+            head = _git("show", f"HEAD:{rel_path}", timeout=10)
+        except subprocess.TimeoutExpired:
+            continue
+        if head.returncode != 0:
+            # File is new (not in HEAD) — nothing to restore.
+            continue
+        head_text = head.stdout
+        wt_file = Path(project_dir) / rel_path
+        try:
+            wt_text = wt_file.read_text()
+        except OSError:
+            continue
+        if "DLD-CALLBACK-MARKER-START" not in wt_text and (
+            "DLD-CALLBACK-MARKER-START" not in head_text
+        ):
+            continue  # plain file — no markers either side, skip
+        merged = merge_callback_markers(head_text, wt_text)
+        if merged != wt_text:
+            try:
+                wt_file.write_text(merged)
+            except OSError as exc:
+                log.warning(
+                    "AUTOSTASH_CALLBACK_RESTORE: write failed for %s: %s",
+                    rel_path,
+                    exc,
+                )
+                continue
+            log.warning(
+                "AUTOSTASH_CALLBACK_RESTORE: %s — DLD-CALLBACK-MARKER "
+                "block restored from HEAD (stash pop tried to revert "
+                "callback write)",
+                rel_path,
+            )
 
 
 def _parse_inbox_file(filepath: Path) -> dict:
