@@ -589,9 +589,17 @@ def _resync_backlog_to_spec(
 _ALLOWED_FILE_EXT_RE = re.compile(r"`([^\s`\n]+\.[a-zA-Z][\w-]*)`")
 
 # --- TECH-175: outer DLD-CALLBACK-MARKER pair --------------------------------
-_DLD_MARKER_START_RE = re.compile(r"^<!--\s*DLD-CALLBACK-MARKER-START\s+v(?P<ver>\d+)\s*-->\s*$")
-_DLD_MARKER_END_RE = re.compile(r"^<!--\s*DLD-CALLBACK-MARKER-END\s*-->\s*$")
-_DLD_SUPPORTED_MARKER_VERSIONS: frozenset[str] = frozenset({"1"})
+# BUG-974: regex SSOT lives in marker_utils. Re-exported here under the
+# original private names so existing callers (and tests) keep working.
+from marker_utils import (  # noqa: E402
+    DLD_MARKER_END_RE as _DLD_MARKER_END_RE,
+)
+from marker_utils import (
+    DLD_MARKER_START_RE as _DLD_MARKER_START_RE,
+)
+from marker_utils import (
+    DLD_SUPPORTED_MARKER_VERSIONS as _DLD_SUPPORTED_MARKER_VERSIONS,
+)
 
 # --- TECH-167 v1 canonical format -------------------------------------------
 # Strict heading: "## Allowed Files" (case-sensitive, no suffix, no qualifier).
