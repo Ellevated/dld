@@ -437,24 +437,31 @@ def scan_backlog(project_id: str, project_dir: str) -> bool:
     if not spec_id:
         return False
 
-    # Skip dispatch if this spec was demoted in the last 30 minutes — avoids re-dispatch loops.
+    # Skip dispatch if this spec was recently processed — avoids re-dispatch loops.
+    # - blocked in last 30 min: guard demoted it, needs human intervention
+    # - done in last 5 min: callback just wrote done but git pull may have pulled stale queued
     audit_log = SCRIPT_DIR / "callback-audit.jsonl"
     if audit_log.is_file():
-        cutoff = datetime.now(tz=timezone.utc).timestamp() - 30 * 60
+        now = datetime.now(tz=timezone.utc).timestamp()
+        cutoff_blocked = now - 30 * 60
+        cutoff_done = now - 5 * 60
         try:
             for raw in audit_log.read_text().splitlines()[-200:]:
                 entry = json.loads(raw)
-                if (
-                    entry.get("spec_id") == spec_id
-                    and entry.get("target_out") == "blocked"
-                    and entry.get("reason") != "fixed"
-                ):
-                    ts = datetime.fromisoformat(entry["ts"].replace("Z", "+00:00")).timestamp()
-                    if ts > cutoff:
-                        log.info(
-                            "skip dispatch: %s demoted recently (%s)", spec_id, entry["reason"]
-                        )
-                        return False
+                if entry.get("spec_id") != spec_id:
+                    continue
+                ts_str = entry.get("ts", "")
+                if not ts_str:
+                    continue
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+                target_out = entry.get("target_out")
+                reason = entry.get("reason", "")
+                if target_out == "blocked" and reason != "fixed" and ts > cutoff_blocked:
+                    log.info("skip dispatch: %s demoted recently (%s)", spec_id, reason)
+                    return False
+                if target_out == "done" and ts > cutoff_done:
+                    log.info("skip dispatch: %s completed recently (%s)", spec_id, reason)
+                    return False
         except Exception:
             pass
 

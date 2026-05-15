@@ -1368,20 +1368,34 @@ def verify_status_sync(
         log.warning("STATUS_SYNC: spec file not found for %s", spec_id)
         if target == "done":
             log.warning(
-                "STATUS_SYNC: refuse auto-close %s → done — spec file missing in "
-                "ai/features/. Callback never invents a spec; treat as no-op.",
+                "STATUS_SYNC: no spec file for %s — marking backlog blocked to stop re-dispatch",
                 spec_id,
             )
+            # Write blocked to backlog so orchestrator stops re-dispatching this spec.
+            backlog_path = p / "ai" / "backlog.md"
+            backlog_rel = "ai/backlog.md"
+            backlog_head = (
+                _read_head_blob(project_path, backlog_rel) if backlog_path.is_file() else None
+            )
+            fixes: list[tuple[str, str]] = []
+            if backlog_head:
+                changed, new_backlog = _apply_backlog_status(backlog_head, spec_id, "blocked")
+                if changed:
+                    fixes.append((backlog_rel, new_backlog))
+            if fixes:
+                _git_commit_push(project_path, spec_id, "blocked", fixes)
+            else:
+                log.warning("STATUS_SYNC: backlog row not found for %s — cannot block", spec_id)
             try:
-                db.record_decision(project_id, spec_id, "noop", "spec_file_missing", demoted=False)
+                db.record_decision(project_id, spec_id, "sync", "spec_file_missing", demoted=True)
             except Exception as exc:  # noqa: BLE001
-                log.warning("CIRCUIT: record_decision(noop) failed: %s", exc)
+                log.warning("CIRCUIT: record_decision failed: %s", exc)
             _emit_audit(
                 project_id,
                 spec_id,
                 pueue_id,
                 target_in,
-                target_in,
+                "blocked",
                 "spec_file_missing",
                 0,
                 0,
