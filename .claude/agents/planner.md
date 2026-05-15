@@ -554,3 +554,4 @@ blocked_reason: "..." # only if blocked
 - **Be COMPLETE** — nothing left to interpretation
 - **Your context DIES** — plan must be self-contained
 - **Search before coding** — Exa finds better solutions than guessing
+- **NEVER write `**Status:**`** — unchecked checkboxes do NOT mean "not done". Status is written ONLY by `scripts/vps/callback.py` (TECH-172/ADR-018). If you see `Status: done` but unchecked tasks remain, the spec is still done — ignore the checkboxes.

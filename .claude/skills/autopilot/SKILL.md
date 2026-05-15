@@ -133,7 +133,7 @@ For EACH task from plan:
 ```
 while (queued/resumed tasks in ai/backlog.md):
   1. Read backlog → find first queued/resumed (P0 first)
-  2. Status → in_progress (BOTH spec + backlog!)
+  2. (Status written by callback only — do NOT edit spec/backlog Status field)
 
   3. PHASE 0: Worktree Setup
      See: worktree-setup.md
@@ -163,7 +163,7 @@ while (queued/resumed tasks in ai/backlog.md):
 ```
 1. Validate SPEC_ID exists in backlog
 2. Verify status is queued or resumed (not in_progress!)
-3. Set status → in_progress
+3. (Status written by callback only — do NOT edit spec/backlog Status field)
 4. PHASE 0-3: Same as interactive (including push in Phase 3!)
 5. EXIT (do NOT continue to next spec)
    └─ External orchestrator provides fresh context
