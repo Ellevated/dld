@@ -19,6 +19,7 @@
 | TECH-001 | queued | tech | 2026-05-16 | [spec](features/TECH-001-split-autopilot.md) |
 | TECH-007 | queued | tech | 2026-05-16 | [spec](features/TECH-007-2026-01-24-translate-foundation-docs.md) |
 | TECH-010 | queued | tech | 2026-05-16 | [spec](features/TECH-010-2026-01-24-translate-llm-workflow-docs.md) |
+| TECH-011 | queued | tech | 2026-05-16 | [spec](features/TECH-011-2026-01-24-translate-skills.md) |
 | TECH-028 | queued | tech | 2026-05-16 | [spec](features/TECH-028-2026-01-26-cli-scaffolder.md) |
 | TECH-036 | queued | tech | 2026-05-16 | [spec](features/TECH-036-2026-01-29-research-enhanced-reflect.md) |
 | TECH-039 | queued | tech | 2026-05-16 | [spec](features/TECH-039-2026-01-29-reflect-scope-expansion.md) |
