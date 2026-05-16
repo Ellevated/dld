@@ -14,6 +14,7 @@
 
 | ID | Status | Kind | Updated | Spec |
 |----|--------|------|---------|------|
+| TECH-001 | queued | tech | 2026-05-16 | [spec](features/TECH-001-split-autopilot.md) |
 | TECH-007 | queued | tech | 2026-05-16 | [spec](features/TECH-007-2026-01-24-translate-foundation-docs.md) |
 | GROWTH-002 | blocked | ftr | 2026-05-16 | GROWTH-002 |
 | GROWTH-003 | blocked | ftr | 2026-05-16 | GROWTH-003 |
