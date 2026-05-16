@@ -37,6 +37,7 @@
 
 | ID | Status | Kind | Updated | Spec |
 |----|--------|------|---------|------|
+| TECH-006 | queued | tech | 2026-05-16 | [spec](features/TECH-006-2026-01-24-github-community-files.md) |
 | TECH-016 | queued | tech | 2026-05-16 | [spec](features/TECH-016-2026-01-24-hackernews-post.md) |
 | TECH-029 | queued | tech | 2026-05-16 | [spec](features/TECH-029-2026-01-26-devto-article.md) |
 | TECH-037 | queued | tech | 2026-05-16 | [spec](features/TECH-037-2026-01-29-cross-task-memory-feed.md) |
