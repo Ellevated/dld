@@ -9,6 +9,7 @@
 |----|--------|------|---------|------|
 | ARCH-001 | queued | tech | 2026-05-16 | [spec](features/ARCH-001-2026-01-24-project-context-system.md) |
 | TECH-024 | queued | tech | 2026-05-16 | [spec](features/TECH-024-2026-01-26-pre-launch-fixes.md) |
+| TECH-030 | queued | tech | 2026-05-16 | [spec](features/TECH-030-2026-01-26-gif-demo.md) |
 | TECH-044 | queued | tech | 2026-05-16 | [spec](features/TECH-044-2026-01-30-fix-wrong-repo-links.md) |
 | TECH-059 | queued | tech | 2026-05-16 | [spec](features/TECH-059-2026-02-01-python-hooks-tests.md) |
 | GROWTH-001 | blocked | ftr | 2026-05-16 | GROWTH-001 |
