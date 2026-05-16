@@ -1,5 +1,7 @@
 """TECH-176 — integration tests for verify_status_sync auto-close path.
 
+ARCH-186: assertions rewritten to read from lifecycle.yaml (SoT).
+
 Auto-close fires when:
   - the activity-window guard (`_has_implementation_commits`) sees zero
     commits since `started_at`, AND
@@ -25,8 +27,11 @@ import pytest
 SCRIPT_DIR = Path(__file__).resolve().parent.parent.parent / "scripts" / "vps"
 sys.path.insert(0, str(SCRIPT_DIR))
 
+import yaml  # noqa: E402
+
 import callback  # noqa: E402
 import db  # noqa: E402
+import lifecycle  # noqa: E402
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -43,13 +48,27 @@ def _commit(repo: Path, rel: str, body: str, msg: str) -> None:
     _git(repo, "commit", "-q", "-m", msg)
 
 
-def _head_file(repo: Path, rel: str) -> str | None:
-    r = subprocess.run(
-        ["git", "-C", str(repo), "show", f"HEAD:{rel}"],
-        capture_output=True,
-        text=True,
-    )
-    return r.stdout if r.returncode == 0 else None
+def _seed_lifecycle_yaml(repo: Path, spec_id: str) -> None:
+    """Write minimal lifecycle.yaml to working tree and commit normally.
+
+    Using normal git add+commit (not lifecycle plumbing) ensures the YAML
+    survives subsequent normal commits — plumbing writes exist only in the
+    object store and are lost when the next normal commit rebuilds the tree
+    from the working directory index.
+    """
+    lc_dir = repo / "ai" / "lifecycle"
+    lc_dir.mkdir(parents=True, exist_ok=True)
+    data = {
+        "spec_id": spec_id, "status": "queued", "blocked_reason": None,
+        "priority": "p1", "kind": "tech", "transitions": [], "version": 1,
+        "started_at": None, "finished_at": None, "pueue_id": None,
+        "allowed_files_hash": None, "updated_at": None, "updated_by": "test",
+    }
+    yaml_path = lc_dir / f"{spec_id}.yaml"
+    yaml_path.write_text(yaml.safe_dump(data, default_flow_style=False, allow_unicode=True))
+    _git(repo, "add", f"ai/lifecycle/{spec_id}.yaml")
+    # Commit message must NOT contain spec_id to avoid false-positive is_merged_to_develop/spec_has_merged match
+    _git(repo, "commit", "-q", "-m", "chore: lifecycle test-seed")
 
 
 def _make_project(tmp_path: Path, spec_id: str, allowed_files: list[str]) -> Path:
@@ -59,6 +78,9 @@ def _make_project(tmp_path: Path, spec_id: str, allowed_files: list[str]) -> Pat
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
     (repo / "ai" / "features").mkdir(parents=True)
+    lc_dir = repo / "ai" / "lifecycle"
+    lc_dir.mkdir(parents=True)
+    (lc_dir / ".gitkeep").write_text("")
     allowed_block = "\n".join(f"- `{p}`" for p in allowed_files) or "(none)"
     spec_body = f"""# {spec_id}
 
@@ -75,7 +97,8 @@ def _make_project(tmp_path: Path, spec_id: str, allowed_files: list[str]) -> Pat
         f"| ID | Title | Status | P |\n|---|---|---|---|\n| {spec_id} | demo | in_progress | P1 |\n"
     )
     (repo / "README.md").write_text("init\n")
-    _git(repo, "add", "README.md", f"ai/features/{spec_id}.md", "ai/backlog.md")
+    _git(repo, "add", "README.md", f"ai/features/{spec_id}.md", "ai/backlog.md",
+         "ai/lifecycle/.gitkeep")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
 
@@ -147,17 +170,16 @@ def test_ec1_already_merged_before_started_at_auto_close(tmp_path, tmp_db, monke
     # No further commits — activity window is empty.
     _suppress_push(monkeypatch)
 
+    _seed_lifecycle_yaml(repo, spec_id)
+
     with caplog.at_level(logging.WARNING, logger="callback"):
         callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=871)
 
-    spec_text = _head_file(repo, f"ai/features/{spec_id}.md")
-    backlog_text = _head_file(repo, "ai/backlog.md")
-    assert spec_text is not None
-    assert "**Status:** done" in spec_text, "auto-close should flip to done"
-    assert "**Blocked Reason:**" not in spec_text
-    assert "**Status:** blocked" not in spec_text
-    assert backlog_text is not None
-    assert "| done |" in backlog_text
+    data = lifecycle.read_lifecycle(str(repo), spec_id)
+    assert data is not None, "lifecycle.yaml must be written"
+    assert data["status"] == "done", "auto-close should flip to done"
+    # auto-close may store 'already_merged:...' in blocked_reason — not a problem
+    assert data.get("status") != "blocked"
     assert any(
         "already merged" in rec.message and "auto-close" in rec.message for rec in caplog.records
     ), "auto-close log line must fire"
@@ -176,13 +198,14 @@ def test_ec2_merge_commit_subject_auto_close(tmp_path, tmp_db, monkeypatch):
     _commit(repo, "src/x.py", "y=2\n", f"Merge {spec_id}: feature branch into develop")
     time.sleep(1.1)
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=872)
+    _seed_lifecycle_yaml(repo, spec_id)
     _suppress_push(monkeypatch)
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=872)
 
-    spec_text = _head_file(repo, f"ai/features/{spec_id}.md")
-    assert spec_text is not None
-    assert "**Status:** done" in spec_text
+    data = lifecycle.read_lifecycle(str(repo), spec_id)
+    assert data is not None
+    assert data["status"] == "done"
 
 
 # --- EC-3 -------------------------------------------------------------------
@@ -193,6 +216,7 @@ def test_ec3_no_commits_anywhere_still_demotes(tmp_path, tmp_db, monkeypatch):
     spec_id = "TECH-873"
     repo = _make_project(tmp_path, spec_id, ["src/x.py"])
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=873)
+    _seed_lifecycle_yaml(repo, spec_id)
     time.sleep(1.1)
     # Only a docs commit; nothing matches grep+allowed.
     _commit(repo, "docs/note.md", "n\n", f"docs: {spec_id} note only")
@@ -200,13 +224,10 @@ def test_ec3_no_commits_anywhere_still_demotes(tmp_path, tmp_db, monkeypatch):
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=873)
 
-    spec_text = _head_file(repo, f"ai/features/{spec_id}.md")
-    backlog_text = _head_file(repo, "ai/backlog.md")
-    assert spec_text is not None
-    assert "**Status:** blocked" in spec_text
-    assert "**Blocked Reason:** no_implementation_commits" in spec_text
-    assert backlog_text is not None
-    assert "| blocked |" in backlog_text
+    data = lifecycle.read_lifecycle(str(repo), spec_id)
+    assert data is not None
+    assert data["status"] == "blocked"
+    assert "no_implementation_commits" in (data.get("blocked_reason") or "")
 
 
 # --- EC-4 -------------------------------------------------------------------
@@ -218,6 +239,7 @@ def test_ec4_grep_matches_but_path_unallowed_demotes(tmp_path, tmp_db, monkeypat
     spec_id = "TECH-874"
     repo = _make_project(tmp_path, spec_id, ["src/x.py"])
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=874)
+    _seed_lifecycle_yaml(repo, spec_id)
     time.sleep(1.1)
     # Subject mentions spec_id but file is NOT in Allowed Files.
     _commit(repo, "docs/random.md", "n\n", f"docs({spec_id}): outside allowlist")
@@ -225,12 +247,12 @@ def test_ec4_grep_matches_but_path_unallowed_demotes(tmp_path, tmp_db, monkeypat
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=874)
 
-    spec_text = _head_file(repo, f"ai/features/{spec_id}.md")
-    assert spec_text is not None
-    assert "**Status:** blocked" in spec_text, (
+    data = lifecycle.read_lifecycle(str(repo), spec_id)
+    assert data is not None
+    assert data["status"] == "blocked", (
         "grep-only match without Allowed Files touch must demote, not auto-close"
     )
-    assert "**Blocked Reason:** no_implementation_commits" in spec_text
+    assert "no_implementation_commits" in (data.get("blocked_reason") or "")
 
 
 # --- EC-5 -------------------------------------------------------------------
@@ -244,6 +266,7 @@ def test_ec5_auto_close_decision_not_counted_by_circuit(tmp_path, tmp_db, monkey
     _commit(repo, "src/x.py", "y=1\n", f"feat({spec_id}): historical work")
     time.sleep(1.1)
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=875)
+    _seed_lifecycle_yaml(repo, spec_id)
     _suppress_push(monkeypatch)
 
     # Snapshot demote count before.

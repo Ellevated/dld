@@ -2,13 +2,22 @@
 """
 Module: callback
 Role: Pueue completion callback — release slot, update phase, dispatch QA/Reflect, write audit log.
-Uses: db, event_writer, subprocess (pueue CLI fallback)
-Used by: Pueue daemon (pueue.yml callback config)
+
+Uses:
+  - db: release_slot, finish_task, update_project_phase, record_decision, count_demotes_since
+  - event_writer: notify, notify_circuit_event
+  - lifecycle: read_lifecycle, write_lifecycle  (ADR-023 — sole status writer)
+  - subprocess: pueue CLI fallback
+
+Used by:
+  - Pueue daemon (pueue.yml callback config)
+
 CLI: python3 callback.py <pueue_id> '<group>' '<result>'
 INVARIANT: Always exit 0. Every step in try/except.
 
 TECH-171: _write_audit / _emit_audit append one JSONL line per verify_status_sync call.
 Audit log path: $CALLBACK_AUDIT_LOG or scripts/vps/callback-audit.jsonl.
+ARCH-186: verify_status_sync writes only to lifecycle.yaml (no markdown edits).
 """
 
 import json
@@ -25,6 +34,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
 import event_writer  # noqa: E402
+import lifecycle  # noqa: E402  — atomic YAML writer (ADR-023)
 
 log = logging.getLogger("callback")
 
@@ -414,170 +424,7 @@ def dispatch_reflect(project_id: str, project_path: str, task_label: str, provid
         log.warning("reflect dispatch failed: %s", reflect_label)
 
 
-_VALID_STATUSES = frozenset({"draft", "queued", "in_progress", "blocked", "resumed", "done"})
 
-
-def _read_head_blob(project_path: str, rel_path: str) -> str | None:
-    """Read file content as it exists at HEAD. None if missing or git error.
-
-    Used by status-sync to operate on canonical state instead of working tree —
-    callback never sees (or commits) operator's uncommitted edits.
-    """
-    try:
-        result = subprocess.run(
-            ["git", "-C", project_path, "show", f"HEAD:{rel_path}"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("HEAD_READ: subprocess failed for %s: %s", rel_path, exc)
-        return None
-    if result.returncode != 0:
-        return None
-    return result.stdout
-
-
-def _apply_spec_status(text: str, target: str) -> tuple[bool, str]:
-    """Return (changed, new_text) with **Status:** flipped to target."""
-    if target not in _VALID_STATUSES:
-        return (False, text)
-    new_text, count = re.subn(r"(\*\*Status:\*\*)\s*\S+", rf"\1 {target}", text, count=1)
-    return (bool(count), new_text)
-
-
-def _apply_backlog_status(text: str, spec_id: str, target: str) -> tuple[bool, str]:
-    """Return (changed, new_text) with backlog row status flipped to target."""
-    if target not in _VALID_STATUSES:
-        return (False, text)
-    pattern = rf"(\|\s*{re.escape(spec_id)}\s*\|.*?\|)\s*\S+\s*(\|)"
-    new_text, count = re.subn(pattern, rf"\1 {target} \2", text, count=1)
-    return (bool(count), new_text)
-
-
-def _apply_blocked_reason(text: str, reason: str) -> tuple[bool, str]:
-    """Return (changed, new_text) with **Blocked Reason:** appended/updated."""
-    line = f"**Blocked Reason:** {reason}"
-    new_text, n = re.subn(r"\*\*Blocked Reason:\*\*\s*[^\n]*", line, text, count=1)
-    if n == 0:
-        new_text, n = re.subn(r"(\*\*Status:\*\*[^\n]*\n)", rf"\1{line}\n", text, count=1)
-    return (bool(n), new_text if n else text)
-
-
-def _git_commit_push(
-    project_path: str,
-    spec_id: str,
-    target: str,
-    fixes: list[tuple[str, str]],
-) -> None:
-    """Commit (path, new_content) pairs via plumbing — does NOT touch working tree.
-
-    Uses `git hash-object -w` + `git update-index --cacheinfo` so the index is
-    populated directly from new_content. The commit captures only those blobs.
-    Any uncommitted operator edits (in the same files or others) stay in the
-    working tree untouched, preventing the callback from snatching unrelated
-    changes the way `git add <file>` did.
-    """
-    if not fixes:
-        return
-    git = ["git", "-C", project_path]
-    for rel_path, new_content in fixes:
-        try:
-            r = subprocess.run(
-                git + ["hash-object", "-w", "--stdin"],
-                input=new_content,
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=True,
-            )
-            blob_sha = r.stdout.strip()
-            subprocess.run(
-                git + ["update-index", "--cacheinfo", f"100644,{blob_sha},{rel_path}"],
-                capture_output=True,
-                timeout=10,
-                check=True,
-            )
-        except subprocess.CalledProcessError as exc:
-            stderr = exc.stderr or ""
-            if isinstance(stderr, bytes):
-                stderr = stderr.decode(errors="replace")
-            log.warning(
-                "STATUS_FIX: plumbing stage failed for %s: %s",
-                rel_path,
-                stderr[:200],
-            )
-            return
-    msg = f"docs: mark {spec_id} as {target} (callback auto-fix)"
-    r = subprocess.run(git + ["commit", "-m", msg], capture_output=True, timeout=30)
-    if r.returncode != 0:
-        log.warning(
-            "STATUS_FIX: commit failed for %s: %s",
-            spec_id,
-            r.stderr.decode(errors="replace")[:200],
-        )
-        return
-    push = subprocess.run(
-        git + ["push", "origin", "develop"],
-        capture_output=True,
-        timeout=60,
-    )
-    if push.returncode != 0:
-        stderr = push.stderr or b""
-        if isinstance(stderr, bytes):
-            stderr = stderr.decode(errors="replace")
-        log.warning(
-            "STATUS_FIX: push failed for %s (rc=%d): %s",
-            spec_id,
-            push.returncode,
-            stderr.strip()[:200],
-        )
-        return
-    log.info(
-        "STATUS_FIX: committed and pushed %s → %s (%d file(s), no working-tree mutation)",
-        spec_id,
-        target,
-        len(fixes),
-    )
-
-
-def _resync_backlog_to_spec(
-    project_path: str,
-    spec_id: str,
-    spec_status: str,
-    backlog_path: Path,
-) -> None:
-    """Sync backlog row status to spec authority — stop dispatch loops.
-
-    When a guard fires (target=done blocked by spec=blocked, or target=blocked
-    blocked by spec=done), the spec is treated as authoritative. Without this
-    resync, the backlog can stay in a state (queued/resumed/in_progress) that
-    causes the orchestrator to dispatch the spec on every poll cycle, while
-    autopilot then SKIPs because of the inconsistency. v3.15.6.
-
-    Idempotent: if backlog already matches `spec_status`, no commit.
-    """
-    if not backlog_path.is_file():
-        return
-    head = _read_head_blob(project_path, "ai/backlog.md")
-    if head is None:
-        return
-    backlog_re = re.compile(
-        rf"\|\s*{re.escape(spec_id)}\s*\|.*?\|\s*{re.escape(spec_status)}\s*\|",
-        re.IGNORECASE,
-    )
-    if backlog_re.search(head):
-        return  # already in sync at HEAD
-    ok, new_text = _apply_backlog_status(head, spec_id, spec_status)
-    if not ok or new_text == head:
-        return
-    log.warning(
-        "STATUS_SYNC: %s — resynced backlog to spec authority (%s) to break dispatch loop",
-        spec_id,
-        spec_status,
-    )
-    _git_commit_push(project_path, spec_id, spec_status, [("ai/backlog.md", new_text)])
 
 
 # --- TECH-166 / TECH-167: Implementation guard helpers ----------------------
@@ -587,19 +434,6 @@ def _resync_backlog_to_spec(
 # Dockerfile, .env.example, etc. are all valid project files. False positives
 # like `foo.bar` are harmless: git log finds no commits and they're ignored.
 _ALLOWED_FILE_EXT_RE = re.compile(r"`([^\s`\n]+\.[a-zA-Z][\w-]*)`")
-
-# --- TECH-175: outer DLD-CALLBACK-MARKER pair --------------------------------
-# BUG-974: regex SSOT lives in marker_utils. Re-exported here under the
-# original private names so existing callers (and tests) keep working.
-from marker_utils import (  # noqa: E402
-    DLD_MARKER_END_RE as _DLD_MARKER_END_RE,
-)
-from marker_utils import (
-    DLD_MARKER_START_RE as _DLD_MARKER_START_RE,
-)
-from marker_utils import (
-    DLD_SUPPORTED_MARKER_VERSIONS as _DLD_SUPPORTED_MARKER_VERSIONS,
-)
 
 # --- TECH-167 v1 canonical format -------------------------------------------
 # Strict heading: "## Allowed Files" (case-sensitive, no suffix, no qualifier).
@@ -621,47 +455,6 @@ _ALLOWED_FILES_HEADING_RE = re.compile(
 )
 _NEXT_H2_RE = re.compile(r"^##\s+\S")
 
-
-def _parse_allowed_files_marker(spec_text: str) -> list[str] | None:
-    """Marker-aware parser (TECH-175). Returns:
-
-    list[str]: >=0 paths inside a v1 marker block containing
-               ## Allowed Files (success or empty=degrade-closed).
-    None     : no DLD-CALLBACK-MARKER blocks present (caller falls
-               back to TECH-167 v1 / legacy parsers).
-    """
-    lines = spec_text.splitlines()
-    i = 0
-    while i < len(lines):
-        m = _DLD_MARKER_START_RE.match(lines[i])
-        if not m:
-            i += 1
-            continue
-        ver = m.group("ver")
-        # Find matching END (no nesting allowed; first END wins).
-        j = i + 1
-        while j < len(lines) and not _DLD_MARKER_END_RE.match(lines[j]):
-            j += 1
-        if j >= len(lines):
-            log.warning(
-                "ALLOWED_FILES: unmatched DLD-CALLBACK-MARKER-START at line %d → degrade-closed",
-                i + 1,
-            )
-            return []
-        block = lines[i + 1 : j]
-        has_af_heading = any(_ALLOWED_FILES_V1_HEADING_RE.match(ln) for ln in block)
-        if has_af_heading:
-            if ver not in _DLD_SUPPORTED_MARKER_VERSIONS:
-                log.warning(
-                    "ALLOWED_FILES: unknown marker version v%s → degrade-closed",
-                    ver,
-                )
-                return []
-            # Reuse v1 strict bullet matcher.
-            paths = [bm.group(1) for ln in block if (bm := _ALLOWED_FILES_V1_BULLET_RE.match(ln))]
-            return paths  # may be [] (marker present, no bullets)
-        i = j + 1  # block didn't contain Allowed Files; keep scanning
-    return None  # no relevant marker blocks
 
 
 def _parse_allowed_files_v1(spec_text: str) -> list[str] | None:
@@ -745,16 +538,6 @@ def _parse_allowed_files(spec_path: Path) -> list[str] | None:
         log.warning("ALLOWED_FILES: read failed for %s: %s", spec_path, exc)
         return None
 
-    # TECH-175: marker-aware first
-    marker = _parse_allowed_files_marker(text)
-    if marker is not None:
-        log.info(
-            "ALLOWED_FILES: marker-aware parse for %s → %d path(s)",
-            spec_path.name,
-            len(marker),
-        )
-        return marker
-
     v1 = _parse_allowed_files_v1(text)
     if v1 is not None:
         log.info(
@@ -774,56 +557,13 @@ def _parse_allowed_files(spec_path: Path) -> list[str] | None:
     return legacy
 
 
-def _append_blocked_reason(spec_path: Path, reason: str) -> bool:
-    """Append/replace **Blocked Reason:** line on a spec via git plumbing.
-
-    TECH-182: switched from `spec_path.write_text(new_text)` (working-tree
-    mutation, vulnerable to upstream rebase/stash data-loss) to the same
-    HEAD-read + plumbing-commit path used by `_resync_backlog_to_spec` and
-    `verify_status_sync`. Operator's uncommitted edits in the working tree
-    are preserved; callback never touches them.
-
-    Resolves spec_path against its enclosing project (walks up to find the
-    `ai/features/` parent), reads the file at HEAD, applies
-    `_apply_blocked_reason`, and commits + pushes via `_git_commit_push`.
-
-    Returns True iff a commit was made (idempotent — calling twice with
-    the same reason yields no second commit because HEAD content already
-    matches).
-    """
-    # Walk up from spec_path to the project root (parent of ai/features/).
-    project_root: Path | None = None
-    for parent in spec_path.resolve().parents:
-        if (parent / "ai" / "features").is_dir() and (parent / ".git").exists():
-            project_root = parent
-            break
-    if project_root is None:
-        log.warning(
-            "BLOCKED_REASON: could not resolve project root for %s — skip",
-            spec_path,
-        )
-        return False
-
-    rel_path = str(spec_path.resolve().relative_to(project_root))
-    head_text = _read_head_blob(str(project_root), rel_path)
-    if head_text is None:
-        log.warning(
-            "BLOCKED_REASON: HEAD read failed for %s in %s — skip",
-            rel_path,
-            project_root,
-        )
-        return False
-
-    changed, new_text = _apply_blocked_reason(head_text, reason)
-    if not changed or new_text == head_text:
-        return False
-
-    # Best-effort spec_id for commit message — falls back to filename stem.
-    m = _SPEC_ID_RE.search(spec_path.name)
-    spec_id = m.group(0) if m else spec_path.stem
-
-    _git_commit_push(str(project_root), spec_id, "blocked", [(rel_path, new_text)])
-    return True
+def _append_blocked_reason(project_path: str, spec_id: str, reason: str, pueue_id: int | None = None) -> None:
+    """Record blocked reason via lifecycle module (ADR-023)."""
+    try:
+        lifecycle.write_lifecycle(project_path, spec_id, "blocked",
+                                  reason=reason, pueue_id=pueue_id)
+    except Exception as exc:  # noqa: BLE001 — lifecycle errors must not crash callback
+        log.warning("BLOCKED_REASON write failed for %s: %s", spec_id, exc)
 
 
 def _get_started_at(pueue_id: int) -> str | None:
@@ -1330,288 +1070,100 @@ def _emit_audit(
     _write_audit(record)
 
 
-def verify_status_sync(
-    project_path: str,
-    spec_id: str,
-    target: str = "done",
-    pueue_id: int | None = None,
-) -> None:
-    """Check that spec file and backlog both have target status. Auto-fix if not.
-
-    Operates on HEAD content (not working tree) — operator's uncommitted edits
-    in spec/backlog are preserved. Final commit goes through git plumbing
-    (`update-index --cacheinfo`), so the working tree is never touched.
-
-    TECH-166: when target='done' and pueue_id is provided, run an implementation
-    guard — verify commits touching the spec's `## Allowed Files` since
-    `started_at`. Missing section → demote with reason='missing_allowed_files_section'.
-    No matching commits → demote with reason='no_implementation_commits'.
-    """
-    # TECH-171: audit anchors — capture before any work
-    target_in = target
-    start_wall = time.monotonic()
-    project_id = Path(project_path).name
-
-    # TECH-169: Circuit-breaker — refuse all status mutations when OPEN.
-    if is_circuit_open():
-        log.warning(
-            "CIRCUIT_OPEN: skipping verify_status_sync(%s, target=%s) — circuit is open",
-            spec_id,
-            target,
-        )
-        try:
-            db.record_decision(project_id, spec_id, "noop", "circuit_open", demoted=False)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("CIRCUIT: record_decision(noop) failed: %s", exc)
-        return
-
-    p = Path(project_path)
-
-    # Resolve spec path + read HEAD content
-    spec_files = list(p.glob(f"ai/features/{spec_id}*.md"))
-    spec_file = spec_files[0] if spec_files else None
-    spec_rel = str(spec_file.relative_to(p)) if spec_file else None
-    spec_head = _read_head_blob(project_path, spec_rel) if spec_rel else None
-    if not spec_files:
-        log.warning("STATUS_SYNC: spec file not found for %s", spec_id)
-        if target == "done":
-            log.warning(
-                "STATUS_SYNC: no spec file for %s — marking backlog blocked to stop re-dispatch",
-                spec_id,
-            )
-            # Write blocked to backlog so orchestrator stops re-dispatching this spec.
-            backlog_path = p / "ai" / "backlog.md"
-            backlog_rel = "ai/backlog.md"
-            backlog_head = (
-                _read_head_blob(project_path, backlog_rel) if backlog_path.is_file() else None
-            )
-            fixes: list[tuple[str, str]] = []
-            if backlog_head:
-                changed, new_backlog = _apply_backlog_status(backlog_head, spec_id, "blocked")
-                if changed:
-                    fixes.append((backlog_rel, new_backlog))
-            if fixes:
-                _git_commit_push(project_path, spec_id, "blocked", fixes)
-            else:
-                log.warning("STATUS_SYNC: backlog row not found for %s — cannot block", spec_id)
-            try:
-                db.record_decision(project_id, spec_id, "sync", "spec_file_missing", demoted=True)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("CIRCUIT: record_decision failed: %s", exc)
-            _emit_audit(
-                project_id,
-                spec_id,
-                pueue_id,
-                target_in,
-                "blocked",
-                "spec_file_missing",
-                0,
-                0,
-                0,
-                0,
-                None,
-                start_wall,
-            )
-            return
-
-    # Backlog HEAD content
-    backlog_path = p / "ai" / "backlog.md"
-    backlog_rel = "ai/backlog.md"
-    backlog_head = _read_head_blob(project_path, backlog_rel) if backlog_path.is_file() else None
-    if backlog_head is None and not backlog_path.is_file():
-        log.warning("STATUS_SYNC: backlog.md not found in %s", project_path)
-
-    spec_text = spec_head
-    backlog_text = backlog_head
-
-    # TECH-171: stats collected once, reused in audit record
-    allowed: list[str] | None = None
-    started_at: str | None = None
-    code_loc = 0
-    test_loc = 0
-    code_commits = 0
-    guard_reason = ""
-
-    # TECH-166: implementation guard — demote done→blocked if no commits touched
-    # the spec's Allowed Files since task start, OR if the spec lacks the section.
-    if target == "done" and spec_text is not None and pueue_id is not None and spec_file:
-        allowed = _parse_allowed_files(spec_file)
-        started_at = _get_started_at(int(pueue_id))
-        code_loc, test_loc, code_commits = _commit_stats(project_path, allowed, started_at)
-        if not _has_implementation_commits(project_path, allowed, started_at):
-            # TECH-176: before demoting, ask "is the work *already* merged?"
-            # If yes (commits in Allowed Files mention spec_id on any branch),
-            # treat as auto-close — not a guard failure.
-            already_merged, merged_hashes = _spec_has_merged_implementation(
-                project_path,
-                spec_id,
-                allowed,
-            )
-            if already_merged:
-                log.warning(
-                    "IMPL_GUARD: %s — already merged in repo (commits: %s) → auto-close to done",
-                    spec_id,
-                    ",".join(merged_hashes[:5]),
-                )
-                # TECH-177: include matched SHAs in audit log for traceability
-                guard_reason = (
-                    f"already_merged:{','.join(merged_hashes[:5])}"
-                    if merged_hashes
-                    else "already_merged"
-                )
-                try:
-                    db.record_decision(
-                        project_id,
-                        spec_id,
-                        "auto_close",
-                        f"already_merged:{','.join(merged_hashes[:5])}",
-                        demoted=False,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("CIRCUIT: record_decision(auto_close) failed: %s", exc)
-                # Leave target = "done"; flow falls through to the normal
-                # status-write path which flips spec+backlog and commits.
-            else:
-                guard_reason = (
-                    "missing_allowed_files_section"
-                    if allowed is None
-                    else "no_implementation_commits"
-                )
-                log.warning(
-                    "IMPL_GUARD: %s — demoting done → blocked (%s, started_at=%s)",
-                    spec_id,
-                    guard_reason,
-                    started_at,
-                )
-                _, spec_text = _apply_blocked_reason(spec_text, guard_reason)
-                target = "blocked"
-                # TECH-169: feed circuit-breaker
-                try:
-                    db.record_decision(project_id, spec_id, "demote", guard_reason, demoted=True)
-                    count = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
-                    if count > CIRCUIT_THRESHOLD:
-                        _trip_circuit(project_id, spec_id, count)
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("CIRCUIT: record/check failed: %s", exc)
-        else:
-            # TECH-170: positive path — tell apart "merged to develop" vs "feature-only"
-            if is_merged_to_develop(project_path, spec_id):
-                log.info("IMPL_GUARD: %s — commits found and merged to develop ✓", spec_id)
-            else:
-                log.warning(
-                    "IMPL_GUARD: %s has commits on feature branch but NOT merged to develop yet "
-                    "(allowing done; visible in dashboard)",
-                    spec_id,
-                )
-
-    # Spec-authority guards (v3.15.5/6) — operate on HEAD, never on working tree.
-    if target == "done" and spec_text is not None:
-        if re.search(r"\*\*Status:\*\*\s*blocked", spec_text, re.IGNORECASE):
-            log.info(
-                "STATUS_SYNC: %s — spec is blocked at HEAD, skipping done; resync backlog",
-                spec_id,
-            )
-            try:
-                db.record_decision(
-                    project_id, spec_id, "sync", "spec_already_blocked", demoted=False
-                )
-            except Exception as exc:  # noqa: BLE001
-                log.warning("CIRCUIT: record_decision failed: %s", exc)
-            _emit_audit(
-                project_id,
-                spec_id,
-                pueue_id,
-                target_in,
-                "blocked",
-                "spec_already_blocked",
-                len(allowed) if allowed is not None else 0,
-                code_loc,
-                test_loc,
-                code_commits,
-                started_at,
-                start_wall,
-            )
-            _resync_backlog_to_spec(project_path, spec_id, "blocked", backlog_path)
-            return
-    if target == "blocked" and spec_text is not None:
-        if re.search(r"\*\*Status:\*\*\s*done", spec_text, re.IGNORECASE):
-            log.info(
-                "STATUS_SYNC: %s — spec already done at HEAD, skipping blocked "
-                "(work likely on feature branch); resync backlog",
-                spec_id,
-            )
-            try:
-                db.record_decision(project_id, spec_id, "sync", "spec_already_done", demoted=False)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("CIRCUIT: record_decision failed: %s", exc)
-            _emit_audit(
-                project_id,
-                spec_id,
-                pueue_id,
-                target_in,
-                "done",
-                "spec_already_done",
-                len(allowed) if allowed is not None else 0,
-                code_loc,
-                test_loc,
-                code_commits,
-                started_at,
-                start_wall,
-            )
-            _resync_backlog_to_spec(project_path, spec_id, "done", backlog_path)
-            return
-
-    # Compute desired final content for spec + backlog at HEAD.
-    if spec_text is not None:
-        ok_spec, spec_text = _apply_spec_status(spec_text, target)
-        if not ok_spec:
-            log.warning("STATUS_FIX: could not patch spec status for %s", spec_id)
-    if backlog_text is not None:
-        ok_bl, backlog_text = _apply_backlog_status(backlog_text, spec_id, target)
-        if not ok_bl:
-            log.warning("STATUS_FIX: could not patch backlog row for %s", spec_id)
-
-    # Build commit set — only files whose HEAD content differs from desired.
-    fixes: list[tuple[str, str]] = []
-    if spec_rel and spec_head is not None and spec_text is not None and spec_text != spec_head:
-        fixes.append((spec_rel, spec_text))
-    if backlog_head is not None and backlog_text is not None and backlog_text != backlog_head:
-        fixes.append((backlog_rel, backlog_text))
-
-    final_reason = guard_reason if guard_reason else ("already_correct" if not fixes else "fixed")
-    _emit_audit(
-        project_id,
-        spec_id,
-        pueue_id,
-        target_in,
-        target,
-        final_reason,
-        len(allowed) if allowed is not None else 0,
-        code_loc,
-        test_loc,
-        code_commits,
-        started_at,
-        start_wall,
-    )
+def _record(project_id, spec_id, action, reason, *, demoted=False):
+    """db.record_decision, never raises (BLE001)."""
     try:
-        db.record_decision(
-            project_id, spec_id, "sync" if fixes else "noop", final_reason, demoted=False
-        )
+        db.record_decision(project_id, spec_id, action, reason, demoted=demoted)
     except Exception as exc:  # noqa: BLE001
         log.warning("CIRCUIT: record_decision failed: %s", exc)
 
-    if not fixes:
-        log.info("STATUS_SYNC: %s — both spec and backlog are %s ✓", spec_id, target)
-        return
 
-    log.warning(
-        "STATUS_SYNC: %s — auto-fixed %d file(s) → %s: %s",
-        spec_id,
-        len(fixes),
-        target,
-        ", ".join(rel for rel, _ in fixes),
-    )
-    _git_commit_push(project_path, spec_id, target, fixes)
+def _run_impl_guard(
+    project_path: str, spec_id: str, pueue_id: int, project_id: str,
+) -> tuple[str, str, list | None, str | None, int, int, int]:
+    """TECH-166/TECH-176: check implementation commits. Returns (target, guard_reason, allowed,
+    started_at, code_loc, test_loc, code_commits). Mutates target to 'blocked' on demote."""
+    spec_file = next(iter(Path(project_path).glob(f"ai/features/{spec_id}*.md")), None)
+    if not spec_file:
+        return "done", "", None, None, 0, 0, 0
+    allowed = _parse_allowed_files(spec_file)
+    started_at = _get_started_at(pueue_id)
+    code_loc, test_loc, code_commits = _commit_stats(project_path, allowed, started_at)
+    if _has_implementation_commits(project_path, allowed, started_at):
+        if is_merged_to_develop(project_path, spec_id):
+            log.info("IMPL_GUARD: %s — merged to develop ✓", spec_id)
+        else:
+            log.warning("IMPL_GUARD: %s — on feature branch, not yet on develop", spec_id)
+        return "done", "", allowed, started_at, code_loc, test_loc, code_commits
+    already_merged, hashes = _spec_has_merged_implementation(project_path, spec_id, allowed)
+    if already_merged:  # TECH-176: auto-close
+        reason = f"already_merged:{','.join(hashes[:5])}" if hashes else "already_merged"
+        log.warning("IMPL_GUARD: %s — already merged → auto-close (commits: %s)",
+                    spec_id, ",".join(hashes[:5]))
+        _record(project_id, spec_id, "auto_close", reason)
+        return "done", reason, allowed, started_at, code_loc, test_loc, code_commits
+    reason = "missing_allowed_files_section" if allowed is None else "no_implementation_commits"
+    log.warning("IMPL_GUARD: %s — demoting done→blocked (%s)", spec_id, reason)
+    _record(project_id, spec_id, "demote", reason, demoted=True)
+    try:
+        count = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
+        if count > CIRCUIT_THRESHOLD:
+            _trip_circuit(project_id, spec_id, count)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("CIRCUIT: count/trip failed: %s", exc)
+    return "blocked", reason, allowed, started_at, code_loc, test_loc, code_commits
+
+
+def verify_status_sync(
+    project_path: str, spec_id: str, target: str = "done", pueue_id: int | None = None,
+) -> None:
+    """Write final lifecycle status via lifecycle.write_lifecycle (ADR-023).
+    TECH-166/TECH-176: implementation guard when target='done'. TECH-169: noop on open circuit.
+    """
+    target_in, start_wall = target, time.monotonic()
+    project_id = Path(project_path).name
+    if is_circuit_open():  # TECH-169
+        log.warning("CIRCUIT_OPEN: skipping verify_status_sync(%s, target=%s)", spec_id, target)
+        _record(project_id, spec_id, "noop", "circuit_open")
+        return
+    existing = lifecycle.read_lifecycle(project_path, spec_id)
+    existing_status = existing.get("status") if existing else None
+    # Guard A: lifecycle=blocked overrides pueue done
+    if target == "done" and existing_status == "blocked":
+        log.info("STATUS_SYNC: %s — lifecycle blocked, skipping done", spec_id)
+        _record(project_id, spec_id, "sync", "spec_already_blocked")
+        _emit_audit(project_id, spec_id, pueue_id, target_in, "blocked",
+                    "spec_already_blocked", 0, 0, 0, 0, None, start_wall)
+        return
+    # Guard B: lifecycle=done protected from pueue exit=1 blocked
+    if target == "blocked" and existing_status == "done":
+        log.info("STATUS_SYNC: %s — lifecycle done, skipping blocked", spec_id)
+        _record(project_id, spec_id, "sync", "spec_already_done")
+        _emit_audit(project_id, spec_id, pueue_id, target_in, "done",
+                    "spec_already_done", 0, 0, 0, 0, None, start_wall)
+        return
+    allowed: list | None = None
+    started_at: str | None = None
+    code_loc = test_loc = code_commits = 0
+    guard_reason = ""
+    if target == "done" and pueue_id is not None:  # TECH-166 guard
+        target, guard_reason, allowed, started_at, code_loc, test_loc, code_commits = (
+            _run_impl_guard(project_path, spec_id, int(pueue_id), project_id)
+        )
+    final_reason = guard_reason or ("already_correct" if existing_status == target else "fixed")
+    _emit_audit(project_id, spec_id, pueue_id, target_in, target, final_reason,
+                len(allowed) if allowed is not None else 0,
+                code_loc, test_loc, code_commits, started_at, start_wall)
+    _record(project_id, spec_id, "noop" if existing_status == target else "sync", final_reason)
+    if existing_status == target:
+        log.info("STATUS_SYNC: %s — lifecycle already %s ✓", spec_id, target)
+        return
+    log.warning("STATUS_SYNC: %s — writing lifecycle %s (was %s)", spec_id, target, existing_status)
+    try:
+        lifecycle.write_lifecycle(project_path, spec_id, target,
+                                  reason=guard_reason or None, pueue_id=pueue_id)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("STATUS_SYNC: lifecycle.write failed for %s: %s", spec_id, exc)
 
 
 def write_event_for_skill(project_path: str, skill: str, status: str, task_label: str) -> None:

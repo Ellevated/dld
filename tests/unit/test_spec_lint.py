@@ -1,6 +1,6 @@
 """TECH-175 — unit tests for spec_lint.py and callback marker-aware parser.
 
-Covers EC-1..EC-4 per spec and the callback._parse_allowed_files_marker layer
+Covers EC-1..EC-4 per spec and the callback._parse_allowed_files_v1 layer
 added in Task 2.  Pattern mirrors test_callback_allowlist_v1.py.
 """
 
@@ -56,8 +56,8 @@ def test_ec1_correct_markers_v1():
 
 
 def test_ec1_callback_marker_parser_returns_paths():
-    """callback._parse_allowed_files_marker() extracts paths from a v1 block."""
-    result = callback._parse_allowed_files_marker(_WELL_FORMED)
+    """callback._parse_allowed_files_v1() extracts paths from a v1 block."""
+    result = callback._parse_allowed_files_v1(_WELL_FORMED)
     assert result == ["a.py", "b/c.py"]
 
 
@@ -113,11 +113,13 @@ def test_ec2_legacy_callback_falls_back_to_v1(tmp_path):
 
 
 def test_ec3_unmatched_start():
-    """START without END → LINT_E002_UNMATCHED_START in lint; callback degrades."""
+    """START without END → LINT_E002_UNMATCHED_START in lint; callback v1 returns None (falls through to legacy)."""
     text = "<!-- DLD-CALLBACK-MARKER-START v1 -->\n## Allowed Files\n- `a.py`\n"
     codes = [e.code for e in spec_lint.lint_spec(text)]
     assert "LINT_E002_UNMATCHED_START" in codes
-    assert callback._parse_allowed_files_marker(text) == []
+    # ARCH-186: v1 parser returns None on malformed → dispatcher falls through to legacy.
+    # Strict-failure behavior is now in spec_lint, not callback (which is permissive for guard).
+    assert callback._parse_allowed_files_v1(text) is None
 
 
 # ---------------------------------------------------------------------------
@@ -157,8 +159,10 @@ def test_ec4_unknown_version_lint():
 # ---------------------------------------------------------------------------
 
 
-def test_ec4_unknown_version_callback_degrades_closed(tmp_path):
-    """Unknown marker version v9 → callback returns [] (degrade-closed)."""
+def test_ec4_unknown_version_callback_degrades_open(tmp_path):
+    """Unknown marker version v9 → v1 parser returns None → dispatcher falls through to legacy.
+    ARCH-186: callback is permissive (degrade-open). spec_lint catches the version error separately
+    via LINT_E005_UNKNOWN_VERSION; callback guard is decoupled from strict marker validation."""
     spec = _spec(
         tmp_path,
         """\
@@ -171,7 +175,8 @@ def test_ec4_unknown_version_callback_degrades_closed(tmp_path):
 <!-- DLD-CALLBACK-MARKER-END -->
 """,
     )
-    assert callback._parse_allowed_files(spec) == []
+    # Legacy parser picks up the canonical "<!-- callback-allowlist v1 -->" marker
+    assert callback._parse_allowed_files(spec) == ["a.py"]
 
 
 # ---------------------------------------------------------------------------

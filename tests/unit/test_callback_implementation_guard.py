@@ -1,7 +1,7 @@
 """TECH-166 — unit tests for callback.py implementation guard.
 
 Covers EC-1..EC-7: parser variants, guard window/allowed-list semantics,
-degrade-open behavior, and reason annotation idempotency.
+degrade-open behavior, and reason annotation via lifecycle.yaml (ARCH-186).
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent.parent.parent / "scripts" / "vps"
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import callback  # noqa: E402
+import lifecycle  # noqa: E402
 
 
 # --- _parse_allowed_files ----------------------------------------------------
@@ -140,24 +141,63 @@ def test_guard_explicit_empty_allowlist_blocks(git_repo):
     assert callback._has_implementation_commits(str(git_repo), [], _now_iso()) is False
 
 
-# --- _append_blocked_reason --------------------------------------------------
+# --- _append_blocked_reason (ARCH-186: delegates to lifecycle.yaml) ----------
 
 
-def test_append_blocked_reason_inserts_after_status(tmp_path):
-    spec = _spec(tmp_path, "# T\n\n**Status:** blocked\n**Priority:** P1\n")
-    callback._append_blocked_reason(spec, "no_implementation_commits")
-    text = spec.read_text()
-    assert "**Blocked Reason:** no_implementation_commits" in text
-    # Inserted right after Status line.
-    lines = text.splitlines()
-    status_idx = next(i for i, ln in enumerate(lines) if ln.startswith("**Status:"))
-    assert lines[status_idx + 1] == "**Blocked Reason:** no_implementation_commits"
+@pytest.fixture()
+def lifecycle_git_repo(tmp_path):
+    """Minimal git repo with ai/lifecycle/.gitkeep committed — supports lifecycle writes."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        subprocess.run(
+            ["git"] + list(args), cwd=str(repo), check=True, capture_output=True, text=True
+        )
+
+    git("init", "-b", "main")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test User")
+    lc_dir = repo / "ai" / "lifecycle"
+    lc_dir.mkdir(parents=True)
+    (lc_dir / ".gitkeep").write_text("")
+    git("add", ".")
+    git("commit", "-m", "init")
+    return repo
 
 
-def test_append_blocked_reason_idempotent(tmp_path):
-    spec = _spec(tmp_path, "# T\n\n**Status:** blocked\n**Blocked Reason:** old_reason\n")
-    callback._append_blocked_reason(spec, "no_implementation_commits")
-    text = spec.read_text()
-    assert text.count("**Blocked Reason:**") == 1
-    assert "no_implementation_commits" in text
-    assert "old_reason" not in text
+def test_append_blocked_reason_writes_lifecycle_yaml(lifecycle_git_repo):
+    """NEW signature: _append_blocked_reason(project_path, spec_id, reason, pueue_id)
+    writes status=blocked + blocked_reason to lifecycle.yaml via lifecycle module.
+
+    Pre-seed with create_initial so write_lifecycle sees existing=dict and stores reason.
+    (When existing=None, lifecycle._build_yaml_content drops reason — design constraint.)
+    """
+    repo = lifecycle_git_repo
+    spec_id = "TECH-TEST-1"
+    reason = "no_implementation_commits"
+
+    # create_initial → existing YAML exists → subsequent write stores blocked_reason
+    lifecycle.create_initial(str(repo), spec_id, "p1", "tech")
+    callback._append_blocked_reason(str(repo), spec_id, reason, pueue_id=None)
+
+    data = lifecycle.read_lifecycle(str(repo), spec_id)
+    assert data is not None, "lifecycle.yaml must be committed after _append_blocked_reason"
+    assert data["status"] == "blocked"
+    assert data["blocked_reason"] == reason
+
+
+def test_append_blocked_reason_idempotent(lifecycle_git_repo):
+    """Calling twice with same reason → status=blocked, blocked_reason unchanged."""
+    repo = lifecycle_git_repo
+    spec_id = "TECH-TEST-2"
+    reason = "no_implementation_commits"
+
+    lifecycle.create_initial(str(repo), spec_id, "p1", "tech")
+    callback._append_blocked_reason(str(repo), spec_id, reason, pueue_id=None)
+    callback._append_blocked_reason(str(repo), spec_id, reason, pueue_id=None)
+
+    data = lifecycle.read_lifecycle(str(repo), spec_id)
+    assert data is not None
+    assert data["status"] == "blocked"
+    assert data["blocked_reason"] == reason

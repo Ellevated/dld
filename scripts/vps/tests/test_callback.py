@@ -1,13 +1,15 @@
 # scripts/vps/tests/test_callback.py
 """Tests for callback.verify_status_sync (status auto-fix guards).
 
-The two guards are symmetric:
-  * target=done + spec=blocked  → skip (autopilot says blocked, respect it).
-  * target=blocked + spec=done  → skip (final push/merge failed but work is
-    on a feature branch — wiping done loses the signal).
+Post-ARCH-186: verify_status_sync delegates status writes to lifecycle.write_lifecycle.
+Guards operate on lifecycle.read_lifecycle() state, not on markdown files.
+
+Guard A: target=done  + lifecycle=blocked  → skip (respect blocked).
+Guard B: target=blocked + lifecycle=done   → skip (respect done).
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -19,156 +21,200 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import callback  # noqa: E402
+import lifecycle  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# Shared git helpers
+# ---------------------------------------------------------------------------
+
+def _git(repo: Path, *args: str) -> str:
+    import os
+
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+        "HOME": str(repo),
+    }
+    r = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, **env},
+    )
+    return r.stdout
 
 
 @pytest.fixture
-def project(tmp_path):
-    """Create a fake project with ai/features/<spec>.md and ai/backlog.md."""
-    p = tmp_path / "proj"
-    (p / "ai" / "features").mkdir(parents=True)
-    return p
+def git_repo(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "develop")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    # Initial commit so HEAD exists
+    (repo / "README.md").write_text("init\n")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-q", "-m", "init")
+    return repo
 
 
-def _write_spec(project: Path, spec_id: str, status: str) -> Path:
-    f = project / "ai" / "features" / f"{spec_id}-test.md"
-    f.write_text(f"# {spec_id}\n\n**Status:** {status}\n")
-    return f
-
-
-def _write_backlog(project: Path, spec_id: str, status: str) -> None:
-    (project / "ai" / "backlog.md").write_text(
-        f"| ID | Title | Status |\n|---|---|---|\n| {spec_id} | t | {status} |\n"
-    )
-
-
-# --- Guard 1: target=done + spec=blocked → skip ---
+# ---------------------------------------------------------------------------
+# Guard A: target=done + lifecycle=blocked → skip
+# ---------------------------------------------------------------------------
 
 
 class TestDoneOverBlockedGuard:
-    def test_done_target_respects_blocked_spec(self, project):
-        spec = _write_spec(project, "BUG-1", "blocked")
-        _write_backlog(project, "BUG-1", "blocked")
-        callback.verify_status_sync(str(project), "BUG-1", target="done")
-        # Spec untouched
-        assert "**Status:** blocked" in spec.read_text()
-        # Backlog untouched
-        assert "| blocked |" in (project / "ai" / "backlog.md").read_text()
+    def test_done_target_respects_blocked_lifecycle(self, git_repo):
+        """lifecycle says blocked; callback with target=done must skip write."""
+        lifecycle.write_lifecycle(str(git_repo), "BUG-1", "blocked")
+        callback.verify_status_sync(str(git_repo), "BUG-1", target="done")
+        data = lifecycle.read_lifecycle(str(git_repo), "BUG-1")
+        assert data["status"] == "blocked", "lifecycle blocked must be preserved"
+
+    def test_done_guard_skips_write_when_no_lifecycle(self, git_repo):
+        """No lifecycle yet (first time): target=done should write done."""
+        callback.verify_status_sync(str(git_repo), "BUG-99", target="done")
+        data = lifecycle.read_lifecycle(str(git_repo), "BUG-99")
+        assert data is not None
+        assert data["status"] == "done"
 
 
-# --- Guard 2 (NEW 2026-04-25): target=blocked + spec=done → skip ---
+# ---------------------------------------------------------------------------
+# Guard B: target=blocked + lifecycle=done → skip
+# ---------------------------------------------------------------------------
 
 
 class TestBlockedOverDoneGuard:
-    def test_blocked_target_respects_done_spec(self, project):
-        """Reproduces the BUG-376 / BUG-374 / BUG-865 scenario.
+    def test_blocked_target_respects_done_lifecycle(self, git_repo):
+        """Reproduces BUG-376/BUG-374/BUG-865 scenario.
 
-        Autopilot finished all per-task code, marked spec done, then the
-        final merge-to-develop step failed. Pueue exit=1 → callback called
-        with target=blocked. Without this guard, done was wiped and the
-        feature branch was orphaned.
+        Autopilot finished all per-task code → lifecycle=done.
+        Final push failed → pueue exit=1 → callback target=blocked.
+        Guard B must protect the done state.
         """
-        spec = _write_spec(project, "BUG-2", "done")
-        _write_backlog(project, "BUG-2", "done")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-2", target="blocked")
-        assert "**Status:** done" in spec.read_text(), "spec done preserved"
-        assert "| done |" in (project / "ai" / "backlog.md").read_text(), "backlog done preserved"
-        mock_push.assert_not_called(), "no auto-fix commit when guard fires"
+        lifecycle.write_lifecycle(str(git_repo), "BUG-2", "done")
+        callback.verify_status_sync(str(git_repo), "BUG-2", target="blocked")
+        data = lifecycle.read_lifecycle(str(git_repo), "BUG-2")
+        assert data["status"] == "done", "lifecycle done must be preserved"
 
-    def test_blocked_target_still_writes_when_spec_not_done(self, project):
-        """Sanity: guard only fires for done spec; other states get blocked."""
-        _write_spec(project, "BUG-3", "in_progress")
-        _write_backlog(project, "BUG-3", "in_progress")
-        with patch("callback._git_commit_push"):
-            callback.verify_status_sync(str(project), "BUG-3", target="blocked")
-        assert "**Status:** blocked" in (project / "ai" / "features" / "BUG-3-test.md").read_text()
+    def test_blocked_target_writes_when_lifecycle_in_progress(self, git_repo):
+        """Sanity: guard only fires for done lifecycle; in_progress gets blocked."""
+        lifecycle.write_lifecycle(str(git_repo), "BUG-3", "in_progress")
+        callback.verify_status_sync(str(git_repo), "BUG-3", target="blocked")
+        data = lifecycle.read_lifecycle(str(git_repo), "BUG-3")
+        assert data["status"] == "blocked"
 
 
-# --- Both guards: idempotent (target already matches) ---
+# ---------------------------------------------------------------------------
+# Idempotency
+# ---------------------------------------------------------------------------
 
 
 class TestIdempotent:
-    def test_already_done_no_op(self, project):
-        _write_spec(project, "BUG-4", "done")
-        _write_backlog(project, "BUG-4", "done")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-4", target="done")
-        mock_push.assert_not_called()
+    def test_already_done_no_extra_commit(self, git_repo):
+        """If lifecycle already has target status, no extra commit."""
+        import subprocess as sp
+        lifecycle.write_lifecycle(str(git_repo), "BUG-4", "done")
+        before = sp.run(
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"],
+            capture_output=True, text=True
+        ).stdout.strip()
+        callback.verify_status_sync(str(git_repo), "BUG-4", target="done")
+        after = sp.run(
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"],
+            capture_output=True, text=True
+        ).stdout.strip()
+        assert before == after, "no commit expected when already at target"
 
-    def test_already_blocked_no_op(self, project):
-        _write_spec(project, "BUG-5", "blocked")
-        _write_backlog(project, "BUG-5", "blocked")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-5", target="blocked")
-        mock_push.assert_not_called()
+    def test_already_blocked_no_extra_commit(self, git_repo):
+        import subprocess as sp
+        lifecycle.write_lifecycle(str(git_repo), "BUG-5", "blocked")
+        before = sp.run(
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"],
+            capture_output=True, text=True
+        ).stdout.strip()
+        callback.verify_status_sync(str(git_repo), "BUG-5", target="blocked")
+        after = sp.run(
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"],
+            capture_output=True, text=True
+        ).stdout.strip()
+        assert before == after, "no commit expected when already at target"
 
 
-# --- v3.15.6: backlog resync to spec authority on guard fire ---
+# ---------------------------------------------------------------------------
+# New test: lifecycle write path (ARCH-186 acceptance)
+# ---------------------------------------------------------------------------
 
 
-class TestBacklogResyncToSpec:
-    """Stop dispatch loops by syncing backlog → spec when guards fire.
+class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
+    """verify_status_sync must write lifecycle exactly once per terminal status."""
 
-    Scenario: backlog says queued/resumed, spec says blocked. Orchestrator
-    sees queued, dispatches autopilot, autopilot SKIPs (inconsistency),
-    callback target=done, Guard A fires. Without resync, backlog stays
-    queued → next cycle dispatches again → loop ($0.30/cycle waste).
-    Real case 2026-04-25: FTR-853 looped 11 times.
-    """
+    def test_lifecycle_written_done_with_impl_commits(self, git_repo, monkeypatch):
+        """When _has_implementation_commits returns True, lifecycle must become done."""
+        lifecycle.write_lifecycle(str(git_repo), "TECH-X", "in_progress")
 
-    def test_guard_a_resyncs_backlog_when_spec_blocked(self, project):
-        """target=done + spec=blocked + backlog=queued → backlog → blocked."""
-        _write_spec(project, "BUG-10", "blocked")
-        _write_backlog(project, "BUG-10", "queued")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-10", target="done")
-        assert "| blocked |" in (project / "ai" / "backlog.md").read_text(), (
-            "backlog resynced to spec's blocked"
+        # Stub implementation guard to return True (no need for real commits)
+        monkeypatch.setattr(callback, "_has_implementation_commits", lambda *a, **kw: True)
+        monkeypatch.setattr(callback, "_get_started_at", lambda *a: "2026-01-01T00:00:00Z")
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
+        monkeypatch.setattr(callback, "is_merged_to_develop", lambda *a: True)
+
+        import subprocess as sp
+        before_count = int(
+            sp.run(
+                ["git", "-C", str(git_repo), "rev-list", "--count", "HEAD"],
+                capture_output=True, text=True
+            ).stdout.strip()
         )
-        # spec untouched
-        assert "**Status:** blocked" in (project / "ai" / "features" / "BUG-10-test.md").read_text()
-        mock_push.assert_called_once(), "resync should commit"
-
-    def test_guard_a_resyncs_backlog_when_resumed(self, project):
-        """Same shape with backlog=resumed (after operator resume)."""
-        _write_spec(project, "BUG-11", "blocked")
-        _write_backlog(project, "BUG-11", "resumed")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-11", target="done")
-        assert "| blocked |" in (project / "ai" / "backlog.md").read_text()
-        mock_push.assert_called_once()
-
-    def test_guard_b_resyncs_backlog_when_spec_done(self, project):
-        """target=blocked + spec=done + backlog=in_progress → backlog → done."""
-        _write_spec(project, "BUG-12", "done")
-        _write_backlog(project, "BUG-12", "in_progress")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-12", target="blocked")
-        assert "| done |" in (project / "ai" / "backlog.md").read_text(), (
-            "backlog resynced to spec's done"
+        callback.verify_status_sync(str(git_repo), "TECH-X", target="done", pueue_id=42)
+        after_count = int(
+            sp.run(
+                ["git", "-C", str(git_repo), "rev-list", "--count", "HEAD"],
+                capture_output=True, text=True
+            ).stdout.strip()
         )
-        # spec untouched
-        assert "**Status:** done" in (project / "ai" / "features" / "BUG-12-test.md").read_text()
-        mock_push.assert_called_once()
 
-    def test_guard_a_no_commit_when_backlog_already_blocked(self, project):
-        """Idempotency: guard fires but backlog already in sync → no commit."""
-        _write_spec(project, "BUG-13", "blocked")
-        _write_backlog(project, "BUG-13", "blocked")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-13", target="done")
-        mock_push.assert_not_called()
+        data = lifecycle.read_lifecycle(str(git_repo), "TECH-X")
+        assert data is not None
+        assert data["status"] == "done", f"expected done, got {data['status']}"
+        # Exactly one new lifecycle commit (the write)
+        assert after_count == before_count + 1, (
+            f"expected exactly 1 new commit, got {after_count - before_count}"
+        )
 
-    def test_guard_b_no_commit_when_backlog_already_done(self, project):
-        """Idempotency: guard fires but backlog already in sync → no commit."""
-        _write_spec(project, "BUG-14", "done")
-        _write_backlog(project, "BUG-14", "done")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-14", target="blocked")
-        mock_push.assert_not_called()
+    def test_demoted_to_blocked_when_no_impl_commits(self, git_repo, monkeypatch):
+        """When no implementation commits found, must demote to blocked."""
+        lifecycle.write_lifecycle(str(git_repo), "TECH-Y", "in_progress")
+
+        monkeypatch.setattr(callback, "_has_implementation_commits", lambda *a, **kw: False)
+        monkeypatch.setattr(callback, "_spec_has_merged_implementation", lambda *a: (False, []))
+        monkeypatch.setattr(callback, "_get_started_at", lambda *a: "2026-01-01T00:00:00Z")
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
+
+        # Need a minimal spec file with ## Allowed Files for the guard
+        (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
+        (git_repo / "ai" / "features" / "TECH-Y-spec.md").write_text(
+            "# TECH-Y\n\n**Status:** in_progress\n\n## Allowed Files\n\n<!-- callback-allowlist v1 -->\n- `scripts/vps/callback.py`\n"
+        )
+        monkeypatch.setattr(callback, "_parse_allowed_files",
+                            lambda *a: ["scripts/vps/callback.py"])
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+
+        callback.verify_status_sync(str(git_repo), "TECH-Y", target="done", pueue_id=99)
+        data = lifecycle.read_lifecycle(str(git_repo), "TECH-Y")
+        assert data is not None
+        assert data["status"] == "blocked", f"expected blocked (demote), got {data['status']}"
 
 
-# --- v3.15.7: skill detection from pueue command (survives SIGKILL'd runners) ---
+# ---------------------------------------------------------------------------
+# v3.15.7: skill detection from pueue command (survives SIGKILL'd runners)
+# ---------------------------------------------------------------------------
 
 
 def _mock_pueue_status(task_id: str, command: str, start_iso: str = ""):
@@ -325,38 +371,6 @@ class TestSubjectImplements:
 
 
 # --- TECH-177: Integration with real git repo --------------------------------
-
-
-def _git(repo: Path, *args: str) -> str:
-    import subprocess
-
-    env = {
-        "GIT_AUTHOR_NAME": "t",
-        "GIT_AUTHOR_EMAIL": "t@t",
-        "GIT_COMMITTER_NAME": "t",
-        "GIT_COMMITTER_EMAIL": "t@t",
-        "HOME": str(repo),
-    }
-    import os
-
-    r = subprocess.run(
-        ["git", "-C", str(repo), *args],
-        capture_output=True,
-        text=True,
-        check=True,
-        env={**os.environ, **env},
-    )
-    return r.stdout
-
-
-@pytest.fixture
-def git_repo(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init", "-q", "-b", "main")
-    _git(repo, "config", "user.email", "t@t")
-    _git(repo, "config", "user.name", "t")
-    return repo
 
 
 def _commit(repo: Path, subject: str, body: str = "", *, files: dict[str, str] | None = None):

@@ -188,14 +188,13 @@ Dependency map between project components.
 |------|-------|----------|
 | db.py | scripts/vps/db.py | release_slot(), finish_task(), update_project_phase(), get_project_state(), try_acquire_slot(), log_task(), get_task_by_pueue_id() |
 | db.py | scripts/vps/db.py | record_decision(), count_demotes_since(), clear_decisions() (TECH-169) |
+| lifecycle.py | scripts/vps/lifecycle.py | write_lifecycle() — atomic plumbing commit of status (ARCH-186) |
 | event_writer.py | scripts/vps/event_writer.py | notify() — send Hermes event |
 | event_writer.py | scripts/vps/event_writer.py | notify_circuit_event() (TECH-169) |
 | run-agent.sh | scripts/vps/run-agent.sh | pueue add for QA/Reflect dispatch |
 | pueue CLI | PATH | pueue status --json, pueue log --json, pueue add |
 | pueue CLI | PATH | pueue pause/start --group claude-runner (TECH-169 circuit) |
-| spec files | ai/features/{SPEC_ID}*.md | verify_status_sync() reads/fixes **Status:** field |
-| backlog.md | ai/backlog.md | verify_status_sync() reads/fixes status column |
-| git CLI | PATH | _git_commit_push() — auto-fix commit + push to develop |
+| spec files | ai/features/{SPEC_ID}*.md | _parse_allowed_files() reads `## Allowed Files` for implementation guard |
 
 ### Used by (←)
 
@@ -209,8 +208,39 @@ Dependency map between project components.
 - [ ] run-agent.sh (arg order: project_dir task provider skill)
 - [ ] event_writer.py (notify signature)
 - [ ] schema.sql (compute_slots, task_log, project_state column names)
-- [ ] ai/features/ spec files (verify_status_sync reads **Status:** field format)
-- [ ] ai/backlog.md (verify_status_sync reads status column in markdown table)
+- [ ] lifecycle.py (write_lifecycle signature — ARCH-186 SoT)
+- [ ] ai/features/ spec files (`## Allowed Files` format parsed by _parse_allowed_files)
+
+---
+
+## scripts/vps/lifecycle.py (ARCH-186)
+
+**Path:** `scripts/vps/lifecycle.py`
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| pyyaml | pip dep | yaml.safe_load / safe_dump |
+| git CLI | PATH | atomic plumbing: hash-object, write-tree, commit-tree, update-ref (CAS form) |
+| pathlib | stdlib | path manipulation |
+| tempfile | stdlib | private GIT_INDEX_FILE for index isolation |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| callback.py | scripts/vps/callback.py | write_lifecycle() — sole writer of status |
+| orchestrator.py | scripts/vps/orchestrator.py | list_by_status(), create_initial() (bootstrap), assert_clean_lifecycle_tree() (startup), reconcile_orphans() |
+| render_backlog.py | scripts/vps/render_backlog.py | read_lifecycle() + list_all() for view generation |
+| migrate_backlog_to_lifecycle.py | scripts/vps/migrate_backlog_to_lifecycle.py | initial migration one-shot |
+
+### When changing API, check
+
+- [ ] callback.py (write_lifecycle caller)
+- [ ] orchestrator.py (4 callsites: list_by_status, create_initial, assert_clean, reconcile_orphans)
+- [ ] render_backlog.py (read_lifecycle for view)
+- [ ] tests/integration/test_callback_*.py (use write_lifecycle for setup)
 
 ---
 
@@ -360,4 +390,5 @@ Dependency map between project components.
 | 2026-03-28 | callback.py: verify_status_sync — auto-fix spec+backlog status after autopilot | manual |
 | 2026-05-02 | callback circuit-breaker (TECH-169): callback_decisions table, record_decision/count_demotes_since/clear_decisions (db.py), notify_circuit_event (event_writer.py), --reset-circuit CLI (callback.py) | autopilot |
 | 2026-05-04 | Spark spec template: DLD-CALLBACK-MARKER-START/END wraps Status + Allowed Files; Phase 5.5 SSOT extended with DLD_START_RE/DLD_END_RE + E007/E008 (TECH-175 Task 3) | coder |
-| 2026-05-15 | marker_utils.py shared regex/extractor; orchestrator autostash recovery restores callback Status from HEAD post-pop (BUG-974) | autopilot |
+| 2026-05-15 | marker_utils.py shared regex/extractor; orchestrator autostash recovery restores callback Status from HEAD post-pop (BUG-185, formerly BUG-974) | autopilot |
+| 2026-05-16 | **ARCH-186 lifecycle SoT migration:** lifecycle.py (new, ~280 LOC) atomic git plumbing; callback.verify_status_sync upgraded to lifecycle.write_lifecycle (no markdown editing); orchestrator scan_queued + bootstrap_new_specs + assert_clean_lifecycle_tree + reconcile_orphans; render_backlog.py (new) markdown view; migrate_backlog_to_lifecycle.py (new, one-shot). DELETED: marker_utils.py (117), _restore_callback_markers_from_head (54), autostash dance (81), DLD-CALLBACK-MARKER blocks in spec template + Phase 5.5 E007/E008 rules. Supersedes ADR-018. Closes BUG-185. | autopilot (interactive) |

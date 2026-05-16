@@ -175,7 +175,7 @@ class TestSpecIdRegex:
 
 
 class TestPueueHasActiveLabel:
-    """Verify dedup guard used in scan_backlog/scan_inbox."""
+    """Verify dedup guard used in scan_queued/scan_inbox."""
 
     def test_returns_true_for_running_duplicate(self):
         mock_result = MagicMock()

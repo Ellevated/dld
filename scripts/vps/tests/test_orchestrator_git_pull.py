@@ -1,10 +1,11 @@
 # scripts/vps/tests/test_orchestrator_git_pull.py
-"""Unit tests for orchestrator.git_pull (TECH-182).
+"""Unit tests for orchestrator.git_pull (post-ARCH-186 ff-only-or-skip).
 
-Guarantees:
-  - On dirty working tree: pull is SKIPPED (no fetch, no rebase, no autostash).
-  - On clean working tree: exactly one `pull --ff-only origin develop` runs.
-  - No `rebase --autostash` is ever invoked under any branch.
+Guarantees (post-ARCH-186):
+  - On any working tree state: exactly one `pull --ff-only origin develop` runs
+    (no dirty check, no stash, no pop, no autostash).
+  - On pull failure: warning logged, no exception raised.
+  - No `autostash`, no `rebase`, no `fetch`, no `stash` ever invoked.
 """
 
 import sys
@@ -18,22 +19,12 @@ if VPS_DIR not in sys.path:
 import orchestrator  # noqa: E402
 
 
-def _mk_run(returncodes_by_args):
-    """Return a fake subprocess.run that picks return code by argv signature.
-
-    `returncodes_by_args` is a list of (substring_marker, returncode) tuples
-    matched against ' '.join(argv). First substring hit wins.
-    """
+def _mk_run(returncode: int = 0):
+    """Return a fake subprocess.run that always returns given returncode."""
 
     def _run(argv, *args, **kwargs):
-        argv_str = " ".join(str(x) for x in argv)
-        rc = 0
-        for marker, ret in returncodes_by_args:
-            if marker in argv_str:
-                rc = ret
-                break
         result = MagicMock()
-        result.returncode = rc
+        result.returncode = returncode
         result.stdout = ""
         result.stderr = ""
         return result
@@ -41,96 +32,16 @@ def _mk_run(returncodes_by_args):
     return _run
 
 
-class TestGitPullDirtyTree:
-    """When working tree has uncommitted changes: pull MUST be skipped."""
+class TestGitPullFfOnly:
+    """Post-ARCH-186: git_pull always runs ff-only, no dirty-tree check."""
 
-    def test_dirty_unstaged_skips_pull(self, tmp_path):
-        """`diff` returns 1 (dirty unstaged) → no fetch, no rebase, log warning."""
-        # Make project_dir look like a git repo
+    def test_runs_ff_only_pull(self, tmp_path):
+        """Always runs exactly one `pull --ff-only origin develop`."""
         (tmp_path / ".git").mkdir()
-
-        # diff non-zero → dirty; diff --cached zero → no staged
-        fake_run = _mk_run(
-            [
-                ("diff --cached", 0),  # staged clean
-                ("diff", 1),  # unstaged dirty (must come AFTER --cached marker)
-            ]
-        )
 
         with (
             patch("orchestrator.is_agent_running", return_value=False),
-            patch("orchestrator.subprocess.run", side_effect=fake_run) as run_mock,
-            patch("orchestrator.log") as log_mock,
-        ):
-            orchestrator.git_pull("testproject", str(tmp_path))
-
-        # Collect every git invocation
-        invocations = [
-            " ".join(str(x) for x in c.args[0])
-            for c in run_mock.call_args_list
-            if c.args and isinstance(c.args[0], list)
-        ]
-
-        # Sanity: at minimum the two `diff` checks ran
-        assert any("diff --quiet" in inv and "--cached" not in inv for inv in invocations)
-        assert any("diff --cached" in inv for inv in invocations)
-
-        # Forbidden tokens — these MUST NOT appear as git subcommands
-        # Use word-boundary pattern to avoid matching path components.
-        for inv in invocations:
-            assert "autostash" not in inv, f"autostash leaked into call: {inv}"
-            assert "rebase" not in inv, f"rebase leaked into call: {inv}"
-            assert "fetch" not in inv, f"fetch leaked into call: {inv}"
-            assert " pull " not in f" {inv} ", f"pull leaked into call (dirty tree): {inv}"
-
-        # And the warning MUST have been emitted
-        assert log_mock.warning.called, "expected log.warning on dirty tree"
-        warning_args = log_mock.warning.call_args
-        # First positional arg is the format string
-        fmt = warning_args.args[0] if warning_args.args else ""
-        assert "dirty" in fmt or "skipped" in fmt, f"unexpected warning fmt: {fmt}"
-
-    def test_dirty_staged_only_skips_pull(self, tmp_path):
-        """`diff --cached` returns 1 (dirty staged) → still skipped."""
-        (tmp_path / ".git").mkdir()
-        fake_run = _mk_run(
-            [
-                ("diff --cached", 1),  # staged dirty
-                ("diff", 0),  # unstaged clean
-            ]
-        )
-        with (
-            patch("orchestrator.is_agent_running", return_value=False),
-            patch("orchestrator.subprocess.run", side_effect=fake_run) as run_mock,
-            patch("orchestrator.log") as log_mock,
-        ):
-            orchestrator.git_pull("testproject", str(tmp_path))
-
-        invocations = [
-            " ".join(str(x) for x in c.args[0])
-            for c in run_mock.call_args_list
-            if c.args and isinstance(c.args[0], list)
-        ]
-        for inv in invocations:
-            assert "autostash" not in inv
-            assert "rebase" not in inv
-            assert "fetch" not in inv
-            assert " pull " not in f" {inv} "
-
-        assert log_mock.warning.called
-
-
-class TestGitPullCleanTree:
-    """When working tree is clean: exactly one `pull --ff-only` runs."""
-
-    def test_clean_tree_runs_ff_only(self, tmp_path):
-        (tmp_path / ".git").mkdir()
-        # Both diff probes return 0 → clean
-        fake_run = _mk_run([("diff", 0)])
-
-        with (
-            patch("orchestrator.is_agent_running", return_value=False),
-            patch("orchestrator.subprocess.run", side_effect=fake_run) as run_mock,
+            patch("orchestrator.subprocess.run", side_effect=_mk_run(0)) as run_mock,
             patch("orchestrator.log"),
         ):
             orchestrator.git_pull("testproject", str(tmp_path))
@@ -149,8 +60,44 @@ class TestGitPullCleanTree:
 
         # Forbidden under any branch
         for inv in invocations:
-            assert "autostash" not in inv
-            assert "--rebase" not in inv  # we no longer use --rebase variant
+            assert "autostash" not in inv, f"autostash leaked: {inv}"
+            assert "rebase" not in inv, f"rebase leaked: {inv}"
+            assert "fetch" not in inv, f"fetch leaked: {inv}"
+            assert "stash" not in inv, f"stash leaked: {inv}"
+
+    def test_pull_failure_logs_warning_no_raise(self, tmp_path):
+        """If ff-only pull fails (non-zero exit), warning is logged, no exception."""
+        (tmp_path / ".git").mkdir()
+
+        with (
+            patch("orchestrator.is_agent_running", return_value=False),
+            patch("orchestrator.subprocess.run", side_effect=_mk_run(1)),
+            patch("orchestrator.log") as log_mock,
+        ):
+            orchestrator.git_pull("testproject", str(tmp_path))  # must not raise
+
+        assert log_mock.warning.called
+
+    def test_no_dirty_check_no_diff_calls(self, tmp_path):
+        """Post-ARCH-186: no `git diff` calls — dirty check removed."""
+        (tmp_path / ".git").mkdir()
+
+        with (
+            patch("orchestrator.is_agent_running", return_value=False),
+            patch("orchestrator.subprocess.run", side_effect=_mk_run(0)) as run_mock,
+            patch("orchestrator.log"),
+        ):
+            orchestrator.git_pull("testproject", str(tmp_path))
+
+        invocations = [
+            " ".join(str(x) for x in c.args[0])
+            for c in run_mock.call_args_list
+            if c.args and isinstance(c.args[0], list)
+        ]
+
+        # No diff probes
+        for inv in invocations:
+            assert " diff " not in f" {inv} ", f"unexpected diff call: {inv}"
 
 
 class TestGitPullSkipped:
