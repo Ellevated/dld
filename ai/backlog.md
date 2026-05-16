@@ -41,6 +41,7 @@
 |----|--------|------|---------|------|
 | TECH-006 | queued | tech | 2026-05-16 | [spec](features/TECH-006-2026-01-24-github-community-files.md) |
 | TECH-016 | queued | tech | 2026-05-16 | [spec](features/TECH-016-2026-01-24-hackernews-post.md) |
+| TECH-025 | queued | tech | 2026-05-16 | [spec](features/TECH-025-2026-01-26-readme-tagline.md) |
 | TECH-029 | queued | tech | 2026-05-16 | [spec](features/TECH-029-2026-01-26-devto-article.md) |
 | TECH-037 | queued | tech | 2026-05-16 | [spec](features/TECH-037-2026-01-29-cross-task-memory-feed.md) |
 | TECH-041 | queued | tech | 2026-05-16 | [spec](features/TECH-041-2026-01-29-bootstrap-three-expert-compression.md) |
