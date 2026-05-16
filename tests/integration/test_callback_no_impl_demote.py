@@ -1,7 +1,9 @@
 """TECH-166 — integration tests for verify_status_sync demotion path.
 
+ARCH-186: assertions rewritten to read from lifecycle.yaml (SoT).
+
 Real fs + real git + real sqlite (no mocks per ADR-013). Each test sets up:
-  - git project with spec file in ai/features/ and backlog.md
+  - git project with spec file in ai/features/, backlog.md, ai/lifecycle/.gitkeep
   - sqlite task_log entry with started_at predating any test commits
   - invokes callback.verify_status_sync(..., target='done', pueue_id=N)
 """
@@ -20,8 +22,13 @@ import pytest
 SCRIPT_DIR = Path(__file__).resolve().parent.parent.parent / "scripts" / "vps"
 sys.path.insert(0, str(SCRIPT_DIR))
 
+import yaml  # noqa: E402
+
+import yaml  # noqa: E402
+
 import callback  # noqa: E402
 import db  # noqa: E402
+import lifecycle  # noqa: E402
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -38,6 +45,27 @@ def _commit(repo: Path, rel: str, body: str, msg: str) -> None:
     _git(repo, "commit", "-q", "-m", msg)
 
 
+def _seed_lifecycle_yaml(repo: Path, spec_id: str) -> None:
+    """Write minimal lifecycle.yaml (status=queued) via normal git add+commit."""
+    _seed_lifecycle_yaml_with_status(repo, spec_id, "queued")
+
+
+def _seed_lifecycle_yaml_with_status(repo: Path, spec_id: str, status: str) -> None:
+    """Write minimal lifecycle.yaml with given status via normal git add+commit."""
+    lc_dir = repo / "ai" / "lifecycle"
+    lc_dir.mkdir(parents=True, exist_ok=True)
+    data = {
+        "spec_id": spec_id, "status": status, "blocked_reason": None,
+        "priority": "p1", "kind": "tech", "transitions": [], "version": 1,
+        "started_at": None, "finished_at": None, "pueue_id": None,
+        "allowed_files_hash": None, "updated_at": None, "updated_by": "test",
+    }
+    yaml_path = lc_dir / f"{spec_id}.yaml"
+    yaml_path.write_text(yaml.safe_dump(data, default_flow_style=False, allow_unicode=True))
+    _git(repo, "add", f"ai/lifecycle/{spec_id}.yaml")
+    _git(repo, "commit", "-q", "-m", "chore: lifecycle test-seed")
+
+
 def _make_project(tmp_path: Path, spec_id: str, allowed_files: list[str]) -> Path:
     repo = tmp_path / "proj"
     repo.mkdir()
@@ -45,6 +73,9 @@ def _make_project(tmp_path: Path, spec_id: str, allowed_files: list[str]) -> Pat
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
     (repo / "ai" / "features").mkdir(parents=True)
+    lc_dir = repo / "ai" / "lifecycle"
+    lc_dir.mkdir(parents=True)
+    (lc_dir / ".gitkeep").write_text("")
     allowed_block = "\n".join(f"- `{p}`" for p in allowed_files) or "(none)"
     spec_body = f"""# {spec_id}
 
@@ -62,10 +93,8 @@ def _make_project(tmp_path: Path, spec_id: str, allowed_files: list[str]) -> Pat
     (repo / backlog_rel).write_text(
         f"| ID | Title | Status | P |\n|---|---|---|---|\n| {spec_id} | demo | in_progress | P1 |\n"
     )
-    # Commit spec + backlog + README in one init commit so _read_head_blob
-    # finds them in git HEAD (not just on disk).
     (repo / "README.md").write_text("init\n")
-    _git(repo, "add", "README.md", spec_rel, backlog_rel)
+    _git(repo, "add", "README.md", spec_rel, backlog_rel, "ai/lifecycle/.gitkeep")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
 
@@ -94,16 +123,6 @@ def _seed_task(project_id: str, label: str, pueue_id: int) -> None:
         )
 
 
-def _head_file(repo: Path, rel: str) -> str | None:
-    """Read a file's content from git HEAD (not the working tree)."""
-    r = subprocess.run(
-        ["git", "-C", str(repo), "show", f"HEAD:{rel}"],
-        capture_output=True,
-        text=True,
-    )
-    return r.stdout if r.returncode == 0 else None
-
-
 def _suppress_push(monkeypatch):
     """Don't actually `git push origin develop` from tests (no remote)."""
     real_run = subprocess.run
@@ -128,14 +147,15 @@ def test_ec8_demote_when_no_impl_commits(tmp_path, tmp_db, monkeypatch):
     _commit(repo, "docs/note.md", "n\n", "docs: note")
     _suppress_push(monkeypatch)
 
+    # Pre-seed lifecycle so write_lifecycle(existing=...) path stores blocked_reason
+    _seed_lifecycle_yaml(repo, spec_id)
+
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=42)
 
-    spec_text = _head_file(repo, f"ai/features/{spec_id}.md") or ""
-    backlog_text = _head_file(repo, "ai/backlog.md") or ""
-    assert "**Status:** blocked" in spec_text
-    assert "**Blocked Reason:** no_implementation_commits" in spec_text
-    assert "| blocked |" in backlog_text
-    assert "| done |" not in backlog_text
+    data = lifecycle.read_lifecycle(str(repo), spec_id)
+    assert data is not None, "lifecycle.yaml must be written"
+    assert data["status"] == "blocked"
+    assert "no_implementation_commits" in (data.get("blocked_reason") or "")
 
 
 # --- EC-9 --------------------------------------------------------------------
@@ -149,41 +169,36 @@ def test_ec9_happy_path_with_impl_commit(tmp_path, tmp_db, monkeypatch):
     _commit(repo, "src/x.py", "y=2\n", "feat: x")
     _suppress_push(monkeypatch)
 
+    _seed_lifecycle_yaml(repo, spec_id)
+
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=43)
 
-    spec_text = _head_file(repo, f"ai/features/{spec_id}.md") or ""
-    backlog_text = _head_file(repo, "ai/backlog.md") or ""
-    assert "**Status:** done" in spec_text
-    assert "**Blocked Reason:**" not in spec_text
-    assert "| done |" in backlog_text
+    data = lifecycle.read_lifecycle(str(repo), spec_id)
+    assert data is not None, "lifecycle.yaml must be written"
+    assert data["status"] == "done"
 
 
 # --- EC-10 -------------------------------------------------------------------
 
 
 def test_ec10_blocked_overwrite_protection_compatible(tmp_path, tmp_db, monkeypatch):
-    """If autopilot already wrote spec='blocked' (real reason), guard runs and
-    flips target to blocked too; existing spec-blocked guard then short-circuits
-    to resync. Net result: spec stays blocked, backlog resyncs to blocked.
+    """lifecycle pre-seeded as blocked → verify_status_sync(target=done) keeps it blocked.
+
+    Guard A in verify_status_sync: if existing_status == 'blocked' and target == 'done',
+    skip mutation. Net result: lifecycle stays blocked.
     """
     spec_id = "TECH-996"
     repo = _make_project(tmp_path, spec_id, ["src/x.py"])
-    spec_path = repo / "ai" / "features" / f"{spec_id}.md"
-    # Autopilot pre-wrote blocked into git HEAD (as it would via edit tools in prod).
-    # commit_blocked must be in HEAD so _read_head_blob sees it.
-    blocked_body = spec_path.read_text().replace("in_progress", "blocked")
-    _commit(repo, f"ai/features/{spec_id}.md", blocked_body, "chore: autopilot blocked")
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=44)
     time.sleep(1.1)
-    # Also commit a real allowed-file change so impl-guard passes, isolating
-    # the spec-blocked-protection branch (lines 1436+).
     _commit(repo, "src/x.py", "y=2\n", "feat: x")
     _suppress_push(monkeypatch)
 
+    # Pre-seed lifecycle.yaml as blocked via normal commit so it survives later writes
+    _seed_lifecycle_yaml_with_status(repo, spec_id, "blocked")
+
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=44)
 
-    spec_text = _head_file(repo, f"ai/features/{spec_id}.md") or ""
-    backlog_text = _head_file(repo, "ai/backlog.md") or ""
-    assert "**Status:** blocked" in spec_text
-    assert "**Status:** done" not in spec_text
-    assert "| blocked |" in backlog_text
+    data = lifecycle.read_lifecycle(str(repo), spec_id)
+    assert data is not None
+    assert data["status"] == "blocked"

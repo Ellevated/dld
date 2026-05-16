@@ -147,100 +147,437 @@ def scan_queued(repo_dir):
 
 ---
 
-## Tasks
+## Drift Log
 
-### Task 1: `scripts/vps/lifecycle.py` — new module (~150 LOC)
+**Checked:** 2026-05-16 (plan agent)
+**Result:** no_drift
 
-**API:**
-- `read_lifecycle(repo_dir, spec_id) -> dict | None`
-- `write_lifecycle(repo_dir, spec_id, status, *, reason=None, by="callback", pueue_id=None, allowed_files_hash=None)` — atomic plumbing commit
-- `create_initial(repo_dir, spec_id, priority, kind)` — bootstrap для новой spec.md
-- `list_by_status(repo_dir, status: str|set[str]) -> list[dict]`
-- `assert_clean_lifecycle_tree(repo_dir)` — startup invariant
-- `reconcile_orphans(repo_dir, pueue_alive_ids: set[int])` — startup reconcile
+### Verified References
 
-**Invariants:**
-- Atomic via `GIT_INDEX_FILE` + CAS `update-ref` + commit-tree (external scout pattern)
-- Never modifies working tree
-- Retries CAS up to 3 times on lost-race
-- Version field is monotonic
+| Reference in spec | Actual location | Status |
+|---|---|---|
+| `callback.py:594,597` (`_DLD_MARKER_START_RE`, `_DLD_MARKER_END_RE` imports) | `callback.py:594-598` (`from marker_utils import ... as _DLD_MARKER_END_RE / _DLD_MARKER_START_RE`) | OK |
+| `callback.py:580` (`_resync_backlog_to_spec`) | def at line 545; call site for backlog commit at line 580 | OK |
+| `callback.py:825` (`_append_blocked_reason`) | def at line 777; `_git_commit_push` call at line 825 | OK |
+| `verify_status_sync` ~284 LOC | def at line 1333, runs through 1614+ (~280 LOC, matches spec) | OK |
+| `marker_utils.py` 117 LOC | exact 117 LOC (file ends at line 117, blank trailing line) | OK |
+| `tests/test_marker_utils.py` 118 LOC | 118 LOC | OK |
+| `tests/test_orchestrator_autostash_marker.py` 134 LOC | 134 LOC | OK |
+| orchestrator `git_pull` autostash ~81 LOC | def at line 216; autostash block lines 244-293 (~50 LOC; spec said "~81 LOC including comments" — within acceptable range) | OK (note: pure code ~50, with docstring/header ~80) |
+| orchestrator `_restore_callback_markers_from_head` 54 LOC | def at line 298, ends ~349 (~52 LOC) | OK |
+| orchestrator `scan_backlog` regex `\|\s*(queued\|resumed)\s*\|` | line 489 exact match | OK |
+| `.claude/skills/spark/feature-mode.md` DLD-CALLBACK-MARKER blocks | lines 325-331 (Status + Blocked Reason), 375-389 (Allowed Files), 656-657 (regex SSOT) | OK |
+| `.claude/skills/spark/completion.md` allowlist linter | line 46 — needs Phase 5.5 SSOT update (E007/E008 removal) | NOTED (Task 7) |
+| ADR-018 in `.claude/rules/architecture.md` | present in table, supersession to ADR-023 planned | OK |
+| dependencies.md `marker_utils.py` entry | not present as its own section (BUG-974 entry in change log only) | NOTED — Task 9 cleanup is removal of BUG-974 reference + add lifecycle entry |
 
-### Task 2: `scripts/vps/callback.py` rewrite (`verify_status_sync` 284 LOC → ~40 LOC)
+### Changes to Spec
 
-Replace всё marker reading/writing с одним вызовом `lifecycle.write_lifecycle()`. Implementation guard остаётся (git-diff check). Удалить:
-- `_DLD_MARKER_START_RE`, `_DLD_MARKER_END_RE` (callback.py:594, 597)
-- `_resync_backlog_to_spec` (line 580)
-- `_append_blocked_reason` markdown editing (line 825) — теперь записывает `blocked_reason` в lifecycle.yaml
-- Marker extraction helpers
+- Renamed `## Tasks` → `## Implementation Plan` for autopilot consumption.
+- Task 10 (former Tests section) folded into Task 1 + Task 3 alongside their code.
+- Task 11 (rollout) renamed to "Operator Migration Rollout" and flagged OUT OF SCOPE for autopilot.
+- Added explicit dependency graph + acceptance criteria per task.
 
-**Sole-writer enforcement:** все 3 callsites записи Status (lines 1614, 580, 825) идут через `lifecycle.write_lifecycle()`. Никаких других вызовов `_git_commit_push` со Status content.
+### Allowed Files Check
 
-### Task 3: `scripts/vps/orchestrator.py` changes
+All paths in `## Allowed Files` confirmed to exist or to be valid new paths under existing directories. **Missing from Allowed Files but needed:**
 
-- `scan_backlog` → `lifecycle.list_by_status({"queued", "resumed"})`. Удалить regex `r"\|\s*(queued|resumed)\s*\|"`.
-- `scan_inbox` — **НЕ ТРОГАТЬ** (Hermes domain, орthogonal).
-- `git_pull`: убрать autostash (81 LOC) → `git pull --ff-only`. Если non-FF — лог WARN + skip cycle.
-- Удалить `_restore_callback_markers_from_head` (54 LOC).
-- Добавить startup: `lifecycle.assert_clean_lifecycle_tree()` + `lifecycle.reconcile_orphans()`.
-- Bootstrap: на каждом цикле, перед `scan_queued`, найти `ai/features/*.md` без `ai/lifecycle/*.yaml` → `lifecycle.create_initial()`.
+- `.claude/skills/spark/completion.md` — line 46 references DLD-CALLBACK-MARKER (Phase 5.5 SSOT). Task 7 must touch this. **ACTION:** added to Allowed Files block (see Task 7 note).
+- `scripts/vps/tests/test_orchestrator_git_pull.py` — may need update if ff-only changes break existing assertions. **ACTION:** added to Allowed Files (Task 3).
+- `~/.claude/projects/-root/memory/dld-orchestrator.md` — out of repo, operator-manual update (see §6, §7). Documented in DoD but not in Allowed Files (correct — not in this repo).
 
-### Task 4: `scripts/vps/render_backlog.py` — new (~80 LOC)
+---
 
-Render `ai/backlog.md` from `ai/lifecycle/*.yaml`. Group by section (current backlog.md headers сохранить). Вызывается callback'ом в том же atomic commit что и lifecycle update (best-effort — если render падает, лог WARN, не блокировать lifecycle write).
+## Implementation Plan
 
-### Task 5: `scripts/vps/migrate_backlog_to_lifecycle.py` — one-shot (~100 LOC)
+> **Routing:** R1 P0. Council already ran. Founder review required before dispatch (see "ACTION REQUIRED" above).
+> **Dependencies:** Task 1 is the root. Tasks 2–5 depend on Task 1. Task 6 (deletes) MUST run after Tasks 2 + 3 land. Tasks 7–9 (docs) can interleave. Task 10 (operator rollout) is OUT OF SCOPE for autopilot.
+> **Tests:** Test file `test_lifecycle.py` is created in Task 1 alongside the module. Integration tests for orchestrator changes (`test_orchestrator_lifecycle.py`) are created in Task 3 alongside the orchestrator changes. There is no separate "write tests" task — tests ship with the code that needs them.
 
-**Idempotent + dry-run + human gate (Devil mitigation):**
-1. Parse `ai/backlog.md` table rows → extract (spec_id, status, priority, kind)
-2. Parse `ai/features/{spec_id}*.md` → extract Status field + Blocked Reason если есть
-3. Cross-validate: backlog row status MUST match spec Status field. Mismatch → ERROR + manual review needed.
-4. Build YAML in-memory.
-5. **Dry-run by default:** print proposed yamls + diff to terminal. Exit 0.
-6. With `--commit` flag: write files to WT. Operator делает `git diff`, `git add ai/lifecycle/`, `git commit`. **No auto-commit.**
-7. Round-trip: после write, re-parse созданные yamls и сравнить status set с original. Mismatch → exit 1.
+---
 
-### Task 6: DELETE files / functions
+### Task 1: `scripts/vps/lifecycle.py` — new module + unit tests
 
-- `scripts/vps/marker_utils.py` — весь файл (117 LOC)
-- `scripts/vps/tests/test_marker_utils.py` (118 LOC)
-- `scripts/vps/tests/test_orchestrator_autostash_marker.py` (134 LOC)
-- callback `verify_status_sync` старая (284 LOC) — заменена на ~40
-- orchestrator `_restore_callback_markers_from_head` (54 LOC)
-- orchestrator autostash code в `git_pull` (~81 LOC) — заменена на ff-only check (~10 LOC)
-- TECH-169 circuit-breaker — **оставить как safety net** (не удалять, может пригодиться при unknown failure modes)
+**Files:**
+- Create: `scripts/vps/lifecycle.py` (~250 LOC including docstrings; if >400 LOC split into a package `lifecycle/{__init__,atomic,reconcile}.py`)
+- Create: `scripts/vps/tests/test_lifecycle.py` (Tests 1, 2, 3 from `## Tests`)
 
-### Task 7: Spec template update
-
-`.claude/skills/spark/feature-mode.md` template:
-- Удалить `DLD-CALLBACK-MARKER-START/END` блоки
-- Status секция теперь просто `## Lifecycle: ai/lifecycle/{spec_id}.yaml`
-- Allowed Files остаётся (нужен для implementation guard)
-
-### Task 8: `.claude/rules/architecture.md` — new ADR-023
-
-```markdown
-| ADR-023 | Lifecycle state SoT = git per-spec YAML | 2026-05 | См. dld-orchestrator.md§7 |
+**Public API (frozen contract — Tasks 2/3/4/5 depend on this):**
+```python
+def read_lifecycle(repo_dir, spec_id) -> dict | None: ...
+def write_lifecycle(
+    repo_dir, spec_id, status,
+    *, reason=None, by="callback", pueue_id=None, allowed_files_hash=None
+) -> None: ...
+def create_initial(repo_dir, spec_id, priority, kind) -> None: ...
+def list_by_status(repo_dir, status: str | set[str]) -> list[dict]: ...
+def assert_clean_lifecycle_tree(repo_dir) -> None: ...
+def reconcile_orphans(repo_dir, pueue_alive_ids: set[int]) -> list[str]: ...
 ```
 
-ADR text: state lives in `ai/lifecycle/{spec_id}.yaml`. Callback = single writer (enforced via `lifecycle.py` module API + CI check). Atomic plumbing commit via private `GIT_INDEX_FILE` + CAS `update-ref`. No-dirty-WT invariant убирает корень BUG-185.
+**Invariants (encoded as tests + runtime asserts):**
+1. Atomic — single `git update-ref` (CAS form) per `write_lifecycle()` call.
+2. Private `GIT_INDEX_FILE` — never reuses `.git/index`. Operator-staged files MUST NOT leak (Test 2).
+3. Working tree never touched — no `git add`, no `checkout`, no file write in WT.
+4. CAS retry: up to 3 attempts; on 3rd failure raise `LifecycleWriteRaceError`.
+5. `version` monotonic.
+6. YAML schema matches `## Architecture / YAML schema` block above.
 
-**Superseded:** ADR-018 (callback Status enforcement в markdown) — заменён ADR-023. Помечен `superseded by ADR-023`.
+**Implementation reference:** copy-paste from `## Architecture / Atomic plumbing commit` block (lines 71-97 of this spec). Add CAS-retry wrapper (3 attempts) around the `update-ref` call.
 
-### Task 9: `.claude/rules/dependencies.md` updates
+**TDD order — write tests first:**
+- Test 1 `test_concurrent_writes_no_loss` — see `## Tests` line 273.
+- Test 2 `test_operator_staged_file_does_not_leak` — see `## Tests` line 291.
+- Test 3 `test_dirty_wt_does_not_revert_callback_write` — see `## Tests` line 306. References `orchestrator.git_pull_ff_only` which lands in Task 3; mark `@pytest.mark.skip(reason="awaits Task 3 ff-only rename")` for now, unskip after Task 3 merges.
 
-Добавить `scripts/vps/lifecycle.py` секцию:
-- Uses: `pathlib`, `subprocess` (git), `yaml`
-- Used by: `callback.py`, `orchestrator.py`, `render_backlog.py`
+**Acceptance:**
+- [ ] `lifecycle.py` exports all 6 functions
+- [ ] Tests 1 + 2 pass; Test 3 skipped (awaits Task 3)
+- [ ] No file > 400 LOC
+- [ ] Module header docstring lists Uses + Used by
+- [ ] `LifecycleWriteRaceError` exception type defined
 
-Удалить `marker_utils.py` секцию. Обновить callback.py и orchestrator.py зависимости (убрать marker_utils, добавить lifecycle).
+---
 
-### Task 10: Tests (мин 3 новых, удалить 714 LOC старых)
+### Task 2: `scripts/vps/callback.py` rewrite — slim `verify_status_sync` (Depends on Task 1)
 
-См. ## Tests ниже.
+**Files:**
+- Modify: `scripts/vps/callback.py:1333-1614` (`verify_status_sync` 280 LOC → ~50 LOC)
+- Modify: `scripts/vps/callback.py:545-580` (DELETE `_resync_backlog_to_spec`)
+- Modify: `scripts/vps/callback.py:591-599` (DELETE `marker_utils` imports + `_DLD_MARKER_START_RE` / `_DLD_MARKER_END_RE` aliases)
+- Modify: `scripts/vps/callback.py:777-826` (REWRITE `_append_blocked_reason` to delegate to `lifecycle.write_lifecycle(..., reason=...)`; drop markdown-editing path)
+- Modify: `scripts/vps/tests/test_callback.py` (drop marker-related tests; keep impl-guard tests; add `test_callback_calls_lifecycle_write_once_per_terminal_status`)
 
-### Task 11: Migration rollout
+**New `verify_status_sync` shape:**
+```python
+def verify_status_sync(project_path, spec_id, target="done", pueue_id=None):
+    project_id = Path(project_path).name
+    start_wall = time.monotonic()
+    if is_circuit_open():
+        log.warning("CIRCUIT_OPEN: skip verify_status_sync(%s, %s)", spec_id, target)
+        db.record_decision(project_id, spec_id, "noop", "circuit_open", demoted=False)
+        return
 
-Pilot: dld проект. Один день наблюдения. Если re-dispatch loops == 0 за 24h — sweep остальные 9 проектов одной командой через autopilot per-project.
+    spec_file = _resolve_spec_file(project_path, spec_id)
+
+    # TECH-166/176 implementation guard — UNCHANGED logic, just rewires final write.
+    if target == "done" and pueue_id is not None and spec_file:
+        allowed = _parse_allowed_files(spec_file)
+        started_at = _get_started_at(int(pueue_id))
+        code_loc, test_loc, code_commits = _commit_stats(project_path, allowed, started_at)
+        if not _has_implementation_commits(project_path, allowed, started_at):
+            already_merged, hashes = _spec_has_merged_implementation(project_path, spec_id, allowed)
+            if already_merged:
+                guard_reason = f"already_merged:{','.join(hashes[:5])}" if hashes else "already_merged"
+                lifecycle.write_lifecycle(project_path, spec_id, "done", reason=guard_reason, pueue_id=pueue_id)
+                db.record_decision(project_id, spec_id, "auto_close", guard_reason, demoted=False)
+                _emit_audit(...)  # TECH-171 traceability preserved
+                return
+            guard_reason = "missing_allowed_files_section" if allowed is None else "no_implementation_commits"
+            lifecycle.write_lifecycle(project_path, spec_id, "blocked", reason=guard_reason, pueue_id=pueue_id)
+            db.record_decision(project_id, spec_id, "demote", guard_reason, demoted=True)
+            if db.count_demotes_since(CIRCUIT_WINDOW_MIN) > CIRCUIT_THRESHOLD:
+                _trip_circuit(project_id, spec_id, db.count_demotes_since(CIRCUIT_WINDOW_MIN))
+            _emit_audit(...)
+            return
+
+    # Spec-authority guards (v3.15.5/6) — now read from lifecycle.yaml, not markdown.
+    existing = lifecycle.read_lifecycle(project_path, spec_id)
+    if existing and existing.get("status") == "blocked" and target == "done":
+        log.info("STATUS_SYNC: %s blocked in lifecycle, skip done", spec_id)
+        _emit_audit(...)
+        return
+    if existing and existing.get("status") == "done" and target == "blocked":
+        log.info("STATUS_SYNC: %s already done, skip blocked", spec_id)
+        _emit_audit(...)
+        return
+
+    # Normal write.
+    lifecycle.write_lifecycle(project_path, spec_id, target, pueue_id=pueue_id)
+    db.record_decision(project_id, spec_id, "sync", "fixed", demoted=False)
+    _emit_audit(...)
+```
+
+**Sole-writer enforcement check:** after this task, `grep -n "_git_commit_push" scripts/vps/callback.py` must return zero lines that pass Status content (the helper itself may stay if used elsewhere, but no caller should pass spec/backlog content). Implementation-guard helpers (`_has_implementation_commits`, `_spec_has_merged_implementation`, `_parse_allowed_files`, `_get_started_at`, `_commit_stats`, `is_merged_to_develop`) STAY. Audit emit STAYS (TECH-171).
+
+**Acceptance:**
+- [ ] `verify_status_sync` ≤ 60 LOC
+- [ ] `_resync_backlog_to_spec` removed; `grep` returns 0
+- [ ] `_append_blocked_reason` either removed or contains only a `lifecycle.write_lifecycle()` delegation (zero markdown editing)
+- [ ] No `from marker_utils import ...` in callback.py
+- [ ] `pytest scripts/vps/tests/test_callback.py -v` — impl-guard tests pass, marker tests gone
+- [ ] No `_git_commit_push` call in callback.py carries Status content
+
+---
+
+### Task 3: `scripts/vps/orchestrator.py` changes + integration tests (Depends on Task 1)
+
+**Files:**
+- Modify: `scripts/vps/orchestrator.py:216-295` (`git_pull` — rip out autostash, replace with ff-only-or-skip)
+- Modify: `scripts/vps/orchestrator.py:298-349` (DELETE `_restore_callback_markers_from_head`, 52 LOC)
+- Modify: `scripts/vps/orchestrator.py:27` (DELETE `from marker_utils import merge_callback_markers`)
+- Modify: `scripts/vps/orchestrator.py:481-574` (RENAME `scan_backlog` → `scan_queued`; REPLACE regex `r"\|\s*(queued|resumed)\s*\|"` at line 489 with `lifecycle.list_by_status(project_dir, {"queued", "resumed"})`)
+- Modify: `scripts/vps/orchestrator.py:594-598` (`process_project` — add `bootstrap_new_specs(project_dir)` call before `scan_queued`)
+- Modify: orchestrator daemon entry point (find `main()` or equivalent) — add one-time `startup_reconcile(all_project_dirs)` call before main poll loop
+- Modify: `scripts/vps/tests/test_orchestrator_git_pull.py` — update assertions: no `stash push`/`stash pop`/marker restore expected
+- Modify: `scripts/vps/tests/test_orchestrator.py` — rename any `scan_backlog` references to `scan_queued`
+- Create: `scripts/vps/tests/test_orchestrator_lifecycle.py` (Tests 4, 5, 6 from `## Tests`)
+
+**New `git_pull` shape (replaces lines 216-295):**
+```python
+def git_pull(project_id, project_dir):
+    if not os.path.isdir(os.path.join(project_dir, ".git")):
+        return
+    if is_agent_running(project_id):
+        log.info("skip git pull — agent running: %s", project_id)
+        return
+    try:
+        pull = subprocess.run(
+            ["git", "-C", project_dir, "pull", "--ff-only", "origin", "develop"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if pull.returncode != 0:
+            log.warning("git pull (ff-only) failed for %s: %s — skip cycle",
+                        project_dir, (pull.stderr or "")[:200])
+    except subprocess.TimeoutExpired as exc:
+        log.warning("git_pull timeout for %s: %s", project_dir, exc)
+```
+
+**New `scan_queued` shape (replaces `scan_backlog` body):**
+```python
+def scan_queued(project_id, project_dir):
+    """Find first queued/resumed spec and dispatch autopilot."""
+    queued_list = lifecycle.list_by_status(project_dir, {"queued", "resumed"})
+    if not queued_list:
+        return False
+    # Pick first (caller may extend with priority sort later).
+    spec_id = queued_list[0]["spec_id"]
+    # ... preserve existing audit-log cutoff check (lines 503-526), slot
+    # acquisition (528-543), pueue_add (544-573) verbatim ...
+```
+
+**New `bootstrap_new_specs` (NEW, ~25 LOC):**
+```python
+def bootstrap_new_specs(project_dir):
+    features_dir = Path(project_dir) / "ai" / "features"
+    if not features_dir.is_dir():
+        return
+    for spec_md in features_dir.glob("*.md"):
+        m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*", spec_md.name)
+        if not m:
+            continue
+        spec_id = m.group(0)
+        if (Path(project_dir, f"ai/lifecycle/{spec_id}.yaml")).exists():
+            continue
+        priority, kind = _parse_priority_kind(spec_md)
+        lifecycle.create_initial(project_dir, spec_id, priority, kind)
+        log.info("BOOTSTRAP: created lifecycle.yaml for %s in %s", spec_id, project_dir)
+```
+
+**Startup reconcile (one-shot at daemon boot, BEFORE main loop):**
+```python
+def startup_reconcile(project_dirs):
+    alive = _get_live_pueue_ids()  # existing helper or wrap pueue status --json
+    for d in project_dirs:
+        lifecycle.assert_clean_lifecycle_tree(d)  # raises RuntimeError on dirty lifecycle/
+        lifecycle.reconcile_orphans(d, alive)
+```
+
+**Tests required:**
+- Test 4 `test_orphaned_in_progress_demoted_on_restart` — `## Tests` line 322.
+- Test 5 `test_dirty_lifecycle_aborts_orchestrator_startup` — `## Tests` line 334.
+- Test 6 `test_bootstrap_creates_lifecycle_for_new_spec` — `## Tests` line 344.
+- Unskip Test 3 from Task 1 (rename `git_pull_ff_only` reference if needed — actual function is `git_pull` post-rewrite).
+
+**Acceptance:**
+- [ ] `_restore_callback_markers_from_head` removed; `grep` returns 0
+- [ ] `merge_callback_markers` import in orchestrator.py removed
+- [ ] `git_pull` ≤ 25 LOC, no `stash` calls
+- [ ] `scan_queued` exists; `scan_backlog` and the markdown regex removed
+- [ ] `bootstrap_new_specs` called from `process_project` before `scan_queued`
+- [ ] `assert_clean_lifecycle_tree` called once at daemon startup
+- [ ] Tests 4, 5, 6 pass
+- [ ] Updated `test_orchestrator_git_pull.py` passes (no stash assertions)
+
+---
+
+### Task 4: `scripts/vps/render_backlog.py` — auto-render reader (Depends on Task 1)
+
+**Files:**
+- Create: `scripts/vps/render_backlog.py` (~120 LOC)
+- Create: `scripts/vps/tests/test_render_backlog.py` (~80 LOC)
+
+**Contract:** Pure function `render_backlog(repo_dir) -> str`. Reads `ai/lifecycle/*.yaml`, groups by priority + kind, renders markdown matching current `ai/backlog.md` section/table structure. Best-effort hook in `lifecycle.write_lifecycle()` (already covered in Task 1 skeleton):
+```python
+# Inside lifecycle.write_lifecycle, after staging YAML blob:
+try:
+    backlog_text = render_backlog.render_backlog(repo_dir)
+    backlog_blob = run(["git", "hash-object", "-w", "--stdin"],
+                       input=backlog_text.encode(), env=env, cwd=repo_dir).stdout.strip()
+    run(["git", "update-index", "--cacheinfo", f"100644,{backlog_blob},ai/backlog.md"],
+        cwd=repo_dir, env=env)
+except Exception as exc:
+    log.warning("render_backlog failed (lifecycle write continues): %s", exc)
+```
+
+**Tests:**
+- `test_render_matches_format` — golden file comparison with checked-in fixture.
+- `test_render_skips_corrupt_yaml` — poison one yaml → returns markdown for the rest with WARN.
+- `test_render_round_trip` — render → write → re-parse → status set matches input.
+
+**Acceptance:**
+- [ ] `render_backlog(repo_dir)` returns string matching current format
+- [ ] All 3 tests pass
+- [ ] Render failure does NOT block lifecycle write (proven by Task 1's integration test or via a Task 4 test)
+
+---
+
+### Task 5: `scripts/vps/migrate_backlog_to_lifecycle.py` — one-shot migration (Depends on Task 1)
+
+**Files:**
+- Create: `scripts/vps/migrate_backlog_to_lifecycle.py` (~150 LOC)
+- Create: `scripts/vps/tests/test_migrate_backlog.py` (~100 LOC)
+
+**Contract (Devil mitigation):**
+1. CLI: `python3 migrate_backlog_to_lifecycle.py [--commit] [--repo PATH]`.
+2. Parse `ai/backlog.md` rows → `(spec_id, status, priority, kind)`.
+3. Parse `ai/features/{spec_id}*.md` Status field + `**Blocked Reason:**` line.
+4. Cross-validate: backlog row status MUST equal spec Status. Mismatch → stderr ERROR + exit 2.
+5. Build per-spec YAML dict in memory.
+6. **Default: dry-run** — print proposed YAMLs + diff. Exit 0.
+7. **With `--commit`** — write YAMLs to WT only (no git commit). Operator commits manually.
+8. Round-trip self-test after `--commit`: re-read written YAMLs, compare status set. Mismatch → exit 1.
+9. Idempotent — re-running `--commit` after success is a no-op.
+
+**Acceptance:**
+- [ ] Dry-run touches nothing
+- [ ] `--commit` writes files, exits 0 on round-trip success
+- [ ] Mismatch → exit 2 with identifying message
+- [ ] Idempotent
+- [ ] 3 tests cover the above (happy, mismatch, idempotency)
+
+---
+
+### Task 6: DELETE retired modules + tests (Depends on Tasks 2 + 3)
+
+**Files:**
+- Delete: `scripts/vps/marker_utils.py` (117 LOC)
+- Delete: `scripts/vps/tests/test_marker_utils.py` (118 LOC)
+- Delete: `scripts/vps/tests/test_orchestrator_autostash_marker.py` (134 LOC)
+
+**Verification:**
+```bash
+grep -rn "marker_utils" scripts/                                  # 0 lines
+grep -rn "DLD_MARKER_START_RE\|DLD_MARKER_END_RE" scripts/        # 0 lines
+grep -rn "merge_callback_markers" scripts/                        # 0 lines
+grep -rn "_restore_callback_markers_from_head" scripts/           # 0 lines
+```
+
+**Preserve:** TECH-169 circuit-breaker (DB table, callback wiring, `--reset-circuit` CLI). Do not touch.
+
+**Acceptance:**
+- [ ] 3 files deleted
+- [ ] All 4 greps return 0
+- [ ] `./test fast` passes (no orphan imports)
+
+---
+
+### Task 7: Spec template + spark completion checklist
+
+**Files:**
+- Modify: `.claude/skills/spark/feature-mode.md` — delete DLD-CALLBACK-MARKER blocks at lines 325-331, 375-389, 656-657; replace Status section with: `## Lifecycle\n\nState lives in \`ai/lifecycle/{spec_id}.yaml\`. Do not edit manually — callback is the sole writer (ADR-023).`
+- Modify: `.claude/skills/spark/completion.md:46` — drop the `grep '<!-- DLD-CALLBACK-MARKER-START v1 -->' ai/features/{TASK_ID}*.md` clause from the Phase 5.5 checklist; KEEP the `## Allowed Files` heading check + `<!-- callback-allowlist v1 -->` marker check (still required for the implementation guard).
+- Modify (template sync, if files exist): `template/.claude/skills/spark/feature-mode.md` and `template/.claude/skills/spark/completion.md` — mirror the changes per `.claude/rules/template-sync.md`.
+
+**Acceptance:**
+- [ ] `grep -rn "DLD-CALLBACK-MARKER" .claude/skills/spark/` returns 0 matches
+- [ ] `## Allowed Files` heading + `<!-- callback-allowlist v1 -->` marker checks remain in completion.md
+- [ ] If `template/.claude/skills/spark/` exists, files synced
+
+---
+
+### Task 8: `.claude/rules/architecture.md` — ADR-023 + supersede ADR-018
+
+**Files:**
+- Modify: `.claude/rules/architecture.md` ADR table — annotate ADR-018 row with `(superseded by ADR-023)`; append:
+  ```
+  | ADR-023 | Lifecycle state SoT = git per-spec YAML | 2026-05 | См. dld-orchestrator.md§7 |
+  ```
+
+**Acceptance:**
+- [ ] ADR-023 row present
+- [ ] ADR-018 row marked `(superseded by ADR-023)`
+- [ ] No other rows altered
+
+---
+
+### Task 9: `.claude/rules/dependencies.md` — lifecycle entries
+
+**Files:**
+- Modify: `.claude/rules/dependencies.md` — add new section `## scripts/vps/lifecycle.py`:
+  - Uses: `pathlib`, `subprocess` (git plumbing), `yaml`, `tempfile`, `os`
+  - Used by: `callback.py`, `orchestrator.py`, `render_backlog.py`, `migrate_backlog_to_lifecycle.py`
+  - "When changing API, check": callback.py, orchestrator.py, render_backlog.py
+- Update existing `scripts/vps/callback.py` section — add `lifecycle.py` to Uses, remove any `marker_utils` reference (currently the BUG-974 row in change log mentions it).
+- Update existing `scripts/vps/orchestrator.py` section — add `lifecycle.py` to Uses, remove `marker_utils` mentions.
+- Append Last Update row: `| 2026-05-16 | Lifecycle SoT migration: added lifecycle.py + render_backlog.py + migrate_backlog_to_lifecycle.py; removed marker_utils (ARCH-186) | autopilot |`.
+
+**Acceptance:**
+- [ ] `grep -n "marker_utils" .claude/rules/dependencies.md` returns 0 matches
+- [ ] `lifecycle.py` section present
+- [ ] Last Update row appended
+
+---
+
+### Task 10 (OUT OF SCOPE for autopilot): Operator Migration Rollout
+
+This is **manual operator work**. Autopilot MUST NOT execute. See `## Migration Plan (приложение)` below.
+
+**Autopilot behavior if asked to run Task 10:** emit `BLOCKED: operator-manual rollout step` and stop.
+
+---
+
+### Dependency Graph
+
+```
+Task 1 (lifecycle.py + unit tests) ← ROOT
+  ├── Task 2 (callback rewrite)            ──┐
+  ├── Task 3 (orchestrator + integ tests)  ──┤
+  ├── Task 4 (render_backlog.py)             ├── Task 6 (deletes, gated on 2+3)
+  └── Task 5 (migrate script)              ──┘
+
+Task 7 (spark template)          — any time
+Task 8 (architecture.md ADR-023) — any time
+Task 9 (dependencies.md)         — any time
+
+Task 10 (rollout) — OPERATOR MANUAL — NOT FOR AUTOPILOT
+```
+
+### Execution Order for Autopilot
+
+`1 → 2 → 3 → 4 → 5 → 7 → 8 → 9 → 6 → STOP (handoff to operator for Task 10)`
+
+Task 6 runs last because it deletes test files; if it ran before Tasks 2/3 merged, in-flight tests would crash. Tasks 7/8/9 (docs) are sequenced before Task 6 for the same reason — keep deletes isolated to the end.
+
+### Allowed Files — Addendum (auto-detected by plan agent)
+
+Adding to `## Allowed Files` block above to cover the validated work:
+- `.claude/skills/spark/completion.md` (Task 7)
+- `template/.claude/skills/spark/feature-mode.md` (Task 7, if file exists)
+- `template/.claude/skills/spark/completion.md` (Task 7, if file exists)
+- `scripts/vps/tests/test_orchestrator_git_pull.py` (Task 3 updates assertions)
+- `scripts/vps/tests/test_orchestrator.py` (Task 3 renames scan_backlog → scan_queued)
+- `scripts/vps/tests/test_render_backlog.py` (Task 4 new)
+- `scripts/vps/tests/test_migrate_backlog.py` (Task 5 new)
+
+**Task 2 cleanup (discovered during execution):** the rewrite of `verify_status_sync` and deletion of `_apply_spec_status` / `_apply_backlog_status` / `_apply_blocked_reason` (old signature) / `_git_plumbing_commit` / `_read_head_blob` / marker helpers breaks downstream callback tests outside `scripts/vps/tests/`. Adding to scope:
+- `tests/unit/test_callback_helpers.py` (delete tests of removed `_apply_*` helpers; keep tests of helpers that remain)
+- `tests/unit/test_callback_implementation_guard.py` (update `_append_blocked_reason` callers to new signature `(project_path, spec_id, reason, pueue_id)`)
+- `tests/integration/test_callback_status_sync.py` (rewrite markdown assertions → `lifecycle.read_lifecycle()` checks)
+- `tests/integration/test_callback_no_impl_demote.py` (same — assertions against lifecycle, not markdown)
+- `tests/integration/test_callback_already_merged.py` (assertions against lifecycle.yaml)
+- `tests/integration/test_callback_feature_branch.py` (assertions against lifecycle.yaml)
+- `tests/integration/test_callback_plumbing_commit.py` (**delete entire file** — `_git_plumbing_commit` / `_read_head_blob` removed; lifecycle.py owns plumbing now, covered by `scripts/vps/tests/test_lifecycle.py` Test 1+2)
 
 ---
 
