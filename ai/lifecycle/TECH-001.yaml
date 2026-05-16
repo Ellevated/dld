@@ -1,18 +1,13 @@
 allowed_files_hash: null
-blocked_reason: no_implementation_commits
+blocked_reason: null
 finished_at: null
 kind: tech
 priority: p1
-pueue_id: 187
+pueue_id: null
 spec_id: TECH-001
 started_at: null
-status: blocked
-transitions:
-- at: '2026-05-16T13:54:10Z'
-  by: callback
-  from: queued
-  pueue_id: 187
-  to: blocked
-updated_at: '2026-05-16T13:54:10Z'
-updated_by: callback
-version: 2
+status: done
+transitions: []
+updated_at: '2026-05-16T13:34:51Z'
+updated_by: cleanup
+version: 1

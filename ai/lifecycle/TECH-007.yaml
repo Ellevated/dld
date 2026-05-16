@@ -6,8 +6,8 @@ priority: p1
 pueue_id: null
 spec_id: TECH-007
 started_at: null
-status: queued
+status: done
 transitions: []
 updated_at: '2026-05-16T13:34:46Z'
-updated_by: orchestrator
+updated_by: cleanup
 version: 1
