@@ -355,3 +355,39 @@ def reconcile_orphans(repo_dir, pueue_alive_ids: set) -> list:
                         reason="orphaned from crash", by="callback")
         reconciled.append(spec_id)
     return reconciled
+
+
+def now_iso() -> str:
+    """Public alias for _now_iso(). Returns current UTC time as ISO-8601 string."""
+    return _now_iso()
+
+
+def build_initial_yaml(
+    spec_id: str, *,
+    status: str, priority: str, kind: str,
+    blocked_reason: Optional[str] = None,
+    by: str = "migration",
+) -> str:
+    """Build YAML string for a new lifecycle entry (version=1, no transitions).
+
+    Encapsulates the schema construction so external tools (migrate, tests)
+    don't duplicate field lists.
+
+    Args:
+        spec_id: Spec identifier, e.g. "TECH-001".
+        status: Initial status string, e.g. "queued".
+        priority: Priority level, e.g. "p1".
+        kind: Spec kind, e.g. "tech".
+        blocked_reason: Optional block reason (None for non-blocked entries).
+        by: Origin tag for `updated_by` field. Default "migration"
+            (one-shot backlog→YAML migration). Other callers: "callback",
+            "spark", "manual".
+
+    Returns:
+        YAML string ready to write to ai/lifecycle/{spec_id}.yaml.
+    """
+    return _build_yaml_content(
+        spec_id, status, existing=None, reason=blocked_reason,
+        by=by, pueue_id=None, allowed_files_hash=None,
+        priority=priority, kind=kind,
+    )
