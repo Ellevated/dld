@@ -1,4 +1,4 @@
-# Feature: [TECH-973] Hermes intake contract — full status lifecycle + supervisory docs
+# Feature: [TECH-184] Hermes intake contract — full status lifecycle + supervisory docs
 <!-- DLD-CALLBACK-MARKER-START v1 -->
 **Status:** done | **Priority:** P1 | **Date:** 2026-05-14
 <!-- DLD-CALLBACK-MARKER-END -->
@@ -95,7 +95,7 @@ ONLY the files listed below may be modified during implementation.
 - `.claude/rules/dependencies.md` — rename OpenClaw → Hermes (modify)
 - `scripts/vps/tests/test_orchestrator.py` — regression for scan_inbox status gate (modify)
 - `ai/backlog.md` — add this task entry (modify)
-- `ai/features/TECH-973-2026-05-14-hermes-intake-contract.md` — this spec (NEW)
+- `ai/features/TECH-184-2026-05-14-hermes-intake-contract.md` — this spec (NEW)
 
 <!-- DLD-CALLBACK-MARKER-END -->
 

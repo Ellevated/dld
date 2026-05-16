@@ -1,11 +1,11 @@
-# ARCH-975 — Orchestrator Lifecycle State SoT (git per-spec YAML)
+# ARCH-186 — Orchestrator Lifecycle State SoT (git per-spec YAML)
 
 <!-- DLD-CALLBACK-MARKER-START v1 -->
-**Status:** blocked | **Priority:** P0 | **Risk:** R1 | **Date:** 2026-05-16
+**Status:** queued | **Priority:** P0 | **Risk:** R1 | **Date:** 2026-05-16
 <!-- DLD-CALLBACK-MARKER-END -->
 
 <!-- DLD-CALLBACK-MARKER-START v1 -->
-<!-- **Blocked Reason:** no_implementation_commits
+<!-- **Blocked Reason:** populated by callback.py when guard demotes to blocked -->
 <!-- DLD-CALLBACK-MARKER-END -->
 
 ## ⚠️ ACTION REQUIRED: HUMAN REVIEW BEFORE AUTOPILOT
@@ -20,9 +20,9 @@
 
 **Решение совета:** 3 эксперта (Security, Pragmatist, Product) отвергли GitHub Issues как SoT; независимо сошлись на Option D — git per-spec yaml. Architect остался единственным сторонником Issues. Detailed rationale + dissent в synthesis.md.
 
-**Корневая проблема:** lifecycle state (Status) задач хранится в `ai/backlog.md` table cells + `ai/features/{SPEC}.md` Status field внутри `DLD-CALLBACK-MARKER` блоков. Этот медиум — shared mutable text в git working tree, мутируется 6+ writers (orchestrator, callback, spark, planner, Hermes, manual) без storage-enforced invariant. За 2.5 месяца — 10+ фиксов вокруг одного контракта (TECH-166/168/169/172/177/181/182/BUG-974), каждый закрывал одну race и открывал другую.
+**Корневая проблема:** lifecycle state (Status) задач хранится в `ai/backlog.md` table cells + `ai/features/{SPEC}.md` Status field внутри `DLD-CALLBACK-MARKER` блоков. Этот медиум — shared mutable text в git working tree, мутируется 6+ writers (orchestrator, callback, spark, planner, Hermes, manual) без storage-enforced invariant. За 2.5 месяца — 10+ фиксов вокруг одного контракта (TECH-166/168/169/172/177/181/182/BUG-185), каждый закрывал одну race и открывал другую.
 
-**Последний эпизод (2026-05-15/16):** dowry:FTR-431 ×8, FTR-432 ×9, awardybot:TECH-965 ×10 циклов за ночь. BUG-974 фикс не сработал (0 строк `AUTOSTASH_CALLBACK_RESTORE` в логах).
+**Последний эпизод (2026-05-15/16):** dowry:FTR-431 ×8, FTR-432 ×9, awardybot:TECH-965 ×10 циклов за ночь. BUG-185 фикс не сработал (0 строк `AUTOSTASH_CALLBACK_RESTORE` в логах).
 
 ## Цель
 
@@ -222,7 +222,7 @@ Render `ai/backlog.md` from `ai/lifecycle/*.yaml`. Group by section (current bac
 | ADR-023 | Lifecycle state SoT = git per-spec YAML | 2026-05 | См. dld-orchestrator.md§7 |
 ```
 
-ADR text: state lives in `ai/lifecycle/{spec_id}.yaml`. Callback = single writer (enforced via `lifecycle.py` module API + CI check). Atomic plumbing commit via private `GIT_INDEX_FILE` + CAS `update-ref`. No-dirty-WT invariant убирает корень BUG-974.
+ADR text: state lives in `ai/lifecycle/{spec_id}.yaml`. Callback = single writer (enforced via `lifecycle.py` module API + CI check). Atomic plumbing commit via private `GIT_INDEX_FILE` + CAS `update-ref`. No-dirty-WT invariant убирает корень BUG-185.
 
 **Superseded:** ADR-018 (callback Status enforcement в markdown) — заменён ADR-023. Помечен `superseded by ADR-023`.
 
@@ -302,10 +302,10 @@ def test_operator_staged_file_does_not_leak(tmp_git_repo):
     assert "operator-wip.txt" in run(["git", "diff", "--cached", "--name-only"], cwd=tmp_git_repo).stdout
 ```
 
-### Test 3 (regression, BUG-974 scenario): autostash race impossible
+### Test 3 (regression, BUG-185 scenario): autostash race impossible
 ```python
 def test_dirty_wt_does_not_revert_callback_write(tmp_git_repo):
-    """Simulate BUG-974: dirty WT + callback write. Lifecycle.yaml в HEAD остаётся 'done' даже после следующего scan."""
+    """Simulate BUG-185: dirty WT + callback write. Lifecycle.yaml в HEAD остаётся 'done' даже после следующего scan."""
     # Setup: spec is queued
     lifecycle.create_initial(tmp_git_repo, "TECH-200", "p1", "tech")
     # Dirty up WT (orchestrator's typical mess)
@@ -315,7 +315,7 @@ def test_dirty_wt_does_not_revert_callback_write(tmp_git_repo):
     # Orchestrator next cycle (no autostash dance)
     orchestrator.git_pull_ff_only(tmp_git_repo)  # no-op if up-to-date
     queued = lifecycle.list_by_status(tmp_git_repo, "queued")
-    # BUG-974 would have showed TECH-200 here. Option D — never.
+    # BUG-185 would have showed TECH-200 here. Option D — never.
     assert "TECH-200" not in [s["spec_id"] for s in queued]
 ```
 
@@ -401,10 +401,10 @@ done
 ## Research Sources
 
 - `ai/.council/20260516-github-issues-task-sot/synthesis.md` — full council rationale
-- `ai/.spark/ARCH-975/scout-external.md` — git plumbing patterns, CAS update-ref, per-file YAML validation
-- `ai/.spark/ARCH-975/scout-codebase.md` — exact LOC counts, regex names, callsite map
-- `ai/.spark/ARCH-975/scout-patterns.md` — atomic write mechanism, three-level no-dirty-WT defense, reader patterns
-- `ai/.spark/ARCH-975/scout-devil.md` — edge cases mitigated (DA-1..4 index contamination, DA-12 bootstrap, DA-18 reconcile)
+- `ai/.spark/ARCH-186/scout-external.md` — git plumbing patterns, CAS update-ref, per-file YAML validation
+- `ai/.spark/ARCH-186/scout-codebase.md` — exact LOC counts, regex names, callsite map
+- `ai/.spark/ARCH-186/scout-patterns.md` — atomic write mechanism, three-level no-dirty-WT defense, reader patterns
+- `ai/.spark/ARCH-186/scout-devil.md` — edge cases mitigated (DA-1..4 index contamination, DA-12 bootstrap, DA-18 reconcile)
 - ADR-018 (.claude/rules/architecture.md) — будет superseded
-- BUG-974 — историческая попытка band-aid, удаляется в этом PR
+- BUG-185 — историческая попытка band-aid, удаляется в этом PR
 - beads, tick-md — industry validation of git-as-state-SoT pattern

@@ -105,7 +105,7 @@ The orchestrator parses these fields via `_parse_inbox_file` in
 ## Related
 
 - **TECH-181** — added the `scan_inbox` hard gate (orchestrator side).
-- **TECH-973** — this document + ADR-022 (Hermes-side contract).
+- **TECH-184** — this document + ADR-022 (Hermes-side contract).
 - **ADR-021** (`.claude/rules/architecture.md`) — Hermes intake gate.
 - **ADR-022** (`.claude/rules/architecture.md`) — Hermes is the only writer of `queued`.
 - `scripts/vps/orchestrator.py:315` — `scan_inbox()` implementation.

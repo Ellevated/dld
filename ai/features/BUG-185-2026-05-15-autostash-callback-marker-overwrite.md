@@ -1,4 +1,4 @@
-# Bug Fix: [BUG-974] Autostash silently overwrites fresh callback Status commits
+# Bug Fix: [BUG-185] Autostash silently overwrites fresh callback Status commits
 
 <!-- DLD-CALLBACK-MARKER-START v1 -->
 **Status:** done | **Priority:** P1 | **Date:** 2026-05-15
