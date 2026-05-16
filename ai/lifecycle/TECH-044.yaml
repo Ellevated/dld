@@ -1,0 +1,13 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: null
+kind: tech
+priority: p0
+pueue_id: null
+spec_id: TECH-044
+started_at: null
+status: queued
+transitions: []
+updated_at: '2026-05-16T13:36:49Z'
+updated_by: orchestrator
+version: 1
