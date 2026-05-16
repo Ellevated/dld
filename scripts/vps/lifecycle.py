@@ -54,24 +54,29 @@ class LifecycleWriteRaceError(Exception):
     def __init__(self, spec_id: str, attempts: int = MAX_CAS_RETRIES) -> None:
         self.spec_id = spec_id
         self.attempts = attempts
-        super().__init__(
-            f"CAS race: write_lifecycle({spec_id!r}) failed after {attempts} attempts"
-        )
+        super().__init__(f"CAS race: write_lifecycle({spec_id!r}) failed after {attempts} attempts")
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _run(cmd: list, *, cwd: str, env: Optional[dict] = None,
-         input_text: Optional[str] = None) -> subprocess.CompletedProcess:
+def _run(
+    cmd: list, *, cwd: str, env: Optional[dict] = None, input_text: Optional[str] = None
+) -> subprocess.CompletedProcess:
     return subprocess.run(
-        cmd, cwd=cwd, env=env, input=input_text,
-        capture_output=True, text=True, check=False,
+        cmd,
+        cwd=cwd,
+        env=env,
+        input=input_text,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -93,39 +98,64 @@ def _read_yaml_from_head(repo_dir: str, spec_id: str) -> Optional[dict]:
 
 
 def _build_yaml_content(
-    spec_id: str, status: str, *,
-    existing: Optional[dict], reason: Optional[str], by: str,
-    pueue_id: Optional[int], allowed_files_hash: Optional[str],
-    priority: Optional[str] = None, kind: Optional[str] = None,
+    spec_id: str,
+    status: str,
+    *,
+    existing: Optional[dict],
+    reason: Optional[str],
+    by: str,
+    pueue_id: Optional[int],
+    allowed_files_hash: Optional[str],
+    priority: Optional[str] = None,
+    kind: Optional[str] = None,
 ) -> str:
     now = _now_iso()
     if existing is None:
         data: dict = {
-            "spec_id": spec_id, "status": status,
-            "priority": priority or "p1", "kind": kind or "tech",
-            "blocked_reason": None, "started_at": None, "finished_at": None,
+            "spec_id": spec_id,
+            "status": status,
+            "priority": priority or "p1",
+            "kind": kind or "tech",
+            "blocked_reason": None,
+            "started_at": None,
+            "finished_at": None,
             "allowed_files_hash": allowed_files_hash,
-            "updated_at": now, "updated_by": by,
-            "version": 1, "pueue_id": pueue_id, "transitions": [],
+            "updated_at": now,
+            "updated_by": by,
+            "version": 1,
+            "pueue_id": pueue_id,
+            "transitions": [],
         }
         return yaml.safe_dump(data, default_flow_style=False, allow_unicode=True)
 
     data = dict(existing)
     old_status = data.get("status", "unknown")
-    data.update({"status": status, "updated_at": now, "updated_by": by,
-                 "version": int(data.get("version", 0)) + 1})
+    data.update(
+        {
+            "status": status,
+            "updated_at": now,
+            "updated_by": by,
+            "version": int(data.get("version", 0)) + 1,
+        }
+    )
     if reason is not None:
         data["blocked_reason"] = reason
     if allowed_files_hash is not None:
         data["allowed_files_hash"] = allowed_files_hash
     if pueue_id is not None:
         data["pueue_id"] = pueue_id
-    if old_status in ("queued", "resumed") and status == "in_progress" and not data.get("started_at"):
+    if (
+        old_status in ("queued", "resumed")
+        and status == "in_progress"
+        and not data.get("started_at")
+    ):
         data["started_at"] = now
     if status == "done" and not data.get("finished_at"):
         data["finished_at"] = now
     transitions = list(data.get("transitions") or [])
-    transitions.append({"from": old_status, "to": status, "at": now, "by": by, "pueue_id": pueue_id})
+    transitions.append(
+        {"from": old_status, "to": status, "at": now, "by": by, "pueue_id": pueue_id}
+    )
     data["transitions"] = transitions
     return yaml.safe_dump(data, default_flow_style=False, allow_unicode=True)
 
@@ -143,32 +173,35 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
         if _run(["git", "read-tree", "HEAD"], cwd=repo_dir, env=env).returncode != 0:
             return False
 
-        r = _run(["git", "hash-object", "-w", "--stdin"],
-                 cwd=repo_dir, env=env, input_text=yaml_content)
+        r = _run(
+            ["git", "hash-object", "-w", "--stdin"], cwd=repo_dir, env=env, input_text=yaml_content
+        )
         if r.returncode != 0:
             return False
         blob_sha = r.stdout.strip()
 
         path_in_repo = f"{LIFECYCLE_DIR}/{spec_id}.yaml"
-        if _run(["git", "update-index", "--add", "--cacheinfo",
-                 f"100644,{blob_sha},{path_in_repo}"],
-                cwd=repo_dir, env=env).returncode != 0:
+        if (
+            _run(
+                [
+                    "git",
+                    "update-index",
+                    "--add",
+                    "--cacheinfo",
+                    f"100644,{blob_sha},{path_in_repo}",
+                ],
+                cwd=repo_dir,
+                env=env,
+            ).returncode
+            != 0
+        ):
             return False
 
-        # Best-effort: render backlog.md alongside lifecycle update.
-        # Failure must NOT block lifecycle write (spec acceptance criterion).
-        try:
-            import render_backlog  # local import to avoid top-level cycle
-            backlog_text = render_backlog.render_backlog(repo_dir)
-            bb = _run(["git", "hash-object", "-w", "--stdin"],
-                      cwd=repo_dir, env=env, input_text=backlog_text)
-            if bb.returncode == 0:
-                backlog_sha = bb.stdout.strip()
-                _run(["git", "update-index", "--add", "--cacheinfo",
-                      f"100644,{backlog_sha},ai/backlog.md"],
-                     cwd=repo_dir, env=env)
-        except Exception as exc:
-            log.warning("render_backlog failed (lifecycle write continues): %s", exc)
+        # NOTE: backlog.md auto-render disabled (2026-05-16 post-merge fix).
+        # The plain-table render strips founder's rich descriptions/sections
+        # (LAUNCH BLOCKERS / GROWTH / INTERNAL). backlog.md remains a
+        # manually-maintained file. lifecycle.yaml is SoT for status; render
+        # can be re-enabled in a follow-up spec that preserves structure.
 
         r = _run(["git", "write-tree"], cwd=repo_dir, env=env)
         if r.returncode != 0:
@@ -184,14 +217,12 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
         status_str = m.group(1) if m else "update"
         msg = f"lifecycle({spec_id}): {status_str}"
 
-        r = _run(["git", "commit-tree", tree_sha, "-p", head_sha, "-m", msg],
-                 cwd=repo_dir, env=env)
+        r = _run(["git", "commit-tree", tree_sha, "-p", head_sha, "-m", msg], cwd=repo_dir, env=env)
         if r.returncode != 0:
             return False
         new_commit = r.stdout.strip()
 
-        r = _run(["git", "update-ref", f"refs/heads/{branch}", new_commit, head_sha],
-                 cwd=repo_dir)
+        r = _run(["git", "update-ref", f"refs/heads/{branch}", new_commit, head_sha], cwd=repo_dir)
         if r.returncode != 0:
             log.debug("CAS lost for %s (branch %s)", spec_id, branch)
             return False
@@ -235,6 +266,7 @@ def _cas_loop(repo_dir: str, spec_id: str, branch: str, yaml_fn) -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def read_lifecycle(repo_dir, spec_id: str) -> Optional[dict]:
     """Read lifecycle YAML from HEAD (git object store). Returns parsed dict or None.
 
@@ -246,9 +278,14 @@ def read_lifecycle(repo_dir, spec_id: str) -> Optional[dict]:
 
 
 def write_lifecycle(
-    repo_dir, spec_id: str, status: str, *,
-    reason: Optional[str] = None, by: str = "callback",
-    pueue_id: Optional[int] = None, allowed_files_hash: Optional[str] = None,
+    repo_dir,
+    spec_id: str,
+    status: str,
+    *,
+    reason: Optional[str] = None,
+    by: str = "callback",
+    pueue_id: Optional[int] = None,
+    allowed_files_hash: Optional[str] = None,
 ) -> None:
     """
     Atomically write a lifecycle status update via git plumbing.
@@ -263,8 +300,13 @@ def write_lifecycle(
     def make_yaml():
         existing = _read_yaml_from_head(repo_dir, spec_id)
         return _build_yaml_content(
-            spec_id, status, existing=existing, reason=reason,
-            by=by, pueue_id=pueue_id, allowed_files_hash=allowed_files_hash,
+            spec_id,
+            status,
+            existing=existing,
+            reason=reason,
+            by=by,
+            pueue_id=pueue_id,
+            allowed_files_hash=allowed_files_hash,
         )
 
     _cas_loop(repo_dir, spec_id, branch, make_yaml)
@@ -277,9 +319,15 @@ def create_initial(repo_dir, spec_id: str, priority: str, kind: str) -> None:
 
     def make_yaml():
         return _build_yaml_content(
-            spec_id, "queued", existing=None, reason=None,
-            by="orchestrator", pueue_id=None, allowed_files_hash=None,
-            priority=priority, kind=kind,
+            spec_id,
+            "queued",
+            existing=None,
+            reason=None,
+            by="orchestrator",
+            pueue_id=None,
+            allowed_files_hash=None,
+            priority=priority,
+            kind=kind,
         )
 
     _cas_loop(repo_dir, spec_id, branch, make_yaml)
@@ -298,8 +346,7 @@ def list_by_status(repo_dir, status) -> list:
     repo_dir = str(repo_dir)
 
     # Get file list from HEAD object store
-    r = _run(["git", "ls-tree", "--name-only", f"HEAD:{LIFECYCLE_DIR}"],
-             cwd=repo_dir)
+    r = _run(["git", "ls-tree", "--name-only", f"HEAD:{LIFECYCLE_DIR}"], cwd=repo_dir)
     if r.returncode == 0:
         names = sorted(n for n in r.stdout.splitlines() if n.endswith(".yaml"))
         results = []
@@ -351,8 +398,7 @@ def reconcile_orphans(repo_dir, pueue_alive_ids: set) -> list:
             continue
         spec_id = data["spec_id"]
         log.info("reconcile_orphans: demoting %s (pueue_id=%s)", spec_id, pueue_id)
-        write_lifecycle(repo_dir, spec_id, "queued",
-                        reason="orphaned from crash", by="callback")
+        write_lifecycle(repo_dir, spec_id, "queued", reason="orphaned from crash", by="callback")
         reconciled.append(spec_id)
     return reconciled
 
@@ -363,8 +409,11 @@ def now_iso() -> str:
 
 
 def build_initial_yaml(
-    spec_id: str, *,
-    status: str, priority: str, kind: str,
+    spec_id: str,
+    *,
+    status: str,
+    priority: str,
+    kind: str,
     blocked_reason: Optional[str] = None,
     by: str = "migration",
 ) -> str:
@@ -387,7 +436,13 @@ def build_initial_yaml(
         YAML string ready to write to ai/lifecycle/{spec_id}.yaml.
     """
     return _build_yaml_content(
-        spec_id, status, existing=None, reason=blocked_reason,
-        by=by, pueue_id=None, allowed_files_hash=None,
-        priority=priority, kind=kind,
+        spec_id,
+        status,
+        existing=None,
+        reason=blocked_reason,
+        by=by,
+        pueue_id=None,
+        allowed_files_hash=None,
+        priority=priority,
+        kind=kind,
     )

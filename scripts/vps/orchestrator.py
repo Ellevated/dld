@@ -231,31 +231,50 @@ def git_pull(project_id: str, project_dir: str) -> None:
     try:
         pull = subprocess.run(
             ["git", "-C", project_dir, "pull", "--ff-only", "origin", "develop"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         if pull.returncode != 0:
             log.warning(
                 "git pull (ff-only) failed for %s: %s — skip cycle",
-                project_dir, (pull.stderr or "")[:200],
+                project_dir,
+                (pull.stderr or "")[:200],
             )
     except subprocess.TimeoutExpired as exc:
         log.warning("git_pull timeout for %s: %s", project_dir, exc)
 
 
 def bootstrap_new_specs(project_dir: str) -> None:
-    """Create ai/lifecycle/{spec_id}.yaml for any spec.md without one.
+    """Create ai/lifecycle/{spec_id}.yaml for any NEW Spark spec.md without one.
 
     Spark writes spec.md but does NOT touch ai/lifecycle/. Orchestrator
     bootstraps the YAML on first sight so subsequent scan_queued sees it.
+
+    Safety: only bootstrap if spec_id appears in current ai/backlog.md.
+    Archived/orphan spec.md files (features/ without backlog row) are skipped —
+    they're historical artifacts, not work to dispatch.
     """
     features_dir = Path(project_dir) / "ai" / "features"
     if not features_dir.is_dir():
         return
+    backlog_path = Path(project_dir) / "ai" / "backlog.md"
+    if not backlog_path.is_file():
+        return
+    backlog_text = backlog_path.read_text(errors="replace")
+    backlog_ids = set(re.findall(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*", backlog_text))
+    # findall returns list of group captures; need to extract full match instead
+    backlog_ids = set(
+        m.group(0) for m in re.finditer(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*", backlog_text)
+    )
     for spec_md in features_dir.glob("*.md"):
         m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*", spec_md.name)
         if not m:
             continue
         spec_id = m.group(0)
+        if spec_id not in backlog_ids:
+            # Orphan spec.md (not in backlog) — skip. Historical artifact.
+            continue
         # Check HEAD (plumbing-based), not WT file — lifecycle.py writes via
         # git plumbing, so the yaml is in HEAD but never in working tree.
         if lifecycle.read_lifecycle(project_dir, spec_id) is not None:
@@ -263,8 +282,7 @@ def bootstrap_new_specs(project_dir: str) -> None:
         priority, kind = _parse_priority_kind(spec_md)
         try:
             lifecycle.create_initial(project_dir, spec_id, priority, kind)
-            log.info("BOOTSTRAP: created lifecycle.yaml for %s in %s",
-                     spec_id, project_dir)
+            log.info("BOOTSTRAP: created lifecycle.yaml for %s in %s", spec_id, project_dir)
         except Exception as exc:  # noqa: BLE001
             log.warning("BOOTSTRAP: failed for %s: %s", spec_id, exc)
 
@@ -279,8 +297,8 @@ def _parse_priority_kind(spec_md: Path) -> tuple:
     text = spec_md.read_text(errors="replace")[:2000]
     p_m = re.search(r"\*\*Priority:\*\*\s*([pP][012])", text)
     k_m = re.search(r"\*\*Kind:\*\*\s*(tech|ftr|bug|arch)", text, re.IGNORECASE)
-    priority = (p_m.group(1).lower() if p_m else "p1")
-    kind = (k_m.group(1).lower() if k_m else "tech")
+    priority = p_m.group(1).lower() if p_m else "p1"
+    kind = k_m.group(1).lower() if k_m else "tech"
     return priority, kind
 
 
@@ -299,8 +317,12 @@ def startup_reconcile() -> None:
         lifecycle.assert_clean_lifecycle_tree(pdir)  # raises on dirty
         reconciled = lifecycle.reconcile_orphans(pdir, alive)
         if reconciled:
-            log.warning("startup_reconcile: demoted %d orphans in %s: %s",
-                        len(reconciled), proj["project_id"], reconciled)
+            log.warning(
+                "startup_reconcile: demoted %d orphans in %s: %s",
+                len(reconciled),
+                proj["project_id"],
+                reconciled,
+            )
 
 
 def _parse_inbox_file(filepath: Path) -> dict:
