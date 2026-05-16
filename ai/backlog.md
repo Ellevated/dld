@@ -19,6 +19,7 @@
 | BUG-106 | queued | tech | 2026-05-16 | [spec](features/BUG-106-bughunt.md) |
 | TECH-001 | queued | tech | 2026-05-16 | [spec](features/TECH-001-split-autopilot.md) |
 | TECH-007 | queued | tech | 2026-05-16 | [spec](features/TECH-007-2026-01-24-translate-foundation-docs.md) |
+| TECH-008 | queued | tech | 2026-05-16 | [spec](features/TECH-008-2026-01-24-translate-architecture-docs.md) |
 | TECH-010 | queued | tech | 2026-05-16 | [spec](features/TECH-010-2026-01-24-translate-llm-workflow-docs.md) |
 | TECH-011 | queued | tech | 2026-05-16 | [spec](features/TECH-011-2026-01-24-translate-skills.md) |
 | TECH-023 | queued | tech | 2026-05-16 | [spec](features/TECH-023-2026-01-24-comparison-table-image.md) |
