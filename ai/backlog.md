@@ -16,6 +16,7 @@
 |----|--------|------|---------|------|
 | TECH-001 | queued | tech | 2026-05-16 | [spec](features/TECH-001-split-autopilot.md) |
 | TECH-007 | queued | tech | 2026-05-16 | [spec](features/TECH-007-2026-01-24-translate-foundation-docs.md) |
+| TECH-036 | queued | tech | 2026-05-16 | [spec](features/TECH-036-2026-01-29-research-enhanced-reflect.md) |
 | TECH-039 | queued | tech | 2026-05-16 | [spec](features/TECH-039-2026-01-29-reflect-scope-expansion.md) |
 | GROWTH-002 | blocked | ftr | 2026-05-16 | GROWTH-002 |
 | GROWTH-003 | blocked | ftr | 2026-05-16 | GROWTH-003 |
