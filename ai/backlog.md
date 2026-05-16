@@ -21,6 +21,7 @@
 
 | ID | Status | Kind | Updated | Spec |
 |----|--------|------|---------|------|
+| BUG-101 | queued | tech | 2026-05-16 | [spec](features/BUG-101-bughunt.md) |
 | BUG-106 | queued | tech | 2026-05-16 | [spec](features/BUG-106-bughunt.md) |
 | BUG-117 | queued | tech | 2026-05-16 | [spec](features/BUG-117-bughunt.md) |
 | TECH-001 | queued | tech | 2026-05-16 | [spec](features/TECH-001-split-autopilot.md) |
