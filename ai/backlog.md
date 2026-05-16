@@ -7,6 +7,7 @@
 
 | ID | Status | Kind | Updated | Spec |
 |----|--------|------|---------|------|
+| TECH-024 | queued | tech | 2026-05-16 | [spec](features/TECH-024-2026-01-26-pre-launch-fixes.md) |
 | GROWTH-001 | blocked | ftr | 2026-05-16 | GROWTH-001 |
 | BUG-121 | draft | bug | 2026-05-16 | [spec](features/BUG-121-2026-03-16-orchestrator-post-autopilot-phase-ownership.md) |
 
