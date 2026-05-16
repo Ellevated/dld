@@ -1,7 +1,7 @@
 # ARCH-186 — Orchestrator Lifecycle State SoT (git per-spec YAML)
 
 <!-- DLD-CALLBACK-MARKER-START v1 -->
-**Status:** queued | **Priority:** P0 | **Risk:** R1 | **Date:** 2026-05-16
+**Status:** done | **Priority:** P0 | **Risk:** R1 | **Date:** 2026-05-16
 <!-- DLD-CALLBACK-MARKER-END -->
 
 <!-- DLD-CALLBACK-MARKER-START v1 -->
