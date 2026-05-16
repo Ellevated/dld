@@ -1,11 +1,11 @@
 # ARCH-975 — Orchestrator Lifecycle State SoT (git per-spec YAML)
 
 <!-- DLD-CALLBACK-MARKER-START v1 -->
-**Status:** queued | **Priority:** P0 | **Risk:** R1 | **Date:** 2026-05-16
+**Status:** blocked | **Priority:** P0 | **Risk:** R1 | **Date:** 2026-05-16
 <!-- DLD-CALLBACK-MARKER-END -->
 
 <!-- DLD-CALLBACK-MARKER-START v1 -->
-<!-- **Blocked Reason:** populated by callback.py when guard demotes to blocked -->
+<!-- **Blocked Reason:** no_implementation_commits
 <!-- DLD-CALLBACK-MARKER-END -->
 
 ## ⚠️ ACTION REQUIRED: HUMAN REVIEW BEFORE AUTOPILOT
