@@ -1,13 +1,18 @@
 allowed_files_hash: null
-blocked_reason: null
+blocked_reason: no_implementation_commits
 finished_at: null
 kind: tech
 priority: p0
-pueue_id: null
+pueue_id: 2802
 spec_id: ARCH-001
 started_at: null
-status: queued
-transitions: []
-updated_at: '2026-05-16T13:37:02Z'
-updated_by: orchestrator
-version: 1
+status: blocked
+transitions:
+- at: '2026-05-16T13:40:48Z'
+  by: callback
+  from: queued
+  pueue_id: 2802
+  to: blocked
+updated_at: '2026-05-16T13:40:48Z'
+updated_by: callback
+version: 2

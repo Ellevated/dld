@@ -80,6 +80,7 @@
 | TECH-034 | queued | tech | 2026-05-16 | [spec](features/TECH-034-2026-01-26-used-by-section.md) |
 | TECH-037 | queued | tech | 2026-05-16 | [spec](features/TECH-037-2026-01-29-cross-task-memory-feed.md) |
 | TECH-038 | queued | tech | 2026-05-16 | [spec](features/TECH-038-2026-01-29-diary-records-successes.md) |
+| TECH-040 | queued | tech | 2026-05-16 | [spec](features/TECH-040-2026-01-29-bootstrap-exa-research.md) |
 | TECH-041 | queued | tech | 2026-05-16 | [spec](features/TECH-041-2026-01-29-bootstrap-three-expert-compression.md) |
 | TECH-045 | queued | tech | 2026-05-16 | [spec](features/TECH-045-2026-01-30-remove-placeholder-files.md) |
 | TECH-052 | queued | tech | 2026-05-16 | [spec](features/TECH-052-2026-01-30-expand-cspell-dictionary.md) |
