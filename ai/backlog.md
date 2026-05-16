@@ -36,6 +36,7 @@
 | TECH-047 | queued | tech | 2026-05-16 | [spec](features/TECH-047-2026-01-30-unify-hook-paths.md) |
 | TECH-048 | queued | tech | 2026-05-16 | [spec](features/TECH-048-2026-01-30-fix-changelog-versions.md) |
 | TECH-049 | queued | tech | 2026-05-16 | [spec](features/TECH-049-2026-01-30-remove-awardybot-references.md) |
+| TECH-050 | queued | tech | 2026-05-16 | [spec](features/TECH-050-2026-01-30-improve-npm-package.md) |
 | TECH-054 | queued | tech | 2026-05-16 | [spec](features/TECH-054-2026-01-30-safe-git-add-template.md) |
 | GROWTH-002 | blocked | ftr | 2026-05-16 | GROWTH-002 |
 | GROWTH-003 | blocked | ftr | 2026-05-16 | GROWTH-003 |
