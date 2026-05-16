@@ -52,6 +52,7 @@
 | TECH-051 | queued | tech | 2026-05-16 | [spec](features/TECH-051-2026-01-30-add-python-ci.md) |
 | TECH-054 | queued | tech | 2026-05-16 | [spec](features/TECH-054-2026-01-30-safe-git-add-template.md) |
 | TECH-056 | queued | tech | 2026-05-16 | [spec](features/TECH-056-2026-02-01-instinct-extraction-hook.md) |
+| TECH-079 | queued | tech | 2026-05-16 | [spec](features/TECH-079-2026-02-02-github-social-preview.md) |
 | GROWTH-002 | blocked | ftr | 2026-05-16 | GROWTH-002 |
 | GROWTH-003 | blocked | ftr | 2026-05-16 | GROWTH-003 |
 | GROWTH-004 | blocked | ftr | 2026-05-16 | GROWTH-004 |
