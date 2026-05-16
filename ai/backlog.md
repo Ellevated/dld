@@ -12,6 +12,7 @@
 | TECH-030 | queued | tech | 2026-05-16 | [spec](features/TECH-030-2026-01-26-gif-demo.md) |
 | TECH-044 | queued | tech | 2026-05-16 | [spec](features/TECH-044-2026-01-30-fix-wrong-repo-links.md) |
 | TECH-059 | queued | tech | 2026-05-16 | [spec](features/TECH-059-2026-02-01-python-hooks-tests.md) |
+| TECH-064 | queued | tech | 2026-05-16 | [spec](features/TECH-064-2026-02-01-fake-testimonial-fix.md) |
 | GROWTH-001 | blocked | ftr | 2026-05-16 | GROWTH-001 |
 | BUG-121 | draft | bug | 2026-05-16 | [spec](features/BUG-121-2026-03-16-orchestrator-post-autopilot-phase-ownership.md) |
 
