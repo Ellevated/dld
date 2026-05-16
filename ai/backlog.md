@@ -45,6 +45,7 @@
 | TECH-036 | queued | tech | 2026-05-16 | [spec](features/TECH-036-2026-01-29-research-enhanced-reflect.md) |
 | TECH-039 | queued | tech | 2026-05-16 | [spec](features/TECH-039-2026-01-29-reflect-scope-expansion.md) |
 | TECH-042 | queued | tech | 2026-05-16 | [spec](features/TECH-042-2026-01-29-unified-skill-writer.md) |
+| TECH-043 | queued | tech | 2026-05-16 | [spec](features/TECH-043-2026-01-30-fix-hooks-worktree.md) |
 | TECH-047 | queued | tech | 2026-05-16 | [spec](features/TECH-047-2026-01-30-unify-hook-paths.md) |
 | TECH-048 | queued | tech | 2026-05-16 | [spec](features/TECH-048-2026-01-30-fix-changelog-versions.md) |
 | TECH-049 | queued | tech | 2026-05-16 | [spec](features/TECH-049-2026-01-30-remove-awardybot-references.md) |
