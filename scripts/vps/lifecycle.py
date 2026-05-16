@@ -155,7 +155,20 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
                 cwd=repo_dir, env=env).returncode != 0:
             return False
 
-        # TASK 4: render_backlog hook will be added here
+        # Best-effort: render backlog.md alongside lifecycle update.
+        # Failure must NOT block lifecycle write (spec acceptance criterion).
+        try:
+            import render_backlog  # local import to avoid top-level cycle
+            backlog_text = render_backlog.render_backlog(repo_dir)
+            bb = _run(["git", "hash-object", "-w", "--stdin"],
+                      cwd=repo_dir, env=env, input_text=backlog_text)
+            if bb.returncode == 0:
+                backlog_sha = bb.stdout.strip()
+                _run(["git", "update-index", "--add", "--cacheinfo",
+                      f"100644,{backlog_sha},ai/backlog.md"],
+                     cwd=repo_dir, env=env)
+        except Exception as exc:
+            log.warning("render_backlog failed (lifecycle write continues): %s", exc)
 
         r = _run(["git", "write-tree"], cwd=repo_dir, env=env)
         if r.returncode != 0:
