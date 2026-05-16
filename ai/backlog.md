@@ -26,6 +26,7 @@
 | TECH-009 | queued | tech | 2026-05-16 | [spec](features/TECH-009-2026-01-24-translate-process-docs.md) |
 | TECH-010 | queued | tech | 2026-05-16 | [spec](features/TECH-010-2026-01-24-translate-llm-workflow-docs.md) |
 | TECH-011 | queued | tech | 2026-05-16 | [spec](features/TECH-011-2026-01-24-translate-skills.md) |
+| TECH-012 | queued | tech | 2026-05-16 | [spec](features/TECH-012-2026-01-24-translate-agents.md) |
 | TECH-013 | queued | tech | 2026-05-16 | [spec](features/TECH-013-2026-01-24-hero-readme.md) |
 | TECH-015 | queued | tech | 2026-05-16 | [spec](features/TECH-015-2026-01-24-faq-md.md) |
 | TECH-020 | queued | tech | 2026-05-16 | [spec](features/TECH-020-2026-01-24-example-autonomous-company.md) |
