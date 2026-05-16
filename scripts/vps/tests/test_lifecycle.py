@@ -2,7 +2,7 @@
 Unit tests for scripts/vps/lifecycle.py.
 
 Tests 1, 2 (concurrent + private index) run unconditionally.
-Test 3 (BUG-185 regression) is skipped pending Task 3 (ff-only pull rewrite).
+Test 3 (BUG-185 regression) is now active — Task 3 complete, autostash removed.
 
 Note: read_lifecycle and list_by_status read from HEAD (git object store), so
       working tree sync is not needed for read operations.
@@ -13,6 +13,7 @@ Note: read_lifecycle and list_by_status read from HEAD (git object store), so
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -116,19 +117,25 @@ def test_operator_staged_file_does_not_leak(tmp_git_repo):
 # Test 3 (spec line 633, BUG-185 regression): skipped pending Task 3
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="awaits Task 3 ff-only rename")
 def test_dirty_wt_does_not_revert_callback_write(tmp_git_repo):
     """Simulate BUG-185: dirty WT + callback write. Lifecycle.yaml in HEAD
     remains 'done' even after next scan."""
-    import orchestrator  # noqa: F401 — not yet refactored
+    import orchestrator  # noqa: E402
 
     lifecycle.create_initial(tmp_git_repo, "TECH-200", "p1", "tech")
     (tmp_git_repo / "ai" / "qa").mkdir(parents=True, exist_ok=True)
     (tmp_git_repo / "ai" / "qa" / "garbage.md").write_text("untracked")
     lifecycle.write_lifecycle(tmp_git_repo, "TECH-200", "done")
 
-    # Orchestrator next cycle (no autostash dance after Task 3)
-    orchestrator.git_pull_ff_only(tmp_git_repo)  # no-op if up-to-date
+    # Orchestrator next cycle: ff-only pull is a no-op when up-to-date.
+    # No autostash dance — ARCH-186 removed the stash path entirely.
+    with patch("orchestrator.subprocess.run") as mock_run:
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ""
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+        orchestrator.git_pull("test", str(tmp_git_repo))
 
     queued = lifecycle.list_by_status(tmp_git_repo, "queued")
     assert "TECH-200" not in [s["spec_id"] for s in queued]

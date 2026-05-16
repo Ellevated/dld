@@ -16,6 +16,12 @@ from unittest.mock import patch
 
 import pytest
 
+# ARCH-186: autostash + marker restore eliminated by lifecycle.py per-spec YAML.
+# Whole module skipped — file is DELETED in Task 6 (final retirement step).
+pytestmark = pytest.mark.skip(
+    reason="ARCH-186: autostash + marker restore removed; file deleted in Task 6"
+)
+
 VPS_DIR = str(Path(__file__).resolve().parent.parent)
 if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)

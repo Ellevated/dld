@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 Module: orchestrator
-Role: Main poll loop daemon — scan inbox, scan backlog, dispatch via pueue.
-Uses: db (import), subprocess (pueue CLI), signal, threading
+Role: Main poll loop daemon — scan inbox, scan queued lifecycle, dispatch via pueue.
+Uses: db (import), lifecycle (import), subprocess (pueue CLI), signal, threading
 Used by: systemd (dld-orchestrator.service)
 
 Replaces orchestrator.sh + inbox-processor.sh (ARCH-161).
+Post-ARCH-186: reads task queue from ai/lifecycle/*.yaml (not ai/backlog.md).
 """
 
 import atexit
@@ -24,7 +25,7 @@ from threading import Event
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
-from marker_utils import merge_callback_markers  # noqa: E402
+import lifecycle  # noqa: E402
 
 log = logging.getLogger("orchestrator")
 _stop = Event()
@@ -214,139 +215,92 @@ def is_agent_running(project_id: str) -> bool:
 
 
 def git_pull(project_id: str, project_dir: str) -> None:
-    """Pull develop branch. Skip if agent running or not a git repo.
+    """Pull develop branch via ff-only. Skip cycle if not fast-forward.
 
-    History:
-    - TECH-182 removed `rebase --autostash` after BUG-972/BUG-973: silent
-      `stash pop` conflicts dropped uncommitted callback writes. Pull then
-      became ff-only on clean tree → all 7 repos accumulated M-files and
-      never pulled (orchestrator log spammed "working tree dirty" indefinitely).
-    - Current: safe autostash. We stash explicitly, pull, then pop. If pop
-      conflicts, the stash is **left on the shelf** (never silently dropped)
-      and ERROR is logged with the stash message so the operator can
-      `git stash list && git stash pop` manually. No data loss path.
+    Post-ARCH-186: no autostash, no stash pop, no marker restore. The
+    no-dirty-WT invariant (assert_clean_lifecycle_tree at startup +
+    structural impossibility from lifecycle.py atomic plumbing) means
+    the WT is always clean when this runs. If pull fails (e.g. divergence),
+    skip the cycle and log — operator will resolve.
     """
     if not os.path.isdir(os.path.join(project_dir, ".git")):
         return
     if is_agent_running(project_id):
         log.info("skip git pull — agent running: %s", project_id)
         return
-
-    def _git(*a, **kw):
-        return subprocess.run(
-            ["git", "-C", project_dir] + list(a),
-            capture_output=True,
-            text=True,
-            **kw,
-        )
-
     try:
-        clean = _git("diff", "--quiet", timeout=30).returncode == 0
-        staged_clean = _git("diff", "--cached", "--quiet", timeout=30).returncode == 0
-        dirty = not (clean and staged_clean)
-
-        stash_ref: str | None = None
-        if dirty:
-            ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            stash_msg = f"orchestrator-autostash-{project_id}-{ts}"
-            r = _git("stash", "push", "-m", stash_msg, timeout=30)
-            if r.returncode != 0:
-                log.warning(
-                    "git stash push failed for %s: %s — skip pull this cycle",
-                    project_dir,
-                    (r.stderr or "")[:200],
-                )
-                return
-            combined = (r.stdout or "") + (r.stderr or "")
-            if "No local changes to save" in combined:
-                stash_ref = None
-            else:
-                stash_ref = stash_msg
-                log.info("autostash created: %s", stash_msg)
-
-        pull = _git("pull", "--ff-only", "origin", "develop", timeout=120)
+        pull = subprocess.run(
+            ["git", "-C", project_dir, "pull", "--ff-only", "origin", "develop"],
+            capture_output=True, text=True, timeout=120,
+        )
         if pull.returncode != 0:
             log.warning(
-                "git pull failed: %s — %s",
-                project_dir,
-                (pull.stderr or "")[:200],
+                "git pull (ff-only) failed for %s: %s — skip cycle",
+                project_dir, (pull.stderr or "")[:200],
             )
-
-        if stash_ref:
-            pop = _git("stash", "pop", timeout=30)
-            if pop.returncode != 0:
-                log.error(
-                    "git stash pop CONFLICT — stash KEPT on shelf as '%s' "
-                    "in %s. Operator: cd %s && git stash list && "
-                    "git stash pop (resolve conflicts manually). stderr=%s",
-                    stash_ref,
-                    project_dir,
-                    project_dir,
-                    (pop.stderr or "")[:300],
-                )
-            else:
-                log.info("autostash popped cleanly: %s", stash_ref)
-                # BUG-974: clean pop CAN silently revert callback Status
-                # commits when stash and HEAD touch the same DLD-CALLBACK-
-                # MARKER block. Force-restore HEAD content for every
-                # touched marker block. ADR-018: callback is sole writer.
-                _restore_callback_markers_from_head(project_dir, _git)
     except subprocess.TimeoutExpired as exc:
         log.warning("git_pull timeout for %s: %s", project_dir, exc)
 
 
-def _restore_callback_markers_from_head(project_dir, _git) -> None:
-    """Compare working tree vs HEAD for files touched by the stash pop;
-    for any DLD-CALLBACK-MARKER block whose body diverges, restore the
-    HEAD body. Idempotent; degrades open on parsing/structure mismatch.
+def bootstrap_new_specs(project_dir: str) -> None:
+    """Create ai/lifecycle/{spec_id}.yaml for any spec.md without one.
 
-    BUG-974: introduced to plug the no-conflict `git stash pop` revert path.
+    Spark writes spec.md but does NOT touch ai/lifecycle/. Orchestrator
+    bootstraps the YAML on first sight so subsequent scan_queued sees it.
     """
-    try:
-        diff = _git("diff", "--name-only", "HEAD", timeout=10)
-    except subprocess.TimeoutExpired:
-        log.warning("AUTOSTASH_CALLBACK_RESTORE: diff timeout — skip")
+    features_dir = Path(project_dir) / "ai" / "features"
+    if not features_dir.is_dir():
         return
-    if diff.returncode != 0:
-        return
-    for rel_path in diff.stdout.splitlines():
-        rel_path = rel_path.strip()
-        if not rel_path:
+    for spec_md in features_dir.glob("*.md"):
+        m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*", spec_md.name)
+        if not m:
             continue
+        spec_id = m.group(0)
+        # Check HEAD (plumbing-based), not WT file — lifecycle.py writes via
+        # git plumbing, so the yaml is in HEAD but never in working tree.
+        if lifecycle.read_lifecycle(project_dir, spec_id) is not None:
+            continue
+        priority, kind = _parse_priority_kind(spec_md)
         try:
-            head = _git("show", f"HEAD:{rel_path}", timeout=10)
-        except subprocess.TimeoutExpired:
+            lifecycle.create_initial(project_dir, spec_id, priority, kind)
+            log.info("BOOTSTRAP: created lifecycle.yaml for %s in %s",
+                     spec_id, project_dir)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("BOOTSTRAP: failed for %s: %s", spec_id, exc)
+
+
+def _parse_priority_kind(spec_md: Path) -> tuple:
+    """Extract Priority and Kind from spec markdown header (best-effort).
+
+    Returns ("p1", "tech") defaults if not found. Spec format:
+        **Priority:** P0|P1|P2
+        **Kind:** tech|ftr|bug|arch
+    """
+    text = spec_md.read_text(errors="replace")[:2000]
+    p_m = re.search(r"\*\*Priority:\*\*\s*([pP][012])", text)
+    k_m = re.search(r"\*\*Kind:\*\*\s*(tech|ftr|bug|arch)", text, re.IGNORECASE)
+    priority = (p_m.group(1).lower() if p_m else "p1")
+    kind = (k_m.group(1).lower() if k_m else "tech")
+    return priority, kind
+
+
+def startup_reconcile() -> None:
+    """One-shot at daemon boot: assert clean lifecycle WT + reconcile orphans.
+
+    For every project, abort if ai/lifecycle/ working-tree is dirty (uncommitted
+    drift = data loss risk). Then demote any in_progress lifecycle whose
+    pueue_id is not alive (crash recovery).
+    """
+    alive = get_live_pueue_ids() or set()
+    for proj in db.get_all_projects():
+        pdir = proj["path"]
+        if not os.path.isdir(os.path.join(pdir, "ai", "lifecycle")):
             continue
-        if head.returncode != 0:
-            # File is new (not in HEAD) — nothing to restore.
-            continue
-        head_text = head.stdout
-        wt_file = Path(project_dir) / rel_path
-        try:
-            wt_text = wt_file.read_text()
-        except OSError:
-            continue
-        if "DLD-CALLBACK-MARKER-START" not in wt_text and (
-            "DLD-CALLBACK-MARKER-START" not in head_text
-        ):
-            continue  # plain file — no markers either side, skip
-        merged = merge_callback_markers(head_text, wt_text)
-        if merged != wt_text:
-            try:
-                wt_file.write_text(merged)
-            except OSError as exc:
-                log.warning(
-                    "AUTOSTASH_CALLBACK_RESTORE: write failed for %s: %s",
-                    rel_path,
-                    exc,
-                )
-                continue
-            log.warning(
-                "AUTOSTASH_CALLBACK_RESTORE: %s — DLD-CALLBACK-MARKER "
-                "block restored from HEAD (stash pop tried to revert "
-                "callback write)",
-                rel_path,
-            )
+        lifecycle.assert_clean_lifecycle_tree(pdir)  # raises on dirty
+        reconciled = lifecycle.reconcile_orphans(pdir, alive)
+        if reconciled:
+            log.warning("startup_reconcile: demoted %d orphans in %s: %s",
+                        len(reconciled), proj["project_id"], reconciled)
 
 
 def _parse_inbox_file(filepath: Path) -> dict:
@@ -478,24 +432,19 @@ def scan_inbox(project_id: str, project_dir: str) -> int:
     return count
 
 
-def scan_backlog(project_id: str, project_dir: str) -> bool:
-    """Find first queued spec and dispatch autopilot. Returns True if dispatched."""
-    backlog = Path(project_dir) / "ai" / "backlog.md"
-    if not backlog.is_file():
+def scan_queued(project_id: str, project_dir: str) -> bool:
+    """Find first queued/resumed spec via lifecycle.yaml and dispatch autopilot.
+
+    Returns True if dispatched. Post-ARCH-186: reads ai/lifecycle/*.yaml
+    (HEAD-based), not ai/backlog.md (which is now an auto-rendered read-only view).
+    """
+    queued_list = lifecycle.list_by_status(project_dir, {"queued", "resumed"})
+    if not queued_list:
         return False
 
-    spec_id = None
-    for line in backlog.read_text().splitlines():
-        if re.search(r"\|\s*(queued|resumed)\s*\|", line, re.IGNORECASE):
-            # NB: trailing `[a-z]*` captures sub-spec suffixes (ARCH-176a/b/c/d).
-            # Without it `\d+` stops at the letter and the parent spec id is
-            # extracted, causing infinite-loop dispatch of the parent (v3.15.8).
-            m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*", line)
-            if m:
-                spec_id = m.group(0)
-                break
-    if not spec_id:
-        return False
+    # First match wins. (Priority sorting can be layered later; current
+    # backlog.md picked first textual match too.)
+    spec_id = queued_list[0]["spec_id"]
 
     # Skip dispatch if this spec was recently processed — avoids re-dispatch loops.
     # - blocked in last 30 min: guard demoted it, needs human intervention
@@ -592,10 +541,11 @@ def dispatch_night_review() -> None:
 
 
 def process_project(project_id: str, project_dir: str) -> None:
-    """Process one project: git pull, inbox, backlog, invariant check."""
+    """Process one project: git pull, inbox, lifecycle bootstrap, queued scan, invariant check."""
     git_pull(project_id, project_dir)
     scan_inbox(project_id, project_dir)
-    scan_backlog(project_id, project_dir)
+    bootstrap_new_specs(project_dir)
+    scan_queued(project_id, project_dir)
     state = db.get_project_state(project_id)
     if state and state.get("phase") == "qa_pending" and not state.get("current_task"):
         log.warning("qa_pending invariant: resetting %s to idle", project_id)
@@ -612,6 +562,13 @@ def main() -> None:
 
     poll_interval = int(os.environ.get("POLL_INTERVAL", "300"))
     log.info("orchestrator starting pid=%d poll=%ds", os.getpid(), poll_interval)
+
+    try:
+        sync_projects()  # ensure projects in DB before reconcile
+        startup_reconcile()
+    except Exception:
+        log.exception("startup_reconcile FATAL — aborting daemon")
+        return
 
     while not _stop.is_set():
         try:
