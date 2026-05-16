@@ -69,6 +69,7 @@
 | TECH-038 | queued | tech | 2026-05-16 | [spec](features/TECH-038-2026-01-29-diary-records-successes.md) |
 | TECH-041 | queued | tech | 2026-05-16 | [spec](features/TECH-041-2026-01-29-bootstrap-three-expert-compression.md) |
 | TECH-045 | queued | tech | 2026-05-16 | [spec](features/TECH-045-2026-01-30-remove-placeholder-files.md) |
+| TECH-052 | queued | tech | 2026-05-16 | [spec](features/TECH-052-2026-01-30-expand-cspell-dictionary.md) |
 | TECH-053 | queued | tech | 2026-05-16 | [spec](features/TECH-053-2026-01-30-fix-adr-dates.md) |
 | TECH-080 | queued | tech | 2026-05-16 | [spec](features/TECH-080-2026-02-02-terminal-demo-gif.md) |
 
