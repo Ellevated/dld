@@ -62,6 +62,7 @@
 | TECH-033 | queued | tech | 2026-05-16 | [spec](features/TECH-033-2026-01-26-producthunt-assets.md) |
 | TECH-037 | queued | tech | 2026-05-16 | [spec](features/TECH-037-2026-01-29-cross-task-memory-feed.md) |
 | TECH-041 | queued | tech | 2026-05-16 | [spec](features/TECH-041-2026-01-29-bootstrap-three-expert-compression.md) |
+| TECH-045 | queued | tech | 2026-05-16 | [spec](features/TECH-045-2026-01-30-remove-placeholder-files.md) |
 | TECH-053 | queued | tech | 2026-05-16 | [spec](features/TECH-053-2026-01-30-fix-adr-dates.md) |
 
 ## Done (last 30 days)
