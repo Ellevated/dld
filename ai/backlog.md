@@ -24,7 +24,9 @@
 
 ## P2 — Nice-to-have
 
-_no specs_
+| ID | Status | Kind | Updated | Spec |
+|----|--------|------|---------|------|
+| TECH-037 | queued | tech | 2026-05-16 | [spec](features/TECH-037-2026-01-29-cross-task-memory-feed.md) |
 
 ## Done (last 30 days)
 
