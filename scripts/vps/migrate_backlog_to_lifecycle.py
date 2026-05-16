@@ -170,9 +170,9 @@ def main() -> int:
                 # still shows queued/in_progress/draft, this is historical pollution
                 # from BUG-185 (autostash race) — backlog is canonical. Skip the
                 # mismatch error for done-state and trust backlog.
-                if entry["status"] == "done":
+                if entry["status"] in ("done", "blocked"):
                     print(
-                        f"NOTE: {spec_id} backlog=done spec={spec_status} — "
+                        f"NOTE: {spec_id} backlog={entry['status']} spec={spec_status} — "
                         f"trusting backlog (historical BUG-185 drift)",
                         file=sys.stderr,
                     )
