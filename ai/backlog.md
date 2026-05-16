@@ -41,6 +41,7 @@
 | TECH-023 | queued | tech | 2026-05-16 | [spec](features/TECH-023-2026-01-24-comparison-table-image.md) |
 | TECH-028 | queued | tech | 2026-05-16 | [spec](features/TECH-028-2026-01-26-cli-scaffolder.md) |
 | TECH-032 | queued | tech | 2026-05-16 | [spec](features/TECH-032-2026-01-26-discord-setup.md) |
+| TECH-035 | queued | tech | 2026-05-16 | [spec](features/TECH-035-2026-01-29-post-execution-verifier.md) |
 | TECH-036 | queued | tech | 2026-05-16 | [spec](features/TECH-036-2026-01-29-research-enhanced-reflect.md) |
 | TECH-039 | queued | tech | 2026-05-16 | [spec](features/TECH-039-2026-01-29-reflect-scope-expansion.md) |
 | TECH-047 | queued | tech | 2026-05-16 | [spec](features/TECH-047-2026-01-30-unify-hook-paths.md) |
