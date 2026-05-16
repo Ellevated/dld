@@ -41,6 +41,7 @@
 | TECH-021 | queued | tech | 2026-05-16 | [spec](features/TECH-021-2026-01-24-example-content-factory.md) |
 | TECH-022 | queued | tech | 2026-05-16 | [spec](features/TECH-022-2026-01-24-workflow-diagram.md) |
 | TECH-023 | queued | tech | 2026-05-16 | [spec](features/TECH-023-2026-01-24-comparison-table-image.md) |
+| TECH-027 | queued | tech | 2026-05-16 | [spec](features/TECH-027-2026-01-26-cicd-workflows.md) |
 | TECH-028 | queued | tech | 2026-05-16 | [spec](features/TECH-028-2026-01-26-cli-scaffolder.md) |
 | TECH-032 | queued | tech | 2026-05-16 | [spec](features/TECH-032-2026-01-26-discord-setup.md) |
 | TECH-035 | queued | tech | 2026-05-16 | [spec](features/TECH-035-2026-01-29-post-execution-verifier.md) |
