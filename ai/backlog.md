@@ -22,6 +22,7 @@
 | ID | Status | Kind | Updated | Spec |
 |----|--------|------|---------|------|
 | BUG-106 | queued | tech | 2026-05-16 | [spec](features/BUG-106-bughunt.md) |
+| BUG-117 | queued | tech | 2026-05-16 | [spec](features/BUG-117-bughunt.md) |
 | TECH-001 | queued | tech | 2026-05-16 | [spec](features/TECH-001-split-autopilot.md) |
 | TECH-003 | queued | tech | 2026-05-16 | [spec](features/TECH-003-2026-01-24-clean-claude-md-template.md) |
 | TECH-007 | queued | tech | 2026-05-16 | [spec](features/TECH-007-2026-01-24-translate-foundation-docs.md) |
