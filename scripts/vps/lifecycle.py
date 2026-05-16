@@ -312,15 +312,22 @@ def write_lifecycle(
     _cas_loop(repo_dir, spec_id, branch, make_yaml)
 
 
-def create_initial(repo_dir, spec_id: str, priority: str, kind: str) -> None:
-    """Bootstrap a new lifecycle.yaml (status=queued, version=1)."""
+def create_initial(
+    repo_dir, spec_id: str, priority: str, kind: str, status: str = "queued"
+) -> None:
+    """Bootstrap a new lifecycle.yaml (default status=queued, version=1).
+
+    `status` override is used by orchestrator.bootstrap_new_specs when the
+    spec is in the backlog DONE archive section — bootstrap as 'done' so it
+    never dispatches.
+    """
     repo_dir = str(repo_dir)
     branch = _current_branch(repo_dir)
 
     def make_yaml():
         return _build_yaml_content(
             spec_id,
-            "queued",
+            status,
             existing=None,
             reason=None,
             by="orchestrator",

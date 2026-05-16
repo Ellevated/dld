@@ -262,8 +262,14 @@ def bootstrap_new_specs(project_dir: str) -> None:
     if not backlog_path.is_file():
         return
     backlog_text = backlog_path.read_text(errors="replace")
-    backlog_ids = set(re.findall(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*", backlog_text))
-    # findall returns list of group captures; need to extract full match instead
+    # Active backlog rows: | ID | desc | status | priority | spec |
+    # Archive rows after "## ✅ DONE" header: | ID | desc | spec | (3 cols, implied done)
+    active_re = re.compile(
+        r"^\|\s*(?P<id>(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*)\s*\|"
+        r"[^|]+\|\s*(?P<status>queued|in_progress|blocked|done|resumed|draft)\s*\|",
+        re.MULTILINE,
+    )
+    active_status = {m.group("id"): m.group("status") for m in active_re.finditer(backlog_text)}
     backlog_ids = set(
         m.group(0) for m in re.finditer(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*", backlog_text)
     )
@@ -280,9 +286,18 @@ def bootstrap_new_specs(project_dir: str) -> None:
         if lifecycle.read_lifecycle(project_dir, spec_id) is not None:
             continue
         priority, kind = _parse_priority_kind(spec_md)
+        # Determine bootstrap status:
+        #   - parseable active row → use its status (typically 'queued' for new Spark)
+        #   - in backlog but archive/malformed → 'done' (historical, never dispatch)
+        status = active_status.get(spec_id, "done")
         try:
-            lifecycle.create_initial(project_dir, spec_id, priority, kind)
-            log.info("BOOTSTRAP: created lifecycle.yaml for %s in %s", spec_id, project_dir)
+            lifecycle.create_initial(project_dir, spec_id, priority, kind, status=status)
+            log.info(
+                "BOOTSTRAP: created lifecycle.yaml for %s status=%s in %s",
+                spec_id,
+                status,
+                project_dir,
+            )
         except Exception as exc:  # noqa: BLE001
             log.warning("BOOTSTRAP: failed for %s: %s", spec_id, exc)
 
