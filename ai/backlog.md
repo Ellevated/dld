@@ -41,6 +41,7 @@
 | ID | Status | Kind | Updated | Spec |
 |----|--------|------|---------|------|
 | TECH-004 | queued | tech | 2026-05-16 | [spec](features/TECH-004-2026-01-24-mcp-setup-instructions.md) |
+| TECH-005 | queued | tech | 2026-05-16 | [spec](features/TECH-005-2026-01-24-hooks-readme.md) |
 | TECH-006 | queued | tech | 2026-05-16 | [spec](features/TECH-006-2026-01-24-github-community-files.md) |
 | TECH-014 | queued | tech | 2026-05-16 | [spec](features/TECH-014-2026-01-24-comparison-md.md) |
 | TECH-016 | queued | tech | 2026-05-16 | [spec](features/TECH-016-2026-01-24-hackernews-post.md) |
