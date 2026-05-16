@@ -1,0 +1,13 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: null
+kind: ftr
+priority: p1
+pueue_id: null
+spec_id: GROWTH-002
+started_at: null
+status: blocked
+transitions: []
+updated_at: '2026-05-16T11:22:47Z'
+updated_by: migration
+version: 1

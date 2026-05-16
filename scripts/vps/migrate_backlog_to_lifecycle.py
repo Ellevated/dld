@@ -115,12 +115,18 @@ def _cmp_data(d: dict) -> dict:
 
 
 def _build_pair(
-    spec_id: str, status: str, priority: str, kind: str,
+    spec_id: str,
+    status: str,
+    priority: str,
+    kind: str,
     blocked_reason: Optional[str],
 ) -> tuple[str, dict]:
     """Return (yaml_string, parsed_dict) for one spec entry."""
     yaml_str = build_initial_yaml(
-        spec_id, status=status, priority=priority, kind=kind,
+        spec_id,
+        status=status,
+        priority=priority,
+        kind=kind,
         blocked_reason=blocked_reason,
     )
     return yaml_str, yaml.safe_load(yaml_str)
@@ -130,8 +136,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Migrate ai/backlog.md + ai/features/*.md to ai/lifecycle/*.yaml"
     )
-    parser.add_argument("--commit", action="store_true",
-                        help="Write YAML files (default: dry run)")
+    parser.add_argument("--commit", action="store_true", help="Write YAML files (default: dry run)")
     parser.add_argument("--repo", default=".", help="Repo root path (default: .)")
     args = parser.parse_args()
 
@@ -161,15 +166,28 @@ def main() -> int:
         if spec_file is not None:
             spec_status, blocked_reason = parse_spec(spec_file)
             if spec_status is not None and spec_status != entry["status"]:
-                mismatches.append(
-                    f"MISMATCH: {spec_id} backlog={entry['status']} "
-                    f"spec={spec_status}"
-                )
-                continue
+                # ARCH-186 migration tolerance: when backlog says done but spec.md
+                # still shows queued/in_progress/draft, this is historical pollution
+                # from BUG-185 (autostash race) — backlog is canonical. Skip the
+                # mismatch error for done-state and trust backlog.
+                if entry["status"] == "done":
+                    print(
+                        f"NOTE: {spec_id} backlog=done spec={spec_status} — "
+                        f"trusting backlog (historical BUG-185 drift)",
+                        file=sys.stderr,
+                    )
+                else:
+                    mismatches.append(
+                        f"MISMATCH: {spec_id} backlog={entry['status']} spec={spec_status}"
+                    )
+                    continue
 
         yaml_str, data = _build_pair(
-            spec_id, entry["status"], entry["priority"],
-            entry["kind"], blocked_reason,
+            spec_id,
+            entry["status"],
+            entry["priority"],
+            entry["kind"],
+            blocked_reason,
         )
         yaml_strings[spec_id] = yaml_str
         yaml_dicts[spec_id] = data
@@ -183,8 +201,7 @@ def main() -> int:
         for spec_id, yaml_str in yaml_strings.items():
             print(f"--- {spec_id}.yaml ---")
             print(yaml_str)
-        print(f"Would write {len(yaml_strings)} files. "
-              f"Run with --commit to apply.")
+        print(f"Would write {len(yaml_strings)} files. Run with --commit to apply.")
         return 0
 
     lifecycle_dir.mkdir(parents=True, exist_ok=True)
@@ -212,13 +229,9 @@ def main() -> int:
     # Round-trip self-test (WT read, no git commit yet)
     failed: list[str] = []
     for spec_id, data in yaml_dicts.items():
-        loaded = yaml.safe_load(
-            (lifecycle_dir / f"{spec_id}.yaml").read_text(encoding="utf-8"))
+        loaded = yaml.safe_load((lifecycle_dir / f"{spec_id}.yaml").read_text(encoding="utf-8"))
         if loaded is None or loaded.get("status") != data["status"]:
-            failed.append(
-                f"ROUND-TRIP FAILED: {spec_id} expected={data['status']} "
-                f"got={loaded}"
-            )
+            failed.append(f"ROUND-TRIP FAILED: {spec_id} expected={data['status']} got={loaded}")
 
     if failed:
         for msg in failed:
