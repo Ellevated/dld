@@ -28,6 +28,7 @@
 | ID | Status | Kind | Updated | Spec |
 |----|--------|------|---------|------|
 | TECH-037 | queued | tech | 2026-05-16 | [spec](features/TECH-037-2026-01-29-cross-task-memory-feed.md) |
+| TECH-041 | queued | tech | 2026-05-16 | [spec](features/TECH-041-2026-01-29-bootstrap-three-expert-compression.md) |
 
 ## Done (last 30 days)
 
