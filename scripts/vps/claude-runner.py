@@ -53,6 +53,12 @@ try:
 except ImportError:
     sys.exit("claude-agent-sdk not installed. Run: pip install claude-agent-sdk")
 
+# BUG-188 Layer 4: lazy import for telemetry (tests w/o VPS deps still run)
+try:
+    import db as _orch_db
+except ImportError:
+    _orch_db = None
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -110,6 +116,14 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         project_path,
     )
 
+    # Layer 2: capture subprocess CLI stderr via SDK callback (BUG-188)
+    stderr_lines: list[str] = []
+
+    def _stderr_collector(line: str) -> None:
+        # Cap at 200 lines / ~50KB to bound memory on misbehaving CLI
+        if len(stderr_lines) < 200:
+            stderr_lines.append(line)
+
     # Agent SDK options
     options = ClaudeAgentOptions(
         cwd=str(project_path),
@@ -132,6 +146,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
                 "trailing-whitespace,end-of-file-fixer,mixed-line-ending",
             ),
         },
+        stderr=_stderr_collector,
     )
 
     result_text = ""
@@ -148,6 +163,8 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         "cache_creation_5m_input_tokens": 0,
     }
     model_usage: dict = {}
+    result_received = False
+    result_is_error = False
 
     try:
         async for message in query(prompt=prompt, options=options):
@@ -174,11 +191,12 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
 
             # Track final result
             if isinstance(message, ResultMessage):
+                result_received = True
+                result_is_error = bool(getattr(message, "is_error", False))
                 result_text = getattr(message, "result", "") or result_text
                 turns = getattr(message, "num_turns", 0)
                 cost_usd = getattr(message, "total_cost_usd", 0.0) or 0.0
-                is_error = getattr(message, "is_error", False)
-                if is_error:
+                if result_is_error:
                     exit_code = 1
                 usage = getattr(message, "usage", None) or {}
                 if not isinstance(usage, dict):
@@ -219,21 +237,57 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         stderr = getattr(e, "stderr", None)
         if stderr:
             result_text = f"Process error: {e}\nSTDERR:\n{stderr}"
+        elif stderr_lines:
+            captured = "\n".join(stderr_lines[-100:])
+            result_text = f"Process error: {e}\nSTDERR (captured):\n{captured}"
         else:
             result_text = f"Process error: {e}"
     except Exception as e:
         # Catch SDK init timeouts ("Control request timeout: initialize")
         err_str = str(e)
-        stderr = getattr(e, "stderr", None)
-        if stderr:
-            err_str = f"{err_str}\nSTDERR:\n{stderr}"
-        if "timeout" in err_str.lower():
+        stderr_from_exc = getattr(e, "stderr", None)
+        if stderr_from_exc:
+            err_str = f"{err_str}\nSTDERR:\n{stderr_from_exc}"
+        elif stderr_lines:
+            # Layer 2: fall back to lines captured via SDK stderr callback
+            captured = "\n".join(stderr_lines[-100:])  # last 100 lines
+            err_str = f"{err_str}\nSTDERR (captured):\n{captured}"
+
+        if result_received and not result_is_error:
+            # BUG-188: SDK threw AFTER successful ResultMessage. Work is done
+            # (turns/cost/result_text already captured). Do NOT override
+            # exit_code to 1 — that would re-block an already-done spec
+            # and burn another $5+/run on retry.
+            logger.warning(
+                "SDK post-ResultMessage exception (work completed): %s",
+                err_str[:500],
+            )
+            # exit_code stays 0; result_text already populated from ResultMessage
+            # BUG-188 Layer 4: telemetry for SDK post-ResultMessage drift.
+            if _orch_db is not None:
+                try:
+                    captured_stderr = "\n".join(stderr_lines[-100:]) if stderr_lines else None
+                    _orch_db.log_sdk_post_result_error(
+                        project_id=project_name,
+                        task=task,
+                        turns=turns,
+                        cost_usd=cost_usd,
+                        error_msg=str(e)[:2000],
+                        stderr=captured_stderr,
+                    )
+                except Exception as log_exc:
+                    # Telemetry must never break the runner (ADR-004 fail-safe).
+                    logger.warning(
+                        "Failed to log sdk_post_result_error: %s", log_exc
+                    )
+        elif "timeout" in err_str.lower():
             logger.error("SDK init timeout: %s", e)
             exit_code = 124
+            result_text = err_str
         else:
             logger.error("SDK error: %s", e, exc_info=True)
             exit_code = 1
-        result_text = err_str
+            result_text = err_str
 
     # Cache hit rate: fraction of total input that came from cache read.
     # Denominator = direct input + cache creation + cache read (total paid input-ish).

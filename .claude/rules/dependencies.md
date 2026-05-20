@@ -77,12 +77,14 @@ Dependency map between project components.
 | callback.py | scripts/vps/callback.py | release_slot(), finish_task(), update_project_phase(), get_project_state() |
 | callback.py | scripts/vps/callback.py | record_decision(), count_demotes_since(), clear_decisions() (TECH-169) |
 | night-reviewer.sh | scripts/vps/night-reviewer.sh (FTR-147 Task 4) | CLI: save-finding, get-new-findings, update-phase |
+| claude-runner.py | scripts/vps/claude-runner.py | log_sdk_post_result_error() (BUG-188 Layer 4, lazy import) |
 
 ### When changing API, check
 
 - [ ] orchestrator.py
 - [ ] callback.py
 - [ ] night-reviewer.sh (CLI: save-finding / get-new-findings / update-phase)
+- [ ] claude-runner.py (log_sdk_post_result_error signature — BUG-188)
 
 ---
 
@@ -122,6 +124,8 @@ Dependency map between project components.
 | What | Where | Function |
 |------|-------|----------|
 | claude CLI | $CLAUDE_PATH or PATH | --print --output-format json --max-turns 30 |
+| claude_agent_sdk | pip dep 0.1.63 | query(), ClaudeAgentOptions(stderr=callback) (BUG-188 Layer 2) |
+| db.py | scripts/vps/db.py | log_sdk_post_result_error() — telemetry on post-result SDK exception (BUG-188 Layer 4, lazy import) |
 
 ### Used by (←)
 
@@ -392,3 +396,4 @@ Dependency map between project components.
 | 2026-05-04 | Spark spec template: DLD-CALLBACK-MARKER-START/END wraps Status + Allowed Files; Phase 5.5 SSOT extended with DLD_START_RE/DLD_END_RE + E007/E008 (TECH-175 Task 3) | coder |
 | 2026-05-15 | marker_utils.py shared regex/extractor; orchestrator autostash recovery restores callback Status from HEAD post-pop (BUG-185, formerly BUG-974) | autopilot |
 | 2026-05-16 | **ARCH-186 lifecycle SoT migration:** lifecycle.py (new, ~280 LOC) atomic git plumbing; callback.verify_status_sync upgraded to lifecycle.write_lifecycle (no markdown editing); orchestrator scan_queued + bootstrap_new_specs + assert_clean_lifecycle_tree + reconcile_orphans; render_backlog.py (new) markdown view; migrate_backlog_to_lifecycle.py (new, one-shot). DELETED: marker_utils.py (117), _restore_callback_markers_from_head (54), autostash dance (81), DLD-CALLBACK-MARKER blocks in spec template + Phase 5.5 E007/E008 rules. Supersedes ADR-018. Closes BUG-185. | autopilot (interactive) |
+| 2026-05-20 | **BUG-188:** claude-runner result_received/result_is_error tracking — post-result Exception no longer overrides exit_code=0 (Layer 1); public ClaudeAgentOptions.stderr callback captures subprocess CLI stderr (Layer 2); sdk_post_result_errors table + log_sdk_post_result_error helper (schema.sql + db.py, Layer 4); claude-runner wires telemetry inside post-result branch; autopilot SKILL.md adds early-exit detection step (Layer 3, both .claude/ and template/.claude/); ADR-024 documents exit_code contract. | autopilot |

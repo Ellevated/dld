@@ -6,7 +6,8 @@ Uses: sqlite3 (stdlib)
 Used by: orchestrator.py (get_all_projects, seed_projects_from_json, try_acquire_slot, log_task,
              update_project_phase, get_available_slots, get_occupied_slots),
          callback.py (release_slot, finish_task, update_project_phase),
-         night-reviewer.sh (via CLI: python3 db.py save-finding / get-new-findings / update-phase)
+         night-reviewer.sh (via CLI: python3 db.py save-finding / get-new-findings / update-phase),
+         claude-runner.py (log_sdk_post_result_error — BUG-188)
 """
 
 import os
@@ -25,6 +26,7 @@ def _ensure_migrations(conn: sqlite3.Connection) -> None:
 
     TECH-170: add task_log.branch column for feature-branch awareness.
     TECH-169: add callback_decisions table + indexes.
+    BUG-188: add sdk_post_result_errors table + index.
     """
     global _MIGRATIONS_APPLIED
     if _MIGRATIONS_APPLIED:
@@ -55,6 +57,26 @@ def _ensure_migrations(conn: sqlite3.Connection) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_callback_decisions_demoted_ts "
             "ON callback_decisions(demoted, ts)"
+        )
+    except sqlite3.OperationalError:
+        pass
+    # BUG-188: sdk_post_result_errors table for SDK post-ResultMessage diagnostics
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS sdk_post_result_errors ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+            "project_id TEXT NOT NULL,"
+            "task TEXT NOT NULL,"
+            "turns INTEGER,"
+            "cost_usd REAL,"
+            "error_msg TEXT,"
+            "stderr TEXT"
+            ")"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sdk_post_result_errors_ts "
+            "ON sdk_post_result_errors(ts)"
         )
     except sqlite3.OperationalError:
         pass
@@ -297,6 +319,32 @@ def clear_decisions(min_ago: int) -> int:
             (f"-{int(min_ago)} minutes",),
         )
         return cursor.rowcount or 0
+
+
+def log_sdk_post_result_error(
+    project_id: str,
+    task: str,
+    turns: int,
+    cost_usd: float,
+    error_msg: str,
+    stderr: Optional[str],
+) -> int:
+    """Record a post-ResultMessage SDK exception (BUG-188).
+
+    Called by claude-runner.py when the `result_received and not result_is_error`
+    branch fires (SDK threw AFTER successful ResultMessage). The runner does not
+    fail the task, but we still want telemetry so operators can spot drift.
+
+    Threshold-based alerting (>5/day) is a downstream concern.
+    """
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO sdk_post_result_errors "
+            "(project_id, task, turns, cost_usd, error_msg, stderr) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (project_id, task, turns, float(cost_usd or 0.0), error_msg, stderr),
+        )
+        return cursor.lastrowid or 0
 
 
 def seed_projects_from_json(projects: list[dict]) -> None:
