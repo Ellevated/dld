@@ -110,6 +110,14 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         project_path,
     )
 
+    # Layer 2: capture subprocess CLI stderr via SDK callback (BUG-188)
+    stderr_lines: list[str] = []
+
+    def _stderr_collector(line: str) -> None:
+        # Cap at 200 lines / ~50KB to bound memory on misbehaving CLI
+        if len(stderr_lines) < 200:
+            stderr_lines.append(line)
+
     # Agent SDK options
     options = ClaudeAgentOptions(
         cwd=str(project_path),
@@ -132,6 +140,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
                 "trailing-whitespace,end-of-file-fixer,mixed-line-ending",
             ),
         },
+        stderr=_stderr_collector,
     )
 
     result_text = ""
@@ -222,14 +231,21 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         stderr = getattr(e, "stderr", None)
         if stderr:
             result_text = f"Process error: {e}\nSTDERR:\n{stderr}"
+        elif stderr_lines:
+            captured = "\n".join(stderr_lines[-100:])
+            result_text = f"Process error: {e}\nSTDERR (captured):\n{captured}"
         else:
             result_text = f"Process error: {e}"
     except Exception as e:
         # Catch SDK init timeouts ("Control request timeout: initialize")
         err_str = str(e)
-        stderr = getattr(e, "stderr", None)
-        if stderr:
-            err_str = f"{err_str}\nSTDERR:\n{stderr}"
+        stderr_from_exc = getattr(e, "stderr", None)
+        if stderr_from_exc:
+            err_str = f"{err_str}\nSTDERR:\n{stderr_from_exc}"
+        elif stderr_lines:
+            # Layer 2: fall back to lines captured via SDK stderr callback
+            captured = "\n".join(stderr_lines[-100:])  # last 100 lines
+            err_str = f"{err_str}\nSTDERR (captured):\n{captured}"
 
         if result_received and not result_is_error:
             # BUG-188: SDK threw AFTER successful ResultMessage. Work is done

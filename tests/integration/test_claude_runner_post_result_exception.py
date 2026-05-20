@@ -12,6 +12,8 @@ Test plan:
   2. test_pre_result_exception_marks_failure
   3. test_result_message_is_error_true_marks_failure
   4. test_timeout_exception_uses_exit_124
+  5. test_stderr_callback_captures_lines
+  6. test_process_error_stderr_takes_precedence
 """
 
 from __future__ import annotations
@@ -35,7 +37,8 @@ if _VENV_SITE not in sys.path:
 # ---------------------------------------------------------------------------
 # SDK message helpers — use real SDK types to match isinstance() checks
 # ---------------------------------------------------------------------------
-from claude_agent_sdk import AssistantMessage, ResultMessage  # noqa: E402
+from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage  # noqa: E402
+from claude_agent_sdk._errors import ProcessError  # noqa: E402
 from claude_agent_sdk.types import TextBlock  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -150,4 +153,91 @@ def test_timeout_exception_uses_exit_124(monkeypatch, tmp_path):
 
     assert log_data["exit_code"] == 124, (
         f"Expected exit_code=124 for timeout exception, got {log_data['exit_code']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 5: stderr callback captures lines and includes them in result_preview
+# ---------------------------------------------------------------------------
+def test_stderr_callback_captures_lines(monkeypatch, tmp_path):
+    """BUG-188 Layer 2: CLI stderr lines captured via SDK callback appear in result_preview.
+
+    The trick: ClaudeAgentOptions is constructed inside run_task, so we
+    wrap it to intercept the stderr= kwarg and store the callback, then
+    the fake_query closure calls it before raising.
+    """
+    captured_cb_holder: list = []
+
+    def wrap_options(*args, **kwargs):
+        cb = kwargs.get("stderr")
+        if cb is not None:
+            captured_cb_holder.append(cb)
+        return ClaudeAgentOptions(*args, **kwargs)
+
+    monkeypatch.setattr(claude_runner, "ClaudeAgentOptions", wrap_options)
+    monkeypatch.setattr(claude_runner, "LOG_DIR", tmp_path)
+
+    async def fake_query(prompt, options):
+        # Push stderr lines via the captured callback before raising
+        cb = captured_cb_holder[0]
+        cb("CLI fatal: rate limit exceeded\n")
+        cb("see https://example.com\n")
+        raise Exception("Command failed with exit code 1")
+        yield  # make this an async generator  # noqa: unreachable
+
+    monkeypatch.setattr(claude_runner, "query", fake_query)
+    log_data = asyncio.run(claude_runner.run_task(str(tmp_path), "/autopilot demo", "autopilot"))
+
+    # No ResultMessage was received → genuine failure
+    assert log_data["exit_code"] == 1, (
+        f"Expected exit_code=1 (no ResultMessage), got {log_data['exit_code']}"
+    )
+    assert "STDERR (captured)" in log_data["result_preview"], (
+        f"Expected 'STDERR (captured)' in result_preview, got: {log_data['result_preview']!r}"
+    )
+    assert "rate limit exceeded" in log_data["result_preview"], (
+        f"Expected 'rate limit exceeded' in result_preview, got: {log_data['result_preview']!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 6: ProcessError.stderr takes precedence over captured stderr_lines
+# ---------------------------------------------------------------------------
+def test_process_error_stderr_takes_precedence(monkeypatch, tmp_path):
+    """BUG-188 Layer 2: when ProcessError carries its own stderr, it wins over captured lines.
+
+    Captured lines should NOT appear in result_preview when e.stderr is set.
+    """
+    captured_cb_holder: list = []
+
+    def wrap_options(*args, **kwargs):
+        cb = kwargs.get("stderr")
+        if cb is not None:
+            captured_cb_holder.append(cb)
+        return ClaudeAgentOptions(*args, **kwargs)
+
+    monkeypatch.setattr(claude_runner, "ClaudeAgentOptions", wrap_options)
+    monkeypatch.setattr(claude_runner, "LOG_DIR", tmp_path)
+
+    async def fake_query(prompt, options):
+        # Push a captured line first
+        cb = captured_cb_holder[0]
+        cb("captured line\n")
+        # Raise ProcessError with its own stderr attribute
+        err = ProcessError("boom", exit_code=1, stderr="real-stderr-from-exc")
+        raise err
+        yield  # make this an async generator  # noqa: unreachable
+
+    monkeypatch.setattr(claude_runner, "query", fake_query)
+    log_data = asyncio.run(claude_runner.run_task(str(tmp_path), "/autopilot demo", "autopilot"))
+
+    assert log_data["exit_code"] == 3, (
+        f"Expected exit_code=3 (ProcessError), got {log_data['exit_code']}"
+    )
+    assert "real-stderr-from-exc" in log_data["result_preview"], (
+        f"Expected real-stderr-from-exc in result_preview, got: {log_data['result_preview']!r}"
+    )
+    assert "STDERR (captured)" not in log_data["result_preview"], (
+        f"'STDERR (captured)' must NOT appear when ProcessError.stderr is set; "
+        f"got: {log_data['result_preview']!r}"
     )
