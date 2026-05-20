@@ -3,11 +3,16 @@ blocked_reason: null
 finished_at: null
 kind: tech
 priority: p0
-pueue_id: null
+pueue_id: 347
 spec_id: ARCH-187
 started_at: null
-status: queued
-transitions: []
-updated_at: '2026-05-20T08:53:03Z'
-updated_by: orchestrator
-version: 1
+status: blocked
+transitions:
+- at: '2026-05-20T09:28:41Z'
+  by: callback
+  from: queued
+  pueue_id: 347
+  to: blocked
+updated_at: '2026-05-20T09:28:41Z'
+updated_by: callback
+version: 2
