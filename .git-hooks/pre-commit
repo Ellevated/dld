@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
-# .git-hooks/pre-commit — TECH-175 spec marker drift warner.
-# Warns (never blocks) when a commit touches a DLD-CALLBACK-MARKER block
-# inside ai/features/*.md files.
+# .git-hooks/pre-commit — two guards, in order:
+#   1. ARCH-187 lifecycle write guard (HARD BLOCK on direct ai/lifecycle/ commits)
+#   2. TECH-175 spec marker drift warner (WARN only, ADR-004 fail-safe)
 #
 # Activate via: git config core.hooksPath .git-hooks
-#
-# Exit code: always 0 (warning only, per ADR-004 fail-safe pattern).
 set -uo pipefail
 
+# --- ARCH-187 / ADR-024: lifecycle write identity guard --------------------
+# Hard block: any commit staging ai/lifecycle/*.yaml whose message does not
+# start with "lifecycle(<SPEC-ID>):" and lacks LIFECYCLE_WRITE_AUTHORIZED=1.
+# Callback / spec_operator commit via git plumbing and never stage these,
+# so they bypass naturally.
+if [[ -x ".claude/hooks/pre-commit-lifecycle-guard.mjs" ]] && command -v node >/dev/null 2>&1; then
+    if ! node .claude/hooks/pre-commit-lifecycle-guard.mjs; then
+        exit 1
+    fi
+fi
+
+# --- TECH-175: spec marker drift warner (warning only) ---------------------
 changed=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^ai/features/.*\.md$' || true)
 [[ -z "$changed" ]] && exit 0
 

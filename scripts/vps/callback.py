@@ -561,7 +561,7 @@ def _append_blocked_reason(project_path: str, spec_id: str, reason: str, pueue_i
     """Record blocked reason via lifecycle module (ADR-023)."""
     try:
         lifecycle.write_lifecycle(project_path, spec_id, "blocked",
-                                  reason=reason, pueue_id=pueue_id)
+                                  reason=reason, by="callback", pueue_id=pueue_id)
     except Exception as exc:  # noqa: BLE001 — lifecycle errors must not crash callback
         log.warning("BLOCKED_REASON write failed for %s: %s", spec_id, exc)
 
@@ -1161,7 +1161,7 @@ def verify_status_sync(
     log.warning("STATUS_SYNC: %s — writing lifecycle %s (was %s)", spec_id, target, existing_status)
     try:
         lifecycle.write_lifecycle(project_path, spec_id, target,
-                                  reason=guard_reason or None, pueue_id=pueue_id)
+                                  reason=guard_reason or None, by="callback", pueue_id=pueue_id)
     except Exception as exc:  # noqa: BLE001
         log.warning("STATUS_SYNC: lifecycle.write failed for %s: %s", spec_id, exc)
 
