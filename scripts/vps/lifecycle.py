@@ -3,6 +3,7 @@ Module: lifecycle
 Role: Atomic git-plumbing writer for per-spec lifecycle YAML state files.
       Stores state in ai/lifecycle/{spec_id}.yaml via private GIT_INDEX_FILE,
       never touching the working tree. CAS update-ref prevents race conditions.
+      Identity enforcement: only _ALLOWED_WRITERS may call write functions (ADR-024).
 
 Uses:
   - pathlib: Path
@@ -41,6 +42,13 @@ log = logging.getLogger(__name__)
 
 LIFECYCLE_DIR = "ai/lifecycle"
 MAX_CAS_RETRIES = 3
+
+# ADR-024 (ARCH-187): identity enforcement — only known writer identities may
+# call write_lifecycle / create_initial / build_initial_yaml.  Prevents
+# accidental anonymous writes and makes audit trails meaningful.
+_ALLOWED_WRITERS = frozenset(
+    {"callback", "orchestrator", "spark", "operator", "qa", "audit", "autopilot", "migration"}
+)
 
 # In-process lock: serializes plumbing writes within one Python process.
 # Eliminates intra-process CAS stampede (e.g. concurrent threads in callback).
@@ -227,6 +235,22 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
             log.debug("CAS lost for %s (branch %s)", spec_id, branch)
             return False
 
+        # Layer 3 (ARCH-187 / ADR-024): sync WT to new HEAD blob so subsequent
+        # `git add .` from any agent cannot smuggle a stale yaml into a commit.
+        # Single-file checkout-index has no merge logic → race-free.
+        # Best-effort: log on failure but don't fail the write
+        # (assert_clean_lifecycle_tree at orchestrator boot is the backstop).
+        sync_result = _run(
+            ["git", "checkout-index", "--force", "--", f"{LIFECYCLE_DIR}/{spec_id}.yaml"],
+            cwd=repo_dir,
+        )
+        if sync_result.returncode != 0:
+            log.warning(
+                "WT sync after write_lifecycle failed (best-effort): rc=%d stderr=%s",
+                sync_result.returncode,
+                sync_result.stderr.strip(),
+            )
+
         return True
 
     finally:
@@ -294,6 +318,10 @@ def write_lifecycle(
     Retries up to MAX_CAS_RETRIES on CAS race; raises LifecycleWriteRaceError
     if all retries are exhausted.
     """
+    if by not in _ALLOWED_WRITERS:
+        raise ValueError(
+            f"write_lifecycle: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS)}"
+        )
     repo_dir = str(repo_dir)
     branch = _current_branch(repo_dir)
 
@@ -321,6 +349,11 @@ def create_initial(
     spec is in the backlog DONE archive section — bootstrap as 'done' so it
     never dispatches.
     """
+    _by = "orchestrator"
+    if _by not in _ALLOWED_WRITERS:
+        raise ValueError(
+            f"create_initial: invalid by={_by!r}; allowed={sorted(_ALLOWED_WRITERS)}"
+        )
     repo_dir = str(repo_dir)
     branch = _current_branch(repo_dir)
 
@@ -330,7 +363,7 @@ def create_initial(
             status,
             existing=None,
             reason=None,
-            by="orchestrator",
+            by=_by,
             pueue_id=None,
             allowed_files_hash=None,
             priority=priority,
@@ -442,6 +475,10 @@ def build_initial_yaml(
     Returns:
         YAML string ready to write to ai/lifecycle/{spec_id}.yaml.
     """
+    if by not in _ALLOWED_WRITERS:
+        raise ValueError(
+            f"build_initial_yaml: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS)}"
+        )
     return _build_yaml_content(
         spec_id,
         status,
