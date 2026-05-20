@@ -179,10 +179,56 @@ Before taking a spec from backlog:
 
 1. **Status:** Must be `queued` or `resumed` → skip otherwise
 
+2. **Already-implemented detection (BUG-188):** Before invoking the Plan Agent,
+   check whether the spec's `## Allowed Files` already have implementation commits.
+
+   **Algorithm (LLM-driven, run in current session via Bash tool):**
+
+   a. Read `## Allowed Files` from the spec body. Extract every backticked
+      path under a `<!-- callback-allowlist v1 -->` marker (canonical) or any
+      backticked path inside the section (legacy fallback). Mirrors
+      `callback._parse_allowed_files`.
+
+   b. Get spec file creation time:
+      ```bash
+      SPEC_CREATED=$(git log --reverse --format=%ai -- "ai/features/${SPEC_ID}"*.md | head -1)
+      ```
+
+   c. Check whether any commit since `SPEC_CREATED` (on any branch) both:
+      - has `${SPEC_ID}` in its **subject line** (first line) — canonical form,
+        e.g. `feat(BUG-188): ...` or `BUG-188 ...`
+      - AND touches at least one path in Allowed Files
+
+      ```bash
+      git log --all --since="$SPEC_CREATED" --pretty="%h %s" -- $ALLOWED_FILES \
+        | grep -E "^[a-f0-9]+ (feat|fix|chore|docs|refactor|test)?\(?${SPEC_ID}\)?[: ]" \
+        | head -5
+      ```
+
+   d. If 1+ qualifying commits found → **early-exit immediately**:
+      - Do NOT dispatch Plan Agent.
+      - Do NOT run any tasks.
+      - Emit final JSON:
+        ```json
+        {
+          "task_status": "complete",
+          "result_preview": "BUG-188 early-exit: spec already implemented in commits {short_hashes}. No re-execution needed."
+        }
+        ```
+      - Exit.
+
+   **Why:** This mirrors `callback._spec_has_merged_implementation` (TECH-176)
+   on the **front side** so autopilot does not burn 30+ turns re-doing work that
+   callback would auto-close anyway. Saves ~$5/run × every false-fail retry.
+
+   **False-skip protection:** the subject-line regex requires canonical
+   `<type>(SPEC-ID):` or `SPEC-ID ` prefix. Bare mentions in commit body /
+   cross-references in `Refs:`/`See also:` lines do NOT count (TECH-177 lesson).
+
 After PHASE 1 (planner always runs):
 
-2. **Plan:** Must have `## Implementation Plan`
-3. If plan missing after PHASE 1 → set `blocked`, skip spec
+3. **Plan:** Must have `## Implementation Plan`
+4. If plan missing after PHASE 1 → set `blocked`, skip spec
 
 Skip if status check fails, **with warning to user:**
 
