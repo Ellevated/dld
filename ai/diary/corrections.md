@@ -18,3 +18,11 @@
 **Why:** DLD-пайплайн работает через Claude Code CLI на **Max-подписке** (flat fee), а не per-token API billing. Скидки типа Batch API/prompt caching pricing на подписку не распространяются.
 **Rule:** При оценке экономии учитывать billing mode. Подписка → API-скидки неприменимы. Оптимизировать нужно **время исполнения** и **качество выхода**, не per-token стоимость. Prompt caching снижает latency (полезно), но не счёт.
 **Applies to:** любые будущие рекомендации по cost optimization — сначала спрашивать "мы на подписке или API?"
+
+## 2026-05-20: During ARCH-187
+
+**Context:** Я создал спеку ARCH-187 (P0 × R1) и добавил блок `⚠️ ACTION REQUIRED: HUMAN REVIEW BEFORE AUTOPILOT`, сославшись на CLAUDE.md routing matrix.
+**I proposed:** Блокирующий маркер для ручного отпуска P0×R1 спек в autopilot.
+**User corrected:** "убери эту метку, зачем она"
+**Why:** Метка блокирует автономное исполнение без явной пользы — founder доверяет autopilot обработать риск, а не ручному gating.
+**Rule:** НЕ добавлять `ACTION REQUIRED` / `HUMAN REVIEW` маркеры в спеки автоматически по матрице рисков. Только если пользователь явно попросил.
