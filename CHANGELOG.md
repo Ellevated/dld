@@ -6,6 +6,101 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.16.0] - 2026-05-20
+
+Major release — orchestrator hardening for forward reliability. Status tracking moves from markdown markers to per-spec YAML in `ai/lifecycle/` (ADR-023), callback gains an implementation guard and circuit-breaker, claude-runner no longer false-fails on post-result SDK exceptions, and the intake pipeline gets a status gate. **Existing projects need a one-shot migration** (see _How to Upgrade_ below).
+
+### Added
+
+- **Lifecycle SoT (`ai/lifecycle/{spec_id}.yaml`)** — status, blocked_reason, transitions live in per-spec YAML committed via atomic git plumbing. Markdown (`backlog.md`, spec body) is now a read-only render. Closes the BUG-185 autostash race once and for all (working tree is never touched). See ADR-023, `scripts/vps/lifecycle.py`.
+- **`scripts/vps/migrate_backlog_to_lifecycle.py`** — one-shot migration: parses existing `ai/backlog.md` + `ai/features/*.md` and produces `ai/lifecycle/*.yaml`. Idempotent, dry-run flag, status reconciliation against archive.
+- **`scripts/vps/render_backlog.py`** — generates `ai/backlog.md` view from `ai/lifecycle/*.yaml` (operator tool; orchestrator no longer auto-renders).
+- **`scripts/vps/spec_operator.py`** — operator CLI for manual `force-done`, `force-blocked`, `force-queued` transitions. Mandatory `--by={operator|qa|audit|autopilot|spark}` flag so identity is auditable. Replaces ad-hoc edits to lifecycle yamls.
+- **Pre-commit lifecycle guard (`.claude/hooks/pre-commit-lifecycle-guard.mjs`)** — blocks staged `ai/lifecycle/*.yaml` commits whose subject does not start with `lifecycle(<SPEC-ID>):`. Callback and `spec_operator` use git plumbing (no staging), so they bypass naturally. Last-resort override: `LIFECYCLE_WRITE_AUTHORIZED=1`.
+- **Callback implementation guard (TECH-166)** — before marking a spec `done`, callback runs `git log --all -- <Allowed Files>` and refuses to close if no implementation commits exist. Stops false-positive `done`. Auto-close path (TECH-176): detects "already merged before `started_at`" and closes gracefully instead of looping.
+- **Callback circuit-breaker (TECH-169)** — on >3 demotes in 10min, pauses `claude-runner` pueue group and emits a Hermes event. Prevents retry-loop cost burn. CLI: `python3 callback.py --reset-circuit`.
+- **Callback test suite (TECH-168)** — 105 tests across unit/integration/regression: `tests/unit/test_callback_*`, `tests/integration/test_callback_*`, `tests/regression/spec_corpus/` (multi-project frozen specs across awardybot/dowry/gipotenuza/plpilot/wb).
+- **Callback audit log (TECH-171)** — `scripts/vps/logs/callback-audit.jsonl` records every `verify_status_sync` call (decision, evidence, allowed files hash). `scripts/vps/audit_digest.py` produces daily digest.
+- **Manual spec verification protocol (TECH-174)** — `scripts/vps/spec_verify.py` + `scripts/vps/spec-verification-protocol.md` operator checklist.
+- **Hermes intake gate (TECH-181)** — `orchestrator.scan_inbox` dispatches only `Status: queued`. `new`/`draft`/`clarifying`/`stale`/`rejected` are ignored — Hermes is the only writer that promotes intake to `queued`. See ADR-021, ADR-022.
+- **Spark verified-references gate (TECH-183)** — Gate 8 in feature mode forces the codebase scout to produce grep-evidence for every cited file path. No more hallucinated references.
+- **Spark canonical `## Allowed Files` contract (TECH-167)** — H2 heading + `<!-- callback-allowlist v1 -->` marker + bullet+backtick paths. Phase 5.5 linter enforces. Callback v2 parser supports heading variants and fenced-block formats from the regression corpus.
+- **`scripts/vps/spec_lint.py`** — lint check for `## Allowed Files` block.
+- **`/seed-lessons` skill** — populates `ai/lessons/` Historical Risks bank from project history (`scripts/build-lessons-index.py` + LLM fallback). Russian trigger: «засей уроки», «заполни банк уроков».
+- **`sdk_post_result_errors` telemetry table** — captures post-`ResultMessage` SDK exceptions in claude-runner for diagnosis (does NOT override `exit_code=0`). See `scripts/vps/db.py:log_sdk_post_result_error`.
+- **Stderr capture for claude SDK subprocess** — `claude-runner.py` wires `ClaudeAgentOptions.stderr` callback. Previously SDK exceptions said "Check stderr output for details" but stderr was lost.
+- **CI** — `.github/workflows/test.yml`, `.pre-commit-config.yaml`, `cspell.json`, `lychee.toml`, `scripts/vps/check-doc-references.sh`. Coverage gate at 65%, ruff format, markdown lint, link check with retries.
+
+### Changed
+
+- **Callback is the only Status writer** (TECH-172, autopilot SKILL.md). Planner is explicitly forbidden from writing `Status:` fields. The single-writer invariant eliminates the class of "two writers race" bugs.
+- **`autopilot` skill** — early-exit Pre-flight Check: if commits exist for Allowed Files newer than spec `created_at`, autopilot exits 0 instead of re-implementing. Mirrors callback's `_spec_has_merged_implementation` (ADR-024 symmetric guard).
+- **`claude-runner.py` exit_code contract** — once `ResultMessage(is_error=False)` is received, subsequent SDK exceptions log as WARNING (not ERROR) and do NOT override `exit_code=0`. Was burning ~$258/week on retries of already-completed work (ADR-024, BUG-188).
+- **Hermes** replaces all references to "OpenClaw" in `event_writer.py`, intake docs, orchestrator scan logic. The conversational intake supervisor name is now consistent across the codebase.
+- **`orchestrator.git_pull`** — replaced `git pull --rebase --autostash` with safe `git fetch + ff-only` plus pre-pull dirty-tree assertion. Closes the autostash silent-data-loss class (TECH-182).
+- **`scripts/vps/orchestrator.py:scan_inbox`** — strict `Status:` regex; only `queued` flows downstream. No auto-migration of older statuses (clean break per ADR-021).
+- **Implementation guard (TECH-170)** — `git log --all` so feature-branch commits count, not just `develop`.
+- **`upgrade.mjs`** — cross-platform path normalization (Windows `\\` → `/`) and `os.tmpdir()` instead of hardcoded `/tmp` for the sparse-clone staging dir.
+- **`autopilot/finishing.md`** — no longer edits Status in spec body; relies entirely on callback writing lifecycle yaml.
+- **`spark/feature-mode.md` & `spark/completion.md`** — canonical `## Allowed Files` block, removed obsolete `DLD-CALLBACK-MARKER-START/END` instructions.
+- **`audit/night-mode.md`** — minor wording fix.
+- **Model routing rebalance for Opus 4.7 (ADR-019)** — synthesizers (audit, board, triz) → sonnet xhigh; formatters (documenter, bughunt scope-decomposer/findings-collector/report-updater, ~~diary-recorder~~) → haiku low. Estimated 30–40% cost reduction at equal quality. See `.claude/rules/model-capabilities.md`.
+
+### Fixed
+
+- **BUG-188** — `claude-runner.py:234` overrode successful `exit_code=0` to `1` when SDK threw after `ResultMessage`. Pueue tasks #235/#262/#269/#271 hit turns 43–47 retrying already-complete work at $3–7 per crash. Layer 1: track `result_received`/`result_is_error`, preserve `exit_code` if work completed. Layer 2: capture stderr via SDK public `ClaudeAgentOptions.stderr` callback. Layer 3: autopilot front-side guard (mirrors callback). Layer 4: `sdk_post_result_errors` telemetry. See ADR-024.
+- **ARCH-187** — lifecycle write identity enforcement. Closes the gap where any process with write access to `ai/lifecycle/` could silently overwrite status. `lifecycle.write_lifecycle()` now validates `by ∈ {callback, orchestrator, spark, operator}`, syncs WT after CAS via `git checkout-index --force`, and the pre-commit hook blocks foreign writes.
+- **BUG-185** (formerly BUG-974) — `git stash pop --autostash` race silently overwrote callback's `Status:` markdown edit. Closed by ARCH-186 architecture (callback never touches WT). Historical fix `marker_utils.py` + `_restore_callback_markers_from_head` deleted (171 LOC removed).
+- **TECH-177** — `_spec_has_merged_implementation` now uses subject-only matcher to detect already-merged specs by commit subject (`<spec-id>:` prefix), not full message body. Stops false-positive auto-close.
+- **TECH-178** — pre-commit retry-loop on cosmetic hooks for research-md files. Bypass cosmetic-only hooks when only research markdown is staged.
+- **TECH-179** — callback refuses auto-close when spec file is missing (degrades open instead of closing into the void).
+- **TECH-182** — orchestrator `git_pull` no longer uses `--autostash`; pre-checks for dirty tree and aborts safely. No more silent data loss across cycles.
+- **ARCH-186 post-merge** — bootstrap reads archive `Status: done`, no longer treats archived specs as "queued"; corrected 54 stale lifecycle yamls created during pre-fix.
+- **Planner Status writes** — planner agent now explicitly forbidden from writing `Status:` field in spec body (was occasionally resetting `done` → `queued`).
+
+### Removed
+
+- **`marker_utils.py`** (117 LOC) — superseded by ADR-023; lifecycle SoT is YAML, not markdown markers.
+- **`_restore_callback_markers_from_head`** (54 LOC) and the autostash dance (81 LOC) — no longer needed; callback never touches working tree.
+- **`DLD-CALLBACK-MARKER-START/END`** blocks in spec template and Phase 5.5 E007/E008 lint rules — superseded by `## Allowed Files` canonical block.
+- **ADR-018** — superseded by ADR-023. Status enforcement still happens, just via YAML SoT now.
+- **`autopilot-loop.sh` from inside Claude Code** — per ADR-020, the bash wrapper is operator-only; interactive `/autopilot` uses native Agent/Skill tools in current session. VPS orchestrator uses Agent SDK directly.
+
+### Architecture
+
+- **ADR-019** — Model routing rebalance for Opus 4.7 era.
+- **ADR-020** — No headless loop wrapper from inside Claude Code.
+- **ADR-021** — Hermes intake gate (`Status: queued` only).
+- **ADR-022** — Hermes intake supervisor (single writer of `queued` in inbox).
+- **ADR-023** — **Lifecycle state SoT = git per-spec YAML.** Supersedes ADR-018. Closes BUG-185.
+- **ADR-024** — `claude-runner` `exit_code` contract: post-result exceptions do not override success.
+- **TECH-166..183** — orchestrator hardening series (see _Added_ / _Changed_ above for individual entries).
+- **CLAUDE.md** — `Task Statuses` section consolidated; `Backlog Rules` and `Project Structure` reflect `ai/lifecycle/` directory; orchestrator forward-pointers from `architecture.md` to `~/.claude/projects/-root/memory/dld-orchestrator.md`.
+
+### How to Upgrade
+
+**For DLD framework files** (skills, agents, hooks, rules) — run `/upgrade` in each project. The pre-commit lifecycle guard and updated autopilot/spark skills will propagate automatically.
+
+**For VPS orchestrator** (only the `dld` repo runs the orchestrator daemon — other projects are clients):
+
+1. `git pull` in `/home/dld/projects/dld/` to get `scripts/vps/lifecycle.py`, `migrate_backlog_to_lifecycle.py`, `render_backlog.py`, `spec_operator.py`, updated `callback.py` / `orchestrator.py`.
+2. For each managed project, run the migration once:
+   ```bash
+   cd /home/dld/projects/<project>
+   python3 /home/dld/projects/dld/scripts/vps/migrate_backlog_to_lifecycle.py --root . --commit
+   ```
+   This creates `ai/lifecycle/*.yaml` per spec, reconciles statuses against the archive, and commits with message `chore(lifecycle): migrate N specs backlog→lifecycle`.
+3. Restart orchestrator: `sudo systemctl restart dld-orchestrator`. It will assert clean `ai/lifecycle/` tree on startup and refuse to start if any project is dirty.
+4. (Optional) Render new backlog view: `python3 scripts/vps/render_backlog.py --root .`
+
+**Rollback:** the migration commit is self-contained — `git revert` restores the previous markdown-only state. The lifecycle yamls remain on disk but the orchestrator falls back to markdown if instructed (`USE_LIFECYCLE=0`, off by default in 3.16 = on).
+
+**Breaking for custom tooling:**
+- Any script that wrote `Status:` to `ai/backlog.md` or spec body must instead write `ai/lifecycle/{spec_id}.yaml` via `lifecycle.write_lifecycle(by=...)`.
+- `## Allowed Files` block format is now strict (TECH-167). Older specs without the marker still parse but throw a deprecation warning in callback audit log; rewrite via Spark to silence.
+
+---
+
 ## [3.15.8] - 2026-04-27
 
 ### Fixed
