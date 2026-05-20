@@ -148,6 +148,8 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         "cache_creation_5m_input_tokens": 0,
     }
     model_usage: dict = {}
+    result_received = False
+    result_is_error = False
 
     try:
         async for message in query(prompt=prompt, options=options):
@@ -174,11 +176,12 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
 
             # Track final result
             if isinstance(message, ResultMessage):
+                result_received = True
+                result_is_error = bool(getattr(message, "is_error", False))
                 result_text = getattr(message, "result", "") or result_text
                 turns = getattr(message, "num_turns", 0)
                 cost_usd = getattr(message, "total_cost_usd", 0.0) or 0.0
-                is_error = getattr(message, "is_error", False)
-                if is_error:
+                if result_is_error:
                     exit_code = 1
                 usage = getattr(message, "usage", None) or {}
                 if not isinstance(usage, dict):
@@ -227,13 +230,25 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         stderr = getattr(e, "stderr", None)
         if stderr:
             err_str = f"{err_str}\nSTDERR:\n{stderr}"
-        if "timeout" in err_str.lower():
+
+        if result_received and not result_is_error:
+            # BUG-188: SDK threw AFTER successful ResultMessage. Work is done
+            # (turns/cost/result_text already captured). Do NOT override
+            # exit_code to 1 — that would re-block an already-done spec
+            # and burn another $5+/run on retry.
+            logger.warning(
+                "SDK post-ResultMessage exception (work completed): %s",
+                err_str[:500],
+            )
+            # exit_code stays 0; result_text already populated from ResultMessage
+        elif "timeout" in err_str.lower():
             logger.error("SDK init timeout: %s", e)
             exit_code = 124
+            result_text = err_str
         else:
             logger.error("SDK error: %s", e, exc_info=True)
             exit_code = 1
-        result_text = err_str
+            result_text = err_str
 
     # Cache hit rate: fraction of total input that came from cache read.
     # Denominator = direct input + cache creation + cache read (total paid input-ish).
