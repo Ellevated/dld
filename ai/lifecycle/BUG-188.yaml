@@ -1,13 +1,18 @@
 allowed_files_hash: null
 blocked_reason: null
-finished_at: null
+finished_at: '2026-05-20T10:29:04Z'
 kind: tech
 priority: p0
-pueue_id: null
+pueue_id: 352
 spec_id: BUG-188
 started_at: null
-status: queued
-transitions: []
-updated_at: '2026-05-20T08:53:00Z'
-updated_by: orchestrator
-version: 1
+status: done
+transitions:
+- at: '2026-05-20T10:29:04Z'
+  by: callback
+  from: queued
+  pueue_id: 352
+  to: done
+updated_at: '2026-05-20T10:29:04Z'
+updated_by: callback
+version: 2
