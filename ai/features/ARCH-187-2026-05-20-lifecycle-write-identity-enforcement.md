@@ -2,12 +2,6 @@
 
 **Status:** queued | **Priority:** P0 | **Risk:** R1 | **Date:** 2026-05-20
 
-## ⚠️ ACTION REQUIRED: HUMAN REVIEW BEFORE AUTOPILOT
-
-R1 × P0 — изменения в `callback.py` + `lifecycle.py` + `spec_operator.py` + skills audit + новый pre-commit hook. Cross-domain, ~300-500 LOC. Per CLAUDE.md routing **P0 × R1 = HUMAN**, не auto-handoff. Founder читает spec и явно отпускает в autopilot.
-
----
-
 ## Symptom
 
 В ночь 2026-05-19/20 цикл `awardybot:BUG-1040` прогнан 4 раза подряд (pueue #308 → #311 → #320 → #323), каждый раз autopilot декларировал `task_status: done` без коммитов в Allowed Files. Callback IMPL_GUARD корректно демотал `done → blocked` (`no_implementation_commits`), но между демотами кто-то возвращал `blocked → queued`, и orchestrator снова диспатчил. **Оператор-человек спал.**
