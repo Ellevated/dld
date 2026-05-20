@@ -192,14 +192,22 @@ End of spec: Push feature → Merge develop → Push develop
 # FAIL → STOP, fix first
 ```
 
-### 5.2 Update Status
+### 5.2 Update Status — REMOVED (ARCH-187 / ADR-024)
+
+Status writes are exclusive to `callback.py` (ADR-023). Do **NOT** commit
+spec / backlog / lifecycle status changes manually. Callback fires on
+pueue task completion and atomically updates `ai/lifecycle/{spec}.yaml`
+via git plumbing. See `finishing.md`.
+
+If you genuinely need to override status as an operator action (e.g.
+force-done after manual verification), use:
 
 ```bash
-# Update spec: **Status:** done
-# Update backlog: done
-git add ai/features/${TASK_ID}*.md ai/backlog.md
-git commit -m "docs: mark ${TASK_ID} as done"
+python3 scripts/vps/spec_operator.py force-done <project> <SPEC_ID> "<reason>" --by=operator
 ```
+
+Direct `git add ai/lifecycle/*.yaml` is blocked by the pre-commit guard
+(`.claude/hooks/pre-commit-lifecycle-guard.mjs`).
 
 ### 5.3 Push Feature Branch (backup)
 
