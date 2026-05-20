@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import sqlite3
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -241,3 +242,45 @@ def test_process_error_stderr_takes_precedence(monkeypatch, tmp_path):
         f"'STDERR (captured)' must NOT appear when ProcessError.stderr is set; "
         f"got: {log_data['result_preview']!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 7: BUG-188 Layer 4 — post-result exception inserts telemetry row
+# ---------------------------------------------------------------------------
+def test_post_result_exception_logs_telemetry_row(monkeypatch, tmp_path):
+    """BUG-188 Layer 4: SDK throws after ResultMessage → telemetry row inserted, exit_code=0."""
+    # Set DB_PATH first, before db module loads
+    db_path = tmp_path / "orchestrator.db"
+    schema_sql = (SCRIPT_DIR / "schema.sql").read_text()
+    conn = sqlite3.connect(db_path)
+    conn.executescript(schema_sql)
+    conn.close()
+    monkeypatch.setenv("DB_PATH", str(db_path))
+
+    # Reload db so it picks up the new DB_PATH
+    if "db" in sys.modules:
+        del sys.modules["db"]
+    import db  # noqa: PLC0415
+    db._MIGRATIONS_APPLIED = False
+    monkeypatch.setattr(claude_runner, "_orch_db", db)
+    monkeypatch.setattr(claude_runner, "LOG_DIR", tmp_path)
+
+    async def fake_query(*, prompt, options):
+        yield _make_assistant("ok")
+        yield _make_result(is_error=False, turns=43, cost=6.32, result="DONE")
+        raise Exception("post-cleanup error")
+
+    monkeypatch.setattr(claude_runner, "query", fake_query)
+    log_data = asyncio.run(claude_runner.run_task(str(tmp_path), "/autopilot demo-task", "autopilot"))
+
+    assert log_data["exit_code"] == 0  # Layer 1 still holds
+    # Telemetry row inserted
+    with db.get_db() as conn:
+        rows = list(conn.execute("SELECT * FROM sdk_post_result_errors").fetchall())
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["project_id"] == tmp_path.name  # project_name = Path(project_dir).name
+    assert row["task"] == "/autopilot demo-task"
+    assert row["turns"] == 43
+    assert abs(row["cost_usd"] - 6.32) < 0.001
+    assert "post-cleanup error" in row["error_msg"]

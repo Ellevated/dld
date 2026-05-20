@@ -53,6 +53,12 @@ try:
 except ImportError:
     sys.exit("claude-agent-sdk not installed. Run: pip install claude-agent-sdk")
 
+# BUG-188 Layer 4: lazy import for telemetry (tests w/o VPS deps still run)
+try:
+    import db as _orch_db
+except ImportError:
+    _orch_db = None
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -257,6 +263,23 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
                 err_str[:500],
             )
             # exit_code stays 0; result_text already populated from ResultMessage
+            # BUG-188 Layer 4: telemetry for SDK post-ResultMessage drift.
+            if _orch_db is not None:
+                try:
+                    captured_stderr = "\n".join(stderr_lines[-100:]) if stderr_lines else None
+                    _orch_db.log_sdk_post_result_error(
+                        project_id=project_name,
+                        task=task,
+                        turns=turns,
+                        cost_usd=cost_usd,
+                        error_msg=str(e)[:2000],
+                        stderr=captured_stderr,
+                    )
+                except Exception as log_exc:
+                    # Telemetry must never break the runner (ADR-004 fail-safe).
+                    logger.warning(
+                        "Failed to log sdk_post_result_error: %s", log_exc
+                    )
         elif "timeout" in err_str.lower():
             logger.error("SDK init timeout: %s", e)
             exit_code = 124
