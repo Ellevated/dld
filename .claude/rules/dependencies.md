@@ -324,6 +324,31 @@ Dependency map between project components.
 
 ---
 
+## scripts/vps/heartbeat_monitor.py (TECH-189 Task 8)
+
+**Path:** `scripts/vps/heartbeat_monitor.py`
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| .orchestrator-heartbeat | scripts/vps/.orchestrator-heartbeat | read ISO timestamp |
+| event_writer | scripts/vps/event_writer.py | notify("dld", "ORCHESTRATOR_STALE: ...") |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| cron | */5 * * * * | liveness check (installed by setup-vps.sh) |
+| orchestrator.py | scripts/vps/orchestrator.py:main loop | writes .orchestrator-heartbeat at end of each cycle |
+
+### When changing API, check
+
+- [ ] orchestrator.py (heartbeat file path must match) — SCRIPT_DIR/.orchestrator-heartbeat
+- [ ] setup-vps.sh (cron line for heartbeat_monitor.py)
+
+---
+
 ## scripts/vps/nexus-cache-refresh.sh
 
 **Path:** `scripts/vps/nexus-cache-refresh.sh`
@@ -396,4 +421,5 @@ Dependency map between project components.
 | 2026-05-04 | Spark spec template: DLD-CALLBACK-MARKER-START/END wraps Status + Allowed Files; Phase 5.5 SSOT extended with DLD_START_RE/DLD_END_RE + E007/E008 (TECH-175 Task 3) | coder |
 | 2026-05-15 | marker_utils.py shared regex/extractor; orchestrator autostash recovery restores callback Status from HEAD post-pop (BUG-185, formerly BUG-974) | autopilot |
 | 2026-05-16 | **ARCH-186 lifecycle SoT migration:** lifecycle.py (new, ~280 LOC) atomic git plumbing; callback.verify_status_sync upgraded to lifecycle.write_lifecycle (no markdown editing); orchestrator scan_queued + bootstrap_new_specs + assert_clean_lifecycle_tree + reconcile_orphans; render_backlog.py (new) markdown view; migrate_backlog_to_lifecycle.py (new, one-shot). DELETED: marker_utils.py (117), _restore_callback_markers_from_head (54), autostash dance (81), DLD-CALLBACK-MARKER blocks in spec template + Phase 5.5 E007/E008 rules. Supersedes ADR-018. Closes BUG-185. | autopilot (interactive) |
+| 2026-05-23 | **TECH-189 P0 hardening cluster (9 tasks):** Task 1 pyproject testpaths += scripts/vps/tests; Task 2 tests/conftest.py autouse _db_isolation; Task 3 DELETED spec_lint.py + tests/unit/test_spec_lint.py + removed DLD-CALLBACK-MARKER refs across completion.md ×2, facilitator.md, .git-hooks/pre-commit, feature-mode.md ×2; Task 4 BOOTSTRAP_ANOMALY_THRESHOLD constant + warning + ai/.bootstrap-anomaly-count counter + Hermes event; Task 5 lifecycle._push_best_effort DEBUG→WARNING + ai/.lifecycle-push-failures counter + TimeoutExpired path; Task 6 GROWTH in _SPEC_ID_RE (callback) + bootstrap_new_specs regex (orchestrator:308); Task 7 lifecycle._run timeout=30 + _cas_loop TimeoutExpired catch; Task 8 NEW scripts/vps/heartbeat_monitor.py + orchestrator main-loop heartbeat write + setup-vps.sh cron (*/5 min); Task 9 reconcile_orphans by="orchestrator" (was "callback"). | autopilot |
 | 2026-05-20 | **BUG-188:** claude-runner result_received/result_is_error tracking — post-result Exception no longer overrides exit_code=0 (Layer 1); public ClaudeAgentOptions.stderr callback captures subprocess CLI stderr (Layer 2); sdk_post_result_errors table + log_sdk_post_result_error helper (schema.sql + db.py, Layer 4); claude-runner wires telemetry inside post-result branch; autopilot SKILL.md adds early-exit detection step (Layer 3, both .claude/ and template/.claude/); ADR-024 documents exit_code contract. | autopilot |
