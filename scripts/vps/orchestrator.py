@@ -99,6 +99,12 @@ def sync_projects() -> None:
 
 _LIVE_PUEUE_STATES = frozenset({"Running", "Locked", "Queued", "Stashed", "Paused"})
 
+# TECH-189 Task 4: bootstrap_new_specs anomaly detector.
+# Normal cycles create 0-1 lifecycle yamls. >3 in one cycle = anomaly
+# (backlog-write race, bulk import, etc). Today's incident (2026-05-23)
+# created 15 in one cycle and burned ~$258 on retries.
+BOOTSTRAP_ANOMALY_THRESHOLD = 3
+
 
 def get_live_pueue_ids() -> set[int] | None:
     """Return live pueue task IDs. None on failure (skip watchdog, no false release).
@@ -304,6 +310,7 @@ def bootstrap_new_specs(project_dir: str) -> None:
     backlog_ids = set(
         m.group(0) for m in re.finditer(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*", backlog_text)
     )
+    created_count = 0
     for spec_md in features_dir.glob("*.md"):
         m = re.search(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*", spec_md.name)
         if not m:
@@ -323,6 +330,7 @@ def bootstrap_new_specs(project_dir: str) -> None:
         status = active_status.get(spec_id, "done")
         try:
             lifecycle.create_initial(project_dir, spec_id, priority, kind, status=status)
+            created_count += 1
             log.info(
                 "BOOTSTRAP: created lifecycle.yaml for %s status=%s in %s",
                 spec_id,
@@ -331,6 +339,30 @@ def bootstrap_new_specs(project_dir: str) -> None:
             )
         except Exception as exc:  # noqa: BLE001
             log.warning("BOOTSTRAP: failed for %s: %s", spec_id, exc)
+
+    if created_count > BOOTSTRAP_ANOMALY_THRESHOLD:
+        log.warning(
+            "BOOTSTRAP_ANOMALY: created %d lifecycle yamls in one cycle for %s "
+            "(threshold=%d) — possible backlog-write race or bulk-import",
+            created_count,
+            project_dir,
+            BOOTSTRAP_ANOMALY_THRESHOLD,
+        )
+        counter_path = Path(project_dir) / "ai" / ".bootstrap-anomaly-count"
+        try:
+            prev = int(counter_path.read_text().strip()) if counter_path.is_file() else 0
+            counter_path.write_text(str(prev + 1))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from event_writer import notify
+
+            notify(
+                project_dir.rstrip("/").split("/")[-1],
+                f"BOOTSTRAP_ANOMALY: {created_count} lifecycle yamls in one cycle",
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _parse_priority_kind(spec_md: Path) -> tuple:
