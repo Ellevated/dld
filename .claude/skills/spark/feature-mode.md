@@ -651,7 +651,7 @@ BULLET_RE    = ^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$
 SECTION_END  = ^##[ \t]+\S          (next H2 heading)
 ```
 
-> ARCH-186 dropped DLD-CALLBACK-MARKER-START/END envelopes. The allowlist is now
+> ARCH-186 removed the legacy callback marker envelopes. The allowlist is now
 > identified solely by `HEADING_RE` + the inner `MARKER_RE`. No outer marker block.
 
 ### Algorithm

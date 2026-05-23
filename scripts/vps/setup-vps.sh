@@ -103,6 +103,17 @@ if [[ "${1:-}" == "--phase3" ]]; then
         warn "audit_digest.py not found — cron not installed"
     fi
 
+    # 8b. Cron for orchestrator heartbeat monitor (TECH-189 Task 8)
+    # Fires Hermes event if .orchestrator-heartbeat is stale (>10min).
+    HEARTBEAT_SCRIPT="${SCRIPT_DIR}/heartbeat_monitor.py"
+    if [[ -f "$HEARTBEAT_SCRIPT" ]]; then
+        HEARTBEAT_CRON_LINE="*/5 * * * * ${SCRIPT_DIR}/venv/bin/python3 ${HEARTBEAT_SCRIPT} >> /var/log/dld-orchestrator/heartbeat.log 2>&1"
+        (crontab -l 2>/dev/null | grep -v "heartbeat_monitor.py"; echo "$HEARTBEAT_CRON_LINE") | crontab -
+        ok "Cron installed: heartbeat_monitor.py every 5 min"
+    else
+        warn "heartbeat_monitor.py not found — cron not installed"
+    fi
+
     # 9. Logrotate config for callback-audit.jsonl (TECH-171)
     LOGROTATE_TEMPLATE="${SCRIPT_DIR}/logrotate.callback-audit"
     LOGROTATE_DEST="/etc/logrotate.d/dld-callback-audit"

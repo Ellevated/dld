@@ -75,7 +75,12 @@ def _now_iso() -> str:
 
 
 def _run(
-    cmd: list, *, cwd: str, env: Optional[dict] = None, input_text: Optional[str] = None
+    cmd: list,
+    *,
+    cwd: str,
+    env: Optional[dict] = None,
+    input_text: Optional[str] = None,
+    timeout: int = 30,
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
         cmd,
@@ -85,6 +90,7 @@ def _run(
         capture_output=True,
         text=True,
         check=False,
+        timeout=timeout,
     )
 
 
@@ -261,9 +267,33 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
 
 
 def _push_best_effort(repo_dir: str, branch: str) -> None:
-    r = _run(["git", "push", "origin", branch], cwd=repo_dir)
+    try:
+        r = _run(["git", "push", "origin", branch], cwd=repo_dir)
+    except subprocess.TimeoutExpired as exc:
+        log.warning(
+            "lifecycle push timeout (best-effort, not fatal): branch=%s cmd=%s",
+            branch,
+            exc.cmd,
+        )
+        _bump_push_failure_counter(repo_dir)
+        return
     if r.returncode != 0:
-        log.debug("push best-effort failed (ignored): %s", r.stderr.strip()[:200])
+        log.warning(
+            "lifecycle push failed (best-effort, not fatal): branch=%s stderr=%s",
+            branch,
+            r.stderr.strip()[:200],
+        )
+        _bump_push_failure_counter(repo_dir)
+
+
+def _bump_push_failure_counter(repo_dir: str) -> None:
+    """Increment ai/.lifecycle-push-failures counter (best-effort)."""
+    counter = Path(repo_dir) / "ai" / ".lifecycle-push-failures"
+    try:
+        prev = int(counter.read_text().strip()) if counter.is_file() else 0
+        counter.write_text(str(prev + 1))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _cas_loop(repo_dir: str, spec_id: str, branch: str, yaml_fn) -> None:
@@ -276,7 +306,16 @@ def _cas_loop(repo_dir: str, spec_id: str, branch: str, yaml_fn) -> None:
     with _write_lock:
         for attempt in range(1, MAX_CAS_RETRIES + 1):
             yaml_content = yaml_fn()
-            if _atomic_write(repo_dir, spec_id, yaml_content, branch):
+            try:
+                wrote = _atomic_write(repo_dir, spec_id, yaml_content, branch)
+            except subprocess.TimeoutExpired as exc:
+                log.warning(
+                    "lifecycle git plumbing timeout (spec=%s cmd=%s); treating as CAS failure",
+                    spec_id,
+                    exc.cmd,
+                )
+                wrote = False
+            if wrote:
                 _push_best_effort(repo_dir, branch)
                 return
             log.warning("CAS attempt %d/%d failed for %s", attempt, MAX_CAS_RETRIES, spec_id)
@@ -548,7 +587,9 @@ def reconcile_orphans(repo_dir, pueue_alive_ids: set) -> list:
             continue
         spec_id = data["spec_id"]
         log.info("reconcile_orphans: demoting %s (pueue_id=%s)", spec_id, pueue_id)
-        write_lifecycle(repo_dir, spec_id, "queued", reason="orphaned from crash", by="callback")
+        write_lifecycle(
+            repo_dir, spec_id, "queued", reason="orphaned from crash", by="orchestrator"
+        )
         reconciled.append(spec_id)
     return reconciled
 

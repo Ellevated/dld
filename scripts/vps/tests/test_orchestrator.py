@@ -418,3 +418,110 @@ class TestScanInboxStatusGate:
         assert count == 0
         assert not mock_add.called
         assert f.exists()
+
+
+class TestBootstrapAnomaly:
+    """TECH-189 Task 4: bootstrap_new_specs anomaly detector."""
+
+    def _make_project(self, tmp_path: Path, spec_ids: list[str]) -> Path:
+        features = tmp_path / "ai" / "features"
+        features.mkdir(parents=True)
+        backlog = tmp_path / "ai" / "backlog.md"
+        # Build backlog with each spec ID + status=queued, plus one filler col so
+        # the regex sees `| ID | desc | queued | P0 | spec |`.
+        rows = "\n".join(f"| {sid} | desc | queued | P0 | [spec]({sid}.md) |" for sid in spec_ids)
+        backlog.write_text(rows)
+        # Each spec.md file in features/ with the spec ID in the filename
+        for sid in spec_ids:
+            (features / f"{sid}-2026-05-23-anomaly-test.md").write_text(
+                "# test\n\n**Status:** queued\n**Priority:** P0\n**Kind:** tech\n"
+            )
+        return tmp_path
+
+    def test_no_anomaly_for_normal_count(self, tmp_path, caplog):
+        """1 new spec = normal, no anomaly warning, no counter file."""
+        import logging
+
+        self._make_project(tmp_path, ["TECH-991"])
+        with (
+            patch.object(orchestrator.lifecycle, "create_initial") as mock_init,
+            patch.object(orchestrator.lifecycle, "read_lifecycle", return_value=None),
+        ):
+            with caplog.at_level(logging.WARNING):
+                orchestrator.bootstrap_new_specs(str(tmp_path))
+        assert mock_init.call_count == 1
+        assert not any("BOOTSTRAP_ANOMALY" in r.message for r in caplog.records)
+        assert not (tmp_path / "ai" / ".bootstrap-anomaly-count").exists()
+
+    def test_anomaly_fires_above_threshold(self, tmp_path, caplog):
+        """5 new specs in one cycle (>3) fires BOOTSTRAP_ANOMALY warning + counter."""
+        import logging
+
+        ids = [f"TECH-9{i:02d}" for i in range(80, 85)]  # 5 ids
+        self._make_project(tmp_path, ids)
+        with (
+            patch.object(orchestrator.lifecycle, "create_initial"),
+            patch.object(orchestrator.lifecycle, "read_lifecycle", return_value=None),
+        ):
+            with caplog.at_level(logging.WARNING):
+                orchestrator.bootstrap_new_specs(str(tmp_path))
+
+        anomaly_logs = [r for r in caplog.records if "BOOTSTRAP_ANOMALY" in r.message]
+        assert len(anomaly_logs) == 1
+        assert "created 5 lifecycle yamls" in anomaly_logs[0].message
+        counter = tmp_path / "ai" / ".bootstrap-anomaly-count"
+        assert counter.is_file()
+        assert counter.read_text().strip() == "1"
+
+
+class TestHeartbeatMonitor:
+    """TECH-189 Task 8: heartbeat_monitor.py — external liveness check."""
+
+    def test_fresh_heartbeat_no_alert(self, tmp_path, monkeypatch, capsys):
+        """Fresh timestamp = no Hermes event, no ALERT to stderr."""
+        from datetime import datetime, timezone
+
+        import heartbeat_monitor
+
+        hb = tmp_path / ".orchestrator-heartbeat"
+        hb.write_text(datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+        monkeypatch.setattr(heartbeat_monitor, "HEARTBEAT_FILE", hb)
+        with patch.object(heartbeat_monitor, "STALE_THRESHOLD_MINUTES", 10):
+            heartbeat_monitor.main()
+        captured = capsys.readouterr()
+        assert "ALERT" not in captured.err
+
+    def test_stale_heartbeat_fires_notify(self, tmp_path, monkeypatch, capsys):
+        """Stale timestamp (>10min) = ALERT to stderr + event_writer.notify called."""
+        from datetime import datetime, timedelta, timezone
+
+        import heartbeat_monitor
+
+        hb = tmp_path / ".orchestrator-heartbeat"
+        stale_ts = datetime.now(tz=timezone.utc) - timedelta(minutes=15)
+        hb.write_text(stale_ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        monkeypatch.setattr(heartbeat_monitor, "HEARTBEAT_FILE", hb)
+
+        # event_writer.notify is imported lazily inside main() — patch via sys.modules
+        from unittest.mock import MagicMock as _MM
+
+        mock_module = _MM()
+        mock_module.notify = _MM()
+        monkeypatch.setitem(sys.modules, "event_writer", mock_module)
+
+        heartbeat_monitor.main()
+        captured = capsys.readouterr()
+        assert "ALERT: orchestrator heartbeat stale" in captured.err
+        mock_module.notify.assert_called_once()
+        args, _ = mock_module.notify.call_args
+        assert args[0] == "dld"
+        assert "ORCHESTRATOR_STALE" in args[1]
+
+    def test_missing_heartbeat_file_no_crash(self, tmp_path, monkeypatch, capsys):
+        """Missing file = WARN to stderr, no crash."""
+        import heartbeat_monitor
+
+        monkeypatch.setattr(heartbeat_monitor, "HEARTBEAT_FILE", tmp_path / "nope")
+        heartbeat_monitor.main()
+        captured = capsys.readouterr()
+        assert "WARN: no heartbeat file" in captured.err

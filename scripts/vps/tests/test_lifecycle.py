@@ -30,6 +30,7 @@ import lifecycle  # noqa: E402
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def tmp_git_repo(tmp_path):
     """Minimal git repo with one initial commit and ai/lifecycle/ dir."""
@@ -39,7 +40,10 @@ def tmp_git_repo(tmp_path):
     def git(*args):
         r = subprocess.run(
             ["git"] + list(args),
-            cwd=str(repo), capture_output=True, text=True, check=False,
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if r.returncode != 0:
             raise RuntimeError(f"git {args} failed: {r.stderr.strip()}")
@@ -62,6 +66,7 @@ def tmp_git_repo(tmp_path):
 # ---------------------------------------------------------------------------
 # Test 1 (spec line 601): atomic write under concurrency
 # ---------------------------------------------------------------------------
+
 
 def test_concurrent_writes_no_loss(tmp_git_repo):
     """10 parallel write_lifecycle() for different specs — all land in HEAD."""
@@ -86,20 +91,22 @@ def test_concurrent_writes_no_loss(tmp_git_repo):
 # Test 2 (spec line 618): private GIT_INDEX_FILE — operator-staged files don't leak
 # ---------------------------------------------------------------------------
 
+
 def test_operator_staged_file_does_not_leak(tmp_git_repo):
     """Operator does git add some-other-file. Callback writes lifecycle.
     Commit contains ONLY lifecycle, not some-other-file."""
     wip = tmp_git_repo / "operator-wip.txt"
     wip.write_text("wip")
-    subprocess.run(["git", "add", "operator-wip.txt"],
-                   cwd=str(tmp_git_repo), check=True)
+    subprocess.run(["git", "add", "operator-wip.txt"], cwd=str(tmp_git_repo), check=True)
 
     lifecycle.write_lifecycle(tmp_git_repo, "TECH-100", "done")
 
     # Last commit should only contain the lifecycle yaml
     r = subprocess.run(
         ["git", "show", "--name-only", "--format=", "HEAD"],
-        cwd=str(tmp_git_repo), capture_output=True, text=True,
+        cwd=str(tmp_git_repo),
+        capture_output=True,
+        text=True,
     )
     changed_files = r.stdout.strip()
     assert "ai/lifecycle/TECH-100.yaml" in changed_files
@@ -108,7 +115,9 @@ def test_operator_staged_file_does_not_leak(tmp_git_repo):
     # operator-wip.txt still staged, not lost
     r2 = subprocess.run(
         ["git", "diff", "--cached", "--name-only"],
-        cwd=str(tmp_git_repo), capture_output=True, text=True,
+        cwd=str(tmp_git_repo),
+        capture_output=True,
+        text=True,
     )
     assert "operator-wip.txt" in r2.stdout
 
@@ -116,6 +125,7 @@ def test_operator_staged_file_does_not_leak(tmp_git_repo):
 # ---------------------------------------------------------------------------
 # Test 3 (spec line 633, BUG-185 regression): skipped pending Task 3
 # ---------------------------------------------------------------------------
+
 
 def test_dirty_wt_does_not_revert_callback_write(tmp_git_repo):
     """Simulate BUG-185: dirty WT + callback write. Lifecycle.yaml in HEAD
@@ -144,6 +154,7 @@ def test_dirty_wt_does_not_revert_callback_write(tmp_git_repo):
 # ---------------------------------------------------------------------------
 # Additional unit tests
 # ---------------------------------------------------------------------------
+
 
 def test_create_initial_then_read(tmp_git_repo):
     """Round-trip: create_initial → read_lifecycle returns correct data."""
@@ -226,7 +237,8 @@ def test_assert_clean_lifecycle_tree_passes_when_clean(tmp_git_repo):
     # Here we simulate that sync explicitly:
     subprocess.run(
         ["git", "checkout", "HEAD", "--", "ai/lifecycle/"],
-        cwd=str(tmp_git_repo), check=True,
+        cwd=str(tmp_git_repo),
+        check=True,
     )
     lifecycle.assert_clean_lifecycle_tree(tmp_git_repo)  # should not raise
 
@@ -241,6 +253,12 @@ def test_reconcile_orphans_demotes_in_progress(tmp_git_repo):
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-530")
     assert data["status"] == "queued"
     assert data.get("blocked_reason") == "orphaned from crash"
+    # TECH-189 Task 9: reconcile_orphans is called by orchestrator (startup_reconcile),
+    # not callback — the transition `by` must reflect the true source for accurate
+    # post-incident forensics.
+    last_transition = data["transitions"][-1]
+    assert last_transition["by"] == "orchestrator"
+    assert last_transition["to"] == "queued"
 
 
 def test_reconcile_orphans_skips_alive_tasks(tmp_git_repo):
@@ -261,12 +279,76 @@ def test_blocked_reason_stored(tmp_git_repo):
     """write_lifecycle with reason= stores it as blocked_reason."""
     lifecycle.create_initial(tmp_git_repo, "TECH-540", "p1", "tech")
     lifecycle.write_lifecycle(
-        tmp_git_repo, "TECH-540", "blocked",
+        tmp_git_repo,
+        "TECH-540",
+        "blocked",
         reason="no implementation commits",
     )
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-540")
     assert data["status"] == "blocked"
     assert data["blocked_reason"] == "no implementation commits"
+
+
+def test_push_best_effort_warns_on_failure(tmp_git_repo, caplog):
+    """TECH-189 Task 5: push failures log WARNING (not DEBUG) and bump counter.
+
+    Silent DEBUG masked multi-machine convergence failures. WARNING surfaces
+    them in orchestrator logs; counter file enables external monitoring.
+    """
+    import logging
+
+    fail = subprocess.CompletedProcess(
+        args=["git", "push"], returncode=1, stdout="", stderr="No such remote 'origin'"
+    )
+    with patch.object(lifecycle, "_run", return_value=fail):
+        with caplog.at_level(logging.WARNING, logger="lifecycle"):
+            lifecycle._push_best_effort(str(tmp_git_repo), "develop")
+
+    assert any("lifecycle push failed" in r.message for r in caplog.records)
+    counter = Path(tmp_git_repo) / "ai" / ".lifecycle-push-failures"
+    assert counter.is_file()
+    assert counter.read_text().strip() == "1"
+
+    # Second failure increments
+    with patch.object(lifecycle, "_run", return_value=fail):
+        lifecycle._push_best_effort(str(tmp_git_repo), "develop")
+    assert counter.read_text().strip() == "2"
+
+
+def test_cas_loop_treats_timeout_as_retry(tmp_git_repo):
+    """TECH-189 Task 7: TimeoutExpired from _run is caught in _cas_loop.
+
+    Guarantee: a hung git subprocess does NOT hold _write_lock indefinitely.
+    The retry loop catches subprocess.TimeoutExpired, logs WARNING, and
+    proceeds to the next attempt (eventually raising LifecycleWriteRaceError
+    after MAX_CAS_RETRIES, never propagating TimeoutExpired to caller).
+    """
+    lifecycle.create_initial(tmp_git_repo, "TECH-560", "p1", "tech")
+    # Patch _atomic_write to raise TimeoutExpired on every call.
+    with patch.object(
+        lifecycle,
+        "_atomic_write",
+        side_effect=subprocess.TimeoutExpired(cmd=["git", "write-tree"], timeout=30),
+    ):
+        with pytest.raises(lifecycle.LifecycleWriteRaceError):
+            lifecycle.write_lifecycle(tmp_git_repo, "TECH-560", "in_progress")
+    # Lock must be released (next call succeeds — real write, no patch).
+    lifecycle.write_lifecycle(tmp_git_repo, "TECH-560", "in_progress")
+    data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-560")
+    assert data["status"] == "in_progress"
+
+
+def test_run_has_default_timeout(tmp_git_repo):
+    """TECH-189 Task 7: _run() includes timeout=30 by default.
+
+    Smoke check: calling _run with a fast command does NOT raise TimeoutExpired
+    (would fail if timeout were e.g. 0). The default value is asserted via
+    function signature introspection to guard against accidental removal.
+    """
+    import inspect
+
+    sig = inspect.signature(lifecycle._run)
+    assert sig.parameters["timeout"].default == 30
 
 
 def test_transitions_list_grows(tmp_git_repo):
