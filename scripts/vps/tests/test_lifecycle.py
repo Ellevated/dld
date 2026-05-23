@@ -253,6 +253,12 @@ def test_reconcile_orphans_demotes_in_progress(tmp_git_repo):
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-530")
     assert data["status"] == "queued"
     assert data.get("blocked_reason") == "orphaned from crash"
+    # TECH-189 Task 9: reconcile_orphans is called by orchestrator (startup_reconcile),
+    # not callback — the transition `by` must reflect the true source for accurate
+    # post-incident forensics.
+    last_transition = data["transitions"][-1]
+    assert last_transition["by"] == "orchestrator"
+    assert last_transition["to"] == "queued"
 
 
 def test_reconcile_orphans_skips_alive_tasks(tmp_git_repo):

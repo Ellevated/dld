@@ -563,7 +563,9 @@ def reconcile_orphans(repo_dir, pueue_alive_ids: set) -> list:
             continue
         spec_id = data["spec_id"]
         log.info("reconcile_orphans: demoting %s (pueue_id=%s)", spec_id, pueue_id)
-        write_lifecycle(repo_dir, spec_id, "queued", reason="orphaned from crash", by="callback")
+        write_lifecycle(
+            repo_dir, spec_id, "queued", reason="orphaned from crash", by="orchestrator"
+        )
         reconciled.append(spec_id)
     return reconciled
 
