@@ -557,4 +557,63 @@ DEPLOY_URL=local-only
 ---
 
 ## Autopilot Log
-[Auto-populated by autopilot during execution]
+
+### Task 1/7: Extract gate_logic.py — 2026-05-24
+- Coder: completed (1 file: scripts/vps/gate_logic.py, 311 LOC)
+- Tester: passed (113 regression tests)
+- Pre-Check: PASS
+- Spec Reviewer: approved
+- Code Quality Reviewer: approved
+- Commit: 97ed0bb
+
+### Task 2/7: gate_health schema + db helpers — 2026-05-24
+- Coder: completed (2 files: schema.sql, db.py)
+- Tester: passed (smoke round-trip + 113 regression)
+- Pre-Check: WARN (db.py 586 LOC — pre-existing 531 LOC violation, +55 LOC; spec mandates db.py modification)
+- Spec Reviewer: approved
+- Code Quality Reviewer: approved
+- Commit: 4223139
+
+### Task 3/7: gate-daemon.py main loop — 2026-05-24
+- Coder: completed (2 files: gate-daemon.py 390 LOC, dependencies.md sections added early)
+- Tester: passed
+- Pre-Check: PASS (after refactor — specific exception types sqlite3.Error/OSError)
+- Spec Reviewer: approved
+- Code Quality Reviewer: needs_refactor → fixed (removed unnecessary `global`, added reverse-pointer rows in db.py + lifecycle.py sections) → approved
+- Commit: 8bed105
+
+### Task 4/7: setup-vps.sh systemd unit — 2026-05-24
+- Coder: completed (1 file: setup-vps.sh +40 lines)
+- Tester: passed (bash -n syntax, WatchdogSec absent, 113 regression)
+- Spec Reviewer: approved
+- Code Quality Reviewer: approved
+- Commit: ee57ac6
+
+### Task 5/7: test_gate_logic.py — 2026-05-24
+- Coder: completed (1 file: test_gate_logic.py, 410 LOC, 24 tests)
+- Tester: passed (24/24)
+- Spec Reviewer: approved
+- Code Quality Reviewer: approved (note: `_git` helper duplication with test_callback.py is intentional spec-mandated mirror)
+- Commit: 6ced85b
+
+### Task 6/7: test_gate_daemon.py — 2026-05-24
+- Coder: completed (1 file: test_gate_daemon.py, 515 LOC, 8 tests)
+- Tester: passed (8/8, 145 total)
+- Spec Reviewer: approved
+- Code Quality Reviewer: approved
+- Commit: 8d2099a
+
+### Task 7/7: dependencies.md wrap-up — 2026-05-24
+- Coder: completed (1 file: dependencies.md final entries)
+- All sections + reverse-pointers added incrementally during Tasks 3-6
+- Commit: 4eeca80
+
+### PHASE 3: Finishing — 2026-05-24
+- Final regression: 145 passed in scripts/vps/tests/
+- AV-S1 (gate-daemon imports): OK
+- AV-S2 (gate_logic pure import): OK
+- AV-S3 (schema applies): OK
+- AV-F3 (FF-09 invariant): OK (no callback import, no write_lifecycle calls)
+- AV-S4 (systemd unit syntax): skipped — VPS-only, post-deploy operator step
+- AV-F4 (manual smoke after deploy): skipped — VPS operator step
+- Task status: complete
