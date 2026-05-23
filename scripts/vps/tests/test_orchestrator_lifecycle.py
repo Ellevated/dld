@@ -29,8 +29,11 @@ def tmp_git_repo(tmp_path):
 
     def git(*args):
         subprocess.run(
-            ["git"] + list(args), cwd=str(repo), check=True,
-            capture_output=True, text=True,
+            ["git"] + list(args),
+            cwd=str(repo),
+            check=True,
+            capture_output=True,
+            text=True,
         )
 
     git("init", "-b", "main")
@@ -62,7 +65,8 @@ def test_dirty_lifecycle_aborts_orchestrator_startup(tmp_git_repo):
     # Sync HEAD → WT then dirty it
     subprocess.run(
         ["git", "checkout", "HEAD", "--", "ai/lifecycle/"],
-        cwd=str(tmp_git_repo), check=True,
+        cwd=str(tmp_git_repo),
+        check=True,
     )
     (tmp_git_repo / "ai" / "lifecycle" / "TECH-400.yaml").write_text("manually corrupted\n")
     with pytest.raises(RuntimeError, match="Dirty lifecycle"):
@@ -74,6 +78,11 @@ def test_bootstrap_creates_lifecycle_for_new_spec(tmp_git_repo):
     """Spark created spec.md without lifecycle.yaml → orchestrator creates initial."""
     spec = tmp_git_repo / "ai" / "features" / "TECH-500-foo.md"
     spec.write_text("# TECH-500\n**Priority:** P1\n**Kind:** tech\n")
+    # bootstrap_new_specs requires backlog.md to guard against orphan spec.md files
+    (tmp_git_repo / "ai").mkdir(parents=True, exist_ok=True)
+    (tmp_git_repo / "ai" / "backlog.md").write_text(
+        "| ID | Title | Status | P |\n|---|---|---|---|\n| TECH-500 | foo | queued | P1 |\n"
+    )
     assert not (tmp_git_repo / "ai" / "lifecycle" / "TECH-500.yaml").exists()
     orchestrator.bootstrap_new_specs(str(tmp_git_repo))
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-500")

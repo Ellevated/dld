@@ -164,6 +164,37 @@ def pueue_has_active_label(label: str) -> bool:
         return False
 
 
+def pueue_has_active_spec(spec_id: str) -> bool:
+    """Rule 8: True if any live pueue task has label ending with ':<spec_id>' (any project).
+
+    Prevents cross-project double-dispatch of the same spec_id.
+    Fail-open (returns False) so a pueue outage doesn't block all dispatches.
+    """
+    try:
+        r = subprocess.run(
+            ["pueue", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if r.returncode != 0:
+            return False
+        data = json.loads(r.stdout)
+        suffix = f":{spec_id}"
+        for _tid, task in data.get("tasks", {}).items():
+            label = task.get("label", "")
+            if not label.endswith(suffix):
+                continue
+            st = task.get("status", "")
+            state_name = next(iter(st.keys()), "") if isinstance(st, dict) else st
+            if state_name in _LIVE_PUEUE_STATES:
+                return True
+        return False
+    except Exception as exc:
+        log.warning("pueue_has_active_spec check failed: %s", exc)
+        return False
+
+
 def release_orphan_slots() -> int:
     """Release slots whose pueue tasks are gone. 0 if pueue unreachable (BUG-162)."""
     live_ids = get_live_pueue_ids()
@@ -530,6 +561,9 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
     task_label = f"{project_id}:{spec_id}"
     if pueue_has_active_label(task_label):
         log.info("skip dispatch: %s already in pueue", task_label)
+        return False
+    if pueue_has_active_spec(spec_id):
+        log.info("skip dispatch: %s live in pueue under another project (Rule 8)", spec_id)
         return False
     pueue_id = _pueue_add(
         f"{provider}-runner",

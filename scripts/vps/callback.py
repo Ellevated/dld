@@ -424,9 +424,6 @@ def dispatch_reflect(project_id: str, project_path: str, task_label: str, provid
         log.warning("reflect dispatch failed: %s", reflect_label)
 
 
-
-
-
 # --- TECH-166 / TECH-167: Implementation guard helpers ----------------------
 
 # Backticked path-shape: anything between backticks with a dot extension.
@@ -454,7 +451,6 @@ _ALLOWED_FILES_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 _NEXT_H2_RE = re.compile(r"^##\s+\S")
-
 
 
 def _parse_allowed_files_v1(spec_text: str) -> list[str] | None:
@@ -555,15 +551,6 @@ def _parse_allowed_files(spec_path: Path) -> list[str] | None:
             len(legacy),
         )
     return legacy
-
-
-def _append_blocked_reason(project_path: str, spec_id: str, reason: str, pueue_id: int | None = None) -> None:
-    """Record blocked reason via lifecycle module (ADR-023)."""
-    try:
-        lifecycle.write_lifecycle(project_path, spec_id, "blocked",
-                                  reason=reason, by="callback", pueue_id=pueue_id)
-    except Exception as exc:  # noqa: BLE001 — lifecycle errors must not crash callback
-        log.warning("BLOCKED_REASON write failed for %s: %s", spec_id, exc)
 
 
 def _get_started_at(pueue_id: int) -> str | None:
@@ -683,55 +670,6 @@ def _commit_stats(
     return code_loc, test_loc, code_commits
 
 
-def _has_implementation_commits(
-    project_path: str,
-    allowed: list[str] | None,
-    started_at: str | None,
-    branches: str = "all",
-) -> bool:
-    """True if any commit since `started_at` touched any path in `allowed`.
-
-    `branches` (TECH-170):
-        "all"     → `git log --all` — sees commits on feature branches
-                    even when worktree hasn't merged back to develop yet.
-                    Default; closes the false-negative gap behind ADR-009.
-        "current" → no branch flag — pre-TECH-170 behavior.
-        "develop" → `git log develop` — used by `is_merged_to_develop`.
-
-    Degrade-open on missing data:
-        allowed is None        → True  (no `## Allowed Files` section — back-compat)
-        allowed == []          → False (explicit empty allowlist = no-impl)
-        started_at is None     → True  (data-availability issue)
-        subprocess error       → True  (don't block on tool failure)
-    """
-    if allowed is None:
-        return True
-    if started_at is None:
-        return True
-    if not allowed:
-        return False
-    cmd = ["git", "-C", project_path, "log"]
-    if branches == "all":
-        cmd.append("--all")
-    elif branches == "develop":
-        cmd.append("develop")
-    # "current" → no extra flag
-    cmd += [f"--since={started_at}", "--pretty=%H", "--", *allowed]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
-    except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("IMPL_GUARD: git log failed (%s) — degrade open", exc)
-        return True
-    if result.returncode != 0:
-        log.warning(
-            "IMPL_GUARD: git log rc=%s stderr=%s — degrade open",
-            result.returncode,
-            result.stderr.strip()[:200],
-        )
-        return True
-    return bool(result.stdout.strip())
-
-
 def _subject_implements(subject: str, spec_id: str) -> bool:
     """Return True iff the commit *subject* (first line) declares it implements spec_id.
 
@@ -773,114 +711,68 @@ def _subject_implements(subject: str, spec_id: str) -> bool:
     return False
 
 
-def _spec_has_merged_implementation(
-    project_path: str,
-    spec_id: str,
-    allowed: list[str] | None,
-) -> tuple[bool, list[str]]:
-    """True if the repo (any branch) already contains commits implementing spec_id.
+def _fetch_develop(project_path: str) -> None:
+    """Rule 4: refresh origin/develop ref before gate evaluation.
 
-    Stricter than `is_merged_to_develop`: a commit only counts if BOTH
-        (a) its **subject** (first line) declares spec_id in canonical form
-            (see `_subject_implements`), AND
-        (b) it touches at least one path in `allowed`.
-
-    TECH-177: replaced `git log --grep <ID>` with a post-filter on the subject
-    line. `--grep` matched ANY occurrence of the ID anywhere in the message
-    (body, footer, trailers, `see also`/`Refs:` lines), causing cross-spec
-    false-positive auto-close when neighbour-spec commits cross-referenced
-    a queued spec ID.
-
-    Catches the "already merged before started_at" gap in the activity-window
-    guard (`_has_implementation_commits`):
-        - autopilot re-run on a spec that was merged days ago → activity window
-          empty, but this helper sees the historical commits → auto-close.
-
-    Returns (matched, hashes):
-        matched : bool — True iff at least one qualifying commit exists.
-        hashes  : list[str] — short SHAs of qualifying commits (for log line).
-                  Empty when matched is False or on error.
-
-    Degrade rules (mirrored from `_has_implementation_commits`):
-        spec_id falsy        → (False, [])
-        allowed is None      → (False, [])  # no allowlist = can't qualify
-        allowed == []        → (False, [])  # explicit empty allowlist
-        subprocess error     → (False, [])  # silent — caller falls through
-                                            # to demote (existing behaviour)
+    Best-effort: on network failure we fall through and evaluate against
+    the local snapshot of origin/develop. The gate is conservative
+    (only marks done on positive match), so stale-origin failure means
+    "may stay blocked one extra cycle", not "false-done".
     """
-    if not spec_id or not allowed:
-        return (False, [])
-    # NUL-separate hash from subject so we can split safely even if subject
-    # contains pretty much anything except a NUL byte.
+    try:
+        subprocess.run(
+            ["git", "-C", project_path, "fetch", "origin", "develop", "--quiet"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("FETCH: failed for %s: %s", project_path, exc)
+
+
+def _is_done_on_develop(project_path: str, spec_id: str, allowed_files: list[str]) -> bool:
+    """Rule 1 (THE gate): True iff origin/develop contains a commit whose
+    subject implements spec_id (per `_subject_implements`) AND that touches
+    at least one path in `allowed_files`.
+
+    No activity window. No `--all`. No auto-close path. The state of
+    `origin/develop` is the only thing that matters.
+
+    Returns False on any error or empty inputs — conservative by design,
+    fail-closed: ambiguity → blocked, not done.
+    """
+    if not spec_id or not allowed_files:
+        return False
     cmd = [
         "git",
         "-C",
         project_path,
         "log",
-        "--all",
+        "origin/develop",
         "--pretty=%h%x00%s",
         "--",
-        *allowed,
+        *allowed_files,
     ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
-        log.info(
-            "MERGED_IMPL_CHECK: git log failed for %s: %s",
-            spec_id,
-            exc,
-        )
-        return (False, [])
+        log.warning("GATE: git log failed for %s: %s", spec_id, exc)
+        return False
     if r.returncode != 0:
-        log.info(
-            "MERGED_IMPL_CHECK: git log rc=%s stderr=%s",
+        log.warning(
+            "GATE: git log rc=%s stderr=%s",
             r.returncode,
             r.stderr.strip()[:200],
         )
-        return (False, [])
-    hashes: list[str] = []
+        return False
     for line in r.stdout.splitlines():
         if not line:
             continue
-        sha, _, subject = line.partition("\x00")
+        _, _, subject = line.partition("\x00")
         if _subject_implements(subject, spec_id):
-            hashes.append(sha)
-    return (bool(hashes), hashes)
-
-
-def is_merged_to_develop(project_path: str, spec_id: str) -> bool:
-    """Best-effort check: does `develop` contain a commit mentioning spec_id?
-
-    Used only for diagnostic logging in `verify_status_sync`. Never blocks
-    a transition. On any error returns False (silent — caller treats as
-    "merge state unknown").
-
-    TECH-170: pairs with `--all` guard. Together they let us tell apart:
-        - work on feature/<spec> only (guard True, this False) — log warn
-        - work merged to develop      (guard True, this True)  — happy path
-    """
-    if not spec_id:
-        return False
-    cmd = [
-        "git",
-        "-C",
-        project_path,
-        "log",
-        "develop",
-        "--grep",
-        re.escape(spec_id),
-        "--pretty=%H",
-        "-n",
-        "1",
-    ]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=False)
-    except (OSError, subprocess.SubprocessError) as exc:
-        log.info("MERGE_CHECK: git log failed for %s: %s", spec_id, exc)
-        return False
-    if r.returncode != 0:
-        return False
-    return bool(r.stdout.strip())
+            return True
+    return False
 
 
 # --- TECH-169: Circuit-breaker -----------------------------------------------
@@ -1078,92 +970,236 @@ def _record(project_id, spec_id, action, reason, *, demoted=False):
         log.warning("CIRCUIT: record_decision failed: %s", exc)
 
 
-def _run_impl_guard(
-    project_path: str, spec_id: str, pueue_id: int, project_id: str,
-) -> tuple[str, str, list | None, str | None, int, int, int]:
-    """TECH-166/TECH-176: check implementation commits. Returns (target, guard_reason, allowed,
-    started_at, code_loc, test_loc, code_commits). Mutates target to 'blocked' on demote."""
-    spec_file = next(iter(Path(project_path).glob(f"ai/features/{spec_id}*.md")), None)
-    if not spec_file:
-        return "done", "", None, None, 0, 0, 0
-    allowed = _parse_allowed_files(spec_file)
-    started_at = _get_started_at(pueue_id)
-    code_loc, test_loc, code_commits = _commit_stats(project_path, allowed, started_at)
-    if _has_implementation_commits(project_path, allowed, started_at):
-        if is_merged_to_develop(project_path, spec_id):
-            log.info("IMPL_GUARD: %s — merged to develop ✓", spec_id)
-        else:
-            log.warning("IMPL_GUARD: %s — on feature branch, not yet on develop", spec_id)
-        return "done", "", allowed, started_at, code_loc, test_loc, code_commits
-    already_merged, hashes = _spec_has_merged_implementation(project_path, spec_id, allowed)
-    if already_merged:  # TECH-176: auto-close
-        reason = f"already_merged:{','.join(hashes[:5])}" if hashes else "already_merged"
-        log.warning("IMPL_GUARD: %s — already merged → auto-close (commits: %s)",
-                    spec_id, ",".join(hashes[:5]))
-        _record(project_id, spec_id, "auto_close", reason)
-        return "done", reason, allowed, started_at, code_loc, test_loc, code_commits
-    reason = "missing_allowed_files_section" if allowed is None else "no_implementation_commits"
-    log.warning("IMPL_GUARD: %s — demoting done→blocked (%s)", spec_id, reason)
-    _record(project_id, spec_id, "demote", reason, demoted=True)
+def _render_and_commit_backlog(project_path: str, project_id: str) -> None:
+    """Rule 5: inline render of ai/backlog.md after every lifecycle write.
+
+    Best-effort. Lifecycle yaml is the SoT; backlog.md is a render. If render
+    fails, lifecycle write still succeeds and the next callback retries the
+    render. Logged but never raises.
+    """
     try:
-        count = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
-        if count > CIRCUIT_THRESHOLD:
-            _trip_circuit(project_id, spec_id, count)
+        import render_backlog
+
+        content = render_backlog.render_backlog(project_path)
     except Exception as exc:  # noqa: BLE001
-        log.warning("CIRCUIT: count/trip failed: %s", exc)
-    return "blocked", reason, allowed, started_at, code_loc, test_loc, code_commits
+        log.warning("RENDER: render_backlog failed for %s: %s", project_id, exc)
+        return
+    try:
+        ok = lifecycle.write_file_atomic(
+            project_path,
+            "ai/backlog.md",
+            content,
+            "render(backlog): auto-sync from lifecycle",
+            by="callback",
+        )
+        if not ok:
+            log.warning("RENDER: write_file_atomic returned False for %s", project_id)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("RENDER: write_file_atomic raised for %s: %s", project_id, exc)
 
 
 def verify_status_sync(
-    project_path: str, spec_id: str, target: str = "done", pueue_id: int | None = None,
+    project_path: str,
+    spec_id: str,
+    target: str = "done",
+    pueue_id: int | None = None,
 ) -> None:
-    """Write final lifecycle status via lifecycle.write_lifecycle (ADR-023).
-    TECH-166/TECH-176: implementation guard when target='done'. TECH-169: noop on open circuit.
+    """Single gate: lifecycle.status = done iff origin/develop contains a commit
+    with `<spec_id>:` in its subject AND touching at least one allowed file.
+
+    Implements the 2026-05-21 redesign (8 rules). The decision is a pure
+    function of (origin/develop after fetch, allowed_files, existing lifecycle).
+    Pueue exit code and activity windows do NOT factor into done/blocked.
+
+    Rules enforced here:
+      1. done iff commit on origin/develop with `<spec_id>:` subject + allowed_files
+      3. noop if no ai/lifecycle/<spec_id>.yaml in this project
+      4. fetch origin/develop before evaluating
+      5. inline render of ai/backlog.md after every lifecycle write
+      7. done is terminal — never demote done
+
+    Preserves:
+      - Circuit breaker (TECH-169) on mass-demote
+      - Audit log (TECH-171) one JSONL line per call
     """
-    target_in, start_wall = target, time.monotonic()
+    target_in = target
+    start_wall = time.monotonic()
     project_id = Path(project_path).name
-    if is_circuit_open():  # TECH-169
-        log.warning("CIRCUIT_OPEN: skipping verify_status_sync(%s, target=%s)", spec_id, target)
+
+    # Circuit breaker (TECH-169)
+    if is_circuit_open():
+        log.warning("CIRCUIT_OPEN: skip verify_status_sync(%s)", spec_id)
         _record(project_id, spec_id, "noop", "circuit_open")
-        return
-    existing = lifecycle.read_lifecycle(project_path, spec_id)
-    existing_status = existing.get("status") if existing else None
-    # Guard A: lifecycle=blocked overrides pueue done
-    if target == "done" and existing_status == "blocked":
-        log.info("STATUS_SYNC: %s — lifecycle blocked, skipping done", spec_id)
-        _record(project_id, spec_id, "sync", "spec_already_blocked")
-        _emit_audit(project_id, spec_id, pueue_id, target_in, "blocked",
-                    "spec_already_blocked", 0, 0, 0, 0, None, start_wall)
-        return
-    # Guard B: lifecycle=done protected from pueue exit=1 blocked
-    if target == "blocked" and existing_status == "done":
-        log.info("STATUS_SYNC: %s — lifecycle done, skipping blocked", spec_id)
-        _record(project_id, spec_id, "sync", "spec_already_done")
-        _emit_audit(project_id, spec_id, pueue_id, target_in, "done",
-                    "spec_already_done", 0, 0, 0, 0, None, start_wall)
-        return
-    allowed: list | None = None
-    started_at: str | None = None
-    code_loc = test_loc = code_commits = 0
-    guard_reason = ""
-    if target == "done" and pueue_id is not None:  # TECH-166 guard
-        target, guard_reason, allowed, started_at, code_loc, test_loc, code_commits = (
-            _run_impl_guard(project_path, spec_id, int(pueue_id), project_id)
+        _emit_audit(
+            project_id,
+            spec_id,
+            pueue_id,
+            target_in,
+            "noop",
+            "circuit_open",
+            0,
+            0,
+            0,
+            0,
+            None,
+            start_wall,
         )
-    final_reason = guard_reason or ("already_correct" if existing_status == target else "fixed")
-    _emit_audit(project_id, spec_id, pueue_id, target_in, target, final_reason,
-                len(allowed) if allowed is not None else 0,
-                code_loc, test_loc, code_commits, started_at, start_wall)
-    _record(project_id, spec_id, "noop" if existing_status == target else "sync", final_reason)
-    if existing_status == target:
-        log.info("STATUS_SYNC: %s — lifecycle already %s ✓", spec_id, target)
         return
-    log.warning("STATUS_SYNC: %s — writing lifecycle %s (was %s)", spec_id, target, existing_status)
+
+    # Rule 3: project boundary
+    existing = lifecycle.read_lifecycle(project_path, spec_id)
+    if not existing:
+        log.info("NOOP: %s — no lifecycle.yaml in %s", spec_id, project_id)
+        _record(project_id, spec_id, "noop", "not_in_project")
+        _emit_audit(
+            project_id,
+            spec_id,
+            pueue_id,
+            target_in,
+            "noop",
+            "not_in_project",
+            0,
+            0,
+            0,
+            0,
+            None,
+            start_wall,
+        )
+        return
+
+    existing_status = existing.get("status")
+
+    # Rule 7: done is terminal
+    if existing_status == "done":
+        log.info("NOOP: %s — already done (terminal)", spec_id)
+        _record(project_id, spec_id, "noop", "already_done_terminal")
+        _emit_audit(
+            project_id,
+            spec_id,
+            pueue_id,
+            target_in,
+            "done",
+            "already_done_terminal",
+            0,
+            0,
+            0,
+            0,
+            None,
+            start_wall,
+        )
+        return
+
+    # Allowed files (used by gate + telemetry)
+    spec_file = next(iter(Path(project_path).glob(f"ai/features/{spec_id}*.md")), None)
+    allowed = _parse_allowed_files(spec_file) if spec_file else None
+    started_at = _get_started_at(int(pueue_id)) if pueue_id else None
+    code_loc, test_loc, code_commits = _commit_stats(project_path, allowed, started_at)
+
+    if not allowed:
+        # Cannot evaluate the gate → block with explicit reason.
+        new_status = "blocked"
+        reason = "missing_allowed_files" if allowed is None else "empty_allowed_files"
+        log.warning("GATE: %s — %s, blocking", spec_id, reason)
+    else:
+        # Rule 4: fetch before evaluating the gate
+        _fetch_develop(project_path)
+        # Rule 1: THE gate
+        if _is_done_on_develop(project_path, spec_id, allowed):
+            new_status = "done"
+            reason = ""
+        else:
+            new_status = "blocked"
+            reason = "no_merged_implementation"
+
+    # Autopilot explicitly signaled blocked/needs_review → honor over gate=done
+    # (autopilot saw something the gate can't infer: tests failed, need human, etc.)
+    if target == "blocked" and new_status == "done":
+        new_status = "blocked"
+        reason = "autopilot_signaled_blocked"
+
+    # No-op if state already matches
+    if existing_status == new_status:
+        log.info("NOOP: %s — already %s", spec_id, new_status)
+        _record(project_id, spec_id, "noop", "already_correct")
+        _emit_audit(
+            project_id,
+            spec_id,
+            pueue_id,
+            target_in,
+            new_status,
+            "already_correct",
+            len(allowed) if allowed else 0,
+            code_loc,
+            test_loc,
+            code_commits,
+            started_at,
+            start_wall,
+        )
+        return
+
+    # Demote accounting (circuit breaker)
+    if new_status == "blocked":
+        _record(project_id, spec_id, "demote", reason, demoted=True)
+        try:
+            count = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
+            if count > CIRCUIT_THRESHOLD:
+                _trip_circuit(project_id, spec_id, count)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("CIRCUIT: count/trip failed: %s", exc)
+    else:
+        _record(project_id, spec_id, "sync", "fixed")
+
+    log.warning(
+        "STATUS_SYNC: %s — %s → %s (%s)",
+        spec_id,
+        existing_status,
+        new_status,
+        reason or "ok",
+    )
     try:
-        lifecycle.write_lifecycle(project_path, spec_id, target,
-                                  reason=guard_reason or None, by="callback", pueue_id=pueue_id)
+        lifecycle.write_lifecycle(
+            project_path,
+            spec_id,
+            new_status,
+            reason=reason or None,
+            by="callback",
+            pueue_id=pueue_id,
+        )
     except Exception as exc:  # noqa: BLE001
         log.warning("STATUS_SYNC: lifecycle.write failed for %s: %s", spec_id, exc)
+        _emit_audit(
+            project_id,
+            spec_id,
+            pueue_id,
+            target_in,
+            "error",
+            f"write_failed:{exc}",
+            len(allowed) if allowed else 0,
+            code_loc,
+            test_loc,
+            code_commits,
+            started_at,
+            start_wall,
+        )
+        return
+
+    # Rule 5: inline render of backlog.md
+    _render_and_commit_backlog(project_path, project_id)
+
+    _emit_audit(
+        project_id,
+        spec_id,
+        pueue_id,
+        target_in,
+        new_status,
+        reason or "ok",
+        len(allowed) if allowed else 0,
+        code_loc,
+        test_loc,
+        code_commits,
+        started_at,
+        start_wall,
+    )
 
 
 def write_event_for_skill(project_path: str, skill: str, status: str, task_label: str) -> None:

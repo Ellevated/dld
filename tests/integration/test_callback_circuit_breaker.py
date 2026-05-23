@@ -190,6 +190,8 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 def _make_project(tmp_path: Path, idx: int, spec_id: str) -> Path:
+    import yaml
+
     repo = tmp_path / f"proj{idx}"
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "develop")
@@ -202,6 +204,27 @@ def _make_project(tmp_path: Path, idx: int, spec_id: str) -> Path:
     )
     (repo / "ai" / "backlog.md").write_text(
         f"| ID | Title | Status | P |\n|---|---|---|---|\n| {spec_id} | demo | in_progress | P1 |\n"
+    )
+    # Lifecycle yaml required by Rule 3 (noop if missing)
+    lc_dir = repo / "ai" / "lifecycle"
+    lc_dir.mkdir(parents=True)
+    lc_data = {
+        "spec_id": spec_id,
+        "status": "queued",
+        "blocked_reason": None,
+        "priority": "p1",
+        "kind": "tech",
+        "transitions": [],
+        "version": 1,
+        "started_at": None,
+        "finished_at": None,
+        "pueue_id": None,
+        "allowed_files_hash": None,
+        "updated_at": None,
+        "updated_by": "test",
+    }
+    (lc_dir / f"{spec_id}.yaml").write_text(
+        yaml.safe_dump(lc_data, default_flow_style=False, allow_unicode=True)
     )
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "init")

@@ -229,5 +229,6 @@ re-verifies via implementation guard (ADR-018).
 
 - ⛔ **NEVER push to `main`** — only `develop`
 - ⛔ **NEVER auto-resolve conflicts** → STATUS: blocked
-- ✅ Use `--ff-only` for merge (ensures clean history)
+- ⛔ **NEVER squash-merge** — `--squash` loses commit subjects; callback gate reads `origin/develop` subjects to detect implementation
+- ✅ Use `--ff-only` for merge (ensures clean history and preserves individual commit subjects)
 - ✅ Stash uncommitted changes before merge (parallel agents)

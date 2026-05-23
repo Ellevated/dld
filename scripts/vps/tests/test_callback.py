@@ -9,6 +9,7 @@ Guard B: target=blocked + lifecycle=done   → skip (respect done).
 """
 
 import json
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -21,12 +22,14 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import callback  # noqa: E402
+import db  # noqa: E402
 import lifecycle  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
 # Shared git helpers
 # ---------------------------------------------------------------------------
+
 
 def _git(repo: Path, *args: str) -> str:
     import os
@@ -46,6 +49,19 @@ def _git(repo: Path, *args: str) -> str:
         env={**os.environ, **env},
     )
     return r.stdout
+
+
+@pytest.fixture(autouse=True)
+def _isolated_db(tmp_path):
+    """Fresh SQLite DB per test — prevents circuit breaker state from accumulating."""
+    db_path = str(tmp_path / "orchestrator.db")
+    conn = sqlite3.connect(db_path)
+    schema = (Path(VPS_DIR) / "schema.sql").read_text()
+    conn.executescript(schema)
+    conn.close()
+    db._MIGRATIONS_APPLIED = False
+    with patch.object(db, "DB_PATH", db_path):
+        yield
 
 
 @pytest.fixture
@@ -76,11 +92,10 @@ class TestDoneOverBlockedGuard:
         assert data["status"] == "blocked", "lifecycle blocked must be preserved"
 
     def test_done_guard_skips_write_when_no_lifecycle(self, git_repo):
-        """No lifecycle yet (first time): target=done should write done."""
+        """Rule 3: no lifecycle.yaml → noop (spec not in this project)."""
         callback.verify_status_sync(str(git_repo), "BUG-99", target="done")
         data = lifecycle.read_lifecycle(str(git_repo), "BUG-99")
-        assert data is not None
-        assert data["status"] == "done"
+        assert data is None, "no lifecycle.yaml → noop, nothing written"
 
 
 # ---------------------------------------------------------------------------
@@ -118,29 +133,27 @@ class TestIdempotent:
     def test_already_done_no_extra_commit(self, git_repo):
         """If lifecycle already has target status, no extra commit."""
         import subprocess as sp
+
         lifecycle.write_lifecycle(str(git_repo), "BUG-4", "done")
         before = sp.run(
-            ["git", "-C", str(git_repo), "rev-parse", "HEAD"],
-            capture_output=True, text=True
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"], capture_output=True, text=True
         ).stdout.strip()
         callback.verify_status_sync(str(git_repo), "BUG-4", target="done")
         after = sp.run(
-            ["git", "-C", str(git_repo), "rev-parse", "HEAD"],
-            capture_output=True, text=True
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"], capture_output=True, text=True
         ).stdout.strip()
         assert before == after, "no commit expected when already at target"
 
     def test_already_blocked_no_extra_commit(self, git_repo):
         import subprocess as sp
+
         lifecycle.write_lifecycle(str(git_repo), "BUG-5", "blocked")
         before = sp.run(
-            ["git", "-C", str(git_repo), "rev-parse", "HEAD"],
-            capture_output=True, text=True
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"], capture_output=True, text=True
         ).stdout.strip()
         callback.verify_status_sync(str(git_repo), "BUG-5", target="blocked")
         after = sp.run(
-            ["git", "-C", str(git_repo), "rev-parse", "HEAD"],
-            capture_output=True, text=True
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"], capture_output=True, text=True
         ).stdout.strip()
         assert before == after, "no commit expected when already at target"
 
@@ -153,55 +166,59 @@ class TestIdempotent:
 class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
     """verify_status_sync must write lifecycle exactly once per terminal status."""
 
-    def test_lifecycle_written_done_with_impl_commits(self, git_repo, monkeypatch):
-        """When _has_implementation_commits returns True, lifecycle must become done."""
+    def test_lifecycle_written_done_when_gate_true(self, git_repo, monkeypatch):
+        """Rule 1 gate returns True → lifecycle becomes done; exactly one new commit."""
         lifecycle.write_lifecycle(str(git_repo), "TECH-X", "in_progress")
 
-        # Stub implementation guard to return True (no need for real commits)
-        monkeypatch.setattr(callback, "_has_implementation_commits", lambda *a, **kw: True)
-        monkeypatch.setattr(callback, "_get_started_at", lambda *a: "2026-01-01T00:00:00Z")
+        # Gate stubs
+        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
+        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
-        monkeypatch.setattr(callback, "is_merged_to_develop", lambda *a: True)
+
+        # Need spec file with ## Allowed Files so gate branch is entered
+        (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
+        (git_repo / "ai" / "features" / "TECH-X-spec.md").write_text(
+            "# TECH-X\n\n## Allowed Files\n\n- `scripts/vps/callback.py`\n"
+        )
 
         import subprocess as sp
+
         before_count = int(
             sp.run(
                 ["git", "-C", str(git_repo), "rev-list", "--count", "HEAD"],
-                capture_output=True, text=True
+                capture_output=True,
+                text=True,
             ).stdout.strip()
         )
         callback.verify_status_sync(str(git_repo), "TECH-X", target="done", pueue_id=42)
         after_count = int(
             sp.run(
                 ["git", "-C", str(git_repo), "rev-list", "--count", "HEAD"],
-                capture_output=True, text=True
+                capture_output=True,
+                text=True,
             ).stdout.strip()
         )
 
         data = lifecycle.read_lifecycle(str(git_repo), "TECH-X")
         assert data is not None
         assert data["status"] == "done", f"expected done, got {data['status']}"
-        # Exactly one new lifecycle commit (the write)
-        assert after_count == before_count + 1, (
-            f"expected exactly 1 new commit, got {after_count - before_count}"
+        # at least 1 lifecycle commit; backlog render may add a second
+        assert after_count >= before_count + 1, (
+            f"expected at least 1 new commit, got {after_count - before_count}"
         )
 
-    def test_demoted_to_blocked_when_no_impl_commits(self, git_repo, monkeypatch):
-        """When no implementation commits found, must demote to blocked."""
+    def test_demoted_to_blocked_when_gate_false(self, git_repo, monkeypatch):
+        """Rule 1 gate returns False → lifecycle demoted to blocked."""
         lifecycle.write_lifecycle(str(git_repo), "TECH-Y", "in_progress")
 
-        monkeypatch.setattr(callback, "_has_implementation_commits", lambda *a, **kw: False)
-        monkeypatch.setattr(callback, "_spec_has_merged_implementation", lambda *a: (False, []))
-        monkeypatch.setattr(callback, "_get_started_at", lambda *a: "2026-01-01T00:00:00Z")
+        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
+        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
 
-        # Need a minimal spec file with ## Allowed Files for the guard
         (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
         (git_repo / "ai" / "features" / "TECH-Y-spec.md").write_text(
-            "# TECH-Y\n\n**Status:** in_progress\n\n## Allowed Files\n\n<!-- callback-allowlist v1 -->\n- `scripts/vps/callback.py`\n"
+            "# TECH-Y\n\n## Allowed Files\n\n- `scripts/vps/callback.py`\n"
         )
-        monkeypatch.setattr(callback, "_parse_allowed_files",
-                            lambda *a: ["scripts/vps/callback.py"])
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)
@@ -368,109 +385,3 @@ class TestSubjectImplements:
     def test_empty_inputs(self):
         assert not callback._subject_implements("", "FTR-925")
         assert not callback._subject_implements("feat(FTR-925): x", "")
-
-
-# --- TECH-177: Integration with real git repo --------------------------------
-
-
-def _commit(repo: Path, subject: str, body: str = "", *, files: dict[str, str] | None = None):
-    files = files or {"a.py": "x"}
-    for rel, content in files.items():
-        p = repo / rel
-        p.parent.mkdir(parents=True, exist_ok=True)
-        # Append unique content so each commit is a real change
-        p.write_text(p.read_text() + "\n" + content if p.exists() else content)
-    _git(repo, "add", *files.keys())
-    msg = subject + (("\n\n" + body) if body else "")
-    _git(repo, "commit", "-q", "-m", msg)
-
-
-class TestSpecHasMergedImplementation:
-    def test_cross_mention_in_body_does_not_match(self, git_repo):
-        """Regression: awardybot 2026-05-04 incident.
-
-        Commit implements FTR-923 with cross-reference to FTR-925 in body,
-        and touches a file that is also in FTR-925's Allowed Files. Must NOT
-        be treated as FTR-925 implementation.
-        """
-        _commit(git_repo, "feat(FTR-923): impl X", body="see also FTR-925", files={"a.py": "v1"})
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
-        )
-        assert matched is False
-        assert hashes == []
-
-    def test_subject_scope_match(self, git_repo):
-        _commit(git_repo, "feat(FTR-925): impl Y", files={"a.py": "v1"})
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
-        )
-        assert matched is True
-        assert len(hashes) == 1
-
-    def test_legacy_bare_subject_match(self, git_repo):
-        _commit(git_repo, "FTR-925: impl", files={"a.py": "v1"})
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
-        )
-        assert matched is True
-        assert len(hashes) == 1
-
-    def test_merge_subject_match(self, git_repo):
-        _commit(git_repo, "merge FTR-925: rollup", files={"a.py": "v1"})
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
-        )
-        assert matched is True
-        assert len(hashes) == 1
-
-    def test_footer_trailer_does_not_match(self, git_repo):
-        _commit(
-            git_repo,
-            "feat(other): unrelated",
-            body="Refs: FTR-925\nCo-authored-by: x <x@x>",
-            files={"a.py": "v1"},
-        )
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
-        )
-        assert matched is False
-        assert hashes == []
-
-    def test_path_filter_still_required(self, git_repo):
-        """Subject match alone is not enough — file must be in allowed list."""
-        _commit(git_repo, "feat(FTR-925): impl", files={"other.py": "v1"})
-        matched, _ = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
-        )
-        assert matched is False
-
-    def test_empty_allowed(self, git_repo):
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            [],
-        )
-        assert matched is False
-        assert hashes == []
-
-    def test_none_allowed(self, git_repo):
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            None,
-        )
-        assert matched is False
-        assert hashes == []

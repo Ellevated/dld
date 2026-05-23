@@ -115,8 +115,14 @@ def _make_project(
     )
     # Commit everything: README + spec + backlog + lifecycle in one init commit
     (repo / "README.md").write_text("init\n")
-    _git(repo, "add", "README.md", f"ai/features/{spec_id}.md", "ai/backlog.md",
-         "ai/lifecycle/.gitkeep")
+    _git(
+        repo,
+        "add",
+        "README.md",
+        f"ai/features/{spec_id}.md",
+        "ai/backlog.md",
+        "ai/lifecycle/.gitkeep",
+    )
     _git(repo, "commit", "-q", "-m", "init")
     return repo
 
@@ -173,10 +179,19 @@ def _seed_lifecycle_yaml_with_status(repo: Path, spec_id: str, status: str) -> N
     lc_dir = repo / "ai" / "lifecycle"
     lc_dir.mkdir(parents=True, exist_ok=True)
     data = {
-        "spec_id": spec_id, "status": status, "blocked_reason": None,
-        "priority": "p1", "kind": "tech", "transitions": [], "version": 1,
-        "started_at": None, "finished_at": None, "pueue_id": None,
-        "allowed_files_hash": None, "updated_at": None, "updated_by": "test",
+        "spec_id": spec_id,
+        "status": status,
+        "blocked_reason": None,
+        "priority": "p1",
+        "kind": "tech",
+        "transitions": [],
+        "version": 1,
+        "started_at": None,
+        "finished_at": None,
+        "pueue_id": None,
+        "allowed_files_hash": None,
+        "updated_at": None,
+        "updated_by": "test",
     }
     yaml_path = lc_dir / f"{spec_id}.yaml"
     yaml_path.write_text(yaml.safe_dump(data, default_flow_style=False, allow_unicode=True))
@@ -187,25 +202,24 @@ def _seed_lifecycle_yaml_with_status(repo: Path, spec_id: str, status: str) -> N
 # --- EC-11: missing-section degrade-open → done ----------------------------
 
 
-def test_ec11_no_allowed_files_section_degrades_open_to_done(tmp_path, tmp_db, monkeypatch):
-    """No ## Allowed Files → degrade-open → allow done (back-compat for old specs).
+def test_ec11_no_allowed_files_section_blocks(tmp_path, tmp_db, monkeypatch):
+    """No ## Allowed Files section → blocked with missing_allowed_files.
 
-    When a spec lacks the ## Allowed Files section entirely, _has_implementation_commits
-    returns True (degrade-open back-compat sentinel), so the guard does NOT demote.
-    The spec is written to 'done' as requested.
+    2026-05-21 redesign: missing Allowed Files is no longer degrade-open.
+    Gate cannot evaluate without a file list → fail-closed → blocked.
     """
     spec_id = "TECH-1011"
     repo = _make_project(tmp_path, spec_id, allowed_files=None)
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=111)
-    time.sleep(1.1)
-    _commit(repo, "src/x.py", "y=1\n", "feat: x")
+    _seed_lifecycle_yaml(repo, spec_id)
     _suppress_push(monkeypatch)
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=111)
 
     data = lifecycle.read_lifecycle(str(repo), spec_id)
     assert data is not None, "lifecycle.yaml must be written"
-    assert data["status"] == "done"
+    assert data["status"] == "blocked"
+    assert "missing_allowed_files" in (data.get("blocked_reason") or "")
 
 
 # --- EC-12: empty-section degrade-closed (v1 marker, no bullets) -----------
@@ -234,8 +248,14 @@ def test_ec12_v1_empty_section_demotes(tmp_path, tmp_db, monkeypatch):
     (repo / "ai" / "features" / f"{spec_id}.md").write_text(spec_body)
     (repo / "ai" / "backlog.md").write_text(f"| {spec_id} | demo | in_progress | P1 |\n")
     (repo / "README.md").write_text("init\n")
-    _git(repo, "add", "README.md", f"ai/features/{spec_id}.md", "ai/backlog.md",
-         "ai/lifecycle/.gitkeep")
+    _git(
+        repo,
+        "add",
+        "README.md",
+        f"ai/features/{spec_id}.md",
+        "ai/backlog.md",
+        "ai/lifecycle/.gitkeep",
+    )
     _git(repo, "commit", "-q", "-m", "init")
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=112)
     time.sleep(1.1)
@@ -250,7 +270,7 @@ def test_ec12_v1_empty_section_demotes(tmp_path, tmp_db, monkeypatch):
     data = lifecycle.read_lifecycle(str(repo), spec_id)
     assert data is not None, "lifecycle.yaml must be written"
     assert data["status"] == "blocked"
-    assert data.get("blocked_reason") == "no_implementation_commits"
+    assert data.get("blocked_reason") == "empty_allowed_files"
 
 
 # --- EC-13: done-overwrite protection ----------------------------------------
@@ -307,9 +327,12 @@ def test_ec15_operator_uncommitted_edits_in_spec_survive(tmp_path, tmp_db, monke
     spec_id = "TECH-1015"
     repo = _make_project(tmp_path, spec_id, allowed_files=["src/x.py"])
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=115)
-    time.sleep(1.1)
-    _commit(repo, "src/x.py", "y=2\n", "feat: x")
+    _seed_lifecycle_yaml(repo, spec_id)
     _suppress_push(monkeypatch)
+
+    # Gate stubs: gate=True so lifecycle becomes done
+    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
+    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
 
     # Operator adds notes to working tree (not committed)
     spec_workdir = repo / "ai" / "features" / f"{spec_id}.md"
@@ -333,13 +356,15 @@ def test_ec15_operator_uncommitted_edits_in_spec_survive(tmp_path, tmp_db, monke
     assert head_content is not None
     assert "operator note here" not in head_content
 
-    # The only lifecycle commit should touch ai/lifecycle/, not ai/features/
-    last_commit_files = subprocess.run(
-        ["git", "-C", str(repo), "diff-tree", "--no-commit-id", "-r", "--name-only", "HEAD"],
-        capture_output=True, text=True,
+    # Callback commits touch ai/lifecycle/ but never ai/features/
+    # (backlog render may add another commit, so check all recent commits)
+    new_commit_files = subprocess.run(
+        ["git", "-C", str(repo), "log", "--name-only", "--format=", "HEAD~3..HEAD"],
+        capture_output=True,
+        text=True,
     ).stdout.strip()
-    assert "ai/lifecycle/" in last_commit_files
-    assert "ai/features/" not in last_commit_files
+    assert "ai/lifecycle/" in new_commit_files
+    assert "ai/features/" not in new_commit_files
 
 
 # --- EC-17: _get_started_at --------------------------------------------------

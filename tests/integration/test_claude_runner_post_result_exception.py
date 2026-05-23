@@ -56,7 +56,9 @@ sys.modules["claude_runner"] = claude_runner
 _spec.loader.exec_module(claude_runner)
 
 
-def _make_result(is_error: bool, turns: int = 43, cost: float = 6.32, result: str = "DONE") -> ResultMessage:
+def _make_result(
+    is_error: bool, turns: int = 43, cost: float = 6.32, result: str = "DONE"
+) -> ResultMessage:
     return ResultMessage(
         subtype="result",
         duration_ms=1000,
@@ -249,21 +251,20 @@ def test_process_error_stderr_takes_precedence(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 def test_post_result_exception_logs_telemetry_row(monkeypatch, tmp_path):
     """BUG-188 Layer 4: SDK throws after ResultMessage → telemetry row inserted, exit_code=0."""
-    # Set DB_PATH first, before db module loads
+    import db as db_mod
+
     db_path = tmp_path / "orchestrator.db"
     schema_sql = (SCRIPT_DIR / "schema.sql").read_text()
     conn = sqlite3.connect(db_path)
     conn.executescript(schema_sql)
     conn.close()
-    monkeypatch.setenv("DB_PATH", str(db_path))
 
-    # Reload db so it picks up the new DB_PATH
-    if "db" in sys.modules:
-        del sys.modules["db"]
-    import db  # noqa: PLC0415
-    db._MIGRATIONS_APPLIED = False
-    monkeypatch.setattr(claude_runner, "_orch_db", db)
+    # Patch db in-place — do NOT del sys.modules["db"] (breaks module identity)
+    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+    monkeypatch.setattr(db_mod, "_MIGRATIONS_APPLIED", False)
+    monkeypatch.setattr(claude_runner, "_orch_db", db_mod)
     monkeypatch.setattr(claude_runner, "LOG_DIR", tmp_path)
+    db = db_mod
 
     async def fake_query(*, prompt, options):
         yield _make_assistant("ok")
@@ -271,7 +272,9 @@ def test_post_result_exception_logs_telemetry_row(monkeypatch, tmp_path):
         raise Exception("post-cleanup error")
 
     monkeypatch.setattr(claude_runner, "query", fake_query)
-    log_data = asyncio.run(claude_runner.run_task(str(tmp_path), "/autopilot demo-task", "autopilot"))
+    log_data = asyncio.run(
+        claude_runner.run_task(str(tmp_path), "/autopilot demo-task", "autopilot")
+    )
 
     assert log_data["exit_code"] == 0  # Layer 1 still holds
     # Telemetry row inserted

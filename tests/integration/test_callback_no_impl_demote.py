@@ -55,10 +55,19 @@ def _seed_lifecycle_yaml_with_status(repo: Path, spec_id: str, status: str) -> N
     lc_dir = repo / "ai" / "lifecycle"
     lc_dir.mkdir(parents=True, exist_ok=True)
     data = {
-        "spec_id": spec_id, "status": status, "blocked_reason": None,
-        "priority": "p1", "kind": "tech", "transitions": [], "version": 1,
-        "started_at": None, "finished_at": None, "pueue_id": None,
-        "allowed_files_hash": None, "updated_at": None, "updated_by": "test",
+        "spec_id": spec_id,
+        "status": status,
+        "blocked_reason": None,
+        "priority": "p1",
+        "kind": "tech",
+        "transitions": [],
+        "version": 1,
+        "started_at": None,
+        "finished_at": None,
+        "pueue_id": None,
+        "allowed_files_hash": None,
+        "updated_at": None,
+        "updated_by": "test",
     }
     yaml_path = lc_dir / f"{spec_id}.yaml"
     yaml_path.write_text(yaml.safe_dump(data, default_flow_style=False, allow_unicode=True))
@@ -155,7 +164,7 @@ def test_ec8_demote_when_no_impl_commits(tmp_path, tmp_db, monkeypatch):
     data = lifecycle.read_lifecycle(str(repo), spec_id)
     assert data is not None, "lifecycle.yaml must be written"
     assert data["status"] == "blocked"
-    assert "no_implementation_commits" in (data.get("blocked_reason") or "")
+    assert "no_merged_implementation" in (data.get("blocked_reason") or "")
 
 
 # --- EC-9 --------------------------------------------------------------------
@@ -165,11 +174,12 @@ def test_ec9_happy_path_with_impl_commit(tmp_path, tmp_db, monkeypatch):
     spec_id = "TECH-997"
     repo = _make_project(tmp_path, spec_id, ["src/x.py"])
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=43)
-    time.sleep(1.1)
-    _commit(repo, "src/x.py", "y=2\n", "feat: x")
+    _seed_lifecycle_yaml(repo, spec_id)
     _suppress_push(monkeypatch)
 
-    _seed_lifecycle_yaml(repo, spec_id)
+    # Gate stub: implementation found on origin/develop
+    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
+    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=43)
 

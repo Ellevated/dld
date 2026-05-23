@@ -233,11 +233,3 @@ def test_v1_marker_outside_section_ignored(tmp_path):
     # Marker is above the heading → v1 dispatch does not fire → legacy parser
     # picks `legacy.py`.
     assert callback._parse_allowed_files(spec) == ["legacy.py"]
-
-
-# --- _append_blocked_reason backwards-compat alias (TECH-167 Task 4) ---------
-
-
-def test_append_blocked_reason_alias_exists():
-    """Test 4's alias is callable and accepts (Path, str)."""
-    assert callable(getattr(callback, "_append_blocked_reason", None))

@@ -319,9 +319,7 @@ def write_lifecycle(
     if all retries are exhausted.
     """
     if by not in _ALLOWED_WRITERS:
-        raise ValueError(
-            f"write_lifecycle: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS)}"
-        )
+        raise ValueError(f"write_lifecycle: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS)}")
     repo_dir = str(repo_dir)
     branch = _current_branch(repo_dir)
 
@@ -351,9 +349,7 @@ def create_initial(
     """
     _by = "orchestrator"
     if _by not in _ALLOWED_WRITERS:
-        raise ValueError(
-            f"create_initial: invalid by={_by!r}; allowed={sorted(_ALLOWED_WRITERS)}"
-        )
+        raise ValueError(f"create_initial: invalid by={_by!r}; allowed={sorted(_ALLOWED_WRITERS)}")
     repo_dir = str(repo_dir)
     branch = _current_branch(repo_dir)
 
@@ -421,6 +417,120 @@ def assert_clean_lifecycle_tree(repo_dir) -> None:
     output = r.stdout.strip()
     if output:
         raise RuntimeError(f"Dirty lifecycle tree in {repo_dir}: {output}")
+
+
+def write_file_atomic(
+    repo_dir,
+    rel_path: str,
+    content: str,
+    commit_message: str,
+    *,
+    by: str = "callback",
+) -> bool:
+    """Atomically commit a single file's content via git plumbing.
+
+    Generic version of `_atomic_write` for arbitrary file paths. Used by
+    callback to commit rendered ai/backlog.md alongside lifecycle yaml writes.
+    Never touches working tree.
+
+    Returns:
+        True on success (or no-op when content already matches HEAD).
+        False on plumbing failure (logged, never raises — render is
+        best-effort, lifecycle yaml is the SoT).
+    """
+    if by not in _ALLOWED_WRITERS:
+        raise ValueError(
+            f"write_file_atomic: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS)}"
+        )
+    repo_dir = str(repo_dir)
+    branch = _current_branch(repo_dir)
+
+    with _write_lock:
+        for attempt in range(1, MAX_CAS_RETRIES + 1):
+            # Check if content already matches HEAD — skip the commit then.
+            head_content = _run(["git", "show", f"HEAD:{rel_path}"], cwd=repo_dir)
+            if head_content.returncode == 0 and head_content.stdout == content:
+                return True
+            if _atomic_write_file(repo_dir, rel_path, content, commit_message, branch):
+                _push_best_effort(repo_dir, branch)
+                return True
+            log.warning(
+                "write_file_atomic CAS attempt %d/%d failed for %s",
+                attempt,
+                MAX_CAS_RETRIES,
+                rel_path,
+            )
+            if attempt < MAX_CAS_RETRIES:
+                time.sleep(random.uniform(0, 0.05))
+    log.warning("write_file_atomic: gave up after %d attempts for %s", MAX_CAS_RETRIES, rel_path)
+    return False
+
+
+def _atomic_write_file(
+    repo_dir: str,
+    rel_path: str,
+    content: str,
+    commit_message: str,
+    branch: str,
+) -> bool:
+    """One CAS attempt for arbitrary file path. Mirrors _atomic_write but generic."""
+    git_dir = os.path.join(repo_dir, ".git")
+    with tempfile.NamedTemporaryFile(dir=git_dir, delete=False) as f:
+        idx_path = f.name
+    try:
+        env = {**os.environ, "GIT_INDEX_FILE": idx_path}
+        if _run(["git", "read-tree", "HEAD"], cwd=repo_dir, env=env).returncode != 0:
+            return False
+        r = _run(
+            ["git", "hash-object", "-w", "--stdin"],
+            cwd=repo_dir,
+            env=env,
+            input_text=content,
+        )
+        if r.returncode != 0:
+            return False
+        blob_sha = r.stdout.strip()
+        if (
+            _run(
+                ["git", "update-index", "--add", "--cacheinfo", f"100644,{blob_sha},{rel_path}"],
+                cwd=repo_dir,
+                env=env,
+            ).returncode
+            != 0
+        ):
+            return False
+        r = _run(["git", "write-tree"], cwd=repo_dir, env=env)
+        if r.returncode != 0:
+            return False
+        tree_sha = r.stdout.strip()
+        r = _run(["git", "rev-parse", "HEAD"], cwd=repo_dir)
+        if r.returncode != 0:
+            return False
+        head_sha = r.stdout.strip()
+        r = _run(
+            ["git", "commit-tree", tree_sha, "-p", head_sha, "-m", commit_message],
+            cwd=repo_dir,
+            env=env,
+        )
+        if r.returncode != 0:
+            return False
+        new_commit = r.stdout.strip()
+        r = _run(
+            ["git", "update-ref", f"refs/heads/{branch}", new_commit, head_sha],
+            cwd=repo_dir,
+        )
+        if r.returncode != 0:
+            return False
+        # Sync WT (best-effort; backlog.md is a render so stale WT is recoverable)
+        sync = _run(["git", "checkout-index", "--force", "--", rel_path], cwd=repo_dir)
+        if sync.returncode != 0:
+            log.warning("write_file_atomic WT sync failed: %s", sync.stderr.strip()[:200])
+        return True
+    finally:
+        try:
+            os.unlink(idx_path)
+        except OSError:
+            pass
 
 
 def reconcile_orphans(repo_dir, pueue_alive_ids: set) -> list:

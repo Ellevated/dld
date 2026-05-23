@@ -1,15 +1,20 @@
-"""TECH-170 — unit tests for callback feature-branch awareness.
+"""BUG-1039 regression — unit tests for callback._is_done_on_develop.
 
-EC-1: --all flag sees commits on feature/<spec> when develop is empty.
-EC-3: empty repo / no relevant commits → guard False.
-EC-5: branches='current' reproduces pre-TECH-170 command shape.
+Replaces the old TECH-170 tests (_has_implementation_commits / is_merged_to_develop)
+which tested a deleted implementation.
+
+EC-1: commit on origin/develop with spec_id in subject + allowed file → True
+EC-2: commit only on feature branch (not on origin/develop) → False  ← BUG-1039 regression
+EC-3: spec_id in subject but file NOT in allowed list → False
+EC-4: wrong spec_id in subject, allowed file matches → False
+EC-5: no origin/develop (branch never pushed) → graceful False
+EC-6: empty allowed list → False
 """
 
 from __future__ import annotations
 
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -26,7 +31,7 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
-def _commit(repo: Path, rel: str, body: str, msg: str) -> None:
+def _commit_on(repo: Path, rel: str, body: str, msg: str) -> None:
     full = repo / rel
     full.parent.mkdir(parents=True, exist_ok=True)
     full.write_text(body)
@@ -34,118 +39,106 @@ def _commit(repo: Path, rel: str, body: str, msg: str) -> None:
     _git(repo, "commit", "-q", "-m", msg)
 
 
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
 @pytest.fixture
-def feature_repo(tmp_path):
-    """Repo on develop with empty develop and a commit on feature/TECH-170."""
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init", "-q", "-b", "develop")
-    _git(repo, "config", "user.email", "t@t")
-    _git(repo, "config", "user.name", "t")
-    _commit(repo, "README.md", "init\n", "chore: init")
-    _git(repo, "checkout", "-q", "-b", "feature/TECH-170")
-    return repo
-
-
-# --- EC-1: feature-branch commit visible via --all -------------------------
-
-
-def test_ec1_all_sees_feature_branch_commit(feature_repo):
-    """Commit lands on feature/TECH-170; develop is unchanged.
-    Default branches='all' → guard returns True."""
-    started_at = _now_iso()
-    time.sleep(1.1)
-    _commit(feature_repo, "src/x.py", "y=1\n", "feat: TECH-170 work")
-    assert callback._has_implementation_commits(str(feature_repo), ["src/x.py"], started_at) is True
-
-
-def test_ec1_current_misses_feature_branch_commit_from_develop(feature_repo):
-    """Same commit, but branches='current' while we're checked out on develop.
-    Reproduces pre-TECH-170 false-negative."""
-    started_at = _now_iso()
-    time.sleep(1.1)
-    _commit(feature_repo, "src/x.py", "y=1\n", "feat: TECH-170 work")
-    _git(feature_repo, "checkout", "-q", "develop")
-    assert (
-        callback._has_implementation_commits(
-            str(feature_repo), ["src/x.py"], started_at, branches="current"
-        )
-        is False
-    )
-    # Sanity: --all still finds it from develop checkout.
-    assert (
-        callback._has_implementation_commits(
-            str(feature_repo), ["src/x.py"], started_at, branches="all"
-        )
-        is True
+def repo_with_remote(tmp_path):
+    """Local repo with bare remote (origin/develop tracking ref set via push)."""
+    bare = tmp_path / "remote.git"
+    bare.mkdir()
+    subprocess.run(
+        ["git", "init", "--bare", "-q", "-b", "develop", str(bare)], check=True, capture_output=True
     )
 
+    local = tmp_path / "local"
+    local.mkdir()
+    _git(local, "init", "-q", "-b", "develop")
+    _git(local, "config", "user.email", "t@t")
+    _git(local, "config", "user.name", "t")
+    _git(local, "remote", "add", "origin", str(bare))
 
-# --- EC-3: no commits anywhere ---------------------------------------------
+    (local / "README.md").write_text("init\n")
+    _git(local, "add", "README.md")
+    _git(local, "commit", "-q", "-m", "init")
+    _git(local, "push", "-q", "-u", "origin", "develop")
 
-
-def test_ec3_no_commits_anywhere_returns_false(feature_repo):
-    """No commits in window on any branch → False (degrade closed for content)."""
-    time.sleep(1.1)
-    started_at = _now_iso()
-    assert (
-        callback._has_implementation_commits(str(feature_repo), ["src/x.py"], started_at) is False
-    )
-
-
-# --- EC-5: regression — branches='current' is the pre-TECH-170 command -----
-
-
-def test_ec5_current_branch_matches_legacy_behavior(feature_repo, monkeypatch):
-    """Capture the exact subprocess.run argv to verify backwards compat."""
-    captured: list[list[str]] = []
-    real_run = subprocess.run
-
-    def spy(cmd, *a, **kw):
-        if (
-            isinstance(cmd, list)
-            and len(cmd) >= 4
-            and cmd[:3] == ["git", "-C", str(feature_repo)]
-            and cmd[3] == "log"
-        ):
-            captured.append(list(cmd))
-        return real_run(cmd, *a, **kw)
-
-    monkeypatch.setattr(callback.subprocess, "run", spy)
-    callback._has_implementation_commits(
-        str(feature_repo), ["src/x.py"], _now_iso(), branches="current"
-    )
-    assert captured, "git log was not invoked"
-    argv = captured[0]
-    # No --all and no explicit ref between 'log' and '--since'
-    assert "--all" not in argv
-    assert not any(a == "develop" for a in argv[4:5])  # 4th token after 'log' is not 'develop'
+    return local
 
 
-# --- is_merged_to_develop --------------------------------------------------
+# --- EC-1: commit on origin/develop → True ----------------------------------
 
 
-def test_is_merged_to_develop_finds_commit_on_develop(feature_repo):
-    _git(feature_repo, "checkout", "-q", "develop")
-    _commit(feature_repo, "src/y.py", "z=1\n", "feat: TECH-170 merge")
-    assert callback.is_merged_to_develop(str(feature_repo), "TECH-170") is True
+def test_ec1_commit_on_origin_develop_true(repo_with_remote):
+    """Commit on origin/develop with spec_id in subject + allowed file → True."""
+    _commit_on(repo_with_remote, "src/x.py", "y=1\n", "feat(TECH-170): real work")
+    _git(repo_with_remote, "push", "-q", "origin", "develop")
+    _git(repo_with_remote, "fetch", "-q", "origin", "develop")
+
+    assert callback._is_done_on_develop(str(repo_with_remote), "TECH-170", ["src/x.py"]) is True
 
 
-def test_is_merged_to_develop_false_when_only_on_feature(feature_repo):
-    # Commit lands on feature/TECH-170 only.
-    _commit(feature_repo, "src/x.py", "y=1\n", "feat: TECH-170 work")
-    assert callback.is_merged_to_develop(str(feature_repo), "TECH-170") is False
+# --- EC-2: feature-branch commit NOT on origin/develop → False (BUG-1039) ---
 
 
-def test_is_merged_to_develop_handles_missing_branch(tmp_path):
-    """Repo without develop branch → graceful False, no exception."""
+def test_ec2_feature_branch_only_is_false(repo_with_remote):
+    """BUG-1039 regression: commit on feature branch but NOT on origin/develop → False.
+
+    Old --all flag saw this commit and returned True (false-done).
+    New gate reads only origin/develop → False.
+    """
+    _git(repo_with_remote, "checkout", "-q", "-b", "feature/TECH-170")
+    _commit_on(repo_with_remote, "src/x.py", "y=1\n", "feat(TECH-170): work on feature")
+    # NOT pushing to origin/develop — stays on feature branch only
+
+    # Ensure origin/develop is at the initial commit (no TECH-170 work)
+    _git(repo_with_remote, "checkout", "-q", "develop")
+
+    assert callback._is_done_on_develop(str(repo_with_remote), "TECH-170", ["src/x.py"]) is False
+
+
+# --- EC-3: spec_id in subject but file not in allowed list → False -----------
+
+
+def test_ec3_allowed_file_filter(repo_with_remote):
+    """Subject matches but touched file is NOT in allowed list → False."""
+    _commit_on(repo_with_remote, "docs/note.md", "n\n", "feat(TECH-170): touch only docs")
+    _git(repo_with_remote, "push", "-q", "origin", "develop")
+    _git(repo_with_remote, "fetch", "-q", "origin", "develop")
+
+    assert callback._is_done_on_develop(str(repo_with_remote), "TECH-170", ["src/x.py"]) is False
+
+
+# --- EC-4: wrong spec_id in commit subject → False --------------------------
+
+
+def test_ec4_wrong_spec_id(repo_with_remote):
+    """Subject mentions a different spec_id → False."""
+    _commit_on(repo_with_remote, "src/x.py", "y=1\n", "feat(TECH-999): unrelated work")
+    _git(repo_with_remote, "push", "-q", "origin", "develop")
+    _git(repo_with_remote, "fetch", "-q", "origin", "develop")
+
+    assert callback._is_done_on_develop(str(repo_with_remote), "TECH-170", ["src/x.py"]) is False
+
+
+# --- EC-5: no origin/develop → graceful False --------------------------------
+
+
+def test_ec5_no_origin_develop_graceful(tmp_path):
+    """Repo without origin → git log origin/develop fails → graceful False, no exception."""
     repo = tmp_path / "norepo"
     repo.mkdir()
     subprocess.run(
-        ["git", "-C", str(repo), "init", "-q", "-b", "main"], check=True, capture_output=True
+        ["git", "-C", str(repo), "init", "-q", "-b", "develop"], check=True, capture_output=True
     )
-    assert callback.is_merged_to_develop(str(repo), "TECH-170") is False
+    # No remote set → origin/develop doesn't exist
+    assert callback._is_done_on_develop(str(repo), "TECH-170", ["src/x.py"]) is False
+
+
+# --- EC-6: empty allowed list → False ----------------------------------------
+
+
+def test_ec6_empty_allowed_list(repo_with_remote):
+    """Empty allowed list → False (no files to match against)."""
+    _commit_on(repo_with_remote, "src/x.py", "y=1\n", "feat(TECH-170): work")
+    _git(repo_with_remote, "push", "-q", "origin", "develop")
+    _git(repo_with_remote, "fetch", "-q", "origin", "develop")
+
+    assert callback._is_done_on_develop(str(repo_with_remote), "TECH-170", []) is False
