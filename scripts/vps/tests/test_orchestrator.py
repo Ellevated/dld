@@ -472,3 +472,56 @@ class TestBootstrapAnomaly:
         counter = tmp_path / "ai" / ".bootstrap-anomaly-count"
         assert counter.is_file()
         assert counter.read_text().strip() == "1"
+
+
+class TestHeartbeatMonitor:
+    """TECH-189 Task 8: heartbeat_monitor.py — external liveness check."""
+
+    def test_fresh_heartbeat_no_alert(self, tmp_path, monkeypatch, capsys):
+        """Fresh timestamp = no Hermes event, no ALERT to stderr."""
+        from datetime import datetime, timezone
+
+        import heartbeat_monitor
+
+        hb = tmp_path / ".orchestrator-heartbeat"
+        hb.write_text(datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+        monkeypatch.setattr(heartbeat_monitor, "HEARTBEAT_FILE", hb)
+        with patch.object(heartbeat_monitor, "STALE_THRESHOLD_MINUTES", 10):
+            heartbeat_monitor.main()
+        captured = capsys.readouterr()
+        assert "ALERT" not in captured.err
+
+    def test_stale_heartbeat_fires_notify(self, tmp_path, monkeypatch, capsys):
+        """Stale timestamp (>10min) = ALERT to stderr + event_writer.notify called."""
+        from datetime import datetime, timedelta, timezone
+
+        import heartbeat_monitor
+
+        hb = tmp_path / ".orchestrator-heartbeat"
+        stale_ts = datetime.now(tz=timezone.utc) - timedelta(minutes=15)
+        hb.write_text(stale_ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        monkeypatch.setattr(heartbeat_monitor, "HEARTBEAT_FILE", hb)
+
+        # event_writer.notify is imported lazily inside main() — patch via sys.modules
+        from unittest.mock import MagicMock as _MM
+
+        mock_module = _MM()
+        mock_module.notify = _MM()
+        monkeypatch.setitem(sys.modules, "event_writer", mock_module)
+
+        heartbeat_monitor.main()
+        captured = capsys.readouterr()
+        assert "ALERT: orchestrator heartbeat stale" in captured.err
+        mock_module.notify.assert_called_once()
+        args, _ = mock_module.notify.call_args
+        assert args[0] == "dld"
+        assert "ORCHESTRATOR_STALE" in args[1]
+
+    def test_missing_heartbeat_file_no_crash(self, tmp_path, monkeypatch, capsys):
+        """Missing file = WARN to stderr, no crash."""
+        import heartbeat_monitor
+
+        monkeypatch.setattr(heartbeat_monitor, "HEARTBEAT_FILE", tmp_path / "nope")
+        heartbeat_monitor.main()
+        captured = capsys.readouterr()
+        assert "WARN: no heartbeat file" in captured.err

@@ -689,6 +689,12 @@ def main() -> None:
                 process_project(pid, pdir)
         except Exception:
             log.exception("cycle error")
+        # TECH-189 Task 8: heartbeat — external monitor reads this file.
+        try:
+            ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            (SCRIPT_DIR / ".orchestrator-heartbeat").write_text(ts)
+        except Exception:  # noqa: BLE001
+            log.warning("heartbeat write failed")
         log.info("cycle complete, sleeping %ds", poll_interval)
         _stop.wait(poll_interval)
 
