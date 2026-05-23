@@ -267,9 +267,33 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
 
 
 def _push_best_effort(repo_dir: str, branch: str) -> None:
-    r = _run(["git", "push", "origin", branch], cwd=repo_dir)
+    try:
+        r = _run(["git", "push", "origin", branch], cwd=repo_dir)
+    except subprocess.TimeoutExpired as exc:
+        log.warning(
+            "lifecycle push timeout (best-effort, not fatal): branch=%s cmd=%s",
+            branch,
+            exc.cmd,
+        )
+        _bump_push_failure_counter(repo_dir)
+        return
     if r.returncode != 0:
-        log.debug("push best-effort failed (ignored): %s", r.stderr.strip()[:200])
+        log.warning(
+            "lifecycle push failed (best-effort, not fatal): branch=%s stderr=%s",
+            branch,
+            r.stderr.strip()[:200],
+        )
+        _bump_push_failure_counter(repo_dir)
+
+
+def _bump_push_failure_counter(repo_dir: str) -> None:
+    """Increment ai/.lifecycle-push-failures counter (best-effort)."""
+    counter = Path(repo_dir) / "ai" / ".lifecycle-push-failures"
+    try:
+        prev = int(counter.read_text().strip()) if counter.is_file() else 0
+        counter.write_text(str(prev + 1))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _cas_loop(repo_dir: str, spec_id: str, branch: str, yaml_fn) -> None:

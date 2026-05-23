@@ -289,6 +289,32 @@ def test_blocked_reason_stored(tmp_git_repo):
     assert data["blocked_reason"] == "no implementation commits"
 
 
+def test_push_best_effort_warns_on_failure(tmp_git_repo, caplog):
+    """TECH-189 Task 5: push failures log WARNING (not DEBUG) and bump counter.
+
+    Silent DEBUG masked multi-machine convergence failures. WARNING surfaces
+    them in orchestrator logs; counter file enables external monitoring.
+    """
+    import logging
+
+    fail = subprocess.CompletedProcess(
+        args=["git", "push"], returncode=1, stdout="", stderr="No such remote 'origin'"
+    )
+    with patch.object(lifecycle, "_run", return_value=fail):
+        with caplog.at_level(logging.WARNING, logger="lifecycle"):
+            lifecycle._push_best_effort(str(tmp_git_repo), "develop")
+
+    assert any("lifecycle push failed" in r.message for r in caplog.records)
+    counter = Path(tmp_git_repo) / "ai" / ".lifecycle-push-failures"
+    assert counter.is_file()
+    assert counter.read_text().strip() == "1"
+
+    # Second failure increments
+    with patch.object(lifecycle, "_run", return_value=fail):
+        lifecycle._push_best_effort(str(tmp_git_repo), "develop")
+    assert counter.read_text().strip() == "2"
+
+
 def test_cas_loop_treats_timeout_as_retry(tmp_git_repo):
     """TECH-189 Task 7: TimeoutExpired from _run is caught in _cas_loop.
 
