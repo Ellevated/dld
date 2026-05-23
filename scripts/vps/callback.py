@@ -40,7 +40,7 @@ log = logging.getLogger("callback")
 
 # Spec-id regex (TECH-182). `[a-z]*` captures sub-spec suffixes (ARCH-176a/b/c).
 # Mirrors orchestrator.scan_backlog regex (v3.15.8).
-_SPEC_ID_RE = re.compile(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*")
+_SPEC_ID_RE = re.compile(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*")
 
 
 def _load_env() -> None:

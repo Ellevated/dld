@@ -305,7 +305,7 @@ def bootstrap_new_specs(project_dir: str) -> None:
         m.group(0) for m in re.finditer(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*", backlog_text)
     )
     for spec_md in features_dir.glob("*.md"):
-        m = re.search(r"(TECH|FTR|BUG|ARCH)-\d+[a-z]*", spec_md.name)
+        m = re.search(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*", spec_md.name)
         if not m:
             continue
         spec_id = m.group(0)
