@@ -2,255 +2,539 @@
 
 **Persona:** Martin (Data Architect)
 **Phase:** 2 — Peer Review
-**Date:** 2026-02-27
-
----
-
-## My Phase 1 Position (Reference)
-
-My core positions from the Phase 1 research:
-
-1. **System of Record must be explicit for every entity.** Clerk owns identity, Stripe owns billing truth, our DB owns everything else. Ambiguity here = data integrity bugs in production.
-2. **Explicit preferences and behavioral memory are SEPARATE tables with SEPARATE write paths.** Conflating them is a dual-SoR problem that corrupts both.
-3. **Usage metering must be an append-only ledger, not a mutable counter.** Lost-update under concurrent writes is a silent revenue leak.
-4. **Briefing content must be structured JSON, not freeform text.** Deterministic reliability measurement is impossible without it.
-5. **SQLite WAL write serialization is not the bottleneck at <500 users.** The concern is valid at scale, but not at launch.
-6. **The `billing_cache` / Stripe staleness window is a real issue** requiring a synchronous fallback on 429.
-7. **OAuth tokens need atomic refresh logic.** Race between two concurrent tasks both seeing an expired token is a predictable failure at scale.
+**Date:** 2026-05-23
+**Scope:** scripts/vps/ retrofit — все 7 анонимных анализов
 
 ---
 
 ## Peer Analysis Reviews
 
+### Analysis A — Operations (Charity lens)
+
+**Agreement:** Agree
+
+**Reasoning from data perspective:**
+
+A правильно идентифицирует трёхслойную проблему хранения статуса как первопричину
+observability-кризиса: "Until there is a single source of truth for status, any dashboard
+showing spec counts will be potentially wrong and there is no way to know which
+representation is authoritative at query time." Это точная формулировка DDIA-принципа
+о том, что derived data должна быть явно помечена как производная, а source of record —
+однозначно определён.
+
+M-01 (bootstrap_ops_rate) — правильный leading indicator. SLO-4 (bootstrap accuracy)
+не может быть надёжно измерен пока bootstrap читает backlog.md из WT вместо HEAD —
+это прямое следствие нарушения SoR.
+
+**Missed gaps from data perspective:**
+
+- A не ставит вопрос о retention: `callback-audit.jsonl`, `sdk_post_result_errors`,
+  `callback_decisions` растут без bound. В DDIA это называется "unbounded dataset" —
+  классическая причина деградации дискового пространства и производительности через
+  6-12 месяцев. Конкретные числа: при 200 callbacks/day, каждая JSONL строка ~400 bytes,
+  за год = ~28 MB. Не катастрофа, но отсутствие retention policy — это отсутствие policy.
+- A не рассматривает консистентность между audit JSONL (на файловой системе) и
+  task_log (в SQLite). Это два хранилища одного факта "что произошло с задачей" —
+  classic split-brain по DDIA Ch.1 "Reliable, Scalable, and Maintainable".
+
 ---
 
-### Analysis A — DX Architect (Dan McKinley persona)
+### Analysis B — Evolutionary Architecture (Neal lens)
+
+**Agreement:** Agree
+
+**Reasoning from data perspective:**
+
+B строит drift map через призму fitness functions — это эволюционная архитектура. Но
+самый важный data-вывод B звучит точно по DDIA: три представления статуса без sync
+contract = "status exists in 3 stores without explicit contract — Lifecycle aggregate
+root does not exist as explicit code construct."
+
+FF-03 (sole writer check) — это data invariant, выраженный как code-level test.
+Именно так должны работать invariants: не в ADR-документах, а в CI.
+
+Критически важно: B правильно идентифицирует `_SPEC_ID_RE` fork между callback.py и
+orchestrator.py как data schema divergence. GROWTH-NNN spec IDs, которые orchestrator
+знает, callback не знает — это нарушение ubiquitous language на уровне данных.
+
+**Missed gaps from data perspective:**
+
+- B не анализирует, что `transitions: []` в 175 из 177 lifecycle YAML файлов (audit
+  finding #14) означает потерю истории состояний. По DDIA это event sourcing fail:
+  если transition history не записывается, мы не можем ответить на вопрос "когда и
+  почему spec перешёл из in_progress в done?" Audit trail без истории — это не audit trail.
+- FF-06 (incident coverage bank) правильная идея, но B не указывает что regression tests
+  должны использовать real git repos, не фиктивные данные — из-за ADR-013.
+
+---
+
+### Analysis C — Domain Architecture (Eric lens)
+
+**Agreement:** Agree
+
+**Reasoning from data perspective:**
+
+C делает самый глубокий data-анализ среди всех peers с DDD-lens. Три key insight с
+точки зрения данных:
+
+1. "The aggregate root for spec lifecycle does not exist in this codebase" — это точно
+   по DDIA Ch.2 про data models. Aggregate root — это не просто паттерн OOP, это
+   constraint: все mutations проходят через один объект, который enforces invariants.
+   Сейчас `started_at` always null (найдено в lifecycle.py:155-158) — это доказательство
+   отсутствия aggregate invariants.
+
+2. Таблица "Aggregate smeared across four storage media" — это эквивалент DDIA "data
+   systems are different, and they don't all give the same guarantees." Конкретно:
+   lifecycle YAML (CAS atomic), callback_decisions (SQLite ACID), git log (immutable
+   append-only), task_log (SQLite ACID), backlog.md WT (none) — у каждого разная
+   consistency guarantee, но нет кода который их синхронизирует.
+
+3. Bootstrap как "polling backlog.md вместо SpecCreated event" — это anti-pattern из
+   DDIA Ch.11 "Stream Processing": polling вместо event-driven integration.
+
+**Missed gaps from data perspective:**
+
+- C не рассматривает, как предложенная domain event architecture влияет на forward
+  compatibility. `SpecCreated` event должен иметь versioning strategy: что происходит
+  если Spark добавит новые поля в spec, а Execution Context работает с старой схемой?
+  По DDIA это schema evolution problem.
+- C предлагает Author как value object (не строку), но не решает backward compatibility
+  с 177 существующими YAML файлами где `updated_by` = строка. Migration strategy
+  не описана.
+
+---
+
+### Analysis D — LLM Architect (Erik lens)
 
 **Agreement:** Partially Agree
 
 **Reasoning from data perspective:**
 
-Analysis A correctly identifies that Turso at launch solves no problem. The data argument is the same as mine: at <500 users, a SQLite WAL file on a persistent volume is local disk I/O (microseconds), zero network dependencies, zero third-party failure modes. Turso's value proposition is edge replication for geographically distributed reads — a problem that does not exist until you have users in multiple regions.
+D правильно идентифицирует `_emit_audit` с 12 позиционными аргументами как reliability
+problem. С data perspective это важнее, чем кажется: при transposition двух `int`
+аргументов (code_loc, test_loc, allowed_count — все один тип) audit log будет
+содержать структурно корректные, но семантически неверные данные. Это тихое data
+corruption — классический DDIA enemy.
 
-The LangGraph rejection is also correct from a data lineage perspective: LangGraph's checkpointing infrastructure introduces a second write path for briefing state (its checkpoint store), creating a potential conflict with the `briefings` table as the SoR for briefing lifecycle. If LangGraph checkpoints say "step 3 complete" but the `briefings` table says "status=fetching_sources," you have two SoRs disagreeing. A simple async pipeline has one state store: the `briefings` table. Cleaner.
+`GateResult` dataclass как structured output — это правильный шаг к schema на data
+boundaries между компонентами.
 
-The counter-proposal of a monolith with `users`, `source_configs`, `briefings` tables captures the essential data model. However, Analysis A understates the importance of the usage ledger (append-only vs mutable counter) and the explicit preferences vs behavioral memory separation. The counter-proposal uses a `preferences JSON` column — this is exactly the design that collapses two distinct SoRs into one blob. When the system writes a behavioral signal AND the user edits a preference, which write wins? A JSON blob has no answer.
+**Partial disagreement:**
 
-**Missed gaps:**
+D предлагает "signal completion" API где агент явно сигнализирует о завершении с
+указанием commit SHA. Это меняет систему записи (SoR) для "work completion":
+вместо git log как авторитетного источника, источником становится сигнал от агента.
+С data perspective это downgrade: git log cryptographically verifiable, agent signal —
+honor system. Если агент галлюцинирует commit SHA, система примет невалидное завершение.
+Текущий подход (gate читает git log как SoR) — правильнее.
 
-- The `preferences JSONB` column as a single blob conflates user-owned explicit prefs with system-derived behavioral signals. This looks simple at day 1 and becomes a consistency nightmare at month 6 when the learning loop starts updating the same column the user is editing.
-- No analysis of the `billing_cache` staleness window — the Clerk-Stripe sync failure SPOF identified is real, but the data solution (Stripe as authoritative SoR with local cache + synchronous fallback on cap exceeded) is not addressed.
-- No discussion of the usage cap enforcement data pattern (append-only ledger vs mutable counter). The SPOF analysis correctly identifies the problem; the data solution is absent.
+**Missed gaps from data perspective:**
 
-**Rank: Moderate**
-
----
-
-### Analysis B — Domain Modeler (Eric Evans persona)
-
-**Agreement:** Agree
-
-**Reasoning from data perspective:**
-
-Analysis B is the strongest complement to my data architecture work. The distinction between `Signal` (raw ingested material) and `Item` (evaluated, relevant content in a briefing) is critical and maps directly to my `briefing_sources` table design — each row in `briefing_sources` captures `items_fetched` vs `items_used`, encoding exactly the Signal-to-Item transformation. The domain model validates the data model.
-
-The Priority Context's aggregate design — `DeclaredPriority` and `LearnedSignal` as separate entities within `PriorityProfile` — directly confirms my architectural decision to use separate tables (`preferences` for declared, `memory_signals` for learned). This is the domain model telling us the schema must be this way. When the domain model and the data model agree on entity separation, that is strong evidence the design is correct.
-
-The `BriefingEngaged` domain event (user clicks → Priority context updates learned signals) maps cleanly to my `briefing_feedback` table (raw event log) → `memory_signals` UPSERT (derived state). The DDIA Chapter 11 "derived data" framing I used is validated by the domain event architecture.
-
-The concern about Signal garbage collection ("Signals older than 48 hours are eligible for garbage collection") is one I did not address explicitly and is important. My `briefing_sources` table stores lineage but not the raw signals themselves — if the system fetches 127 raw items to produce 18 briefing items, where do those 127 items live? My schema stores the per-source aggregate counts (`items_fetched`, `items_used`) but not the individual signal records. For analytics and quality debugging, those raw items may be valuable for a short retention window.
-
-**Missed gaps:**
-
-- No explicit analysis of table ownership and FK constraints across context boundaries. The domain says "Source context never knows about briefings" — but in a single SQLite DB, a FK from `briefing_sources.source_config_id` to `source_configs.id` crosses context boundaries at the DB layer. This is a tension between DDD purity and practical schema design for a 2-person team monolith. The resolution is: in a monolith, cross-context FKs are acceptable; the boundary is enforced in application code, not DB constraints.
-- The `WorkspaceMember` entity placeholder (for future Pro multi-user) is noted but the schema implication is not analyzed: the `workspaces` table will need a `workspace_members` join table when Pro tier enables team access. This migration path should be designed now even if not built.
-
-**Rank: Strong**
+- D не рассматривает что `vps-orch.py status SPEC-ID` должен читать из единого SoR.
+  Если SoR — lifecycle YAML, этот инструмент должен быть read-only wrapper над ним.
+  Если SoR мигрирует в SQLite (как предлагает E), инструмент должен читать из SQLite.
+  Нет рассуждения о том, как CLI tools изолированы от SoR changes.
 
 ---
 
-### Analysis D — Evolutionary Architect (Neal Ford persona)
+### Analysis E — DX / Pragmatist (Dan lens)
 
 **Agreement:** Partially Agree
 
 **Reasoning from data perspective:**
 
-Analysis D's fitness function for schema migration safety is exactly right: apply migration to test DB, run tests, roll back, run tests again. Both passes must succeed. This is the "expand-contract" approach I described as the migration strategy, operationalized as a CI gate.
+E делает самое радикальное data-предложение: убрать lifecycle.py (602 LOC git-plumbing)
+и переместить status SoR в SQLite. Innovation token accounting — полезный framework.
 
-The identification of behavioral memory schema as "the only Phase 2 architectural decision that cannot be deferred past day 1 of building" aligns with my position. Analysis D frames it in terms of irreversibility (correct) but does not specify WHAT the schema should be, only that it must be append-only events. My Phase 1 research provides the specifics: `briefing_feedback` (raw event log) + `memory_signals` (materialized running average) is the pattern. Analysis D says "PreferenceEvent schema" — this is a slightly different framing. Event sourcing for preferences gives you full replayability but adds query complexity (you must always project state from events). My design uses a hybrid: raw events (log) + materialized current state (memory_signals). This is a deliberate trade-off: full replayability (via log) with O(1) read performance (via materialized table).
+Ключевое data-наблюдение E попадает точно: "Three-layer → zero-layer: status lives in
+ONE place. Everything else is a render or a human annotation." Это DDIA принцип single
+SoR.
 
-The change vector analysis correctly identifies behavioral memory schema and external source integrations as the highest-change areas. The fitness function for COGS protection (daily LiteLLM log query) matches my operational recommendation. The emphasis on additive-only migrations for the first 90 days is exactly the right constraint for a 2-person team moving fast.
+SQLite WAL mode для concurrent writes между callback и orchestrator — правильный выбор
+для single-machine setup. PRAGMA user_version как schema versioning — действительно
+boringly correct.
 
-**Missed gaps:**
+**Partial disagreement на критически важном вопросе:**
 
-- The recommended "4 domains at launch" simplification (briefing, sources, memory, delivery) does not address data ownership boundaries. Memory is identified as a domain but its write paths (user action vs system inference) are not separated in the evolutionary framing. "Memory domain" with two writers is still a dual-SoR problem even if it's one domain.
-- No analysis of the billing_period string ("2026-02") vs DATE type trade-off. I flagged this as a subtle but important decision: Stripe billing periods are logical concepts that may not align with calendar months. Analysis D's fitness function for billing math (no floats) is correct but does not address the period boundary definition.
-- The fitness function for "behavioral memory schema immutability" is flagged as missing but no solution proposed.
+E утверждает: "The multi-machine convergence requirement is theoretical. If it ever
+becomes real, SQLite WAL + periodic backup is simpler." Это неправильная оценка риска.
 
-**Rank: Moderate**
+Git как SoR даёт бесплатный audit trail с криптографической верификацией и историей
+изменений. SQLite с spec_transitions таблицей может имитировать это, но:
+1. SQLite transitions — mutable (можно DELETE). Git commits — immutable.
+2. Multi-machine sync через git pull — один команда. SQLite replikation — отдельная
+   инфраструктура.
+3. Существующие 177 YAML файлов + их git history — это данные, которые стоит сохранить.
 
----
-
-### Analysis E — LLM Systems Architect (Erik Schluntz persona)
-
-**Agreement:** Agree
-
-**Reasoning from data perspective:**
-
-Analysis E and my Phase 1 research are the strongest data-layer converging pair in the council. The two-layer behavioral memory architecture (raw signal log + compressed preference snapshot) directly validates my `briefing_feedback` + `memory_signals` design, though with a different implementation approach.
-
-Analysis E proposes regenerating a `UserPreferenceSnapshot` weekly using a background Haiku job — a compact text representation (~300 tokens) injected into synthesis context. My design uses a real-time UPSERT running average on `memory_signals` with confidence scores. These are complementary, not contradictory:
-
-- My `memory_signals` table is the **operational** store: queried per-briefing for relevance filtering, updated on each feedback event via UPSERT.
-- Analysis E's `preference_snapshot` is the **context injection** layer: a weekly-regenerated LLM compression of the signal table for use in synthesis prompts.
-
-Both are needed. The signal table alone is not the right shape for context injection (too many rows, wrong format). The snapshot alone loses the per-signal confidence tracking needed for relevance filtering. The complete design is: signal table (operational SoR) → snapshot generation job → snapshot (context SoR for LLM).
-
-The structured output schema (`BriefingOutput` with typed fields) validates my `content_json` design and my argument that deterministic reliability checks require structured output. The `has_all_sections` and `all_items_have_sources` derived fields in my schema map directly to Analysis E's `DeterministicChecks` interface.
-
-The cost analysis ($0.066/briefing, $1.98/user/month) provides the concrete COGS validation my data model's usage ledger needs to set reasonable task caps. The idempotency key pattern in my `usage_ledger` table prevents double-counting on retry — Analysis E identifies retry logic as necessary but does not address the double-counting data integrity concern.
+Более взвешенный подход: SQLite как primary operational SoR (fast writes, good
+concurrency), git как audit log (immutable history, multi-machine sync). Dual-write
+в переходный период.
 
 **Missed gaps:**
 
-- The `preference_signals` table in Analysis E uses `user_id` but the rest of the system uses `workspace_id` as the tenant isolation key. If a Pro user has 3 workspaces, are preferences per-workspace or per-user? This SoR ownership question is unresolved. My design explicitly uses `workspace_id` on all preference tables — preferences belong to the workspace (the product context), not the user (the identity). Analysis E's `user_id` on signals is a subtle SoR conflict.
-- The `compact_text` field in `UserPreferenceSnapshot` is a human-readable string generated by an LLM. If the generation LLM's interpretation of "what the user cares about" changes between weekly runs, the snapshot may lose context that was previously captured. There is no version control on the snapshot content. This is a data durability concern.
-
-**Rank: Strong**
+- E предлагает `git log origin/develop --grep SPEC-ID` как единственный gate rule —
+  5 строк. Но --grep ищет по всему commit message включая body. Если в теле коммита
+  упомянут FTR-123 как ссылка ("See FTR-123 for context"), это false positive. По
+  DDIA это называется "false match" из-за insufficient schema validation. Нужен хотя бы
+  `--grep "^feat.*FTR-123\|FTR-123"` с anchored regex.
+- Нет описания migration plan для существующих 177 lifecycle YAML файлов в SQLite.
+  Expand-contract pattern требует: сначала написать в оба, потом читать из нового,
+  потом убрать старое. E предлагает "one-shot migration script" что создаёт risk
+  window.
 
 ---
 
-### Analysis F — Devil's Advocate (Fred Brooks persona)
+### Analysis G — Devil's Advocate (Fred/Brooks lens)
 
 **Agreement:** Partially Agree
 
 **Reasoning from data perspective:**
 
-Analysis F's challenge to the behavioral memory moat is partially correct from a data perspective, but the conclusion is wrong.
+G делает самое провокационное предложение: gate как отдельный daemon, polling origin/develop
+каждые 60 секунд. С data perspective это интересный сдвиг consistency model.
 
-Correct: At day 90, behavioral memory has at most 14 days of trial data per user. The moat has not compounded. The kill gate measures something the moat cannot yet affect. This is true and important. My schema was designed for steady-state operation; it does not change the fact that signals are sparse at trial time.
+Текущая система: **strong consistency per-callback** (gate вызывается синхронно
+при каждом pueue completion, статус устанавливается немедленно).
 
-Incorrect: "Memory is not a bounded context. It is a column." A `preferences JSONB` column solves day-1 simplicity at the cost of day-90 data integrity. The core problem is not whether preferences are in a separate table or a JSON column — it is whether the write paths are separate. If a JSON column is written by both the user (via UI) and the system (via behavioral inference), you have a lost-update problem under any concurrent write scenario. Analysis F's proposed minimum viable schema (`users` with `preferences JSON`) has this problem.
+G предлагает: **eventual consistency** с 60-секундной latency. Spec завершается, callback
+отпускает slot и диспатчит QA — но статус ещё не "done". Gate daemon обнаружит это
+через ≤60 секунд.
 
-The distinction between explicit preferences (user-authored) and learned signals (system-derived) is not DDD theater. It is a practical data integrity constraint: two different writers, two different update frequencies, two different retention policies (user-owned data is deletable on demand; derived signals may be retained for algorithmic purposes). These cannot share a column without a write-coordination protocol.
-
-The SPOF analysis on Clerk-Stripe sync is correct from a data perspective. The solution I proposed (Stripe as SoR, local cache updated via webhooks, synchronous fallback on cap exceeded) addresses this directly.
-
-Analysis F's minimum viable schema is useful as a starting point but is not production-safe for:
-1. The explicit vs behavioral memory separation (dual-writer problem)
-2. The usage cap enforcement (mutable counter lost-update under concurrent briefings)
-3. The briefing state machine (no status history, no idempotency)
+Вопрос: приемлема ли eventual consistency здесь? G аргументирует что да, указывая что
+текущая система имеет 5-hour detection latency на bootstrap-flip — что 60 секунд не
+деградация. Это верное наблюдение об AS-IS, но не о TO-BE: если callback-gate будет
+правильно работать, current latency = 0 (синхронный вызов).
 
 **Missed gaps:**
 
-- The "preferences JSONB column" counter-proposal does not address concurrent write semantics. On a concurrent update (user edits preferences while system updates behavioral signal), which write wins? Last-write-wins on a JSON blob causes silent data loss.
-- The argument that "behavioral memory is not the moat at day 90" is strategically correct but architecturally irrelevant. The schema must be designed for day-90+ operation from day 1; you cannot retrofit it without migrating accumulated user data.
-- No analysis of the usage cap enforcement data pattern. The identified SPOF (cap race condition) is real; the fix is not mentioned.
-
-**Rank: Moderate**
+- G не рассматривает что eventual consistency между gate daemon и QA dispatch создаёт
+  temporal inconsistency: QA может запуститься до того как статус обновился до "done".
+  Это означает QA работает над spec которая с точки зрения lifecycle всё ещё "in_progress".
+  Этот state machine gap требует явного решения.
+- G предлагает удалить `updated_by` из YAML и заменить на `git log` для identity.
+  С data perspective это downgrade readability: запросить текущий writer теперь требует
+  subprocess call, а не чтение поля. DDIA рекомендует денормализацию для read-heavy
+  access patterns. Если `updated_by` читается чаще чем пишется — держать его в YAML
+  правильно, даже если значение проверяемо через git log.
 
 ---
 
-### Analysis G — Security Architect (Bruce Schneier persona)
+### Analysis H — Security (Bruce lens)
 
-**Agreement:** Agree
+**Agreement:** Partially Agree
 
 **Reasoning from data perspective:**
 
-Analysis G's security analysis maps precisely onto my data architecture decisions in several critical ways.
+H рассматривает data integrity через security lens и находит несколько critical data
+integrity issues:
 
-The OAuth token table design in Analysis G (separate encryption columns: `encrypted_refresh_token`, `encrypted_access_token`, `token_iv`, `token_auth_tag`) is more precise than my schema where I specified "AES-256 encrypted" at the column level without detailing the GCM authentication tag. The GCM auth tag is not optional — without it, you have unauthenticated encryption (AES-CBC style), which is vulnerable to padding oracle attacks. Analysis G's explicit `token_auth_tag` column is the correct schema.
+1. `callback-audit.jsonl` — tamper-without-detection. Это SoR для anti-recency decisions
+   в scan_queued. Если файл может быть модифицирован без обнаружения, то data на основе
+   которых принимаются dispatch decisions — ненадёжны. HMAC per line — правильное решение.
 
-The IDOR analysis (Workspace Insecure Direct Object Reference) directly validates my architectural decision to put `workspace_id` on every table with a FK to `workspaces(user_id)`. The SQL example in Analysis G showing the WRONG vs CORRECT query pattern is the exact enforcement my schema design requires at the application layer. The schema provides the FK; the application must always join through it.
+2. "orchestrator.py reads backlog.md from dirty WT — active exploit path": это
+   security framing того же data integrity bug, который другие personas описывали как
+   оперативный риск. H правильно эскалирует это до P0.
 
-The data classification table (Gmail email content: "Do NOT store persistently") is a critical data architecture decision I implicitly made (briefing content is stored; source email data is not) but did not state explicitly as a security constraint. Analysis G makes it explicit: email subjects/snippets live in memory only during synthesis. This affects the schema (no `raw_email_content` column anywhere) and the data flow (no write of Gmail data to any table).
+3. Multi-project JSONL sharing: "A high-volume project can push old entries beyond the
+   200-line scan window." Это data retention bug с security implications. Scan window
+   должен быть per-project, не global.
 
-The `SELECT FOR UPDATE` semantics on OAuth token refresh is exactly the race condition I flagged in my Phase 1 "OAuth token rotation" concern. Analysis G names the fix: row-level lock on the refresh operation to prevent two concurrent tasks both seeing an expired token and both attempting refresh.
+**Partial disagreement:**
 
-**Missed gaps:**
-
-- No analysis of the `briefing_feedback` table and its privacy implications. Each row in `briefing_feedback` links `briefing_id`, `source_id`, and `occurred_at` — this is implicit behavioral tracking data. A GDPR-adjacent analysis would require this table to be deleted on account deletion and excluded from any analytical exports.
-- The data retention table specifies "briefing_feedback: does not appear." The raw feedback signals that power behavioral memory need explicit retention policy. I specified 90 days for briefing_feedback in my schema; this needs to be documented in the security/compliance data map.
-- The `usage_counters` table increment strategy (after successful task start, not before) is mentioned operationally but the double-counting prevention mechanism (idempotency key on ledger) is not addressed from a security standpoint. An attacker who can replay a task completion event could manipulate the usage counter.
-
-**Rank: Strong**
-
----
-
-### Analysis H — Operations Engineer (Charity Majors persona)
-
-**Agreement:** Agree
-
-**Reasoning from data perspective:**
-
-Analysis H's operational design has the most direct data architecture implications of any peer analysis.
-
-The BullMQ recommendation over node-cron is correct from a data durability standpoint. node-cron is in-memory. If the Fly.io machine restarts between the 5:59 AM briefing queue load and the 6:00 AM execution, jobs are silently lost. BullMQ with Redis persistence means the briefing job exists as a durable record until it is explicitly dequeued. This is a write-before-execute data pattern: the job is a record, not an ephemeral in-memory callback. This aligns with my `briefings` table state machine — the job record (BullMQ) and the briefing record (SQLite) must be consistent. A briefing in `status='scheduled'` in SQLite must have a corresponding job in BullMQ; if they diverge, the briefing is orphaned.
-
-The distributed trace schema (structured log with `trace_id`, `briefing_id`, `scheduled_at`, `sources_failed[]`) maps directly to my `briefing_sources` table's `fetch_status` column per source and the `briefings` table's state machine fields. The operational observability and the data schema are aligned.
-
-The timeout strategy (10s per source, 60s synthesis) and the graceful degradation decision tree (partial briefing when sources fail) has a data implication I did not address: if a briefing is generated with only 3/5 sources due to failures, is it a `delivered` briefing or a `degraded_delivered` briefing? My current status machine has no `degraded_delivered` state. Analysis H implies this distinction matters ("partial briefing is better than no briefing") but the data model needs a way to record it. Adding a `delivery_quality` field (`full`, `degraded`, `failed`) to the `briefings` table captures this without changing the state machine.
-
-The LLM cost per-user tracking (every LLM call carries `user_id` metadata → Prometheus → Grafana) requires the application to associate LLM calls with the briefing and workspace. My `briefings` table already captures `llm_tokens_in`, `llm_tokens_out`, `llm_cost_usd` per briefing — this is the source of truth for usage-based billing audit. LiteLLM's Prometheus metrics are the real-time operational view; the `briefings` table is the durable audit record. Both are needed.
+H предлагает "git signed commits как identity" — GPG ключ для orchestrator service.
+С data perspective это overengineering для текущего threat model (single-tenant VPS,
+единственный human operator). DDIA говорит: "don't apply enterprise-level solutions to
+startup-scale problems." Process token в systemd environment — достаточно.
 
 **Missed gaps:**
 
-- No analysis of the BullMQ Redis job record and the SQLite `briefings` table consistency. If BullMQ marks a job complete but the SQLite write fails (e.g., DB connection drop during the final state update), the job is dequeued but `status` remains `delivering` indefinitely. This is a two-phase commit problem between two data stores (Redis and SQLite). The mitigation: the BullMQ job completion should be idempotent-safe, and a background reconciliation job should detect stale `delivering` statuses and retry the delivery step.
-- The Upstash Redis free tier limits (10K req/day) are mentioned for job queue operations. But LiteLLM also uses Redis for its budget tracking if configured that way. Two Redis use cases (job queue + cost tracking) on the same free-tier instance need to be accounted for — or separated into two Redis instances.
-- No discussion of the SQLite WAL checkpoint and its interaction with rolling deploys. When a new Fly.io machine starts (rolling deploy), it mounts the same persistent volume. If the old machine's WAL had uncommitted pages, the new machine sees a database in an intermediate state. Fly.io's rolling deploy + SQLite WAL requires the old machine to checkpoint before the new machine starts. This is not automatic and must be part of the deploy script.
-
-**Rank: Strong**
+- H не рассматривает data retention risk: `task_log`, `callback_decisions`,
+  `sdk_post_result_errors` растут неограниченно. При security breach, большой
+  forensic dataset хорош для расследования. Но unbounded growth = performance risk
+  и potential disk-based DoS. Нужен explicit retention policy с архивацией.
 
 ---
 
-## Ranking
+## Convergence: Where Peers Agree
 
-**Best Analysis:** B (Domain Modeler — Eric Evans persona)
+### Конвергенция 1: Three-store status split = root cause
 
-**Reason:** Analysis B provides the strongest cross-validation of my data architecture decisions. The Signal vs Item distinction maps directly to my `briefing_sources` table design. The `DeclaredPriority` vs `LearnedSignal` entity separation within `PriorityProfile` validates my two-table explicit/behavioral memory architecture at the domain level. When the domain model demands the same entity separation as the data model, the design is correct from both directions. Analysis B also asks the right business questions (engagement granularity, task definition) that the data model depends on.
+Все 7 анализов явно или неявно идентифицируют трёхслойное хранение статуса как
+primary data integrity problem:
+- A: "three-store status split means any dashboard will be potentially wrong"
+- B: "status exists in 3 stores without sync contract"
+- C: "aggregate root for spec lifecycle does not exist"
+- E: "three-layer → collapse to one"
+- G: "render_backlog became a source, not a view"
+- H: "three separate attack surfaces for status manipulation"
 
-**Worst Analysis:** F (Devil's Advocate — Fred Brooks persona)
+**Данная конвергенция — сигнал максимальной уверенности: это Root Issue №1.**
 
-**Reason:** Analysis F correctly identifies real complexity risks (LangGraph, Turso, 9 contexts) but the proposed data solution (preferences JSONB column) is architecturally unsafe. The "simplify to 3 tables" counter-proposal silently introduces the dual-SoR problem for preferences and the lost-update problem for usage caps — exactly the two data integrity bugs that would require a painful migration to fix at month 6 with real user data. The strategic critique (behavioral memory moat not testable at day 90) is valid, but the tactical data recommendation would trade architecture complexity for data integrity bugs. In data engineering, that is not a good trade.
+### Конвергенция 2: bootstrap_new_specs читает WT, не HEAD
+
+A, B, C, D, E, G, H — все называют это critical bug. D называет это "unstructured text
+parsing as authority source." H называет это "active exploit path." E называет это
+"today's bug." Это unanimous verdict.
+
+### Конвергенция 3: callback.py decomposition необходима
+
+Все анализы, включая pragmatist E и skeptic G, приходят к выводу что 1374 LOC
+god module должен быть декомпозирован. Divergence только в том, как именно.
+
+### Конвергенция 4: scripts/vps/tests/ не в CI — P0 fix
+
+B, D, E — все называют это критической проблемой. Одна строка в pyproject.toml.
+
+---
+
+## Divergence: Contradictions Between Peers
+
+### Дивергенция 1: SQLite vs Git как SoR для lifecycle status
+
+**E (pragmatist):** SQLite as primary SoR. Kill lifecycle.py, 602 LOC → 5 SQL functions.
+"The multi-machine requirement is theoretical."
+
+**G (skeptic):** "ADR-023 should be split: ADR-023a (git yaml as SoT) KEEP; ADR-023b
+(private GIT_INDEX_FILE CAS) REPLACE with simpler git add + git commit."
+
+**H (security):** Git CAS approach "is sound for single-machine use."
+
+**Моя оценка:** Настоящая дивергенция — не между git и SQLite, а между тем, кто является
+write authority и кто — audit trail. Оптимальная архитектура: SQLite как operational SoR
+(fast, concurrent, queryable), git как audit log (immutable, multi-machine). Это не
+противоречие, это разделение ответственностей по DDIA Ch.12 "The Future of Data Systems".
+
+### Дивергенция 2: gate — sync callback vs polling daemon
+
+**G (skeptic):** Separate gate daemon, 60-second polling. Clean separation.
+"A pure function of git state. No pueue dependency. Independently testable."
+
+**E (pragmatist):** One-rule gate в callback: `git log origin/develop --grep SPEC-ID`.
+Keep callback pattern, simplify the rule.
+
+**C (domain):** Gate как Work Verification Context — pure function, no side effects,
+called synchronously.
+
+Дивергенция реальная. Polling daemon устраняет coupling но вводит eventual consistency.
+Это CAP theorem tradeoff: consistency vs partition tolerance для single-machine setup.
+
+### Дивергенция 3: spec_operator.py — YAGNI vs needed
+
+**E (pragmatist):** "YAGNI — no real user, remove."
+**G (skeptic):** "Already dead. Do not resurrect."
+**C (domain):** Violation of published language — needs refactoring, not deletion.
+**H (security):** force-done bypasses ALL gates — critical security issue.
+
+---
+
+## Ranking: Top 3 Peer Recommendations by Data Leverage
+
+### Rank 1: Analysis E — "Replace lifecycle.py with SQLite"
+
+**Leverage:** Eliminates entire bug class (stale-index race, CAS failure, timeout risk),
+reduces 602 LOC к 5 SQL functions, makes bootstrap_new_specs тривиальным (`SELECT`
+вместо backlog.md regex parsing). Прямое решение для трёх из пяти сегодняшних инцидентов.
+
+**Data integrity impact:** Максимальный. SQLite WAL transactions = serializable writes
+с нативным timeout. Нет git plumbing subprocess calls. Нет checkout-index stale index.
+
+### Rank 2: Analysis C — "Explicit SpecLifecycle aggregate root"
+
+**Leverage:** Enforcement of invariants at the data model level, not в comment/ADR.
+`started_at` always null — невозможно если aggregate enforces "set on in_progress transition."
+`transitions: []` в 175 yaml — невозможно если aggregate records transitions.
+
+**Data integrity impact:** Высокий. Переводит бизнес-правила из ADR documents в
+executable code. Согласно DDIA — invariants должны быть enforced by the data model,
+не by convention.
+
+### Rank 3: Analysis B — "ADR Kill Section + FF-03 sole writer test"
+
+**Leverage:** FF-03 (sole writer check) предотвращает будущие нарушения ADR-023 на
+уровне CI. ADR Kill Section + `test_adr_kills_complete.py` решает zombie validator
+problem системно, а не point-by-point.
+
+**Data integrity impact:** Средний-высокий. Не решает текущие bugs, но предотвращает
+следующий класс bugs от zombie enforcement.
+
+---
+
+## Data-Specific: Do Peer Proposals Create New SoR Ambiguity?
+
+### E: SQLite migration — risk window
+
+E предлагает "one-shot migration script" от lifecycle YAML к SQLite. Это creates a
+**migration race window**: если migration script запускается пока orchestrator активен,
+возможна ситуация где:
+- lifecycle YAML уже удалён
+- SQLite запись ещё не создана
+- Callback читает lifecycle YAML → получает FileNotFoundError → spec stays blocked
+
+**Recommendation:** Expand-contract pattern (DDIA Ch.4 "Encoding and Evolution"):
+1. EXPAND: добавить SQLite table, начать dual-write (YAML + SQLite)
+2. MIGRATE: backfill всех существующих YAML в SQLite
+3. SWITCH: сменить reads на SQLite
+4. CONTRACT: убрать YAML writes, затем lifecycle.py
+
+Это zero-downtime migration, не one-shot script.
+
+### G: Gate daemon — eventual consistency breaks state machine
+
+G предлагает gate daemon polling каждые 60 секунд. Это вводит window где:
+- spec.lifecycle.status = "in_progress"
+- git log origin/develop содержит commit с этим spec_id
+- QA dispatch произошёл (callback отработал)
+- gate daemon ещё не обновил lifecycle status
+
+Если QA daemon проверяет lifecycle status перед диспатчем, он увидит "in_progress"
+и не запустится. Это eventual consistency проблема на state machine boundaries.
+
+**Fix:** QA dispatch должен тригерить немедленный gate check, не ждать следующего
+poll cycle. Или: callback остаётся responsible для gate check, polling daemon — только
+для "cleanup" missed transitions.
+
+### D: Agent signal_completion API — degrades SoR quality
+
+D предлагает explicit agent signal с commit_sha. Если принять это предложение, SoR
+для "work completion" становится двойным: git log (authoritative) + agent signal
+(potentially inconsistent). При расхождении — что побеждает? Нет ответа в D.
+
+**Reject this specific proposal.** Git log как SoR for "what's on develop" — не меняем.
+
+---
+
+## Your Addition: One Thing Peers Missed from DDIA Perspective
+
+### Missing: Schema Evolution и Forward Compatibility для lifecycle YAML
+
+Ни один из семи пирс-анализов не рассматривает schema evolution strategy для lifecycle
+YAML (или предлагаемой SQLite схемы). Это критический gap.
+
+**Текущее состояние:**
+
+Lifecycle YAML schema определена implicit в lifecycle.py (`LifecycleData` TypedDict).
+Нет version field. 177 существующих YAML файлов созданы в разное время. Audit report
+находит:
+- `started_at` always null (поле существует, но никогда не заполняется)
+- `allowed_files_hash` always null (поле существует, никогда не заполняется)
+- `transitions: []` в 175/177 файлов (поле существует, не заполняется)
+
+Это признаки **backward-incompatible schema evolution**: поля добавлялись к schema
+не обновляя существующие данные. По DDIA Ch.4 "Encoding and Evolution" — это нарушение
+forward compatibility: если новый код читает старый YAML и обнаруживает `started_at: null`,
+он не знает: "поле было null намеренно" или "этот файл создан старым кодом который не
+писал started_at"?
+
+**Что нужно:**
+
+```yaml
+# Every lifecycle YAML should have:
+schema_version: 2
+spec_id: FTR-1053
+status: done
+started_at: "2026-05-20T10:00:00Z"  # null only if schema_version < 2
+finished_at: "2026-05-23T11:00:00Z"
+transitions:
+  - from: queued
+    to: in_progress
+    at: "2026-05-20T10:00:00Z"
+    by: orchestrator
+  - from: in_progress
+    to: done
+    at: "2026-05-23T11:00:00Z"
+    by: callback
+```
+
+Readers должны знать: `if schema_version < 2: started_at may be null due to migration gap`.
+
+**Migration strategy (DDIA expand-contract):**
+
+1. **Expand:** Добавить `schema_version: 1` ко всем существующим YAML (one-shot script)
+2. **Migrate:** При каждом write через lifecycle.py — upgrade к schema_version: 2
+3. **Contract:** После того как все файлы достигли schema_version: 2 — убрать legacy
+   null handling из readers
+
+Это стандартный DDIA pattern для schema evolution в document stores. Ни один peer не
+предложил его, несмотря на то что все идентифицировали проблему с null полями.
+
+**Если E выбран (SQLite migration):** PRAGMA user_version — правильный механизм E,
+но нужна explicit migration history table:
+
+```sql
+CREATE TABLE schema_migrations (
+    version      INTEGER PRIMARY KEY,
+    applied_at   TEXT NOT NULL,
+    description  TEXT NOT NULL
+);
+```
+
+Это позволяет отвечать на вопрос "какие данные были мигрированы, а какие нет" —
+критически важно при incremental migration стратегии.
 
 ---
 
 ## Revised Position
 
-**Revised Verdict:** Refined (not changed in direction, but sharpened in three areas)
+**Revised Verdict:** Changed from Phase 1
 
-**What peer analyses added:**
+**Change Reason:**
 
-**1. GCM authentication tag on OAuth tokens (Analysis G).**
-My Phase 1 schema specified AES-256 encryption without specifying the cipher mode details. Analysis G correctly notes that GCM auth tag is mandatory — without it, you have unauthenticated encryption vulnerable to ciphertext manipulation. The `oauth_tokens` schema must add `token_auth_tag TEXT NOT NULL` as a separate column.
+E's innovation token analysis убеждает: git-as-DB "bought" us the stale-index race
+(Root 4 today), checkout-index bug, _push_best_effort silent failure — это не
+implementation bugs, это architectural consequences. G's proposal о "ARCH-186 was right
+in direction, wrong in implementation" — правильная формулировка, но недостаточная.
+Direction тоже можно улучшить.
 
-**2. Preference snapshot as distinct layer from signal table (Analysis E).**
-My Phase 1 design had `memory_signals` as both the operational SoR and the context injection source. Analysis E correctly introduces a third artifact: a weekly-generated `preference_snapshot` compressed by a Haiku call for context injection. The complete three-layer design is: `briefing_feedback` (raw event log) → `memory_signals` (operational running average) → `preference_snapshot` (context injection representation). I will add this to my data model.
-
-**3. `delivery_quality` field on `briefings` table (Analysis H).**
-My state machine status values (`scheduled`, `fetching_sources`, `synthesizing`, `delivering`, `delivered`, `failed`, `cancelled`) do not distinguish between a full briefing and a degraded briefing that delivered with only 3/5 sources. Analysis H's graceful degradation design implies this distinction matters for user communication and SLO measurement. I will add `delivery_quality TEXT CHECK (delivery_quality IN ('full', 'degraded', 'failed'))` to the `briefings` table.
-
-**4. workspace_id vs user_id as tenant key (from Analysis E gap).**
-Analysis E uses `user_id` on preference tables. My position is confirmed: `workspace_id` is the correct tenant isolation key for all product data. A Pro user with 3 workspaces has 3 independent priority profiles. Identity (user) and product context (workspace) are different keys. This must be consistent across ALL tables.
-
-**5. BullMQ/SQLite two-store consistency (from Analysis H gap).**
-The two-phase commit problem between BullMQ Redis (job complete) and SQLite (briefing status updated) is a real gap in my Phase 1 design. The mitigation: a background reconciliation job that detects `briefings WHERE status IN ('delivering', 'synthesizing') AND status_updated_at < NOW() - INTERVAL 30 minutes` and retries the terminal step. This is the "compensating transaction" pattern from DDIA Chapter 8.
+B's ADR Kill Section — это данные об архитектурных решениях как first-class entities
+в системе. Это мне нравится больше чем я ожидал.
 
 **Final Data Recommendation:**
 
-The core schema decisions from Phase 1 hold:
-- Append-only `usage_ledger` with idempotency key (not mutable counter)
-- Separate `preferences` (user-owned) and `memory_signals` (system-derived)
-- Structured `content_json` for deterministic reliability checks
-- `billing_cache` as explicitly-labelled Stripe read-through cache
-- `briefing_sources` for data lineage from fetch through synthesis
-- UUID v7 primary keys throughout
+Трёхступенчатая стратегия по DDIA:
 
-Three additions from cross-critique:
-1. `token_auth_tag` column on `oauth_tokens` table (GCM authentication tag)
-2. `preference_snapshot` table for weekly-generated context injection representation
-3. `delivery_quality` field on `briefings` table for degraded vs full delivery distinction
+**Ступень 1 — немедленно (0 риска, максимальный ROI):**
+- bootstrap_new_specs читает HEAD, не WT (1 строка)
+- `_push_best_effort`: DEBUG → WARNING (1 строка)
+- GROWTH в `_SPEC_ID_RE` callback.py (1 строка)
+- pyproject.toml testpaths (1 строка)
+- Добавить `schema_version: 1` ко всем lifecycle YAMLs (one-shot script, ~5 LOC)
 
-One confirmed architectural choice from cross-critique:
-- `workspace_id` (not `user_id`) as the tenant isolation key on ALL product data tables. Preferences, signals, briefings, sources — all scoped to workspace, not user. Confirmed by Domain Model (Analysis B) and validated against Security IDOR analysis (Analysis G).
+**Ступень 2 — SQLite как operational SoR (medium risk, expand-contract):**
+- Добавить `spec_lifecycle` + `spec_transitions` tables в db.py (E's schema)
+- Dual-write period: пишем в оба, читаем из YAML
+- Backfill существующих 177 YAML в SQLite
+- Переключить reads на SQLite
+- YAML → read-only audit archive, не удалять
 
-The data architecture is sound. The risks are in operational edge cases (BullMQ/SQLite consistency, OAuth token rotation race, Stripe webhook staleness) — all addressable with specific patterns, none requiring schema redesign.
+**Ступень 3 — SpecLifecycle aggregate (C's proposal, low risk):**
+- Explicit aggregate root с enforced invariants
+- `started_at` set on `in_progress` transition — обязательный инвариант
+- `transitions` записываются при каждом изменении статуса
+- Sole writer enforced через FF-03 + CI
+
+Git остаётся как immutable audit log (git history lifecycle YAML commits).
+SQLite — operational database. Это DDIA Ch.12 "derived data" pattern:
+primary source (SQLite), secondary derived store (git archive).
+
+Aggregate root в C — правильная конечная точка. SQLite в E — правильный
+implementation vehicle. Schema versioning — это то что позволит эволюции
+схемы без останова системы.
+
+---
+
+## References
+
+- Martin Kleppmann — DDIA Ch.4 (Encoding and Evolution), Ch.11 (Stream Processing),
+  Ch.12 (The Future of Data Systems)
+- Analysis A: `/home/dld/projects/dld/ai/architect/anonymous/A.md`
+- Analysis B: `/home/dld/projects/dld/ai/architect/anonymous/B.md`
+- Analysis C: `/home/dld/projects/dld/ai/architect/anonymous/C.md`
+- Analysis D: `/home/dld/projects/dld/ai/architect/anonymous/D.md`
+- Analysis E: `/home/dld/projects/dld/ai/architect/anonymous/E.md`
+- Analysis G: `/home/dld/projects/dld/ai/architect/anonymous/G.md`
+- Analysis H: `/home/dld/projects/dld/ai/architect/anonymous/H.md`
+- Deep Audit Report: `/home/dld/projects/dld/ai/audit/deep-audit-report.md`
+- lifecycle.py: `/home/dld/projects/dld/scripts/vps/lifecycle.py`
+- callback.py: `/home/dld/projects/dld/scripts/vps/callback.py`
+- orchestrator.py: `/home/dld/projects/dld/scripts/vps/orchestrator.py`
