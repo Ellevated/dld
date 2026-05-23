@@ -78,6 +78,7 @@ Dependency map between project components.
 | callback.py | scripts/vps/callback.py | record_decision(), count_demotes_since(), clear_decisions() (TECH-169) |
 | night-reviewer.sh | scripts/vps/night-reviewer.sh (FTR-147 Task 4) | CLI: save-finding, get-new-findings, update-phase |
 | claude-runner.py | scripts/vps/claude-runner.py | log_sdk_post_result_error() (BUG-188 Layer 4, lazy import) |
+| gate-daemon.py | scripts/vps/gate-daemon.py | log_gate_cycle(), get_all_projects() (ARCH-190) |
 
 ### When changing API, check
 
@@ -85,6 +86,7 @@ Dependency map between project components.
 - [ ] callback.py
 - [ ] night-reviewer.sh (CLI: save-finding / get-new-findings / update-phase)
 - [ ] claude-runner.py (log_sdk_post_result_error signature — BUG-188)
+- [ ] gate-daemon.py (log_gate_cycle signature — ARCH-190)
 
 ---
 
@@ -238,6 +240,7 @@ Dependency map between project components.
 | orchestrator.py | scripts/vps/orchestrator.py | list_by_status(), create_initial() (bootstrap), assert_clean_lifecycle_tree() (startup), reconcile_orphans() |
 | render_backlog.py | scripts/vps/render_backlog.py | read_lifecycle() + list_all() for view generation |
 | migrate_backlog_to_lifecycle.py | scripts/vps/migrate_backlog_to_lifecycle.py | initial migration one-shot |
+| gate-daemon.py | scripts/vps/gate-daemon.py | list_by_status() — read-only, shadow mode (ARCH-190) |
 
 ### When changing API, check
 
@@ -245,6 +248,7 @@ Dependency map between project components.
 - [ ] orchestrator.py (4 callsites: list_by_status, create_initial, assert_clean, reconcile_orphans)
 - [ ] render_backlog.py (read_lifecycle for view)
 - [ ] tests/integration/test_callback_*.py (use write_lifecycle for setup)
+- [ ] gate-daemon.py (list_by_status caller — ARCH-190 read-only)
 
 ---
 
@@ -403,6 +407,59 @@ Dependency map between project components.
 
 ---
 
+## scripts/vps/gate-daemon.py (ARCH-190 Wave 1)
+
+**Path:** `scripts/vps/gate-daemon.py`
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| gate_logic | scripts/vps/gate_logic.py | fetch_develop(), parse_allowed_files(), find_implementation_commit() |
+| lifecycle | scripts/vps/lifecycle.py | list_by_status() |
+| db | scripts/vps/db.py | log_gate_cycle(), get_all_projects() |
+| subprocess | stdlib | git rev-parse origin/develop (SHA cache) |
+| logging.handlers | stdlib | RotatingFileHandler (shadow JSONL writer, 100MiB/5 backups) |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| systemd | dld-gate-daemon.service (Wave 2) | main daemon loop |
+
+### When changing API, check
+
+- [ ] setup-vps.sh (Wave 2 service install)
+- [ ] gate_logic.py (fetch_develop / parse_allowed_files / find_implementation_commit signatures)
+- [ ] db.py (log_gate_cycle signature)
+
+---
+
+## scripts/vps/gate_logic.py (ARCH-190 Wave 1)
+
+**Path:** `scripts/vps/gate_logic.py`
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| subprocess | stdlib | git fetch origin develop, git log origin/develop |
+| re | stdlib | _SPEC_ID_RE, match_subject patterns |
+| pathlib | stdlib | Path type for parse_allowed_files |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| gate-daemon.py | scripts/vps/gate-daemon.py | fetch_develop(), parse_allowed_files(), find_implementation_commit() |
+
+### When changing API, check
+
+- [ ] gate-daemon.py (_evaluate_project — all three call sites)
+- [ ] tests/test_gate_logic.py (pure-function tests, Wave 1 Task 2)
+
+---
+
 ## Last Update
 
 | Date | What | Who |
@@ -423,3 +480,4 @@ Dependency map between project components.
 | 2026-05-16 | **ARCH-186 lifecycle SoT migration:** lifecycle.py (new, ~280 LOC) atomic git plumbing; callback.verify_status_sync upgraded to lifecycle.write_lifecycle (no markdown editing); orchestrator scan_queued + bootstrap_new_specs + assert_clean_lifecycle_tree + reconcile_orphans; render_backlog.py (new) markdown view; migrate_backlog_to_lifecycle.py (new, one-shot). DELETED: marker_utils.py (117), _restore_callback_markers_from_head (54), autostash dance (81), DLD-CALLBACK-MARKER blocks in spec template + Phase 5.5 E007/E008 rules. Supersedes ADR-018. Closes BUG-185. | autopilot (interactive) |
 | 2026-05-23 | **TECH-189 P0 hardening cluster (9 tasks):** Task 1 pyproject testpaths += scripts/vps/tests; Task 2 tests/conftest.py autouse _db_isolation; Task 3 DELETED spec_lint.py + tests/unit/test_spec_lint.py + removed DLD-CALLBACK-MARKER refs across completion.md ×2, facilitator.md, .git-hooks/pre-commit, feature-mode.md ×2; Task 4 BOOTSTRAP_ANOMALY_THRESHOLD constant + warning + ai/.bootstrap-anomaly-count counter + Hermes event; Task 5 lifecycle._push_best_effort DEBUG→WARNING + ai/.lifecycle-push-failures counter + TimeoutExpired path; Task 6 GROWTH in _SPEC_ID_RE (callback) + bootstrap_new_specs regex (orchestrator:308); Task 7 lifecycle._run timeout=30 + _cas_loop TimeoutExpired catch; Task 8 NEW scripts/vps/heartbeat_monitor.py + orchestrator main-loop heartbeat write + setup-vps.sh cron (*/5 min); Task 9 reconcile_orphans by="orchestrator" (was "callback"). | autopilot |
 | 2026-05-20 | **BUG-188:** claude-runner result_received/result_is_error tracking — post-result Exception no longer overrides exit_code=0 (Layer 1); public ClaudeAgentOptions.stderr callback captures subprocess CLI stderr (Layer 2); sdk_post_result_errors table + log_sdk_post_result_error helper (schema.sql + db.py, Layer 4); claude-runner wires telemetry inside post-result branch; autopilot SKILL.md adds early-exit detection step (Layer 3, both .claude/ and template/.claude/); ADR-024 documents exit_code contract. | autopilot |
+| 2026-05-24 | **ARCH-190 Task 3:** NEW gate-daemon.py (391 LOC) shadow polling daemon; NEW gate_logic.py dependency sections added to dependencies.md. | coder |
