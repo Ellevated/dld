@@ -75,7 +75,12 @@ def _now_iso() -> str:
 
 
 def _run(
-    cmd: list, *, cwd: str, env: Optional[dict] = None, input_text: Optional[str] = None
+    cmd: list,
+    *,
+    cwd: str,
+    env: Optional[dict] = None,
+    input_text: Optional[str] = None,
+    timeout: int = 30,
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
         cmd,
@@ -85,6 +90,7 @@ def _run(
         capture_output=True,
         text=True,
         check=False,
+        timeout=timeout,
     )
 
 
@@ -276,7 +282,16 @@ def _cas_loop(repo_dir: str, spec_id: str, branch: str, yaml_fn) -> None:
     with _write_lock:
         for attempt in range(1, MAX_CAS_RETRIES + 1):
             yaml_content = yaml_fn()
-            if _atomic_write(repo_dir, spec_id, yaml_content, branch):
+            try:
+                wrote = _atomic_write(repo_dir, spec_id, yaml_content, branch)
+            except subprocess.TimeoutExpired as exc:
+                log.warning(
+                    "lifecycle git plumbing timeout (spec=%s cmd=%s); treating as CAS failure",
+                    spec_id,
+                    exc.cmd,
+                )
+                wrote = False
+            if wrote:
                 _push_best_effort(repo_dir, branch)
                 return
             log.warning("CAS attempt %d/%d failed for %s", attempt, MAX_CAS_RETRIES, spec_id)
