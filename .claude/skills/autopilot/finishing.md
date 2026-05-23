@@ -221,10 +221,10 @@ After tests pass, autopilot emits `task_status` in its final JSON output:
 - `"task_status": "needs_review"` — uncertain, callback marks blocked with reason
 
 Callback (`scripts/vps/callback.py`) reads pueue exit code + `task_status` from agent JSON output
-and writes `**Status:**` via git plumbing.
+and writes status to `ai/lifecycle/{spec_id}.yaml` via git plumbing (ADR-023).
 
 Migration: in-flight specs may still have legacy autopilot status edits — callback's guard
-re-verifies via implementation guard (ADR-018).
+re-verifies via implementation guard (ADR-023 / TECH-166).
 
 ## Git Safety for Merge
 
