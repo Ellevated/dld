@@ -1,13 +1,18 @@
 allowed_files_hash: null
-blocked_reason: null
-finished_at: null
+blocked_reason: Wave 1 MP-001 merged to develop (7 tasks, gate-daemon shadow deployed)
+finished_at: '2026-05-24T19:44:10Z'
 kind: arch
 priority: p0
 pueue_id: null
 spec_id: ARCH-190
 started_at: null
-status: queued
-transitions: []
-updated_at: '2026-05-23T20:03:12Z'
-updated_by: orchestrator
-version: 1
+status: done
+transitions:
+- at: '2026-05-24T19:44:10Z'
+  by: operator
+  from: queued
+  pueue_id: null
+  to: done
+updated_at: '2026-05-24T19:44:10Z'
+updated_by: operator
+version: 2
