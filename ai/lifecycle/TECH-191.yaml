@@ -1,19 +1,24 @@
 allowed_files_hash: null
-blocked_reason: promote draft → queued for autopilot (R2 fix, fixes false-block class
-  affecting wb/FTR-182 and awardybot/FTR-1051)
-finished_at: null
+blocked_reason: interactive autopilot run completed; merged to origin/develop in commit
+  5ff1bf0
+finished_at: '2026-05-24T20:19:24Z'
 kind: tech
 priority: p1
 pueue_id: null
 spec_id: TECH-191
 started_at: null
-status: queued
+status: done
 transitions:
 - at: '2026-05-24T20:02:27Z'
   by: operator
   from: draft
   pueue_id: null
   to: queued
-updated_at: '2026-05-24T20:02:27Z'
+- at: '2026-05-24T20:19:24Z'
+  by: operator
+  from: queued
+  pueue_id: null
+  to: done
+updated_at: '2026-05-24T20:19:24Z'
 updated_by: operator
-version: 2
+version: 3
