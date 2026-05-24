@@ -68,8 +68,19 @@ Git worktree isolation for safe parallel development.
    git check-ignore .worktrees/
    └─ not ignored? → add to .gitignore
 
-5. Create worktree:
-   git worktree add ".worktrees/{ID}" -b "{type}/{ID}"
+5. Create worktree (pin base to origin/develop — see WHY below):
+   # Refresh remote first — base MUST be fresh origin/develop, not stale local ref
+   git fetch origin develop
+   git worktree add ".worktrees/{ID}" -b "{type}/{ID}" origin/develop
+
+   # WHY origin/develop explicit (not implicit HEAD):
+   #   `git worktree add -b new-branch path` without a base ref branches off
+   #   the CWD's current HEAD. If anything left cwd HEAD on main (broken prior
+   #   worktree, manual `git checkout main`, recovery state, orchestrator
+   #   improvisation) — the new branch inherits main and PHASE 3 merge into
+   #   develop drags unrelated main-only commits (dependabot bumps, release
+   #   merge-backs). Pin to origin/develop to guarantee base regardless of
+   #   CWD state. Reference: awardybot TECH-1063 incident, commit 833e5994.
 
    Type mapping:
    | Prefix | Branch Type |

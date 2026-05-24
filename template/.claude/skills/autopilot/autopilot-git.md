@@ -104,7 +104,18 @@ git check-ignore -q "$WORKTREE_DIR" || {
 MAIN_REPO="$(git rev-parse --show-toplevel)"
 WORKTREE_PATH="${WORKTREE_DIR}/${TASK_ID}"
 
-git worktree add "$WORKTREE_PATH" -b "${BRANCH_PREFIX}/${TASK_ID}"
+# Refresh remote — branch base MUST be fresh origin/develop, not stale local ref
+git fetch origin develop
+
+# WHY origin/develop explicit (not implicit HEAD):
+#   `git worktree add -b new-branch path` without a base ref branches off
+#   the CWD's current HEAD. If anything left cwd HEAD on main (broken prior
+#   worktree, manual `git checkout main`, recovery state, orchestrator
+#   improvisation) — the new branch inherits main and PHASE 3 merge into
+#   develop drags unrelated main-only commits (dependabot bumps, release
+#   merge-backs). Pin to origin/develop to guarantee base regardless of
+#   CWD state. Reference: awardybot TECH-1063 incident, commit 833e5994.
+git worktree add "$WORKTREE_PATH" -b "${BRANCH_PREFIX}/${TASK_ID}" origin/develop
 cd "$WORKTREE_PATH"
 ```
 
