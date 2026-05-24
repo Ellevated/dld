@@ -1,0 +1,13 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: null
+kind: tech
+priority: p1
+pueue_id: null
+spec_id: TECH-191
+started_at: null
+status: draft
+transitions: []
+updated_at: '2026-05-24T19:59:33Z'
+updated_by: orchestrator
+version: 1
