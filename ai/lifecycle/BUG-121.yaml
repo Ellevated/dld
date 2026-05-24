@@ -1,13 +1,19 @@
 allowed_files_hash: null
-blocked_reason: null
-finished_at: null
+blocked_reason: implementation merged in 9b79f7e; lifecycle yaml stuck in draft from
+  initial migration (updated_by=migration, never auto-promoted)
+finished_at: '2026-05-24T20:43:05Z'
 kind: bug
 priority: p0
 pueue_id: null
 spec_id: BUG-121
 started_at: null
-status: draft
-transitions: []
-updated_at: '2026-05-16T11:22:47Z'
-updated_by: migration
-version: 1
+status: done
+transitions:
+- at: '2026-05-24T20:43:05Z'
+  by: operator
+  from: draft
+  pueue_id: null
+  to: done
+updated_at: '2026-05-24T20:43:05Z'
+updated_by: operator
+version: 2
