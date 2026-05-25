@@ -1111,7 +1111,11 @@ def verify_status_sync(
             reason = ""
         else:
             new_status = "blocked"
-            reason = "no_merged_implementation"
+            reason = (
+                f"no_merged_implementation — if implementation IS real, run: "
+                f"python3 scripts/vps/spec_operator.py force-done {project_id} {spec_id} "
+                f"'gate regex bug, verified manually' --by=operator"
+            )
 
     # Autopilot explicitly signaled blocked/needs_review → honor over gate=done
     # (autopilot saw something the gate can't infer: tests failed, need human, etc.)
@@ -1167,6 +1171,37 @@ def verify_status_sync(
             by="callback",
             pueue_id=pueue_id,
         )
+    except lifecycle.LifecycleAlreadyDoneError as exc:
+        # Rule 7 structural guard (ADR-025): race between Rule 7 fast-path read
+        # (lines ~1074-1092) and write — another writer flipped to done in between.
+        # Benign NOOP — emit warning for investigation.
+        log.warning("STATUS_SYNC: %s — Rule 7 structural save (%s)", spec_id, exc)
+        _record(project_id, spec_id, "noop", "rule_7_saved")
+        try:
+            event_writer.notify(
+                project_path,
+                "callback",
+                "failed",
+                f"rule_7_saved: {spec_id} — callback attempted '{new_status}', "
+                f"spec already done. Investigate who wrote lifecycle({spec_id}): done.",
+            )
+        except Exception:  # noqa: BLE001
+            pass  # notify is best-effort
+        _emit_audit(
+            project_id,
+            spec_id,
+            pueue_id,
+            target_in,
+            "done",
+            "rule_7_saved",
+            len(allowed) if allowed else 0,
+            code_loc,
+            test_loc,
+            code_commits,
+            started_at,
+            start_wall,
+        )
+        return
     except Exception as exc:  # noqa: BLE001
         log.warning("STATUS_SYNC: lifecycle.write failed for %s: %s", spec_id, exc)
         _emit_audit(
