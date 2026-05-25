@@ -1,0 +1,13 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: null
+kind: arch
+priority: p1
+pueue_id: null
+spec_id: ARCH-193
+started_at: null
+status: queued
+transitions: []
+updated_at: '2026-05-25T07:21:27Z'
+updated_by: orchestrator
+version: 1
