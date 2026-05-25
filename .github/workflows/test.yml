@@ -39,6 +39,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-cov pytest-xdist
+          # ARCH-186/BUG-188/ARCH-193: lifecycle.py needs pyyaml,
+          # claude-runner.py needs claude-agent-sdk.
+          pip install -r scripts/vps/requirements.txt
 
       - name: Unit tests
         run: pytest tests/unit/test_callback_*.py -v -n auto

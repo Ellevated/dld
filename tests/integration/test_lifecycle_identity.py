@@ -60,19 +60,21 @@ def test_t1_write_lifecycle_rejects_unknown_writer(tmp_path):
 
     msg = str(exc.value)
     assert "invalid by='hacker'" in msg
-    # All 8 _ALLOWED_WRITERS members must be named in the error so the
+    # Every _ALLOWED_WRITERS member must be named in the error so the
     # caller can see what's expected without reading source.
+    # ADR-025 (ARCH-193): autopilot/spark removed — autopilot signals via
+    # task_status JSON, spark had zero direct callers.
     for expected in (
         "callback",
         "orchestrator",
-        "spark",
         "operator",
         "qa",
         "audit",
-        "autopilot",
         "migration",
     ):
         assert expected in msg, f"allowed writer {expected!r} missing from error: {msg}"
+    for forbidden in ("autopilot", "spark"):
+        assert forbidden not in msg, f"removed writer {forbidden!r} still in error: {msg}"
 
 
 def test_t2_write_lifecycle_accepts_all_allowed_writers(tmp_path):
