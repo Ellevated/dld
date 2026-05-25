@@ -3,7 +3,9 @@ Module: lifecycle
 Role: Atomic git-plumbing writer for per-spec lifecycle YAML state files.
       Stores state in ai/lifecycle/{spec_id}.yaml via private GIT_INDEX_FILE,
       never touching the working tree. CAS update-ref prevents race conditions.
-      Identity enforcement: only _ALLOWED_WRITERS may call write functions (ADR-024).
+      Identity enforcement: only _ALLOWED_WRITERS may call write functions (ADR-025).
+      Rule 7 structural: done is terminal — LifecycleAlreadyDoneError raised on
+      any non-done transition when HEAD yaml already shows status="done" (ARCH-193).
 
 Uses:
   - pathlib: Path
@@ -43,12 +45,13 @@ log = logging.getLogger(__name__)
 LIFECYCLE_DIR = "ai/lifecycle"
 MAX_CAS_RETRIES = 3
 
-# ADR-024 (ARCH-187): identity enforcement — only known writer identities may
+# ADR-025 (ARCH-193): identity enforcement — only known writer identities may
 # call write_lifecycle / create_initial / build_initial_yaml.  Prevents
 # accidental anonymous writes and makes audit trails meaningful.
-_ALLOWED_WRITERS = frozenset(
-    {"callback", "orchestrator", "spark", "operator", "qa", "audit", "autopilot", "migration"}
-)
+# ADR-025 (ARCH-193): "autopilot" removed — signals via task_status JSON only;
+# "spark" removed — zero direct callers (specs bootstrap via
+# orchestrator.create_initial which writes by="orchestrator").
+_ALLOWED_WRITERS = frozenset({"callback", "orchestrator", "operator", "qa", "audit", "migration"})
 
 # In-process lock: serializes plumbing writes within one Python process.
 # Eliminates intra-process CAS stampede (e.g. concurrent threads in callback).
@@ -63,6 +66,23 @@ class LifecycleWriteRaceError(Exception):
         self.spec_id = spec_id
         self.attempts = attempts
         super().__init__(f"CAS race: write_lifecycle({spec_id!r}) failed after {attempts} attempts")
+
+
+class LifecycleAlreadyDoneError(Exception):
+    """Rule 7 — done is terminal (ADR-025, ARCH-193).
+
+    Raised by write_lifecycle when any writer attempts a non-done
+    transition on a spec whose HEAD yaml already shows status="done".
+    """
+
+    def __init__(self, *, spec_id: str, attempted: str, by: str) -> None:
+        super().__init__(
+            f"lifecycle({spec_id}): cannot transition done → {attempted} "
+            f"(writer={by}); done is terminal (Rule 7 — ADR-025)"
+        )
+        self.spec_id = spec_id
+        self.attempted = attempted
+        self.by = by
 
 
 # ---------------------------------------------------------------------------
@@ -359,6 +379,13 @@ def write_lifecycle(
     """
     if by not in _ALLOWED_WRITERS:
         raise ValueError(f"write_lifecycle: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS)}")
+    # Rule 7 — done is terminal (ADR-025, ARCH-193). Structural guard at the
+    # write primitive — protects ALL callers (callback, operator, qa, audit,
+    # migration, orchestrator).
+    if status != "done":
+        _existing_head = _read_yaml_from_head(str(repo_dir), spec_id)
+        if _existing_head and _existing_head.get("status") == "done":
+            raise LifecycleAlreadyDoneError(spec_id=spec_id, attempted=status, by=by)
     repo_dir = str(repo_dir)
     branch = _current_branch(repo_dir)
 
