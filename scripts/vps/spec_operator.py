@@ -6,7 +6,7 @@ Role: Operator-facing CLI for manual spec status mutations. Writes lifecycle
       Identity enforcement: caller must supply --by from allowed set (ADR-024).
 
 Uses:
-  - lifecycle.py: read_lifecycle(), write_lifecycle(), LifecycleWriteRaceError
+  - lifecycle.py: read_lifecycle(), write_lifecycle(), LifecycleWriteRaceError, LifecycleAlreadyDoneError
   - callback.py: _reset_circuit_cli (reset-circuit subcommand only)
 
 Used by: operators (CLI), `/qa` skill, post-circuit triage.
@@ -21,6 +21,7 @@ Exit codes:
     2 — usage / IO error / invalid identity (--by not in allowed set).
     3 — spec .md not found, OR lifecycle yaml not found (never bootstrapped).
     4 — CAS race exhausted after retries; caller should retry.
+    5 — done is terminal; cannot demote/overwrite (Rule 7, ADR-025).
 """
 
 from __future__ import annotations
@@ -62,9 +63,7 @@ def _find_spec(project: Path, spec_id: str) -> Path | None:
     return matches[0] if matches else None
 
 
-def _set_status(
-    project: Path, spec_id: str, target: str, reason: str | None, by: str
-) -> int:
+def _set_status(project: Path, spec_id: str, target: str, reason: str | None, by: str) -> int:
     """Apply target status to spec lifecycle yaml via lifecycle.write_lifecycle."""
     spec_path = _find_spec(project, spec_id)
     if spec_path is None:
@@ -84,6 +83,9 @@ def _set_status(
 
     try:
         lifecycle.write_lifecycle(project, spec_id, target, reason=reason, by=by)
+    except lifecycle.LifecycleAlreadyDoneError as exc:
+        print(f"operator: {exc}", file=sys.stderr)
+        return 5
     except ValueError as exc:
         print(f"operator: {exc}", file=sys.stderr)
         return 2
@@ -133,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_d.add_argument(
         "--by",
         required=True,
-        choices=["operator", "qa", "audit", "autopilot", "spark"],
+        choices=["operator", "qa", "audit"],
         help="Identity of caller. Mandatory — recorded in transitions yaml (ADR-024).",
     )
     p_d.set_defaults(func=cmd_demote)
@@ -145,7 +147,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_f.add_argument(
         "--by",
         required=True,
-        choices=["operator", "qa", "audit", "autopilot", "spark"],
+        choices=["operator", "qa", "audit"],
         help="Identity of caller. Mandatory — recorded in transitions yaml (ADR-024).",
     )
     p_f.set_defaults(func=cmd_force_done)
