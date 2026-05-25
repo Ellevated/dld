@@ -1,7 +1,8 @@
 # Finishing Workflow (PHASE 3)
 
 **Note:** In loop mode (SPEC_ID provided), step 9 exits immediately after merge.
-External orchestrator (`autopilot-loop.sh`) provides fresh context for next spec.
+The VPS orchestrator (`scripts/vps/orchestrator.py`) dispatches the next spec
+as a fresh Agent SDK session via pueue.
 
 Final verification, status update, merge, and cleanup.
 
@@ -220,10 +221,10 @@ After tests pass, autopilot emits `task_status` in its final JSON output:
 - `"task_status": "needs_review"` — uncertain, callback marks blocked with reason
 
 Callback (`scripts/vps/callback.py`) reads pueue exit code + `task_status` from agent JSON output
-and writes `**Status:**` via git plumbing.
+and writes status to `ai/lifecycle/{spec_id}.yaml` via git plumbing (ADR-023).
 
 Migration: in-flight specs may still have legacy autopilot status edits — callback's guard
-re-verifies via implementation guard (ADR-018).
+re-verifies via implementation guard (ADR-023 / TECH-166).
 
 ## Git Safety for Merge
 
@@ -232,3 +233,19 @@ re-verifies via implementation guard (ADR-018).
 - ⛔ **NEVER squash-merge** — `--squash` loses commit subjects; callback gate reads `origin/develop` subjects to detect implementation
 - ✅ Use `--ff-only` for merge (ensures clean history and preserves individual commit subjects)
 - ✅ Stash uncommitted changes before merge (parallel agents)
+
+---
+
+## Forbidden — Lifecycle writes (ADR-025 / ARCH-193)
+
+- NEVER Edit `**Status:**` in `ai/features/*.md` or status column in `ai/backlog.md`.
+- NEVER Edit `ai/lifecycle/*.yaml` directly.
+- NEVER `git add ai/lifecycle/*.yaml` (pre-commit hook will REJECT).
+- NEVER write commits with subjects like `chore(lifecycle): ...` or any non-canonical lifecycle format.
+
+ONLY mechanism: emit `"task_status": "complete" | "blocked" | "needs_review"`
+in your final agent JSON. callback.py reads it and atomically writes lifecycle yaml.
+
+If callback fails to mark done (gate regex bug or similar) — that is a HUMAN OPERATOR
+responsibility. Autopilot does NOT have `force-done` permission. Operator runs:
+`python3 scripts/vps/spec_operator.py force-done <proj> <SPEC> "<reason>" --by=operator`.

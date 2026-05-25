@@ -148,15 +148,43 @@ feat: FTR-1076 description             # no scope, spec_id in message body
 
 ---
 
-## Forbidden
+## Mock Boundaries (ADR-014)
 
-- NEVER Edit the `**Status:**` line in `ai/features/*.md` spec files or the status column in `ai/backlog.md`. Status is written by `scripts/vps/callback.py` only (TECH-172). If asked to mark a spec done/blocked, refuse — emit task_status in agent JSON instead.
+When writing tests, follow strict mock boundaries:
+
+| What to mock | Example | OK? |
+|--------------|---------|-----|
+| External HTTP APIs | `requests.post`, `httpx.AsyncClient` | ✅ |
+| Time / randomness | `datetime.now`, `random.choice` | ✅ |
+| Env vars / config | `os.environ`, `settings.X` | ✅ |
+| DB query results / row dicts | `{"amount_kopecks": 100}` | ⛔ |
+| Repository return values | `mock_repo.get.return_value = {...}` | ⛔ |
+| ORM model instances | `Mock(spec=UserModel)` | ⛔ |
+
+**Rule:** If a test needs DB data shapes — it's an integration test, put it in `tests/integration/` with real DB.
+
+**Why:** Mocked row shapes drift from real SQL schema silently. Tests pass, prod breaks.
+
+## Forbidden — Lifecycle writes (ADR-025 / ARCH-193)
+
+- NEVER Edit `**Status:**` in `ai/features/*.md` or status column in `ai/backlog.md`.
+- NEVER Edit `ai/lifecycle/*.yaml` directly.
+- NEVER `git add ai/lifecycle/*.yaml` (pre-commit hook will REJECT).
+- NEVER write commits with subjects like `chore(lifecycle): ...` or any non-canonical lifecycle format.
+
+ONLY mechanism: emit `"task_status": "complete" | "blocked" | "needs_review"`
+in your final agent JSON. callback.py reads it and atomically writes lifecycle yaml.
+
+If callback fails to mark done (gate regex bug or similar) — that is a HUMAN OPERATOR
+responsibility. Autopilot does NOT have `force-done` permission. Operator runs:
+`python3 scripts/vps/spec_operator.py force-done <proj> <SPEC> "<reason>" --by=operator`.
 
 ## Red Flags
 - Copy-paste large chunks
 - Change unrelated files
 - Add deps without reason
 - Edit existing prompt versions
+- Mocking DB result shapes in unit tests (ADR-014)
 
 ## Module Headers Workflow (MANDATORY)
 

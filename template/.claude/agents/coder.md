@@ -136,15 +136,15 @@ chore(ARCH-186): bootstrap epic tracker
 
 ❌ **Forbidden:**
 ```
-feat(ftr-1076): ...                    # lowercase scope — write UPPERCASE for consistency
+feat(ftr-1076): ...                    # lowercase scope — historically rejected; now accepted by gate (BUG-192) but still write UPPERCASE for consistency
 feat(billing): ... (FTR-1076 Task 3)   # component scope, spec_id in trail
 fix(db): ... (BUG-439)                 # trailing-only spec_id — rejected by TECH-177 invariant
 feat: FTR-1076 description             # no scope, spec_id in message body
 ```
 
-**Why:** The callback gate (scripts/vps/callback.py:_subject_implements) parses ONLY the scope. Trailing mentions trigger false-positives from cross-references. Compliance is enforced by gate — non-compliant commits cause false demote and burn compute on re-dispatch.
+**Why:** callback gate (`scripts/vps/callback.py:_subject_implements`) parses ONLY the scope. Trailing mentions trigger false-positives from cross-references (TECH-177 incident 2026-05-04 — awardybot). Compliance is enforced by gate — non-compliant commits cause false demote and burn compute on re-dispatch (BUG-192 night incident 2026-05-24/25 — 5 specs demoted blind to lowercase scope).
 
-**Merge commits (PHASE 3):** `Merge feature/SPEC_ID: <description>` (or `Merge autopilot/SPEC_ID …`, `Merge fix/SPEC_ID …`) is accepted by gate.
+**Merge commits (PHASE 3):** `Merge feature/SPEC_ID: <description>` (or `Merge autopilot/SPEC_ID …`, `Merge fix/SPEC_ID …`) is accepted by gate (BUG-192 Level 1b fix).
 
 ---
 
@@ -165,9 +165,19 @@ When writing tests, follow strict mock boundaries:
 
 **Why:** Mocked row shapes drift from real SQL schema silently. Tests pass, prod breaks.
 
-## Forbidden
+## Forbidden — Lifecycle writes (ADR-025 / ARCH-193)
 
-- NEVER Edit the `**Status:**` line in `ai/features/*.md` spec files or the status column in `ai/backlog.md`. Status is written by `scripts/vps/callback.py` only (TECH-172). If asked to mark a spec done/blocked, refuse — emit task_status in agent JSON instead.
+- NEVER Edit `**Status:**` in `ai/features/*.md` or status column in `ai/backlog.md`.
+- NEVER Edit `ai/lifecycle/*.yaml` directly.
+- NEVER `git add ai/lifecycle/*.yaml` (pre-commit hook will REJECT).
+- NEVER write commits with subjects like `chore(lifecycle): ...` or any non-canonical lifecycle format.
+
+ONLY mechanism: emit `"task_status": "complete" | "blocked" | "needs_review"`
+in your final agent JSON. callback.py reads it and atomically writes lifecycle yaml.
+
+If callback fails to mark done (gate regex bug or similar) — that is a HUMAN OPERATOR
+responsibility. Autopilot does NOT have `force-done` permission. Operator runs:
+`python3 scripts/vps/spec_operator.py force-done <proj> <SPEC> "<reason>" --by=operator`.
 
 ## Red Flags
 - Copy-paste large chunks

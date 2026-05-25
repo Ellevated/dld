@@ -203,22 +203,25 @@ End of spec: Push feature → Merge develop → Push develop
 # FAIL → STOP, fix first
 ```
 
-### 5.2 Update Status — REMOVED (ARCH-187 / ADR-024)
+### 5.2 Update Status — REMOVED (ARCH-187 / ADR-024 / ADR-025)
 
 Status writes are exclusive to `callback.py` (ADR-023). Do **NOT** commit
 spec / backlog / lifecycle status changes manually. Callback fires on
 pueue task completion and atomically updates `ai/lifecycle/{spec}.yaml`
 via git plumbing. See `finishing.md`.
 
-If you genuinely need to override status as an operator action (e.g.
-force-done after manual verification), use:
+**Autopilot has NO override path.** If callback fails to mark done, signal
+`"task_status": "needs_review"` and stop. A human operator (NOT autopilot)
+may then run:
 
-```bash
+```
 python3 scripts/vps/spec_operator.py force-done <project> <SPEC_ID> "<reason>" --by=operator
 ```
 
-Direct `git add ai/lifecycle/*.yaml` is blocked by the pre-commit guard
-(`.claude/hooks/pre-commit-lifecycle-guard.mjs`).
+The `--by=autopilot` and `--by=spark` choices have been REMOVED (ADR-025).
+
+NEVER `git add ai/lifecycle/*.yaml` — direct commits to lifecycle yaml are HARD-BLOCKED by
+`.claude/hooks/pre-commit-lifecycle-guard.mjs` (no subject-allowlist exception).
 
 ### 5.3 Push Feature Branch (backup)
 
