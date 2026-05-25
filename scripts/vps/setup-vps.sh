@@ -39,6 +39,46 @@ if [[ "${1:-}" == "--update-skills" ]]; then
     exit 0
 fi
 
+# ── --phase4-hooks: idempotent per-project pre-commit hook install (ARCH-193) ─
+if [[ "${1:-}" == "--phase4-hooks" ]]; then
+    echo "=== Phase 4 Hooks Setup ==="
+    PROJECTS_FILE="${SCRIPT_DIR}/projects.json"
+
+    if ! command -v jq &>/dev/null; then
+        warn "jq not found — cannot install hooks (install: apt install jq)"
+        exit 0
+    fi
+
+    if [[ ! -f "$PROJECTS_FILE" ]]; then
+        warn "projects.json not found at ${PROJECTS_FILE} — skipping hook install"
+        exit 0
+    fi
+
+    # Iterate via jq → null-separated (handles paths with spaces).
+    while IFS= read -r -d '' proj_path; do
+        if [[ ! -d "${proj_path}/.git" ]]; then
+            warn "skip: ${proj_path} has no .git/"
+            continue
+        fi
+        if [[ ! -f "${proj_path}/.git-hooks/pre-commit" ]]; then
+            warn "skip: ${proj_path} has no .git-hooks/pre-commit (expected checked-in wrapper)"
+            continue
+        fi
+        if [[ ! -f "${proj_path}/.claude/hooks/pre-commit-lifecycle-guard.mjs" ]]; then
+            warn "skip: ${proj_path} has no .claude/hooks/pre-commit-lifecycle-guard.mjs"
+            continue
+        fi
+        # Idempotent: set hooksPath + chmod
+        git -C "${proj_path}" config core.hooksPath .git-hooks
+        chmod +x "${proj_path}/.git-hooks/pre-commit"
+        chmod +x "${proj_path}/.claude/hooks/pre-commit-lifecycle-guard.mjs"
+        ok "installed hook: ${proj_path} (core.hooksPath=.git-hooks)"
+    done < <(jq -r '.[].path' "$PROJECTS_FILE" | tr '\n' '\0')
+
+    echo "=== Phase 4 Hooks Setup complete ==="
+    exit 0
+fi
+
 # ── --phase3: Phase 3 incremental setup ──────────────────────────────────────
 if [[ "${1:-}" == "--phase3" ]]; then
     echo "=== Phase 3 Setup ==="
@@ -469,6 +509,13 @@ systemctl --user daemon-reload 2>/dev/null \
 systemctl --user enable --now dld-gate-daemon.service 2>/dev/null \
     && ok "dld-gate-daemon.service enabled and started" \
     || warn "dld-gate-daemon.service enable failed — start manually: systemctl --user enable --now dld-gate-daemon.service"
+
+# Phase 4 hooks (idempotent, ARCH-193)
+if [[ -f "${SCRIPT_DIR}/projects.json" ]]; then
+    echo ""
+    echo "--- Pre-commit hooks installation (ARCH-193) ---"
+    bash "${BASH_SOURCE[0]}" --phase4-hooks || warn "phase4-hooks failed (non-fatal)"
+fi
 
 echo ""
 echo "=== Setup complete ==="
