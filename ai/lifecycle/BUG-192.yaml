@@ -1,0 +1,13 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: null
+kind: bug
+priority: p0
+pueue_id: null
+spec_id: BUG-192
+started_at: null
+status: queued
+transitions: []
+updated_at: '2026-05-25T07:19:02Z'
+updated_by: orchestrator
+version: 1
