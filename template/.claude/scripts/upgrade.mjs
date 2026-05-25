@@ -5,7 +5,7 @@
 
 import { execSync, execFileSync } from 'child_process';
 import { createHash } from 'crypto';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, readdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, readdirSync, chmodSync } from 'fs';
 import { join, relative, dirname } from 'path';
 import { tmpdir } from 'os';
 
@@ -37,6 +37,7 @@ const GROUP_PATTERNS = {
   agents:           (p) => p.startsWith('.claude/agents/'),
   hooks:            (p) => p.startsWith('.claude/hooks/') && p.endsWith('.mjs') && !p.includes('__tests__'),
   'hook-tests':     (p) => p.startsWith('.claude/hooks/__tests__/'),
+  'git-hooks':      (p) => p.startsWith('.git-hooks/'),
   skills:           (p) => p.startsWith('.claude/skills/'),
   rules:            (p) => p.startsWith('.claude/rules/') && !PROTECTED.has(p),
   'scripts-claude': (p) => p.startsWith('.claude/scripts/'),
@@ -46,10 +47,14 @@ const GROUP_PATTERNS = {
 
 // Rules excluded from SAFE: architecture.md, dependencies.md contain project-specific
 // content (ADRs, dependency maps) that users customize. Auto-apply would destroy them.
-const SAFE_GROUPS = new Set(['agents', 'hooks', 'hook-tests']);
+// git-hooks is SAFE: small wrapper file, identical across all DLD projects, executable
+// activated automatically post-apply (see activateGitHooks).
+const SAFE_GROUPS = new Set(['agents', 'hooks', 'hook-tests', 'git-hooks']);
 
 // Upgrade only touches DLD framework files. Scaffolding (pyproject.toml, ai/, etc.) is excluded.
-const UPGRADE_SCOPE = (f) => f.startsWith('.claude/') || f.startsWith('scripts/');
+// .git-hooks/ ships the pre-commit wrapper (ARCH-187/ARCH-193); core.hooksPath is wired
+// automatically in apply() when this file is part of the apply batch.
+const UPGRADE_SCOPE = (f) => f.startsWith('.claude/') || f.startsWith('scripts/') || f.startsWith('.git-hooks/');
 
 function sha256(filePath) {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex');
@@ -176,10 +181,39 @@ function apply(sourceDir, projectDir, targets) {
     if (PROTECTED.has(filePath)) { skipped.push({ path: filePath, reason: 'protected' }); continue; }
     const src = join(sourceDir, filePath), dst = join(projectDir, filePath);
     if (!existsSync(src)) { errors.push({ path: filePath, reason: 'not found in template' }); continue; }
-    try { mkdirSync(dirname(dst), { recursive: true }); cpSync(src, dst); applied.push(filePath); }
+    try {
+      mkdirSync(dirname(dst), { recursive: true });
+      cpSync(src, dst);
+      // .git-hooks/ shipping: cpSync preserves mode, but be explicit for execute bit
+      if (filePath.startsWith('.git-hooks/')) {
+        try { chmodSync(dst, 0o755); } catch {}
+      }
+      applied.push(filePath);
+    }
     catch (err) { errors.push({ path: filePath, reason: err.message }); }
   }
   return { applied, skipped, errors };
+}
+
+/**
+ * Post-apply: activate .git-hooks/ as the project's hooksPath.
+ *
+ * Triggered only when .git-hooks/pre-commit was part of the apply batch.
+ * Idempotent: `git config core.hooksPath` is set/refreshed every time. Wraps
+ * git failures so a non-git target directory (rare) does not break apply.
+ *
+ * Returns: { activated: bool, hooksPath: string|null, reason?: string }
+ */
+function activateGitHooks(projectDir, appliedFiles) {
+  if (!appliedFiles.includes('.git-hooks/pre-commit')) {
+    return { activated: false, hooksPath: null };
+  }
+  try {
+    execSync('git config core.hooksPath .git-hooks', { cwd: projectDir, stdio: 'pipe' });
+    return { activated: true, hooksPath: '.git-hooks' };
+  } catch (err) {
+    return { activated: false, hooksPath: null, reason: `git config failed: ${err.message}` };
+  }
 }
 
 function validate(projectDir, appliedFiles) {
@@ -359,6 +393,9 @@ function main() {
         // Seed hashes for identical files too — builds baseline for next upgrade
         const seedFiles = report.files.identical.map(f => f.path);
         result.version = writeVersion(projectDir, report.template_commit, [...result.applied, ...seedFiles], sourceDir);
+        // ARCH-193: activate .git-hooks/ as project hooksPath after pre-commit ships
+        const hookResult = activateGitHooks(projectDir, result.applied);
+        if (hookResult.activated || hookResult.reason) result.git_hooks = hookResult;
       }
       if (result.applied.length > 0) {
         const logEntry = { timestamp: new Date().toISOString(), applied: result.applied,

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# .git-hooks/pre-commit — ARCH-187 lifecycle write guard (HARD BLOCK on direct ai/lifecycle/ commits)
+#
+# Activate via: git config core.hooksPath .git-hooks
+set -uo pipefail
+
+# --- ARCH-187 / ADR-024: lifecycle write identity guard --------------------
+# Hard block: any commit staging ai/lifecycle/*.yaml whose message does not
+# start with "lifecycle(<SPEC-ID>):" and lacks LIFECYCLE_WRITE_AUTHORIZED=1.
+# Callback / spec_operator commit via git plumbing and never stage these,
+# so they bypass naturally.
+if [[ -x ".claude/hooks/pre-commit-lifecycle-guard.mjs" ]] && command -v node >/dev/null 2>&1; then
+    if ! node .claude/hooks/pre-commit-lifecycle-guard.mjs; then
+        exit 1
+    fi
+fi
+
+exit 0

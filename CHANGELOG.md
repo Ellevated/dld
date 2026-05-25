@@ -6,6 +6,40 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.16.1] - 2026-05-25
+
+Lifecycle write hardening (ARCH-193 — closes BUG-192 night incident) + `/upgrade` distribution of the pre-commit wrapper.
+
+### Added
+
+- **Rule 7 structural in `lifecycle.write_lifecycle`** — new `LifecycleAlreadyDoneError` raised whenever any writer attempts `done → !done`. Previously Rule 7 lived only in `callback.verify_status_sync` so a direct `git add ai/lifecycle/X.yaml` from an autopilot session could demote a finished spec. See ADR-025.
+- **Pre-commit wrapper shipped via `/upgrade`** — `template/.git-hooks/pre-commit` is now part of the template. `upgrade.mjs` gained a `git-hooks` group (SAFE — auto-apply) and a post-apply step that runs `git config core.hooksPath .git-hooks`. Result of activation is reported in `git_hooks.activated` in the apply JSON. Replaces the manual `cherry-pick ARCH-187` step that was missing on awardybot/dowry/dld/etc.
+- **Callback Rule 7 safety-net** — `verify_status_sync` now catches `LifecycleAlreadyDoneError`, emits a `rule_7_saved` warning to Hermes, and records a `noop` decision. Existing fast-path (lines 1074-1092) unchanged; the new branch is the read-then-write race net.
+- **Actionable `no_merged_implementation` reason** — callback now embeds the exact `spec_operator force-done` invocation in the blocked_reason yaml field so operators see the next step in `render_backlog.py` output / Hermes.
+- **`setup-vps.sh --phase4-hooks`** — idempotent installer that walks `projects.json` and sets `core.hooksPath=.git-hooks` per project (skips if wrapper absent). Use this for fresh VPS bootstrap; routine upgrades now go through `/upgrade`.
+- **`scripts/vps/tests/test_lifecycle_done_terminal.py`** — 11 tests / 15 cases covering Rule 7 invariant + writer matrix + hook block/bypass.
+
+### Changed
+
+- **`_ALLOWED_WRITERS`** — removed `"autopilot"` and `"spark"`. autopilot signals via `task_status: complete` JSON; spark never had direct callers (specs bootstrap via `orchestrator.create_initial` with `by="orchestrator"`).
+- **`spec_operator.py --by` choices** — `{operator, qa, audit}`. `--by=autopilot` / `--by=spark` now hard-rejected by argparse. New exit code `rc=5` when attempting to demote a `done` spec.
+- **Pre-commit hook (`pre-commit-lifecycle-guard.mjs`)** — removed subject-allowlist branch (`/^lifecycle\(SPEC\):/` no longer bypasses). Direct `git add ai/lifecycle/*.yaml` is hard-blocked. `LIFECYCLE_WRITE_AUTHORIZED=1` escape now emits a `warning` audit event via `event_writer.py`.
+- **Skill prompts** — `coder.md`, `autopilot/finishing.md`, `autopilot/autopilot-git.md` (× root + template) now carry an explicit FORBIDDEN block: NEVER Edit `ai/lifecycle/*.yaml`, NEVER `git add ai/lifecycle/*.yaml`, NEVER write `chore(lifecycle): …` commits. ONLY mechanism: emit `task_status` in agent JSON. `spec_operator force-done` is a HUMAN-ONLY escape.
+
+### How to Upgrade
+
+```bash
+# In every DLD project (awardybot, dowry, plpilot, etc.):
+node .claude/scripts/upgrade.mjs --analyze --latest
+# Review report. Confirm safe groups (agents, hooks, git-hooks) → auto-apply.
+node .claude/scripts/upgrade.mjs --apply --groups safe,new --latest
+# Output JSON contains git_hooks.activated: true → pre-commit wrapper is live.
+```
+
+No manual `cherry-pick` needed. The post-apply `git config core.hooksPath .git-hooks` happens automatically. On the dld project itself the hook is already active (operator pre-installed via `setup-vps.sh --phase4-hooks` during ARCH-193 run).
+
+---
+
 ## [3.16.0] - 2026-05-20
 
 Major release — orchestrator hardening for forward reliability. Status tracking moves from markdown markers to per-spec YAML in `ai/lifecycle/` (ADR-023), callback gains an implementation guard and circuit-breaker, claude-runner no longer false-fails on post-result SDK exceptions, and the intake pipeline gets a status gate. **Existing projects need a one-shot migration** (see _How to Upgrade_ below).
