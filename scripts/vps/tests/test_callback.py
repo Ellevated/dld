@@ -385,3 +385,91 @@ class TestSubjectImplements:
     def test_empty_inputs(self):
         assert not callback._subject_implements("", "FTR-925")
         assert not callback._subject_implements("feat(FTR-925): x", "")
+
+
+class TestSubjectImplementsRealWorld:
+    """Real-world subjects from awardybot 2026-05-24/25 night — should all match.
+    BUG-192 regression cases.
+    """
+
+    def test_lowercase_scope(self):
+        assert callback._subject_implements(
+            "feat(ftr-1076): add WB API key Pydantic schemas", "FTR-1076"
+        )
+        assert callback._subject_implements(
+            "chore(ftr-1076): mark done in spec + backlog", "FTR-1076"
+        )
+
+    def test_mixed_case_scope(self):
+        assert callback._subject_implements("feat(Ftr-1076): something", "FTR-1076")
+
+    def test_merge_with_branch_prefix(self):
+        assert callback._subject_implements(
+            "Merge feature/FTR-1076: SRID — MC admin endpoint", "FTR-1076"
+        )
+        assert callback._subject_implements("Merge autopilot/BUG-1065 into develop", "BUG-1065")
+        assert callback._subject_implements("Merge fix/BUG-439 — restore constraint", "BUG-439")
+
+    def test_case_insensitive_multi_scope(self):
+        assert callback._subject_implements("feat(area, ftr-1076, FTR-1077): both", "FTR-1077")
+        assert callback._subject_implements("feat(area, ftr-1076, FTR-1077): both", "FTR-1076")
+
+
+class TestSubjectImplementsAntiFalsePositive:
+    """TECH-177 invariant: body/trailer mentions DO NOT count.
+    MUST stay False after BUG-192 fix.
+    """
+
+    def test_trailing_only_rejected(self):
+        assert not callback._subject_implements(
+            "feat(billing): SRID pre-withdrawal gate (FTR-1077 Task 3)", "FTR-1077"
+        )
+        assert not callback._subject_implements("fix(db): restore constraint (BUG-439)", "BUG-439")
+
+    def test_see_also_rejected(self):
+        assert not callback._subject_implements("feat(other): see also FTR-925", "FTR-925")
+
+    def test_refs_footer_rejected(self):
+        assert not callback._subject_implements("Refs: FTR-925", "FTR-925")
+
+    def test_no_scope_id_in_message_rejected(self):
+        assert not callback._subject_implements("feat: FTR-1076 implementation", "FTR-1076")
+
+
+class TestMatchSubjectParityWithCallback:
+    """gate_logic.match_subject MUST accept identical sets after BUG-192 fix.
+    Without parity, gate-daemon (shadow) and callback drift apart.
+    """
+
+    def test_parity_real_world_accepts(self):
+        from gate_logic import match_subject
+
+        positives = [
+            ("feat(ftr-1076): impl", "FTR-1076"),
+            ("Merge feature/FTR-1076: foo", "FTR-1076"),
+            ("Merge autopilot/BUG-1065 into develop", "BUG-1065"),
+            ("feat(area, ftr-1076): both", "FTR-1076"),
+        ]
+        for subject, spec_id in positives:
+            assert callback._subject_implements(subject, spec_id), (
+                f"callback rejected positive: {subject!r} {spec_id}"
+            )
+            assert match_subject(subject, spec_id), (
+                f"gate_logic rejected positive: {subject!r} {spec_id}"
+            )
+
+    def test_parity_tech177_rejects(self):
+        from gate_logic import match_subject
+
+        negatives = [
+            ("feat(other): see FTR-925", "FTR-925"),
+            ("Refs: FTR-925", "FTR-925"),
+            ("fix(db): restore (BUG-439)", "BUG-439"),
+        ]
+        for subject, spec_id in negatives:
+            assert not callback._subject_implements(subject, spec_id), (
+                f"callback wrongly accepted: {subject!r} {spec_id}"
+            )
+            assert not match_subject(subject, spec_id), (
+                f"gate_logic wrongly accepted: {subject!r} {spec_id}"
+            )

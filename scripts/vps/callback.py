@@ -678,14 +678,16 @@ def _subject_implements(subject: str, spec_id: str) -> bool:
     auto-close in awardybot 2026-05-04 incident.
 
     Accepted forms (canonical):
-      - Conventional Commits with spec_id in scope:
+      - Conventional Commits with spec_id in scope (case-insensitive):
           `feat(FTR-925): ...`
+          `feat(ftr-925): ...`                # lowercase scope OK (BUG-192)
           `fix(FTR-925)!: ...`
           `feat(FTR-925,FTR-926): ...`        # multi-spec scope
           `chore(area, FTR-925): ...`         # whitespace tolerated
-      - Merge commit:
+      - Merge commit (branch prefix tolerated, BUG-192):
           `merge FTR-925`
           `merge FTR-925: ...`
+          `Merge feature/FTR-925: ...`        # branch-prefix form
       - Legacy bare prefix:
           `FTR-925: ...`
 
@@ -700,10 +702,10 @@ def _subject_implements(subject: str, spec_id: str) -> bool:
     m = re.match(r"^[a-z]+\(([^)]*)\)!?:", subject)
     if m:
         scopes = [s.strip() for s in m.group(1).split(",")]
-        if spec_id in scopes:
+        if any(s.strip().upper() == spec_id.upper() for s in scopes):
             return True
-    # Merge commit: `merge SPEC-ID` (start, optionally followed by ':' or space)
-    if re.match(rf"^merge\s+{re.escape(spec_id)}\b", subject, re.IGNORECASE):
+    # Merge commit: `merge [branch/]SPEC-ID` (start, optionally followed by ':' or space)
+    if re.match(rf"^merge\s+(\S+/)?{re.escape(spec_id)}\b", subject, re.IGNORECASE):
         return True
     # Legacy bare: `SPEC-ID: <description>`
     if re.match(rf"^{re.escape(spec_id)}:\s", subject):
