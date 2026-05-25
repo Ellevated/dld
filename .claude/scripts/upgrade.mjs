@@ -281,7 +281,7 @@ function writeVersion(projectDir, commitSha, appliedFiles, sourceDir) {
       if (existsSync(src)) hashes[f] = sha256(src);
     }
   }
-  const data = { version: '3.13.0', template_commit: commitSha, template_repo: REPO_URL,
+  const data = { version: '3.16.1', template_commit: commitSha, template_repo: REPO_URL,
     upgraded_at: new Date().toISOString(), skip: existing.skip || [], applied_hashes: hashes };
   writeFileSync(join(projectDir, VERSION_FILE), JSON.stringify(data, null, 2) + '\n');
   return data;

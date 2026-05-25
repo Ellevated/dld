@@ -584,6 +584,8 @@ Initial public release of DLD methodology.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 3.16.1 | 2026-05-25 | ARCH-193 Rule 7 structural in `lifecycle.write_lifecycle` + `/upgrade` ships `.git-hooks/` wrapper and auto-activates `core.hooksPath` |
+| 3.16.0 | 2026-05-20 | Orchestrator hardening: lifecycle SoT in per-spec YAML (ADR-023), callback implementation guard + circuit-breaker, claude-runner exit_code contract (ADR-024), Hermes intake gate |
 | 3.9 | 2026-02-22 | Eval-Driven Development (EDD) — structured eval criteria, LLM-as-Judge, agent eval suite, ADR-012 |
 | 3.8 | 2026-02-19 | Planner ALWAYS runs — hardened with WHY + VIOLATION markers |
 | 3.7 | 2026-02-14 | Bug Hunt Mode in Spark, TOC+TRIZ agents, multi-phase pipeline |
