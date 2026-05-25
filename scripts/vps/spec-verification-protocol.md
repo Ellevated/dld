@@ -99,7 +99,7 @@ Per `EC-N`:
 
 ## Cross-references
 
-- Guard: ADR-018, TECH-166 (`callback.py`).
+- Guard: ADR-023 (lifecycle SoT), TECH-166 (implementation guard in `callback.py`).
 - Allowlist: TECH-167 (`_parse_allowed_files`).
 - Circuit: TECH-169.
 - Audit log: TECH-171.

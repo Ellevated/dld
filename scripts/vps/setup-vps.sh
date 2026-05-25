@@ -39,6 +39,46 @@ if [[ "${1:-}" == "--update-skills" ]]; then
     exit 0
 fi
 
+# ── --phase4-hooks: idempotent per-project pre-commit hook install (ARCH-193) ─
+if [[ "${1:-}" == "--phase4-hooks" ]]; then
+    echo "=== Phase 4 Hooks Setup ==="
+    PROJECTS_FILE="${SCRIPT_DIR}/projects.json"
+
+    if ! command -v jq &>/dev/null; then
+        warn "jq not found — cannot install hooks (install: apt install jq)"
+        exit 0
+    fi
+
+    if [[ ! -f "$PROJECTS_FILE" ]]; then
+        warn "projects.json not found at ${PROJECTS_FILE} — skipping hook install"
+        exit 0
+    fi
+
+    # Iterate via jq → null-separated (handles paths with spaces).
+    while IFS= read -r -d '' proj_path; do
+        if [[ ! -d "${proj_path}/.git" ]]; then
+            warn "skip: ${proj_path} has no .git/"
+            continue
+        fi
+        if [[ ! -f "${proj_path}/.git-hooks/pre-commit" ]]; then
+            warn "skip: ${proj_path} has no .git-hooks/pre-commit (expected checked-in wrapper)"
+            continue
+        fi
+        if [[ ! -f "${proj_path}/.claude/hooks/pre-commit-lifecycle-guard.mjs" ]]; then
+            warn "skip: ${proj_path} has no .claude/hooks/pre-commit-lifecycle-guard.mjs"
+            continue
+        fi
+        # Idempotent: set hooksPath + chmod
+        git -C "${proj_path}" config core.hooksPath .git-hooks
+        chmod +x "${proj_path}/.git-hooks/pre-commit"
+        chmod +x "${proj_path}/.claude/hooks/pre-commit-lifecycle-guard.mjs"
+        ok "installed hook: ${proj_path} (core.hooksPath=.git-hooks)"
+    done < <(jq -r '.[].path' "$PROJECTS_FILE" | tr '\n' '\0')
+
+    echo "=== Phase 4 Hooks Setup complete ==="
+    exit 0
+fi
+
 # ── --phase3: Phase 3 incremental setup ──────────────────────────────────────
 if [[ "${1:-}" == "--phase3" ]]; then
     echo "=== Phase 3 Setup ==="
@@ -101,6 +141,17 @@ if [[ "${1:-}" == "--phase3" ]]; then
         ok "Cron installed: audit_digest.py daily @ 09:00 UTC"
     else
         warn "audit_digest.py not found — cron not installed"
+    fi
+
+    # 8b. Cron for orchestrator heartbeat monitor (TECH-189 Task 8)
+    # Fires Hermes event if .orchestrator-heartbeat is stale (>10min).
+    HEARTBEAT_SCRIPT="${SCRIPT_DIR}/heartbeat_monitor.py"
+    if [[ -f "$HEARTBEAT_SCRIPT" ]]; then
+        HEARTBEAT_CRON_LINE="*/5 * * * * ${SCRIPT_DIR}/venv/bin/python3 ${HEARTBEAT_SCRIPT} >> /var/log/dld-orchestrator/heartbeat.log 2>&1"
+        (crontab -l 2>/dev/null | grep -v "heartbeat_monitor.py"; echo "$HEARTBEAT_CRON_LINE") | crontab -
+        ok "Cron installed: heartbeat_monitor.py every 5 min"
+    else
+        warn "heartbeat_monitor.py not found — cron not installed"
     fi
 
     # 9. Logrotate config for callback-audit.jsonl (TECH-171)
@@ -418,9 +469,53 @@ SyslogIdentifier=dld-orchestrator
 WantedBy=default.target
 EOF
 
+# Pre-flight for gate-daemon: ensure linger is set so --user units survive SSH logout (ARCH-190)
+loginctl enable-linger "${USER}" 2>/dev/null \
+    && ok "loginctl enable-linger confirmed for ${USER}" \
+    || warn "loginctl enable-linger failed (may already be set or need sudo)"
+
+cat > "${SYSTEMD_DIR}/dld-gate-daemon.service" << EOF
+[Unit]
+Description=DLD Gate Daemon (Alt C Wave 1 — shadow mode)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=${SCRIPT_DIR}/venv/bin/python3 ${SCRIPT_DIR}/gate-daemon.py
+WorkingDirectory=${SCRIPT_DIR}
+EnvironmentFile=${SCRIPT_DIR}/.env
+MemoryMax=2G
+MemorySwapMax=0
+KillMode=control-group
+Restart=on-failure
+RestartSec=2s
+RestartMaxDelaySec=60s
+RestartSteps=5
+StartLimitBurst=10
+StartLimitIntervalSec=300s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dld-gate-daemon
+
+[Install]
+WantedBy=default.target
+EOF
+
 systemctl --user daemon-reload 2>/dev/null \
     && ok "systemd units installed and daemon reloaded" \
     || warn "systemctl daemon-reload failed — units written but not loaded (no systemd?)"
+
+# Enable and start gate-daemon (ARCH-190 Wave 1 shadow mode)
+systemctl --user enable --now dld-gate-daemon.service 2>/dev/null \
+    && ok "dld-gate-daemon.service enabled and started" \
+    || warn "dld-gate-daemon.service enable failed — start manually: systemctl --user enable --now dld-gate-daemon.service"
+
+# Phase 4 hooks (idempotent, ARCH-193)
+if [[ -f "${SCRIPT_DIR}/projects.json" ]]; then
+    echo ""
+    echo "--- Pre-commit hooks installation (ARCH-193) ---"
+    bash "${BASH_SOURCE[0]}" --phase4-hooks || warn "phase4-hooks failed (non-fatal)"
+fi
 
 echo ""
 echo "=== Setup complete ==="

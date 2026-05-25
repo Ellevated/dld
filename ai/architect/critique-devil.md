@@ -1,268 +1,351 @@
 # Devil's Advocate — Cross-Critique
 
 **Persona:** Fred (The Skeptic)
-**Phase:** 2 — Peer Review (Karpathy Protocol)
-**Date:** 2026-02-27
+**Phase:** 2 — Peer Review
+**Date:** 2026-05-23
+**Mode:** Retrofit
 
 ---
 
-## Summary: What This Board Collectively Got Right
+## Research Basis
 
-Before the challenge: several individually strong observations.
-
-- Analysis A (DX): Correct on LangGraph and Turso. "8 bounded contexts for 2 people" challenge is right.
-- Analysis B (Domain): Excellent linguistic discipline. Signal vs. Item distinction is genuine insight. Rejecting "agent-runtime" as a domain concept is exactly correct.
-- Analysis C (Data): The append-only ledger and separate explicit/behavioral memory tables are real-world correct. Good on SQLite WAL concurrency analysis.
-- Analysis D (Evolutionary): Fitness functions are the right frame. The "irreversible decisions" table is the most useful artifact in all 7 analyses.
-- Analysis E (LLM Systems): The two-stage pipeline (Haiku extract, Sonnet synthesize) is sound engineering. COGS estimate at ~$2/user/month is the most grounded number in the entire board.
-- Analysis G (Security): Google App Verification timeline warning (day 31, not day 89) is a concrete, actionable finding that everyone else missed. This is the kind of thing that kills a launch.
-- Analysis H (Ops): BullMQ over node-cron recommendation is correct. The cron silent-non-execution failure mode is real and will happen on the first Fly.io rolling deploy.
+All 7 peer reports read in full. Exa credits exhausted system-wide — as confirmed by every peer noting the same constraint. Research grounded in: direct code evidence cited by peers, the deep-audit-report.md (85 findings), architecture-agenda.md, ADR chain, and direct code reads of callback.py / lifecycle.py / orchestrator.py structures cited by peers.
 
 ---
 
 ## Peer Analysis Reviews
 
-### Analysis A (DX Architect — Dan McKinley)
+### Analysis A — Charity (Operations)
+
+**Rating: PARTIAL AGREE**
+
+**What is correct:** The 5-incident pattern analysis is forensically sound. The audit JSONL problem is real: data exists, nobody reads it. The 15 bootstrap-as-done metric plus ALERT-001 threshold is the most concrete actionable proposal across all 7 reports. The heartbeat mechanism is obvious and cheap.
 
 **Contradictions in this analysis:**
 
-A says Clerk is "boring" and defends it because it is free under 10K MAU. Then A says "2-4 weeks to build JWT yourself." But in the same table, A lists "custom JWT" as "2-4 weeks" and never addresses the core contradiction identified in my Phase 1 analysis: Clerk's Stripe webhook sync is a distributed systems problem regardless of whether Clerk is free or not.
+Charity says the minimum viable observability stack requires "no new infrastructure" and costs ~160 LOC. But the dashboard designs reference Prometheus metric counters, Histograms, Gauges with labels — that IS infrastructure. There is no Prometheus scraper on this VPS. The counter files proposal (append-only files, cron-based alerter) is the actual MVP; the metric catalog is aspirational. The analysis conflates the two, making the proposal look simpler than it is.
 
-The free-tier defense misses the point. The cost of Clerk is not the $25/month. The cost is the Clerk-Stripe synchronization protocol. A user who pays, has Stripe fire a webhook, and cannot access their workspace is a support ticket at midnight. A says nothing about this.
-
-Also: A recommends grammy.js as "boring" but does not mention that grammy.js requires maintaining a Telegram long-poll or webhook process. This is a persistent connection that needs its own reliability story. Telegraf.js is the incumbent with more production examples. "Better docs" is a preference, not a boring argument.
+More seriously: Charity says "fix the observable symptoms regardless of architectural redesign" — but then concedes in the cross-cutting section that proper metrics require named operation boundaries, which requires decomposing callback.py. This creates a hidden dependency: you cannot add `operation=gate` metrics until callback is decomposed. The sequencing is wrong — observability as described in Tier 1 is partially blocked by the god module.
 
 **Missed inconsistencies:**
 
-- A correctly challenges LangGraph but then includes LiteLLM without challenging it equivalently. LiteLLM is also a non-trivial dependency with a history of breaking changes. The token accounting is identical: LiteLLM solves a real problem (COGS routing) but it is not "boring." A never applies the same innovation-token scrutiny to LiteLLM that it applies to LangGraph.
-- A recommends "4 domains maximum" but provides no specific rationale for why briefing/sources/memory/billing is the right cut rather than, say, briefing/everything-else. The 4-domain recommendation is intuitive but not argued from first principles.
+- No acknowledgment that ALERT-004 (heartbeat) requires `_write_lock` to NOT deadlock — but the lock is held during git plumbing. The alert fires 10 minutes late by design. That is not "catch in under 10 minutes" for a hung process.
+- The dashboard designs exist at a level of sophistication the system cannot currently support. No Prometheus = no histograms = the dashboard is theater until instrumentation exists. The report never says "here is what the dashboard actually looks like TODAY with current tooling vs TARGET."
 
 **Weak spots in reasoning:**
 
-"Clerk at <10K MAU is free. Full stop." This is the kind of statement that sounds decisive but sidesteps the real question. The question was never cost. The question was: does Clerk's organization model map to the workspace isolation requirement without introducing a translation layer? A never answers this. A answers a different question (is Clerk expensive?) and declares victory.
-
-The "developer-hours to first production briefing" comparison (8-10 hours vs 30-50 hours) is invented. No source. No methodology. No assumption breakdown. This is the kind of number that sounds convincing in a deck and has no empirical basis. It is the type of argument that should be challenged, not repeated.
+The "5 incidents, same failure path" analysis is the best thing in the report. But the prescription — add metrics — doesn't explain WHY the 5 previous prevention fixes each failed to prevent the next incident. The answer is not "we lacked metrics." The answer is "each fix was added to a god module with no test coverage, so the fix interacted with existing logic in unforeseen ways." Metrics detect, but they don't prevent. Charity conflates the two throughout.
 
 ---
 
-### Analysis B (Domain Architect — Eric Evans)
+### Analysis B — Neal (Evolutionary Architect)
+
+**Rating: AGREE (strongest proposal in this set)**
+
+**What is correct:** The drift map is the single most useful artifact produced by any peer. The timeline from ADR-018 → ARCH-186 → cefaa55 → today's 5 bugs is documented with specific file:line evidence. The "ADR Kill Section" proposal is conceptually right: supersession without kills is the root mechanism of zombie validators. The fix-train detector script is clever and executable.
 
 **Contradictions in this analysis:**
 
-B defines 7 bounded contexts, then says "deploy as one service in Phase 2 (monolith-first)." Fine — but B never grapples with the coordination cost of maintaining 7 conceptual models with 12 domain events in a 2-person team without the organizational structure that justifies DDD's overhead.
+The fitness function for the sole-writer invariant (FF-03) lists `orchestrator.py` in ALLOWED_WRITERS. But the whole point of TECH-172 (single status write path) is that orchestrator should not be a direct lifecycle writer. The fitness function codifies the current violation as acceptable. Neal says "accept the design" for ADR-023 but then builds a fitness function that permits 3 writers — which is not "callback is the sole writer."
 
-"A business person would never say 'agent-runtime'" is correct. But B's own ubiquitous language includes "Signal," "Ingest," "Compile," and "RelevanceScore" — terms that are NOT in the current blueprint's language. B is inventing a ubiquitous language, not discovering one. The ubiquitous language must come from business people using those words in conversations. Where did "Signal" come from? B never establishes that this is how the founder talks about the data. That is a fundamental DDD violation dressed up as DDD compliance.
+The FF-05 (god module detector) sets `CALLBACK_MAX_RESPONSIBILITY_GROUPS = 5` initially (current is 7). But the comment says "currently: 7, target: 2." Setting the initial bar at 5 means the fitness function immediately passes if responsibility groups drop from 7 to 5 — which could happen by renaming functions without actually decomposing. This is a threshold that can be gamed.
 
 **Missed inconsistencies:**
 
-- B defines Priority Context as having "LearnedSignal" as a core entity, requiring "a minimum of 5 engagement data points before it influences scoring." But B never states how engagement is captured from Telegram delivery — the primary delivery channel. Telegram does not natively track which specific message a user reads or clicks. The entire behavioral learning loop depends on engagement signals that may not be technically capturable from the chosen delivery channel. This is a fatal assumption buried in the domain model.
-- B says "synchronous domain events (in-process pub/sub or simple function calls) are appropriate" for Phase 2. But then defines 12 domain events. 12 in-process event emitters with complex routing is not "simple function calls." That is an event system.
+The report proposes FF-06 (incident regression bank) and notes it must NOT mock `_is_done_on_develop` per ADR-013. But `test_callback_already_merged.py` already mocks `_is_done_on_develop`. Neal is proposing to enforce an invariant that the existing test suite already violates. The fitness function will fail on creation — which is correct, but the report doesn't acknowledge this conflict.
 
 **Weak spots in reasoning:**
 
-B's Phase 1 / Phase 2 separation analysis ("Separate Ways") is the cleanest insight in the document. But B then undermines it by suggesting "if Phase 1 ships an npm package... Phase 2 could use it." This is exactly the coupling B just said to avoid. The "if" does a lot of work here.
-
-The aggregate invariant "Total items across all sections must not exceed 50 (prevents information overload — business rule)" is not a business rule. It is an assumption. Where does this come from? Who said 50? This is an engineer imposing a constraint under the guise of a domain rule. If it is truly a business rule, cite the source (blueprint page, founder conversation). If it is not, it is architecture fiction.
+The "Rollback vs Accept" section accepts ADR-023 (lifecycle-as-YAML) while E proposes replacing it with SQLite. Neal says "the design is sound, fix the implementation bug." Dan says "the design IS the bug." This is a real architectural disagreement that Neal's analysis doesn't engage with. Saying "accept the design" without addressing the strongest counterargument (8 git subprocess calls vs 1 SQL statement) is evasion.
 
 ---
 
-### Analysis C (Data Architect — Martin Kleppmann)
+### Analysis C — Eric (Domain Modeler)
+
+**Rating: AGREE**
+
+**What is correct:** The language audit is the most rigorous work in the set. Five meanings of "status" in one codebase is not a style problem — it is proof that bounded context boundaries were never drawn. The finding that "lifecycle.py is a write serializer, not an aggregate root" is the clearest articulation of why the CAS mechanism doesn't prevent semantically invalid transitions.
 
 **Contradictions in this analysis:**
 
-C says "Turso multi-tenant model... single shared DB" at launch. But the architecture agenda and Phase 1 research both question whether Turso is necessary at all at launch. C accepts Turso as a given and designs the entire data architecture around it without ever questioning whether a plain SQLite file on a Fly.io volume is sufficient. C is thorough within the Turso assumption but never challenges the assumption itself.
-
-C's `billing_cache.current_tier` column is denormalized from `workspaces.tier`. C explains this is intentional. But then C also says the Stripe staleness fix is "do a synchronous Stripe API call to recheck subscription state before returning the error." So when the billing_cache is stale, we hit Stripe directly. This means billing_cache is not actually a reliable cache — it is a leaky abstraction that sometimes points at itself and sometimes points at Stripe. There is no clear rule for when to trust the cache vs when to bypass it.
+Eric proposes that `SpecCreated` events from Spark eliminate `bootstrap_new_specs`. But Spark is an agent skill that creates spec.md files — it does not currently have access to `lifecycle.write_lifecycle`. The proposal requires injecting lifecycle-writing capability INTO the Spark skill, which crosses the boundary Eric is trying to establish (Spec Authoring Context should not write to Lifecycle Context directly — it should emit an event). The proposal contradicts itself: it says "Spark emits SpecCreated" but the fix described is "Spark calls lifecycle.create_initial()". One is an event; the other is a direct call.
 
 **Missed inconsistencies:**
 
-- C never addresses the briefing delivery_channel question. The briefing schema has a single `status` field. C asks in a footnote: "If a briefing delivers to Telegram AND email, does a failed Telegram delivery with successful email delivery count as delivered?" This is not a minor clarification question. If the product launches with both Telegram and email delivery (the ops analysis recommends it), this is a schema design gap that will require a migration at the worst possible time.
-- The `memory_signals` UPSERT uses a running weighted average formula: `new_value = (old_value * count + observed_value) / (count + 1)`. C never specifies what `observed_value` is. It is a normalized 0-1 signal, but the derivation is not shown. If `observed_value` is binary (1 = engaged, 0 = ignored), the formula degrades to "average engagement over all time," which is resistant to recency. A user who stops engaging with a source they used to love will see their signal decay very slowly. C identifies this in a later footnote (signal confidence decay) but only as a "Phase 2+" concern. The formula is wrong from day 1.
+The `WorkCompleted(spec_id, exit_code)` event proposal has a gap: `exit_code` is an execution artifact, not a domain concept. Eric's own analysis says execution language should be translated at the ACL boundary. An event named `WorkCompleted` with `exit_code` in its payload is leaking execution language into the domain event. This is the same violation Eric diagnoses in `verify_status_sync` — he replicates it in his own proposal.
+
+The "circuit breaker moves to Execution Context" proposal is correct but consequences are not traced: `spec_operator.py reset-circuit` would then need to know about the Execution Context's internals. The current coupling (spec_operator imports callback._reset_circuit_cli) is replaced by an equivalent coupling (spec_operator imports execution_context._reset_circuit). The violation changes location, doesn't disappear.
 
 **Weak spots in reasoning:**
 
-C recommends UUID v7 "at 500 users this is negligible; at 50K it is significant." This is technically accurate but creates a false urgency. The project's 90-day kill gate targets 500 users maximum. Designing for 50K users before validating PMF is the classic premature optimization. UUID v4 is fine for 500 users. UUID v7 is a good habit, but framing it as "start with v7 because 50K" in a 90-day build with a kill gate is treating a nice-to-have as a must-have.
+The DDD event sourcing proposal is architecturally beautiful and practically wrong for this system. This is a 1-developer orchestrator for 10 projects on one VPS. Introducing SpecCreated events and a subscription mechanism adds a message broker or in-process event bus — neither of which exists. The "domain event" proposal requires infrastructure that costs more to build than the bounded context decomposition it supports. Eric never asks: "what is the simplest code that creates the bounded context boundary?"
 
 ---
 
-### Analysis D (Evolutionary Architect — Neal Ford)
+### Analysis D — Erik (LLM Architect)
+
+**Rating: AGREE**
+
+**What is correct:** The kill question — "can an agent modify callback.py safely without reading all 1374 LOC?" — is the right question for this system. The 12-arg `_emit_audit` signature is a genuine reliability failure for code synthesis. The GateResult dataclass and GateReason enum are the most concretely actionable API proposals in the set.
 
 **Contradictions in this analysis:**
 
-D says "LangGraph.js vs simple async pipeline decision should be deferred to day 5 of Phase 2 build." But D also defines a fitness function for "Orchestration framework (LangGraph.js)" as a "high-change area" with change frequency "2-3 years" and recommends keeping it behind `infra/agent-runtime/`. You cannot simultaneously say "defer the LangGraph decision" AND design the change-vector analysis around LangGraph as a present-tense architectural component. Pick one.
-
-D's Phase 2 → Scale migration path says: "LangGraph.js or simple async pipeline (TBD at build time)" for MVP. This is the correct hedge. But then D's change vector table lists LangGraph as a high-change area with an isolation strategy, implicitly treating it as decided. The evolutionary architect is being evolutionary about the wrong question.
+The `vps-orch.py gate-check SPEC-ID` dry-run tool proposal requires `verify_status_sync` to have a dry-run mode that does NOT write to lifecycle. But the current `verify_status_sync` function is 202 LOC with side effects woven through every branch — there is no clean "dry-run" path without a full decomposition first. The tool proposal assumes the decomposition is complete. But it is listed as a "minimum viable fix... available NOW, without architectural changes." This is false: the gate-check tool requires architectural changes to be meaningful.
 
 **Missed inconsistencies:**
 
-- D's fitness function for "behavioral memory data model immutability" is listed as "no test prevents breaking the preference schema." D correctly identifies this as an unprotected decision. But D also says the fix is "Design append-only PreferenceEvent schema from day 1" as a "2-hour design" task. Two hours to design the data model that is "the moat?" If the behavioral memory is truly the switching cost mechanism the board identified, two hours is not a serious design investment. This contradiction between "the moat is behavioral memory" and "design it in 2 hours before writing code" reveals that the entire board may be underweighting this decision.
-- D says "Never migrate databases without empirical evidence the current one is failing." But the migration plan includes "Consider PostgreSQL migration IF SQLite concurrency becomes bottleneck (Evidence needed: connection queue saturation, write contention visible in logs)" at 500-2000 users. The Turso assumption is baked in throughout, yet D elsewhere suggests SQLite WAL handles <500 users. The entire migration roadmap is built on a database choice (Turso) that the evolutionary architect never explicitly validated.
+Option C in the `_subject_implements` analysis — "move classification to commit time" — is the most interesting option and gets one paragraph. This is the only proposal that eliminates the false-blocked problem permanently without maintaining a regex. Erik says it is "the boring-tech approach" but doesn't follow it through. Why does it get less treatment than the Option B (golden dataset) which only defers the problem?
 
 **Weak spots in reasoning:**
 
-The tech debt `DEBT:` comment system is a good idea but has a fundamental flaw: it relies on humans remembering to write the comment and on the threshold enforcement being enforced by another human. D's own framework says "Rules as CODE not text" (from DLD MEMORY.md). A `grep DEBT: | wc -l` check in CI is better than a "weekly review" of grep results. D is proposing a text-based enforcement mechanism in a system that already has the tooling for code-based enforcement.
+The context budget comparison (10K tokens before decomposition vs 3K after) is correct directionally but the denominator is wrong. After decomposition into gate.py + dispatcher.py + audit.py + circuit.py, a task touching the gate STILL requires reading: gate.py, GateResult types, vps_types.py, the ADR summary, and potentially lifecycle.py for the write path. The 3K estimate assumes no inter-module dependencies, which is impossible. The "3-5x context reduction" claim is directionally right but numerically optimistic.
 
 ---
 
-### Analysis E (LLM Systems Architect — Erik Schluntz)
+### Analysis E — Dan (Pragmatist/DX)
 
-**Contradictions in this analysis:**
+**Rating: AGREE (most dangerous proposal — see devil's note below)**
 
-E's COGS estimate is ~$2/user/month for LLM costs. E's eval strategy runs LLM-as-judge on 10% of briefings. At 500 users, that is 50 Sonnet calls/day for evaluation. E estimates this costs "~$0.15/week at 100 users." At 500 users that is $0.75/week = $3/month just for evaluation. Not $3/month total — $3/month on top of the $2/user/month production cost. E does not account for the eval infrastructure's own COGS contribution. This is a minor numerical inconsistency but it reveals that the COGS model is optimistic.
+**What is correct:** The innovation token accounting is the most honest framing in the set. The "git-as-DB is causing production incidents" claim is well-evidenced: 8 subprocess calls with no timeout, the WT-sync stale-index race, the push-at-DEBUG pattern — these are all direct consequences of the git-as-DB architectural choice, not implementation bugs.
 
-More critically: E recommends the preference snapshot is regenerated weekly by a background Haiku job. E also says the preference snapshot uses "last N=500 signals." At launch, a new user has zero signals. Week 1: no snapshot. Week 2: snapshot based on 14 signals (14 briefing days × ~1 engagement per briefing). The first 4-6 weeks of behavioral memory are essentially noise. The "compound learning" mechanism that the board identified as THE switching cost does not meaningfully kick in until month 2-3. E never states this timeline explicitly. The board is designing for a moat that does not exist for the first quarter.
+**The core claim — SQLite replaces lifecycle.py — is correct but the cost is understated.**
 
-**Missed inconsistencies:**
+Dan says: "Remove lifecycle.py (602 LOC), replace with 5 SQL functions in db.py. Migration: ~$10, 3-4 hours." This is the second-system effect in miniature. The claim is that git-as-DB is exotic and SQLite is boring — therefore switch. But:
 
-- E recommends the Golden Dataset approach: "Have the founder personally rate the first 100 briefings." At 1 briefing/day for the founder (as a test user), that is 100 days of data collection before the CI regression suite is usable. The 30-day ship target and the 14-day trial window mean the golden dataset cannot exist before the product launches publicly. E buries this in "Open Questions" but never resolves it. The eval infrastructure will not be calibrated at the point when it most needs to be (the kill gate measurement at day 90).
-- E's synthesis model is Sonnet ($3/$15 per MTok). E's model for relevance scoring is Haiku OR "embedding comparison." Embeddings require an embeddings provider (Voyage AI, Anthropic embeddings, or OpenAI text-embedding-3-small). This is a dependency not listed anywhere in the stack. If embeddings replace Haiku relevance scoring, the dependency count grows. If Haiku does the scoring, the two-stage pipeline architecture changes. E presents this as an open question but the architecture board should resolve it, not leave it open.
+1. SQLite WAL handles multiple READERS and one writer in a single process. The orchestrator and callback are TWO separate processes. SQLite does not guarantee serializable transactions across process boundaries the way Dan implies. The "single writer" assumption requires that callback is the only process that writes to the spec_lifecycle table — which is exactly the ADR-023 claim that is already violated by 6 writers. The boring alternative has the same fundamental problem, just in a different substrate.
 
-**Weak spots in reasoning:**
+2. Dan says "there is no genuine multi-machine scenario." But the architecture is deployed across dld, awardybot, wb — three separate git repos on the same machine. The lifecycle YAMLs live in EACH REPO's git history. A SQLite database is a SINGLE FILE. Which project owns `orchestrator.db`? Currently the orchestrator.db belongs to the DLD project's scripts/vps/ directory, but it stores state for all managed projects. The multi-repo topology is the actual complexity, not multi-machine. SQLite does not solve cross-repo consistency — it just moves the problem to "which process owns the DB file."
 
-The `tool_choice: { type: "any" }` pattern for forced JSON output is correct for reliability, but E mentions this and then does not remove the `safeParse` fallback path. If `tool_choice` forces a tool call, the response is always valid JSON (that is the point of the tool call). Having a `retryWithRepairPrompt` path after a forced tool call suggests E does not fully trust the forced-tool approach. Either use forced tool calls (and remove the repair path) or use freeform with repair. Two parallel paths for the same operation is the kind of complexity that creates silent bugs.
+3. "The boring migration pays back in under 4 weeks at current incident rate." This claim ignores migration risk. Moving 190+ lifecycle YAMLs to a new SQLite schema during live operations, while the orchestrator continues to run, requires careful coordination. The one-shot migration already used Path.write_text() and wasn't idempotent — a second migration has a worse track record to draw on.
 
----
+**Missed inconsistency:**
 
-### Analysis G (Security Architect — Bruce Schneier persona)
-
-**Contradictions in this analysis:**
-
-G says "Node.js worker_threads with explicit permission scoping is sufficient for Phase 2 scope." G also says E2B is not needed because the threat model is "read RSS + Gmail + Calendar, no code execution." This is correct for Phase 2. But G then describes the `--experimental-permission` flag in Node.js as part of the mitigation. This flag is EXPERIMENTAL in Node.js as of August 2025 — it is not production-stable. Using an experimental flag for a security control is a category error. Security controls must be stable.
-
-G says "Every API endpoint that modifies data must declare which table it writes to in API route comments." Comments are not enforcement. Comments rot. The same "Rules as Code" principle applies here: if table-write declarations matter for security, they belong in middleware or a type system, not in comments.
-
-**Missed inconsistencies:**
-
-- G correctly identifies the Google App Verification timeline risk (initiate on day 31, approval takes 4-6 weeks). But G does not identify the inverse risk: what happens if Google rejects the verification? The briefing product's entire Gmail integration is dead until re-submitted and re-approved. There is no fallback described. A rejection is not hypothetical — Google's verification team has been known to reject apps that access Gmail if the privacy policy is insufficient or the use case is unclear. The architecture has no contingency for "Google says no."
-- G recommends "Rate limiting at Fly.io layer: 60 req/min per IP for API endpoints." But the briefing system's primary entry point is a cron job, not a user-facing API. The rate limiting concern for the briefing system is not external API abuse — it is internal LLM cost runaway. G's rate limiting discussion is comprehensive for a traditional web app but partially misaligned for a predominantly server-side cron product.
-
-**Weak spots in reasoning:**
-
-G's prompt injection mitigation uses regex stripping of "SYSTEM:", "ASSISTANT:", and "ignore previous instructions" patterns. This is security theater. Modern prompt injection payloads do not use these naive patterns. They use Unicode lookalikes, base64 encoding, or indirect injection via structured data. Regex stripping gives false confidence without meaningful protection. The real mitigation is the architecture: if the synthesis LLM has no tool calls and no action capabilities, the worst a prompt injection can do is produce a confusing briefing. G should lean harder on the "read-only synthesis with no tools" argument and softer on the regex sanitization.
+Dan proposes removing `spec_operator.py` and says "the founder is perfectly capable of running `sqlite3 orchestrator.db "UPDATE spec_lifecycle SET status='queued'"`." But the security analysis (H) identifies `force-done` as bypassing the TECH-166 gate — a security concern. Replacing a Python CLI with direct SQLite doesn't eliminate the privilege escalation; it makes it EASIER (no Python overhead, no audit trail, no `by=` field). This is a regression, not an improvement.
 
 ---
 
-### Analysis H (Operations Engineer — Charity Majors)
+### Analysis F — Martin (Data Architect)
+
+**Rating: AGREE**
+
+**What is correct:** The system-of-record kill question table is exact. The `started_at` → `dispatched_at` rename is the clearest single schema fix in any report. The differential renderer with `<!-- AUTO-GENERATED-START -->` sentinels is the correct solution to the disabled render problem — nobody else proposed this.
 
 **Contradictions in this analysis:**
 
-H strongly recommends BullMQ over node-cron (correct). But H also says "Upstash Redis free tier: 10,000 requests/day" is sufficient for launch. Then H calculates "500 users × 2 Redis operations/briefing = 1,000 ops/day" and says it is "comfortably within free tier."
+Martin proposes that "Spark writes lifecycle.create_initial() at spec creation" as Wave 0.2. But Martin also proposes keeping lifecycle.py and the YAML-based SoT. Meanwhile Dan proposes replacing lifecycle.py with SQLite. These two proposals are in direct conflict and Martin never acknowledges Dan's proposal — even though the cross-cutting section explicitly says "For Ops (Charity's observability), SQLite is more observable."
 
-This math is wrong. BullMQ makes far more than 2 Redis operations per job. A BullMQ job lifecycle includes: ZADD (enqueue), LMOVE (pick up by worker), HSET (set job data), multiple MULTI/EXEC blocks for state transitions, and DEL on completion. The realistic number is 15-30 Redis operations per job. At 500 users: 500 × 25 = 12,500 ops/day, exceeding the Upstash free tier of 10,000. H will hit the paid tier on day 1 with 500 users. This is a cost and reliability assumption that should be re-examined.
-
-H recommends OpenTelemetry distributed tracing from day 1. H then says "100% sampling for the first 90 days." But trace context propagation in a BullMQ cron job requires custom span creation and propagation through the job payload. H describes this pattern correctly but does not account for the engineering time it takes to wire OTel correctly in an async job queue context. This is a non-trivial instrumentation task that competes with the 30-day ship window.
+The `_validate_transition` proposal is: `queued → done` is NOT a valid transition in the TO-BE model. But the current incident pattern (15 specs flipped to done via bootstrap_new_specs) BYPASSED `verify_status_sync` entirely. The state machine guard in lifecycle.py would not have caught this incident because bootstrap calls `lifecycle.create_initial()`, not `write_lifecycle`. Martin's own Root 1 analysis notes this, but the state machine fix doesn't address the bootstrap path — it only prevents `write_lifecycle` from making invalid transitions.
 
 **Missed inconsistencies:**
 
-- H recommends "Grafana Cloud free tier" with Loki, Tempo, and Prometheus. H also recommends "Better Stack for heartbeat." And LiteLLM for cost tracking. And Healthchecks.io for cron monitoring. That is 5 separate observability services. For a 2-person team. H is solving the observability problem with the same pattern as the stack problem: best-in-class tool per concern, resulting in a fragmented operations surface. A single Datadog or New Relic free tier would cover logs, traces, metrics, and uptime in one dashboard. The "free tier" of each individual tool is compelling but the operational cost of maintaining 5 tool integrations is not zero.
-- H says the `/health` endpoint "must return 200 in < 200ms" and "checks: DB connection, Redis connection, last cron heartbeat timestamp." Checking DB connection and Redis connection on every health check means every health check creates a DB query and a Redis ping. Fly.io health checks fire every 5-10 seconds by default. This is 8,640 DB queries per day just for health checking. At 500 users this is noise; it is still a design smell. A better pattern: check if the DB connection pool has an available connection (in-memory check, no query) rather than actually querying the DB.
+The migration wave structure (0, 1, 2, 3) has a hidden prerequisite cycle: Wave 0.1 is "remove bootstrap_new_specs WT read." Wave 0.2 is "Spark writes lifecycle YAML directly." But if Spark writes lifecycle YAML directly, all 10 managed projects' Spark skill invocations need to be updated atomically with the orchestrator change. Otherwise: old Spark creates spec.md without lifecycle.yaml, new orchestrator has no bootstrap_new_specs to catch it, spec is never queued. The migration has a window where new specs go missing. Martin doesn't document this risk.
+
+---
+
+### Analysis H — Bruce (Security)
+
+**Rating: PARTIAL AGREE**
+
+**What is correct:** The TELEGRAM_BOT_TOKEN is a P0 security incident and should have been the first item in every analysis, not the last. The "backlog.md WT read is an active exploit path" observation is correct and the audit audit-JSONL tampering vector (suppress dispatch by injecting fake entries) is the most novel security finding in the set.
+
+**Contradictions in this analysis:**
+
+Bruce proposes "git signed commits as identity" for lifecycle writes. This requires a dedicated GPG key for the orchestrator service, GIT_COMMITTER_EMAIL/NAME per process. But the entire codebase runs as a single `dld` user — there is no process-level identity at the OS level. GPG signing by git process does not prove it is callback vs orchestrator vs a rogue script: they all share the same user credentials. The "pragmatic alternative" (process token in systemd env) is correct, but then Bruce says the elaborate git-signing approach is "recommended" — these two are in contradiction.
+
+The HMAC on audit JSONL proposal is cited as 15 LOC. But `scan_queued` in orchestrator.py reads the JSONL by line — adding HMAC verification means the reader must also verify. The HMAC key must be in the systemd environment, accessible to both writer (callback) and reader (orchestrator). If an attacker has shell access as `dld`, they can read the systemd env and compute valid HMACs. The protection is against non-dld-user attackers only, which the threat model already excludes (pueue socket is user-locked). The HMAC is theater against the stated threat model.
+
+**Missed inconsistencies:**
+
+The "attack scenario" for backlog.md describes a malicious agent writing to `ai/backlog.md`. But agents run in worktrees (per orchestrator design). Whether the agent's worktree shares the same `ai/backlog.md` with the main working tree is not addressed. If autopilot uses `git worktree add`, each worktree has its own WD but shares the git object store. The attack surface depends on whether bootstrap reads from the main WT or from each project's primary path. This matters for the severity claim.
 
 **Weak spots in reasoning:**
 
-H's "Alerting Principles" section: "If you cannot describe the exact action to take when an alert fires, the alert is noise." This is good SRE philosophy. But H then creates 8 alerts, several of which have vague actions. "LLMUserCostHigh" action is "Runbook: check specific user's briefing, token counts." What is the action? Pause the user's account? Contact them? Reduce their context budget? The runbook reference is a placeholder, not a plan.
-
-H recommends "manual approval for DB schema changes" as a deployment gate. This is correct. But "manual" on a 2-person team means the founder approves their own migrations. That is not a gate — that is a ceremony. The real protection is: additive-only migrations for 90 days, enforced by CI as a fitness function (Analysis D's migration safety check).
+Bruce accepts "agent arbitrary code execution within project" as accepted risk. But then proposes protecting lifecycle YAML integrity from agent tampering. If agents can execute arbitrary code in the project directory, and the lifecycle YAML lives in `ai/lifecycle/` within the project directory, the agent can directly write to `ai/lifecycle/{spec_id}.yaml` — bypassing the CAS path entirely. The pre-commit hook is irrelevant: it fires on `git commit`, not on file writes. Layer 2/3 defense doesn't actually defend against the accepted threat in Layer 5.
 
 ---
 
 ## Ranking
 
-**Most Internally Consistent Analysis:** D (Evolutionary Architect)
+**Top 3 by leverage:**
 
-The fitness functions are concrete, automatable, and tied to business requirements. The change vector analysis correctly identifies the high-volatility components (LLM models, source adapters, pricing tiers) vs the stable core (billing math, task cap logic, core domain entities). The reversibility analysis provides the most actionable framework for decision-making under the 30-day constraint. Its contradictions are real but minor compared to other analyses.
+1. **B (Neal)** — the drift map plus ADR Kill Section is actionable without architectural decisions. Kill the zombie validators, add FF-07 (convention tests), add `scripts/vps/tests` to testpaths. These three actions cost $3 and prevent three of today's five bugs from recurring. The fix-train detector is the highest-value early-warning signal.
 
-**Most Contradictory Analysis:** B (Domain Architect)
+2. **C (Eric)** — the language audit is the only analysis that asks "what does the code mean?" rather than "what is wrong with the code?" The bounded context map provides the decomposition target for all other proposals. Without it, every refactoring is local optimization of a god module. The aggregate root analysis (started_at null, transitions empty, no state machine invariants) is the correct diagnosis.
 
-B constructs an architecturally beautiful DDD model and then repeatedly undermines it. The ubiquitous language is invented, not discovered. The behavioral learning loop depends on engagement signals that Telegram may not provide. The "7 contexts, deploy as one" recommendation has no operational plan for maintaining 7 conceptual models with 2 engineers. The analysis is the most sophisticated in its vocabulary and the most fragile in its foundations.
+3. **E (Dan)** — the innovation token framing forces the conversation from "how do we fix the architecture" to "which architectural choices are causing incidents." That git-as-DB generated the WT-sync race, 8 subprocess calls, and push-at-DEBUG is a testable claim, not an opinion. Even if SQLite migration is wrong (see devil's note), identifying git-as-DB as the innovation token to revoke is correct.
+
+**Bottom 3 (theater / will fail / continue fix train):**
+
+1. **H (Bruce)** — the HMAC on audit JSONL and git-signed commits proposals add ceremony without threat model validity. The actual P0 item (rotate TELEGRAM_BOT_TOKEN) is buried in a lengthy STRIDE analysis. Security analysis that spends 2000 words on RBAC and 1 paragraph on "rotate the token NOW" has its priorities inverted. The process token in systemd is correct but the elaborate identity architecture on top of it is second-system thinking in security clothing.
+
+2. **A (Charity)** — the metrics catalog (15 metrics, 6 alerts, 3 dashboards) is aspirational documentation for infrastructure that doesn't exist. Tier 1 metrics require Prometheus. Dashboards require Grafana or equivalent. The "no new infrastructure" claim is false for anything beyond counter files and cron-based alerting. The SLO definitions are well-formed but cannot be measured with current tooling. The proposal will generate a Spark spec, produce beautiful documentation, and be partially implemented — which is worse than not implementing it, because the partial implementation provides false confidence.
+
+3. **D (Erik)** — the `vps-orch.py gate-check` dry-run tool, the 15-metric context budget comparison, and the AGENT_REFERENCE.md are all correct in direction but wrong in sequence. The agent ergonomics problem is a consequence of the god module. Fix the god module (decompose callback.py) and agent ergonomics improves automatically. Building tooling ON TOP of the god module is a layer of abstraction over a broken foundation. The 12-arg `_emit_audit` fix and the GROWTH prefix fix are valid P0 items — they are the best parts of this analysis. The scaffolding around them should be deferred.
 
 ---
 
 ## Cross-Analysis Contradictions
 
-**New contradictions found when comparing ALL analyses:**
+**1. git-as-DB: ACCEPT (B, C, F) vs REVOKE (E)**
 
-**1. Analysis A vs Analysis B: Domain count**
+Neal says: "Accept ADR-023. Fix the stale-index implementation bug."
+Dan says: "ADR-023 is the bug. SQLite already exists. Remove lifecycle.py."
 
-A says 4 domains maximum. B says 7 bounded contexts. B's 7 = Briefing + Source + Priority + Workspace + Notification + Identity + Billing. A's 4 = briefing + sources + memory + billing (Clerk handles identity, pipeline function handles orchestration). D agrees with A (4 domains at launch). The board cannot produce a coherent architecture with a 4-vs-7 domain disagreement unresolved. This is the most concrete disagreement and needs a single answer.
+This is the central architectural question and no peer engages the other side's argument. Neal never addresses the 8-subprocess-calls-vs-1-SQL-statement cost. Dan never addresses the multi-repo topology that SQLite doesn't solve. The synthesizer must force a resolution.
 
-**2. Analysis A vs Analysis H: node-cron vs BullMQ**
+Evaporating Cloud on this contradiction:
+- Goal A (Neal): preserve the conceptual integrity of ARCH-186, which was a deliberate architectural decision made after a Council session.
+- Goal B (Dan): eliminate the class of bugs generated by git-as-DB.
+- Requirement for A: lifecycle.py CAS approach is kept and implementation bugs fixed.
+- Requirement for B: SQLite replaces lifecycle.py.
+- Conflict: both cannot be satisfied simultaneously.
+- Assumption behind A: the ARCH-186 decision's rationale (multi-machine sync, audit trail in git) still holds.
+- Assumption behind B: the multi-machine scenario is theoretical, not operational.
 
-A says node-cron is "boring" and correct at launch (in its tech stack recommendation). H says BullMQ is required before first production deploy because node-cron is in-memory and will lose jobs on Fly.io rolling deploys. Both cannot be right. H's argument is technically superior (the failure mode is real), but A's final recommendation still lists node-cron. This is a direct contradiction between two analyses that arrived independently at opposite conclusions from the same premise ("boring technology").
+The assumption to challenge: Is multi-machine convergence a current operational requirement or a theoretical future requirement? If the latter, Dan's position is correct and Neal is protecting a ghost requirement. If the former, Dan's "boring alternative" introduces new problems (SQLite single-file ownership across 10 managed projects).
 
-**3. Analysis C vs Analysis D: Turso at launch**
+**2. bootstrap_new_specs: Remove (C, F, E) vs Patch (A, B)**
 
-C designs the entire data architecture around Turso, including per-tenant sharding plans, embedded replica semantics, and WAL replication strategies. D says "Never migrate databases without empirical evidence the current one is failing" and "SQLite WAL mode handles <500 users." C's analysis assumes Turso from day 1; D's analysis implies plain SQLite is sufficient for the kill gate measurement period. The board has not resolved the foundational data infrastructure question.
+Neal (B) says patch bootstrap to read HEAD not WT. It's in the P0 list.
+Eric (C) says remove bootstrap entirely — Spark writes lifecycle.yaml directly.
+Dan (E) says replace bootstrap with `SELECT spec_id FROM spec_lifecycle WHERE status='queued'`.
+Martin (F) says remove bootstrap_new_specs as Wave 0.1 AND have Spark write lifecycle.yaml (Wave 0.2).
 
-**4. Analysis B vs Analysis G: OAuth token ownership**
+There are three different "removal" strategies and one "patch" strategy. Only the patch is independently executable today. All three removal strategies require either a new lifecycle write in Spark, a SQLite migration, or both. The peers proposing "remove" agree on the destination but not the migration path.
 
-B says `oauth_tokens` belong to the Identity domain (they are credentials about who you are). G says `oauth_tokens` belong to the auth domain and the sources domain "receives a decrypted access token injected at task start." C has a separate `oauth_tokens` table that is accessed by the briefing pipeline. Three analyses give three different answers for which domain/module owns OAuth token storage and access. This is a SPOF: if the wrong module can access OAuth tokens, the security boundary is violated.
+**3. spec_operator.py: Remove (E, implied by D) vs Fix permissions (H)**
 
-**5. Analysis E vs Analysis G: Synthesis LLM tool calls**
+Dan says remove it (YAGNI, zero users).
+Bruce says add TTY check + confirmation to force-done.
+Eric says the circuit reset should be a public API.
 
-E recommends using `tool_choice: { type: "any" }` (Anthropic's forced tool call) as the most reliable way to get structured JSON output. G says "NO tool calls from the synthesis LLM (read-only prompt, output-only response)" as a prompt injection mitigation. These are directly contradictory. Forced tool calls for schema compliance vs no tool calls for security isolation. The board must choose one. Choosing both is impossible.
+These three cannot all be right. If spec_operator is removed, Bruce's TTY check is moot. If it stays, Eric's public API refactor is needed. Nobody asks whether anyone actually uses it.
 
-**6. Across all analyses: The behavioral memory moat is unvalidated**
+**4. Identity enforcement: git signed commits (H) vs process token (H pragmatic) vs honor system (current) vs "eliminate the fiction" (all others)**
 
-Every analysis mentions behavioral memory as important. B calls it the "core differentiating subdomain." D calls it the "hardest-to-reverse data model decision." E designs the two-layer snapshot architecture. C provides the detailed schema. Yet not ONE analysis questions whether behavioral memory creates a genuine switching cost at the scale and timeline this product will operate.
-
-At day 90 (the kill gate), a user has at most 76 briefing days of data. The preference snapshot E describes is "last N=500 signals" but a user generates maybe 3-5 engagement signals per briefing. 76 days × 4 signals = ~304 signals. Below the 500 threshold E uses. The snapshot at day 90 is based on partial data. The moat has not compounded. The behavioral memory argument is a 12-month story, not a 90-day story. The board is collectively mistaking a future moat for a current one.
+Bruce proposes two mutually contradictory approaches within the same analysis. The git signing approach requires per-process GPG keys; the process token approach requires a shared env var. The synthesizer should choose one and discard the other.
 
 ---
 
-## Final Devil's Verdict: Where is the Board Collectively Deluding Itself?
+## The Groupthink Test
 
-**The collective delusion: Behavioral memory is the moat that justifies the architecture's complexity.**
+**Is the consensus real or is it camouflage?**
 
-Every technical choice in the stack — the 7 bounded contexts, the structured JSON schema, the two-layer preference architecture, the append-only feedback event table, the engagement tracking — is downstream of the claim that "behavioral memory is the switching cost mechanism."
+Every peer agrees on these items:
+- callback.py is a god module and needs decomposition
+- bootstrap_new_specs reads WT and should not
+- spec_lint.py is a zombie validator
+- scripts/vps/tests/ should be in CI
+- `_push_best_effort` should log at WARNING not DEBUG
 
-But the board never asked: is behavioral memory a moat at 90 days, or at 3 years?
+This is real consensus grounded in evidence. Five items. That's it.
 
-Here is the honest answer:
+**Everything else is contested or untested.** The consensus on these five items is being used, implicitly, to validate the broader proposals — decompose into bounded contexts, migrate to SQLite, add 15 metrics, refactor into a DDD aggregate. But these five items do not validate those proposals. They are 5-LOC fixes in a 3644-LOC contour. Agreeing on them is not the same as agreeing on architecture.
 
-At 90 days, the product's competitive advantage is NOT behavioral memory. It is two things:
-1. A morning briefing that saves a solo founder 2 hours, delivered reliably at 6am.
-2. A team that ships and iterates faster than competitors.
+**The groupthink risk is here:** Every peer identifies callback.py decomposition as the solution. But decomposition is not an architecture — it is a refactoring. "Split callback.py into gate.py + writer.py + dispatcher.py + audit.py" is a file organization decision. It does not by itself establish conceptual integrity. You can have four files each with 350 LOC and still have no clear ownership contract, still have the same error-handling inconsistency, still have the same lack of regression tests.
 
-Behavioral memory at day 90 is 14 days of trial data for paying users. It is a slightly personalized JSON blob. Any competitor can copy it in a week. The "moat" argument is a story the board is telling itself to justify building a sophisticated preference learning infrastructure instead of a simple briefing that works.
+The peers have agreed on what to DO (decompose) but not on WHAT PRINCIPLE should govern the decomposition. Eric says DDD bounded contexts. Dan says boring-technology separation of concerns. Erik says agent-ergonomic module boundaries. These three produce DIFFERENT decompositions. Nobody has stated which principle takes precedence.
 
-**The single most likely architecture failure in 12 months:**
+**Brooks' kill question: who is solely responsible for system integrity?**
 
-The team spends weeks designing and building the preference learning system, the behavioral feedback loop, the engagement tracking, the snapshot regeneration pipeline — all before knowing whether users actually want a morning briefing agent. The kill gate fires at day 90 with trial-to-paid conversion below 7%. The entire preference infrastructure is irrelevant because there are no retained users to generate behavioral signals from.
+Not one peer names a person or role. Not one peer states three inviolable principles this architecture must not violate. The consensus is on symptoms, not on principles.
 
-The architecture is built to survive success. It has not been designed to survive failure cheaply.
+---
 
-**What Brooks would say:**
+## Net-Add-Only Disease: Which Proposals Add Complexity Without Removing It
 
-"I have a question for this board. Each of you has told me about a piece of the system. No one has told me about the system. I see 7 proposals with 7 different organizing principles — linguistic purity, evolutionary fitness, COGS optimization, operational resilience, threat modeling, behavioral learning theory. Each is coherent in isolation.
+**Analysis A (Charity):** Adds 15 metrics, 6 alerts, 3 dashboards. Removes: nothing explicitly. The "minimum viable" hardening table is 8 items added. Net: +8 monitoring mechanisms. Zero removals.
 
-But what is the ONE idea that unifies them? What is the single sentence that makes every component's role obvious?
+**Analysis B (Neal):** Adds 8 fitness functions. Removes: spec_lint.py (1 item). Net: +7 new tests/checks. The ADR Kill Section is itself additive — it is a new REQUIRED section in every ADR. Net: adds process complexity without removing the underlying code complexity.
 
-If that sentence is 'a cron job that fetches 12 sources, synthesizes with Claude, and sends you a morning briefing' — then half this architecture is commentary on a problem you don't have yet.
+**Analysis C (Eric):** Adds: domain events (SpecCreated, WorkCompleted, WorkVerified, StatusChanged, PipelinePaused), new ubiquitous language, 5 bounded context definitions, an ACL between Spec Authoring and Lifecycle. Removes: bootstrap_new_specs (maybe). Net: significant addition. The domain events proposal requires either a message broker or in-process event bus — neither of which currently exists.
 
-If that sentence is 'a behavioral learning system that compounds switching costs through personalized synthesis' — then you need 12 months of data before you can test whether the core hypothesis is true.
+**Analysis D (Erik):** Adds: vps-orch.py CLI (4 subcommands), GateResult dataclass, AuditPayload dataclass, 5 error classes in errors.py, AGENT_REFERENCE.md, vps_types.py. Removes: the 12-arg function signature (1 function). Net: +2 new files, +5 new classes, 4 new CLI tools.
 
-You cannot be both in 30 days. Choose which product you are building. Everything else follows from that choice."
+**Analysis E (Dan):** Adds: spec_lifecycle table, spec_transitions table, PRAGMA user_version migration pattern, pre-commit framework config. Removes: lifecycle.py (602 LOC), spec_operator.py, migrate_backlog_to_lifecycle.py, spec_lint.py. This is the only analysis with a positive net removal. Net: -500 LOC after migration.
 
-**The concrete recommendation this board has collectively avoided making:**
+**Analysis F (Martin):** Adds: schema_version field in YAML, blocked_code enum field, dispatched_at field, schema_migrations table, VALID_TRANSITIONS dict, _validate_transition function, purge_old_records function, differential renderer sentinels. Removes: allowed_files_hash field (dead field). Net: +7 additions, -1 removal. The YAML schema is getting richer, not simpler.
 
-Build the simplest possible briefing that delivers measurable user value in 30 days. Defer behavioral memory infrastructure to month 4 (after the kill gate). Use the 90 days to validate that users will pay for a morning briefing before investing in the switching cost mechanism.
+**Analysis H (Bruce):** Adds: ORCHESTRATOR_PROCESS_TOKEN env var in systemd, HMAC on audit JSONL, TTY check in spec_operator, register-project.sh, git signed commits. Removes: migrate_backlog_to_lifecycle.py (should be removed anyway). Net: +5 security mechanisms.
 
-The architecture should be designed to answer ONE question: "Will someone pay $99/month for this?"
+**The disease in aggregate:** If all proposals were implemented, the codebase would have decomposed callback.py into 4-5 files, added lifecycle.py (YAML or SQLite), gained 8 fitness functions, 15 metrics, 6 alerts, a DDD event bus, 6 new CLI tools, 2 new YAML fields, 5 error classes, and HMAC signing. Some of this is essential. Most of it is additive complexity that future agents will encounter as "context I must understand before touching anything."
 
-Everything that does not serve that question — behavioral learning schemas, DDD event buses, multi-context domain models, fitness function suites, OTel distributed tracing — is infrastructure for a product that has not yet been validated.
+Nobody is doing a strict accounting of what gets PERMANENTLY DELETED. Dan comes closest but underestimates migration risk.
 
-Ship the briefing first. Earn the complexity later.
+---
+
+## Devil's Addition: The Second-System / Rewrite Hypothesis
+
+Peers missed this almost entirely, and it is the most important thing.
+
+**The fix train is not a code quality problem. It is a design process problem.**
+
+Brooks in "The Mythical Man-Month" identifies two failure modes: the first system (too simple, under-engineered) and the second system (overengineered reaction to the first, bloated with everything the architect wanted to add but restrained themselves from adding the first time). This codebase shows a third pattern Brooks didn't name: **the incremental second system** — where a working simple system (callback.py as a thin pueue callback) accumulates architectural ambition through successive incident responses until it becomes something that nobody planned and nobody owns.
+
+The evidence: ADR-018 (simple markdown editing) → ADR-023 (git-per-spec YAML with CAS, council decision, elaborate rationale) → ADR-024 (exit_code contract) → cefaa55 (8-rule redesign) → today's 5 bugs.
+
+Each architectural elevation added design sophistication. The original callback.py probably did 5 things in 300 lines. The council session on ARCH-186 produced a sophisticated CAS mechanism. The sophistication did not improve reliability — it replaced simple fragility with sophisticated fragility.
+
+**The rewrite hypothesis question that no peer asked:**
+
+Should the callback/lifecycle/orchestrator contour be REWRITTEN from scratch with a simple design, or should it be REFACTORED incrementally?
+
+Every peer assumes incremental refactoring. None of them asks: "If we wrote this from scratch today, knowing what we know, what would the simplest correct design be?"
+
+Dan comes closest with "git log --grep SPEC-ID" as the gate. This is the rewrite thinking: abandon accumulated rules, return to first principles. But Dan applies it only to the gate function, not to the whole contour.
+
+The rewrite hypothesis: **The entire callback/lifecycle contour is 600-1400 LOC doing 3 business things:**
+1. "Did autopilot finish this spec?"
+2. "Record that it's done."
+3. "Trigger the next step."
+
+A fresh implementation of these 3 things, without the constraints of ARCH-186, TECH-166-176, ADR-023, would probably be 200-300 LOC of straightforward Python with SQLite. The question is whether the accumulated sophistication (CAS atomic writes, multi-machine convergence, audit trail in git, circuit-breaker, 8-rule gate) represents genuine business requirements or architectural debt masquerading as requirements.
+
+**The second-system effect manifests in the council session:** ARCH-186 was decided by a Council session with 3 votes AGAINST and 2 for, converging on "pragmatist+security+product." The council recommended git-per-spec-YAML specifically because it satisfied multiple non-trivial requirements simultaneously. This is exactly the condition under which second-system effect operates: a committee that is architecturally literate, well-intentioned, and building something subtly more elaborate than the problem demands.
+
+**What peers missed:** Nobody asked whether the requirements that justified ARCH-186 (multi-machine convergence, audit trail in git) are still requirements, have been met, or were ever real. If multi-machine convergence is theoretical, the CAS mechanism is overengineering. If the audit trail in git is sufficient, the transitions:[] array in YAML is redundant with git log. Two of the four stated justifications for the sophisticated design may be phantom requirements — and if so, the rewrite to SQLite is not a risk, it is an elimination of complexity that was never needed.
+
+The synthesizer needs to make a binary decision: is ARCH-186's core design (git-per-spec-YAML CAS) a correct response to real requirements, or is it the inflection point where the fix train began? Every subsequent incident can be traced to implementation decisions made necessary by that choice. If the choice is wrong, the refactoring path (keep YAML, fix bugs) is slower and more dangerous than the migration path (SQLite, delete lifecycle.py).
+
+**Brooks would say:** "The conceptual integrity of this system was lost at ARCH-186, not in the implementation bugs. A simple design maintained by one person for one purpose is more reliable than an elegant design maintained by committee through five incident cycles."
+
+---
+
+## Questions That Must Be Answered Before Synthesis
+
+1. Is multi-machine convergence a current operational requirement (multiple machines reading/writing lifecycle state simultaneously) or a theoretical future requirement? This question resolves the ACCEPT-vs-REVOKE conflict on ADR-023.
+
+2. Who is solely responsible for the architectural integrity of scripts/vps/? If the answer is "whoever wrote the last commit," you have no conceptual integrity and the fix train will continue regardless of which refactoring path is chosen.
+
+3. What are the THREE inviolable principles of this architecture? (Not "one source of truth for status" — that's a property. A principle is: "all status changes go through a single serialized write path that records the writer's identity and previous state.")
+
+4. Does anyone actually use spec_operator.py? Not "it could be useful" — does any real workflow require it today? If no, remove it before the architectural session, not after.
+
+5. What is the acceptable downtime for migrating 190+ lifecycle YAMLs to SQLite if that is the chosen direction? If the answer is "zero" (orchestrator runs continuously), the migration plan in Analysis E is incomplete.
+
+---
+
+## Final Devil's Verdict
+
+The peers have done good diagnostic work and largely agree on what is wrong. The diagnosis is not the problem.
+
+The problem is that every proposal adds a sophisticated fix to a system that is already suffering from accumulated sophistication. The prescriptions are, collectively, more complex than the disease.
+
+The root cause — one person, no architectural owner, no inviolable principles, no conceptual integrity — remains unaddressed in every report. Brooks' most important observation: "the conceptual integrity of a system is determined by having one mind (or at most a few minds) responsible for the overall vision." This system has had five different implicit architects in one month, each adding their invariant without removing the previous one's artifacts.
+
+No amount of fitness functions, domain events, or HMAC signatures fixes this. One person must own the design. That person must make three decisions: (1) git-YAML or SQLite, (2) bounded contexts or god-module-with-tests, (3) incremental refactoring or targeted rewrite of the 400-LOC core. Those three decisions must be made by one mind, defended in writing, and followed by every subsequent change.
+
+Until that happens, the next ARCH or BUG spec will be the sixth fix train iteration. The synthesizer's job is not to average the peer proposals — it is to force a single coherent decision.
 
 ---
 
 ## References
 
-- Fred Brooks — The Mythical Man-Month (1975, anniversary edition 1995)
-- Fred Brooks — No Silver Bullet (IEEE Computer, 1986)
-- Dan McKinley — Choose Boring Technology (mcfunley.com/choose-boring-technology)
-- Eric Evans — Domain-Driven Design (Addison-Wesley, 2003) — specifically on ubiquitous language as discovered, not invented
-- Sam Newman — Building Microservices (O'Reilly, 2022) — Chapter 1: the microservices tax
-- Martin Fowler — MonolithFirst (martinfowler.com/bliki/MonolithFirst.html)
-- Neal Ford, Rebecca Parsons, Pat Kua — Building Evolutionary Architectures (O'Reilly, 2022)
-- Phase 1 Research: /Users/desperado/dev/dld/ai/architect/research-devil.md
-- Peer analyses: A through H in /Users/desperado/dev/dld/ai/architect/anonymous/
+- Fred Brooks — The Mythical Man-Month (1975): conceptual integrity, second-system effect
+- Fred Brooks — No Silver Bullet (1986): accidental vs essential complexity
+- Architecture Agenda: `/home/dld/projects/dld/ai/architect/architecture-agenda.md`
+- Deep Audit Report: `/home/dld/projects/dld/ai/audit/deep-audit-report.md`
+- ADR Chain: `/home/dld/projects/dld/.claude/rules/architecture.md` (ADR-018 through ADR-024)
+- callback.py: `/home/dld/projects/dld/scripts/vps/callback.py` (1374 LOC, 7 responsibilities)
+- lifecycle.py: `/home/dld/projects/dld/scripts/vps/lifecycle.py` (602 LOC, CAS write path)
+- orchestrator.py: `/home/dld/projects/dld/scripts/vps/orchestrator.py` (667 LOC, bootstrap WT read at line 295)

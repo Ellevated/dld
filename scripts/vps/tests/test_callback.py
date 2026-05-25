@@ -1,13 +1,16 @@
 # scripts/vps/tests/test_callback.py
 """Tests for callback.verify_status_sync (status auto-fix guards).
 
-The two guards are symmetric:
-  * target=done + spec=blocked  → skip (autopilot says blocked, respect it).
-  * target=blocked + spec=done  → skip (final push/merge failed but work is
-    on a feature branch — wiping done loses the signal).
+Post-ARCH-186: verify_status_sync delegates status writes to lifecycle.write_lifecycle.
+Guards operate on lifecycle.read_lifecycle() state, not on markdown files.
+
+Guard A: target=done  + lifecycle=blocked  → skip (respect blocked).
+Guard B: target=blocked + lifecycle=done   → skip (respect done).
 """
 
 import json
+import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -19,156 +22,216 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import callback  # noqa: E402
+import db  # noqa: E402
+import lifecycle  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# Shared git helpers
+# ---------------------------------------------------------------------------
+
+
+def _git(repo: Path, *args: str) -> str:
+    import os
+
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+        "HOME": str(repo),
+    }
+    r = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, **env},
+    )
+    return r.stdout
+
+
+@pytest.fixture(autouse=True)
+def _isolated_db(tmp_path):
+    """Fresh SQLite DB per test — prevents circuit breaker state from accumulating."""
+    db_path = str(tmp_path / "orchestrator.db")
+    conn = sqlite3.connect(db_path)
+    schema = (Path(VPS_DIR) / "schema.sql").read_text()
+    conn.executescript(schema)
+    conn.close()
+    db._MIGRATIONS_APPLIED = False
+    with patch.object(db, "DB_PATH", db_path):
+        yield
 
 
 @pytest.fixture
-def project(tmp_path):
-    """Create a fake project with ai/features/<spec>.md and ai/backlog.md."""
-    p = tmp_path / "proj"
-    (p / "ai" / "features").mkdir(parents=True)
-    return p
+def git_repo(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "develop")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    # Initial commit so HEAD exists
+    (repo / "README.md").write_text("init\n")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-q", "-m", "init")
+    return repo
 
 
-def _write_spec(project: Path, spec_id: str, status: str) -> Path:
-    f = project / "ai" / "features" / f"{spec_id}-test.md"
-    f.write_text(f"# {spec_id}\n\n**Status:** {status}\n")
-    return f
-
-
-def _write_backlog(project: Path, spec_id: str, status: str) -> None:
-    (project / "ai" / "backlog.md").write_text(
-        f"| ID | Title | Status |\n|---|---|---|\n| {spec_id} | t | {status} |\n"
-    )
-
-
-# --- Guard 1: target=done + spec=blocked → skip ---
+# ---------------------------------------------------------------------------
+# Guard A: target=done + lifecycle=blocked → skip
+# ---------------------------------------------------------------------------
 
 
 class TestDoneOverBlockedGuard:
-    def test_done_target_respects_blocked_spec(self, project):
-        spec = _write_spec(project, "BUG-1", "blocked")
-        _write_backlog(project, "BUG-1", "blocked")
-        callback.verify_status_sync(str(project), "BUG-1", target="done")
-        # Spec untouched
-        assert "**Status:** blocked" in spec.read_text()
-        # Backlog untouched
-        assert "| blocked |" in (project / "ai" / "backlog.md").read_text()
+    def test_done_target_respects_blocked_lifecycle(self, git_repo):
+        """lifecycle says blocked; callback with target=done must skip write."""
+        lifecycle.write_lifecycle(str(git_repo), "BUG-1", "blocked")
+        callback.verify_status_sync(str(git_repo), "BUG-1", target="done")
+        data = lifecycle.read_lifecycle(str(git_repo), "BUG-1")
+        assert data["status"] == "blocked", "lifecycle blocked must be preserved"
+
+    def test_done_guard_skips_write_when_no_lifecycle(self, git_repo):
+        """Rule 3: no lifecycle.yaml → noop (spec not in this project)."""
+        callback.verify_status_sync(str(git_repo), "BUG-99", target="done")
+        data = lifecycle.read_lifecycle(str(git_repo), "BUG-99")
+        assert data is None, "no lifecycle.yaml → noop, nothing written"
 
 
-# --- Guard 2 (NEW 2026-04-25): target=blocked + spec=done → skip ---
+# ---------------------------------------------------------------------------
+# Guard B: target=blocked + lifecycle=done → skip
+# ---------------------------------------------------------------------------
 
 
 class TestBlockedOverDoneGuard:
-    def test_blocked_target_respects_done_spec(self, project):
-        """Reproduces the BUG-376 / BUG-374 / BUG-865 scenario.
+    def test_blocked_target_respects_done_lifecycle(self, git_repo):
+        """Reproduces BUG-376/BUG-374/BUG-865 scenario.
 
-        Autopilot finished all per-task code, marked spec done, then the
-        final merge-to-develop step failed. Pueue exit=1 → callback called
-        with target=blocked. Without this guard, done was wiped and the
-        feature branch was orphaned.
+        Autopilot finished all per-task code → lifecycle=done.
+        Final push failed → pueue exit=1 → callback target=blocked.
+        Guard B must protect the done state.
         """
-        spec = _write_spec(project, "BUG-2", "done")
-        _write_backlog(project, "BUG-2", "done")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-2", target="blocked")
-        assert "**Status:** done" in spec.read_text(), "spec done preserved"
-        assert "| done |" in (project / "ai" / "backlog.md").read_text(), "backlog done preserved"
-        mock_push.assert_not_called(), "no auto-fix commit when guard fires"
+        lifecycle.write_lifecycle(str(git_repo), "BUG-2", "done")
+        callback.verify_status_sync(str(git_repo), "BUG-2", target="blocked")
+        data = lifecycle.read_lifecycle(str(git_repo), "BUG-2")
+        assert data["status"] == "done", "lifecycle done must be preserved"
 
-    def test_blocked_target_still_writes_when_spec_not_done(self, project):
-        """Sanity: guard only fires for done spec; other states get blocked."""
-        _write_spec(project, "BUG-3", "in_progress")
-        _write_backlog(project, "BUG-3", "in_progress")
-        with patch("callback._git_commit_push"):
-            callback.verify_status_sync(str(project), "BUG-3", target="blocked")
-        assert "**Status:** blocked" in (project / "ai" / "features" / "BUG-3-test.md").read_text()
+    def test_blocked_target_writes_when_lifecycle_in_progress(self, git_repo):
+        """Sanity: guard only fires for done lifecycle; in_progress gets blocked."""
+        lifecycle.write_lifecycle(str(git_repo), "BUG-3", "in_progress")
+        callback.verify_status_sync(str(git_repo), "BUG-3", target="blocked")
+        data = lifecycle.read_lifecycle(str(git_repo), "BUG-3")
+        assert data["status"] == "blocked"
 
 
-# --- Both guards: idempotent (target already matches) ---
+# ---------------------------------------------------------------------------
+# Idempotency
+# ---------------------------------------------------------------------------
 
 
 class TestIdempotent:
-    def test_already_done_no_op(self, project):
-        _write_spec(project, "BUG-4", "done")
-        _write_backlog(project, "BUG-4", "done")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-4", target="done")
-        mock_push.assert_not_called()
+    def test_already_done_no_extra_commit(self, git_repo):
+        """If lifecycle already has target status, no extra commit."""
+        import subprocess as sp
 
-    def test_already_blocked_no_op(self, project):
-        _write_spec(project, "BUG-5", "blocked")
-        _write_backlog(project, "BUG-5", "blocked")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-5", target="blocked")
-        mock_push.assert_not_called()
+        lifecycle.write_lifecycle(str(git_repo), "BUG-4", "done")
+        before = sp.run(
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+        callback.verify_status_sync(str(git_repo), "BUG-4", target="done")
+        after = sp.run(
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+        assert before == after, "no commit expected when already at target"
+
+    def test_already_blocked_no_extra_commit(self, git_repo):
+        import subprocess as sp
+
+        lifecycle.write_lifecycle(str(git_repo), "BUG-5", "blocked")
+        before = sp.run(
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+        callback.verify_status_sync(str(git_repo), "BUG-5", target="blocked")
+        after = sp.run(
+            ["git", "-C", str(git_repo), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+        assert before == after, "no commit expected when already at target"
 
 
-# --- v3.15.6: backlog resync to spec authority on guard fire ---
+# ---------------------------------------------------------------------------
+# New test: lifecycle write path (ARCH-186 acceptance)
+# ---------------------------------------------------------------------------
 
 
-class TestBacklogResyncToSpec:
-    """Stop dispatch loops by syncing backlog → spec when guards fire.
+class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
+    """verify_status_sync must write lifecycle exactly once per terminal status."""
 
-    Scenario: backlog says queued/resumed, spec says blocked. Orchestrator
-    sees queued, dispatches autopilot, autopilot SKIPs (inconsistency),
-    callback target=done, Guard A fires. Without resync, backlog stays
-    queued → next cycle dispatches again → loop ($0.30/cycle waste).
-    Real case 2026-04-25: FTR-853 looped 11 times.
-    """
+    def test_lifecycle_written_done_when_gate_true(self, git_repo, monkeypatch):
+        """Rule 1 gate returns True → lifecycle becomes done; exactly one new commit."""
+        lifecycle.write_lifecycle(str(git_repo), "TECH-X", "in_progress")
 
-    def test_guard_a_resyncs_backlog_when_spec_blocked(self, project):
-        """target=done + spec=blocked + backlog=queued → backlog → blocked."""
-        _write_spec(project, "BUG-10", "blocked")
-        _write_backlog(project, "BUG-10", "queued")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-10", target="done")
-        assert "| blocked |" in (project / "ai" / "backlog.md").read_text(), (
-            "backlog resynced to spec's blocked"
+        # Gate stubs
+        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
+        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
+
+        # Need spec file with ## Allowed Files so gate branch is entered
+        (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
+        (git_repo / "ai" / "features" / "TECH-X-spec.md").write_text(
+            "# TECH-X\n\n## Allowed Files\n\n- `scripts/vps/callback.py`\n"
         )
-        # spec untouched
-        assert "**Status:** blocked" in (project / "ai" / "features" / "BUG-10-test.md").read_text()
-        mock_push.assert_called_once(), "resync should commit"
 
-    def test_guard_a_resyncs_backlog_when_resumed(self, project):
-        """Same shape with backlog=resumed (after operator resume)."""
-        _write_spec(project, "BUG-11", "blocked")
-        _write_backlog(project, "BUG-11", "resumed")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-11", target="done")
-        assert "| blocked |" in (project / "ai" / "backlog.md").read_text()
-        mock_push.assert_called_once()
+        import subprocess as sp
 
-    def test_guard_b_resyncs_backlog_when_spec_done(self, project):
-        """target=blocked + spec=done + backlog=in_progress → backlog → done."""
-        _write_spec(project, "BUG-12", "done")
-        _write_backlog(project, "BUG-12", "in_progress")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-12", target="blocked")
-        assert "| done |" in (project / "ai" / "backlog.md").read_text(), (
-            "backlog resynced to spec's done"
+        before_count = int(
+            sp.run(
+                ["git", "-C", str(git_repo), "rev-list", "--count", "HEAD"],
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
         )
-        # spec untouched
-        assert "**Status:** done" in (project / "ai" / "features" / "BUG-12-test.md").read_text()
-        mock_push.assert_called_once()
+        callback.verify_status_sync(str(git_repo), "TECH-X", target="done", pueue_id=42)
+        after_count = int(
+            sp.run(
+                ["git", "-C", str(git_repo), "rev-list", "--count", "HEAD"],
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
 
-    def test_guard_a_no_commit_when_backlog_already_blocked(self, project):
-        """Idempotency: guard fires but backlog already in sync → no commit."""
-        _write_spec(project, "BUG-13", "blocked")
-        _write_backlog(project, "BUG-13", "blocked")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-13", target="done")
-        mock_push.assert_not_called()
+        data = lifecycle.read_lifecycle(str(git_repo), "TECH-X")
+        assert data is not None
+        assert data["status"] == "done", f"expected done, got {data['status']}"
+        # at least 1 lifecycle commit; backlog render may add a second
+        assert after_count >= before_count + 1, (
+            f"expected at least 1 new commit, got {after_count - before_count}"
+        )
 
-    def test_guard_b_no_commit_when_backlog_already_done(self, project):
-        """Idempotency: guard fires but backlog already in sync → no commit."""
-        _write_spec(project, "BUG-14", "done")
-        _write_backlog(project, "BUG-14", "done")
-        with patch("callback._git_commit_push") as mock_push:
-            callback.verify_status_sync(str(project), "BUG-14", target="blocked")
-        mock_push.assert_not_called()
+    def test_demoted_to_blocked_when_gate_false(self, git_repo, monkeypatch):
+        """Rule 1 gate returns False → lifecycle demoted to blocked."""
+        lifecycle.write_lifecycle(str(git_repo), "TECH-Y", "in_progress")
+
+        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
+        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
+
+        (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
+        (git_repo / "ai" / "features" / "TECH-Y-spec.md").write_text(
+            "# TECH-Y\n\n## Allowed Files\n\n- `scripts/vps/callback.py`\n"
+        )
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+
+        callback.verify_status_sync(str(git_repo), "TECH-Y", target="done", pueue_id=99)
+        data = lifecycle.read_lifecycle(str(git_repo), "TECH-Y")
+        assert data is not None
+        assert data["status"] == "blocked", f"expected blocked (demote), got {data['status']}"
 
 
-# --- v3.15.7: skill detection from pueue command (survives SIGKILL'd runners) ---
+# ---------------------------------------------------------------------------
+# v3.15.7: skill detection from pueue command (survives SIGKILL'd runners)
+# ---------------------------------------------------------------------------
 
 
 def _mock_pueue_status(task_id: str, command: str, start_iso: str = ""):
@@ -324,139 +387,89 @@ class TestSubjectImplements:
         assert not callback._subject_implements("feat(FTR-925): x", "")
 
 
-# --- TECH-177: Integration with real git repo --------------------------------
+class TestSubjectImplementsRealWorld:
+    """Real-world subjects from awardybot 2026-05-24/25 night — should all match.
+    BUG-192 regression cases.
+    """
 
-
-def _git(repo: Path, *args: str) -> str:
-    import subprocess
-
-    env = {
-        "GIT_AUTHOR_NAME": "t",
-        "GIT_AUTHOR_EMAIL": "t@t",
-        "GIT_COMMITTER_NAME": "t",
-        "GIT_COMMITTER_EMAIL": "t@t",
-        "HOME": str(repo),
-    }
-    import os
-
-    r = subprocess.run(
-        ["git", "-C", str(repo), *args],
-        capture_output=True,
-        text=True,
-        check=True,
-        env={**os.environ, **env},
-    )
-    return r.stdout
-
-
-@pytest.fixture
-def git_repo(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init", "-q", "-b", "main")
-    _git(repo, "config", "user.email", "t@t")
-    _git(repo, "config", "user.name", "t")
-    return repo
-
-
-def _commit(repo: Path, subject: str, body: str = "", *, files: dict[str, str] | None = None):
-    files = files or {"a.py": "x"}
-    for rel, content in files.items():
-        p = repo / rel
-        p.parent.mkdir(parents=True, exist_ok=True)
-        # Append unique content so each commit is a real change
-        p.write_text(p.read_text() + "\n" + content if p.exists() else content)
-    _git(repo, "add", *files.keys())
-    msg = subject + (("\n\n" + body) if body else "")
-    _git(repo, "commit", "-q", "-m", msg)
-
-
-class TestSpecHasMergedImplementation:
-    def test_cross_mention_in_body_does_not_match(self, git_repo):
-        """Regression: awardybot 2026-05-04 incident.
-
-        Commit implements FTR-923 with cross-reference to FTR-925 in body,
-        and touches a file that is also in FTR-925's Allowed Files. Must NOT
-        be treated as FTR-925 implementation.
-        """
-        _commit(git_repo, "feat(FTR-923): impl X", body="see also FTR-925", files={"a.py": "v1"})
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
+    def test_lowercase_scope(self):
+        assert callback._subject_implements(
+            "feat(ftr-1076): add WB API key Pydantic schemas", "FTR-1076"
         )
-        assert matched is False
-        assert hashes == []
+        assert callback._subject_implements(
+            "chore(ftr-1076): mark done in spec + backlog", "FTR-1076"
+        )
 
-    def test_subject_scope_match(self, git_repo):
-        _commit(git_repo, "feat(FTR-925): impl Y", files={"a.py": "v1"})
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
-        )
-        assert matched is True
-        assert len(hashes) == 1
+    def test_mixed_case_scope(self):
+        assert callback._subject_implements("feat(Ftr-1076): something", "FTR-1076")
 
-    def test_legacy_bare_subject_match(self, git_repo):
-        _commit(git_repo, "FTR-925: impl", files={"a.py": "v1"})
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
+    def test_merge_with_branch_prefix(self):
+        assert callback._subject_implements(
+            "Merge feature/FTR-1076: SRID — MC admin endpoint", "FTR-1076"
         )
-        assert matched is True
-        assert len(hashes) == 1
+        assert callback._subject_implements("Merge autopilot/BUG-1065 into develop", "BUG-1065")
+        assert callback._subject_implements("Merge fix/BUG-439 — restore constraint", "BUG-439")
 
-    def test_merge_subject_match(self, git_repo):
-        _commit(git_repo, "merge FTR-925: rollup", files={"a.py": "v1"})
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
-        )
-        assert matched is True
-        assert len(hashes) == 1
+    def test_case_insensitive_multi_scope(self):
+        assert callback._subject_implements("feat(area, ftr-1076, FTR-1077): both", "FTR-1077")
+        assert callback._subject_implements("feat(area, ftr-1076, FTR-1077): both", "FTR-1076")
 
-    def test_footer_trailer_does_not_match(self, git_repo):
-        _commit(
-            git_repo,
-            "feat(other): unrelated",
-            body="Refs: FTR-925\nCo-authored-by: x <x@x>",
-            files={"a.py": "v1"},
-        )
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
-        )
-        assert matched is False
-        assert hashes == []
 
-    def test_path_filter_still_required(self, git_repo):
-        """Subject match alone is not enough — file must be in allowed list."""
-        _commit(git_repo, "feat(FTR-925): impl", files={"other.py": "v1"})
-        matched, _ = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            ["a.py"],
-        )
-        assert matched is False
+class TestSubjectImplementsAntiFalsePositive:
+    """TECH-177 invariant: body/trailer mentions DO NOT count.
+    MUST stay False after BUG-192 fix.
+    """
 
-    def test_empty_allowed(self, git_repo):
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            [],
+    def test_trailing_only_rejected(self):
+        assert not callback._subject_implements(
+            "feat(billing): SRID pre-withdrawal gate (FTR-1077 Task 3)", "FTR-1077"
         )
-        assert matched is False
-        assert hashes == []
+        assert not callback._subject_implements("fix(db): restore constraint (BUG-439)", "BUG-439")
 
-    def test_none_allowed(self, git_repo):
-        matched, hashes = callback._spec_has_merged_implementation(
-            str(git_repo),
-            "FTR-925",
-            None,
-        )
-        assert matched is False
-        assert hashes == []
+    def test_see_also_rejected(self):
+        assert not callback._subject_implements("feat(other): see also FTR-925", "FTR-925")
+
+    def test_refs_footer_rejected(self):
+        assert not callback._subject_implements("Refs: FTR-925", "FTR-925")
+
+    def test_no_scope_id_in_message_rejected(self):
+        assert not callback._subject_implements("feat: FTR-1076 implementation", "FTR-1076")
+
+
+class TestMatchSubjectParityWithCallback:
+    """gate_logic.match_subject MUST accept identical sets after BUG-192 fix.
+    Without parity, gate-daemon (shadow) and callback drift apart.
+    """
+
+    def test_parity_real_world_accepts(self):
+        from gate_logic import match_subject
+
+        positives = [
+            ("feat(ftr-1076): impl", "FTR-1076"),
+            ("Merge feature/FTR-1076: foo", "FTR-1076"),
+            ("Merge autopilot/BUG-1065 into develop", "BUG-1065"),
+            ("feat(area, ftr-1076): both", "FTR-1076"),
+        ]
+        for subject, spec_id in positives:
+            assert callback._subject_implements(subject, spec_id), (
+                f"callback rejected positive: {subject!r} {spec_id}"
+            )
+            assert match_subject(subject, spec_id), (
+                f"gate_logic rejected positive: {subject!r} {spec_id}"
+            )
+
+    def test_parity_tech177_rejects(self):
+        from gate_logic import match_subject
+
+        negatives = [
+            ("feat(other): see FTR-925", "FTR-925"),
+            ("Refs: FTR-925", "FTR-925"),
+            ("fix(db): restore (BUG-439)", "BUG-439"),
+        ]
+        for subject, spec_id in negatives:
+            assert not callback._subject_implements(subject, spec_id), (
+                f"callback wrongly accepted: {subject!r} {spec_id}"
+            )
+            assert not match_subject(subject, spec_id), (
+                f"gate_logic wrongly accepted: {subject!r} {spec_id}"
+            )

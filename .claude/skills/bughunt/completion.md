@@ -7,7 +7,7 @@ Read after pipeline Steps 0-5 complete. Saves durable bughunt artifacts and push
 ## Step 6: Save Durable Report Only
 
 Bughunt does **not** create inbox items directly.
-It saves durable findings to its own report artifact. OpenClaw reviews that report and decides whether to create inbox items.
+It saves durable findings to its own report artifact. Hermes reviews that report and decides whether to create inbox items.
 
 ---
 
@@ -19,7 +19,7 @@ Save the full report (NOT in `ai/features/`, NOT in backlog):
 ai/bughunt/{YYYY-MM-DD}-report.md
 ```
 
-The report is a READ-ONLY reference document. OpenClaw may later use it as context when creating inbox items.
+The report is a READ-ONLY reference document. Hermes may later use it as context when creating inbox items.
 
 ---
 
@@ -57,7 +57,7 @@ Keep the report file (`ai/bughunt/`) — it serves as Context for Spark.
 Bug Hunt complete.
 Report: ai/bughunt/{date}-report.md
 Findings: {N} groups saved to report.
-OpenClaw will review and decide next action.
+Hermes will review and decide next action.
 ```
 
 **Headless mode:** Same info in return format.

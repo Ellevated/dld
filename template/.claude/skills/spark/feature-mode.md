@@ -216,6 +216,7 @@ If < 4: launch extractor subagent for missing files (caller-writes fallback, ADR
 DO NOT proceed to Phase 3 until:
 - [ ] ALL 4 scout completion notifications received
 - [ ] Glob confirms 4 research files exist in SESSION_DIR
+- [ ] `research-codebase.md` contains a `## Verified References` section (grep `^## Verified References$` → ≥1 hit). Codebase scout in degraded mode is an acceptable exception — note "no codebase research" in state.json.
 - [ ] state.json updated: research = done, files = [list of 4 files]
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "this is simple enough to skip research"
@@ -321,13 +322,11 @@ Write spec using selected approach from Phase 4:
 
 ```markdown
 # Feature: [FTR-XXX] Title
-<!-- DLD-CALLBACK-MARKER-START v1 -->
-**Status:** queued | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
-<!-- DLD-CALLBACK-MARKER-END -->
+**Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
 
-<!-- DLD-CALLBACK-MARKER-START v1 -->
-<!-- **Blocked Reason:** populated by callback.py when guard demotes to blocked -->
-<!-- DLD-CALLBACK-MARKER-END -->
+> **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml` (ARCH-186).
+> Callback is the single writer; status/blocked_reason/transitions live there.
+> Do not add a `Status:` field to the spec body — it's no longer authoritative.
 
 ## Why
 [Problem statement from Socratic Dialogue]
@@ -371,12 +370,11 @@ Write spec using selected approach from Phase 4:
 
 ---
 
-<!-- DLD-CALLBACK-MARKER-START v1 -->
 ## Allowed Files
 
 <!-- callback-allowlist v1: backticked paths only, one per row.
      DO NOT EDIT THIS BLOCK manually after autopilot starts.
-     Format is parsed by scripts/vps/callback.py — see TECH-167/175. -->
+     Format is parsed by scripts/vps/callback.py — see TECH-167/175/ARCH-186. -->
 
 ONLY the files listed below may be modified during implementation.
 
@@ -384,8 +382,6 @@ ONLY the files listed below may be modified during implementation.
 - `path/to/file2.py` — reason (modify)
 - `path/to/new_file.py` — reason (NEW)
 - `tests/path/to/test_file.py` — reason (NEW)
-
-<!-- DLD-CALLBACK-MARKER-END -->
 
 **Format contract (enforced by Spark linter — see Phase 5.5):**
 - Heading is exactly `## Allowed Files` (case-sensitive H2, no suffix, no
@@ -652,9 +648,10 @@ HEADING_RE   = ^##[ \t]+Allowed Files[ \t]*$            (case-sensitive, exact)
 MARKER_RE    = <!--\s*callback-allowlist\s+v1\b[^>]*-->
 BULLET_RE    = ^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$
 SECTION_END  = ^##[ \t]+\S          (next H2 heading)
-DLD_START_RE = ^<!--\s*DLD-CALLBACK-MARKER-START\s+v(?P<ver>\d+)\s*-->\s*$
-DLD_END_RE   = ^<!--\s*DLD-CALLBACK-MARKER-END\s*-->\s*$
 ```
+
+> ARCH-186 removed the legacy callback marker envelopes. The allowlist is now
+> identified solely by `HEADING_RE` + the inner `MARKER_RE`. No outer marker block.
 
 ### Algorithm
 
@@ -674,11 +671,6 @@ DLD_END_RE   = ^<!--\s*DLD-CALLBACK-MARKER-END\s*-->\s*$
      blocks" anti-pattern).
 7. Collect all paths captured by `BULLET_RE`. If count == 0 → fail
    `ALLOWLIST_E006_EMPTY_LIST`.
-8. Verify `## Allowed Files` heading sits inside a `DLD_START_RE … DLD_END_RE`
-   block of supported version (v1). Mismatch → fail
-   `ALLOWLIST_E007_NOT_IN_MARKER_BLOCK`.
-9. Verify inner `<!-- callback-allowlist v1 -->` marker is present inside the
-   DLD marker block. Absent → fail `ALLOWLIST_E008_INNER_MARKER_MISSING`.
 
 ### On failure
 
@@ -707,7 +699,7 @@ remediation: "Re-run /spark and follow the canonical Allowed Files format
 <HARD-GATE>
 DO NOT proceed to Phase 6 until:
 - [ ] Phase 5.5 linter run on freshly-written spec file
-- [ ] Linter exit = success (no E001..E008)
+- [ ] Linter exit = success (no E001..E006)
 - [ ] state.json updated: lint = done, allowlist_paths = [<paths>]
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "the section looks fine to me"
@@ -716,7 +708,7 @@ Common rationalization to REJECT: "the section looks fine to me"
 ---
 ## Phase 6: VALIDATE
 
-Before marking spec `queued`, run 6 structural validation gates.
+Before marking spec `queued`, run 8 structural validation gates.
 
 ### Gate 1: Spec Completeness
 ```
@@ -798,13 +790,37 @@ Smaller specs = higher success rate and cheaper.
 **Soft gate:** If `ai/lessons/` does not exist in the project → Gate 7 auto-passes.
 Write in gate result: "Gate 7: auto-pass (no lessons bank)".
 
+### Gate 8: Verified References
+```
+□ research-codebase.md содержит секцию ## Verified References?
+□ Каждый concrete reference в спеке (Allowed Files paths, Implementation
+  Plan endpoints, schema/model fields, FSM/state keys, migration
+  filenames, function/class names cited as reuse target) трассируется
+  в research-codebase.md → ## Verified References?
+□ Нет reference со статусом "assumed" / без verify-команды?
+```
+
+**Soft sub-rule:** If Phase 2 codebase-скаут провалился (degraded mode,
+research-codebase.md missing or empty) → Gate 8 auto-pass с пометкой
+"Gate 8: auto-pass (no codebase research)".
+
+**Why this gate exists:** Spark писал в спеку конкретные пути/endpoint'ы/
+state-ключи без grep-верификации; расхождение ловилось только в runtime
+автопилота (planner) или code-quality reviewer'ом — уже после того как
+спека ушла как готовая (см. TECH-183, BUG-988/FTR-997/FTR-999).
+Gate 8 закрывает петлю: untraced reference → reject → возврат в Phase 3.
+
+**Note:** Gate 8 is LLM-проверка трассируемости (reference ↔ Verified
+References row). AST-based file-resolver — отдельный follow-up TECH (out
+of scope для TECH-183).
+
 **GATE RESULT:** pass / reject with reasons
 
 **If any gate fails →** spec stays in current state, return to Phase 3 (re-synthesize with feedback).
 
 <HARD-GATE>
 DO NOT proceed to Phase 7 until:
-- [ ] All 7 validation gates pass
+- [ ] All 8 validation gates pass
 - [ ] state.json updated: validate = done
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "gates are just a formality, spec looks good"

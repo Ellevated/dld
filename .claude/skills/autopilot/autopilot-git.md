@@ -104,7 +104,18 @@ git check-ignore -q "$WORKTREE_DIR" || {
 MAIN_REPO="$(git rev-parse --show-toplevel)"
 WORKTREE_PATH="${WORKTREE_DIR}/${TASK_ID}"
 
-git worktree add "$WORKTREE_PATH" -b "${BRANCH_PREFIX}/${TASK_ID}"
+# Refresh remote — branch base MUST be fresh origin/develop, not stale local ref
+git fetch origin develop
+
+# WHY origin/develop explicit (not implicit HEAD):
+#   `git worktree add -b new-branch path` without a base ref branches off
+#   the CWD's current HEAD. If anything left cwd HEAD on main (broken prior
+#   worktree, manual `git checkout main`, recovery state, orchestrator
+#   improvisation) — the new branch inherits main and PHASE 3 merge into
+#   develop drags unrelated main-only commits (dependabot bumps, release
+#   merge-backs). Pin to origin/develop to guarantee base regardless of
+#   CWD state. Reference: awardybot TECH-1063 incident, commit 833e5994.
+git worktree add "$WORKTREE_PATH" -b "${BRANCH_PREFIX}/${TASK_ID}" origin/develop
 cd "$WORKTREE_PATH"
 ```
 
@@ -192,14 +203,25 @@ End of spec: Push feature → Merge develop → Push develop
 # FAIL → STOP, fix first
 ```
 
-### 5.2 Update Status
+### 5.2 Update Status — REMOVED (ARCH-187 / ADR-024 / ADR-025)
 
-```bash
-# Update spec: **Status:** done
-# Update backlog: done
-git add ai/features/${TASK_ID}*.md ai/backlog.md
-git commit -m "docs: mark ${TASK_ID} as done"
+Status writes are exclusive to `callback.py` (ADR-023). Do **NOT** commit
+spec / backlog / lifecycle status changes manually. Callback fires on
+pueue task completion and atomically updates `ai/lifecycle/{spec}.yaml`
+via git plumbing. See `finishing.md`.
+
+**Autopilot has NO override path.** If callback fails to mark done, signal
+`"task_status": "needs_review"` and stop. A human operator (NOT autopilot)
+may then run:
+
 ```
+python3 scripts/vps/spec_operator.py force-done <project> <SPEC_ID> "<reason>" --by=operator
+```
+
+The `--by=autopilot` and `--by=spark` choices have been REMOVED (ADR-025).
+
+NEVER `git add ai/lifecycle/*.yaml` — direct commits to lifecycle yaml are HARD-BLOCKED by
+`.claude/hooks/pre-commit-lifecycle-guard.mjs` (no subject-allowlist exception).
 
 ### 5.3 Push Feature Branch (backup)
 

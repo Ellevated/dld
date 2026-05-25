@@ -13,6 +13,27 @@ import pytest
 HOOKS_DIR = Path(__file__).parent.parent / "template" / ".claude" / "hooks"
 
 
+@pytest.fixture(autouse=True)
+def _db_isolation(tmp_path, monkeypatch):
+    """TECH-189 Task 2: Auto-isolate every test from the production DB.
+
+    Overrides DB_PATH env var + db.DB_PATH attribute via monkeypatch so
+    no test can accidentally write to a real DB file, even if the test
+    doesn't explicitly request `isolated_db`. Tests in scripts/vps/tests/
+    inherit this via the pytest conftest discovery chain.
+
+    Gracefully skips when `db` module is not importable (hooks-only test
+    runs where scripts/vps is not on sys.path).
+    """
+    db_path = tmp_path / "test_isolated.db"
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    try:
+        import db as db_mod  # noqa: PLC0415 — only available when scripts/vps in path
+    except ImportError:
+        return
+    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+
+
 @pytest.fixture
 def mock_stdin():
     """Create a mock stdin with JSON data.

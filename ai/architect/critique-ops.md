@@ -1,307 +1,583 @@
 # Operations Architecture Cross-Critique
 
 **Persona:** Charity (Operations Engineer)
-**Phase:** 2 — Peer Review (Karpathy Protocol)
-**Label:** H
-**Date:** 2026-02-27
-
----
-
-## My Phase 1 Position (Summary)
-
-My core argument: the 3 AM problem for this system is not API downtime — it is silent cron non-execution. A briefing that never fires produces no error, no log, no alert. The user wakes up at 7 AM to nothing. That is the production incident that kills trial-to-paid conversion.
-
-My four main bets:
-1. BullMQ over node-cron (persistent job queue, survives Fly.io restarts)
-2. Dead man's switch via Healthchecks.io (detect non-execution, not just errors)
-3. Distributed tracing with deterministic trace IDs for cron-triggered async jobs
-4. LLM cost observability via LiteLLM proxy as a first-class production concern
+**Phase:** 2 — Peer Review
+**Date:** 2026-05-23
+**System under review:** scripts/vps/ orchestrator/callback/lifecycle contour
 
 ---
 
 ## Peer Analysis Reviews
 
-### Analysis A (DX Architect — Dan McKinley persona)
+### Analysis B — Neal (Evolutionary Architect)
 
-**Agreement:** Strongly Agree
-
-**Reasoning from ops perspective:**
-
-A agrees with me on the most operationally important question: node-cron is the wrong choice for production briefing jobs. A recommends BullMQ for the right reasons — retry logic, persistence, job history, concurrency control — and notes that node-cron is in-memory and will silently drop jobs on process restart.
-
-Where A and I diverge: A recommends node-cron at launch and BullMQ "at 100+ users." From my perspective, this is wrong timing. The node-cron failure mode — jobs silently disappearing on restart — hits you on the very first Fly.io rolling deploy during the 6 AM window, not at 100 users. Fly.io rolling deploys restart the process. If the cron fires at 5:59 AM and the deploy happens at 6:00 AM, the job is lost with no trace. This is not a scale problem. It is a day-1 operational risk.
-
-A's stack recommendation (boring, minimal, direct SDKs) aligns with my concern that operational complexity is the enemy. The DX framing ("simpler = easier to debug at 3 AM") is exactly right. A system a new engineer can understand in 4 hours is a system that can be fixed at 3 AM without the founder being awake.
-
-A explicitly acknowledges that from an ops perspective, the boring stack wins: "Fly.io: `fly restart`, `fly deploy --image`, `fly logs` — three commands cover 90% of incidents."
-
-**Missed gaps from ops perspective:**
-- A does not address dead man's switch monitoring at all. Recommending node-cron (even temporarily) without heartbeat monitoring means the team will not know when the scheduler itself is down.
-- A does not address the rollback plan for the first production deploy. BullMQ as "flag for revisit" means the first deploy is the riskiest moment and it has no safety net.
-- A treats monitoring as "Fly.io built-in + pino logs" which covers metrics but not distributed tracing for a multi-step async pipeline.
-
-**Rank: Strong**
-
----
-
-### Analysis B (Domain Architect — Eric Evans persona)
-
-**Agreement:** Partially Agree
+**Agreement:** AGREE — strongest peer analysis from an ops perspective
 
 **Reasoning from ops perspective:**
 
-B's domain analysis is the cleanest thinking in the peer set. The Signal → Item distinction, the SourceHealth aggregate, and the BriefingReady event firing to a separate Notification context all have direct operational implications.
+B is the only peer who builds executable tests alongside the analysis and asks
+the exact right ops question: "what fitness functions protect this architectural
+decision?" The answer — none, or inverted — is the correct diagnosis.
 
-From an ops perspective, B's design makes the 3 AM debugging path cleaner:
-- If a briefing is stuck in `fetching_sources` status for 45 minutes, I know which domain owns that and what to look at.
-- If SourceHealthDegraded fires, that is a named event I can alert on directly.
-- The explicit DeliveryAttempt entity means delivery failures are first-class data, not log noise.
+The fix-train detector (`check_fix_train.py`) is exactly what I would build after
+an incident like this. Five iterations of fixes on one file in 30 days IS the signal.
+That is your leading indicator. Not "how many bugs did we find" but "how many times
+did we touch this file in response to an incident." If `git log --grep=fix
+scripts/vps/callback.py` returns 12 commits in 30 days, you do not add another fix.
+You call a post-mortem.
 
-Where B misses the mark from my perspective: the domain model says nothing about where observability lives. B correctly identifies "Briefing context needs a scheduled job that verifies compilations complete within the SLO window" — but that verification job IS a fitness function, IS an alert, IS a runbook. The statement is there but the implementation detail is absent.
+The FF-07 (commit convention test that currently fails) is the right artifact. Making
+a test fail in CI because `_subject_implements` rejects 460 out of 636 real commits
+is not a test failure — it is the CI finally telling you what production has been
+trying to tell you for weeks. B's approach of "make the test fail NOW, then track
+passing it as the acceptance criterion" is textbook SRE incident response.
 
-The Notification context separation is correct and I agree with B's reasoning (briefing content and delivery channel change for independent reasons), but B does not address what happens when Telegram is down and email is the fallback. That is an ops failure mode with its own alert and runbook, not just a domain event.
+**Missed gaps from ops lens:**
 
-B's rejection of "agent-runtime" as a bounded context is correct from an ops perspective. A domain called "agent-runtime" with no clear SLI is unmeasurable. You cannot set an SLO on a concept that a business person cannot describe.
+- B's fitness functions are all static analysis or unit-level checks. There is no
+  discussion of what fires at 3 AM. The `check_fix_train.py` script is a health
+  signal, but it outputs to a shell. Who reads it? When? There is no alerting path
+  from the fitness function to an on-call human or Hermes notification. Without
+  that path, the signal exists but does not reach the responder.
 
-**Missed gaps from ops perspective:**
-- No SLI defined for any of the 7 bounded contexts. The domain model is clean; what you measure against it is absent.
-- SourceHealth is a great concept but B does not define when it transitions to "degraded." Is that 3 failures? 3 in a row? 3 in 24 hours? That threshold is an alert definition, and it is missing.
-- The "monolith-first deployment" note is correct for ops, but B does not address how the single deployment unit handles the cron scheduler co-existing with the HTTP server. If the web server OOMs, the cron scheduler dies too. That is an ops dependency that the domain design creates.
-
-**Rank: Moderate**
+- FF-04 (all test dirs in CI) is important but B frames it only as "makes 100 tests
+  runnable." The operational framing is stronger: those 100 tests currently do NOT
+  protect callback.py. Any commit that breaks callback behavior right now can land
+  on develop and stay there until a human notices. That is not a test coverage issue;
+  that is a production protection issue.
 
 ---
 
-### Analysis C (Data Architect — Martin Kleppmann persona)
+### Analysis C — Eric (Domain Modeler)
 
-**Agreement:** Agree
+**Agreement:** PARTIAL AGREE
 
 **Reasoning from ops perspective:**
 
-C is the most rigorous data-layer analysis in the peer set and directly supports several of my ops positions.
+C correctly identifies that five different meanings of "status" in one codebase is a
+diagnostic problem. When you are paged at 3 AM and you grep for "status" in the logs,
+you get noise from all five contexts. That is not just DDD philosophy — it is a real
+debuggability failure.
 
-The `usage_ledger` append-only pattern is not just a data architecture choice — it is the mechanism that makes cost auditing possible. When I get a 3 AM alert that LLM costs are anomalously high, I need to be able to query the usage_ledger to find which user triggered it, when, and for which briefing. A mutable counter destroys that audit trail. C's design preserves it.
+The observation that `verify_status_sync` is simultaneously in the Execution Context
+AND the Lifecycle Context is operationally important. When that function fails, the
+logs are ambiguous: did pueue fail, or did the lifecycle write fail? Those require
+different responses. You cannot triage from the current log output because the same
+function is doing both.
 
-C's explicit attention to `BEGIN IMMEDIATE` for atomic cap enforcement is production-critical and directly supports my "hard cap at infrastructure layer" position. C understands that a soft cap check followed by a separate increment is a race condition waiting to happen at scale.
+The proposed event model (SpecCreated, WorkCompleted, WorkVerified) is sound from an
+ops perspective specifically because events are observable. You can set up an alert on
+"WorkVerified but no StatusChanged within 30s." You cannot set up that alert against
+the current inline function-call architecture.
 
-The `briefing_sources` lineage table is operationally significant: when a user complains "my HN items are missing," I can query this table and see that hn_rss returned `fetch_status = 'timeout'` with `fetch_duration_ms = 10001`. That is a 30-second debugging path, not a 30-minute one. C designed observability into the data model.
+**Missed gaps from ops lens:**
 
-C's warning about SQLite WAL write serialization is correct but I want to push on the framing. C says "at 2000+ users, write queuing becomes measurable." From my ops perspective, that threshold needs to be defined as an SLO, not a narrative. "Briefing worker write latency p99 < 50ms" as a metric lets us see when we are approaching the serialization bottleneck before it becomes an incident.
+- C says nothing about what breaks at 3 AM. The bounded context diagram is clean but
+  it does not address the operational question: in the TO-BE world, if a StatusChanged
+  event is emitted but the Notification Context fails to consume it, how long before
+  someone knows? The event-sourcing proposal trades one class of silent failure (inline
+  function calls with bare except) for another (unconsumed events). Both are silent.
 
-**Missed gaps from ops perspective:**
-- C defines the data model for reliability measurement (delivery_latency_ms, synthesis_duration_ms, etc.) but does not define the query that runs nightly to produce the SLO report. The data is there; the observability tooling to surface it is not specified.
-- The `billing_period` as string ("2026-02") is correct, but C does not address how the billing period reset happens — is it a cron job, a Stripe webhook, or an application-layer check? That reset logic, if it fails, causes users to be incorrectly capped. It needs its own alert.
-- OAuth token expiry handling: C identifies this as a critical fix but does not specify the monitoring. I want an alert when `token_expiry < NOW() + 1 hour` for any active user, fired the evening before so the refresh can happen proactively, not at 5:59 AM.
-
-**Rank: Strong**
+- The `started_at` always-null finding is mentioned but the ops implication is skipped.
+  When you have an SLI for "spec cycle time" (how long from queued to done), a null
+  `started_at` means your SLI metric is broken and you do not know it. You are reporting
+  zero cycle time for specs, which looks great in dashboards and is completely wrong.
 
 ---
 
-### Analysis D (Evolutionary Architect — Neal Ford persona)
+### Analysis D — Erik Schluntz (LLM Architect)
 
-**Agreement:** Agree
+**Agreement:** AGREE — strongest companion to B from an ops lens
 
 **Reasoning from ops perspective:**
 
-D makes the most important structural observation in the peer set: "A kill gate without measurement is just a date." This is the operational statement of the year. The 90% reliability threshold is meaningless without the measurement pipeline running from day 1. D specifies building `reliability-check.js` before any feature code. That is the right order.
+D's silent failure catalogue (section 6.2) is exactly the kind of analysis I do after
+an incident. The ratio — 2 of 8 failures produce findable agent signals — is the
+production readiness verdict on this system. A system where 75% of failure modes are
+invisible is not production-ready, regardless of what the architecture diagrams look like.
 
-D's fitness functions are directly aligned with my alerting strategy:
-- `briefings_delivered / briefings_scheduled > 0.90` — D calls this a fitness function; I call it the primary SLI. They are the same thing defined at different layers.
-- The COGS check script (daily LiteLLM log query, alert at $0.035/task) is a more precise version of my daily spend alert.
-- The onboarding SLO E2E test is an ops fitness function: if the 10-minute time-to-first-value regresses to 15 minutes due to a slow source validation step, D's test catches it before production. My alert only catches it after a user calls support.
+The `vps-orch.py gate-check SPEC-ID` dry-run tool proposal is the single most
+operationally valuable concrete proposal in all seven analyses. Right now, if a spec is
+stuck blocked, the debugging path is:
 
-D's change vector analysis is operationally correct:
-- External source integrations (Gmail, Calendar, RSS, HN) are "uncontrolled" and high-change. From an ops perspective, this means each source needs its own circuit breaker and its own SourceHealth alert with different thresholds. HN RSS going down is a minor degradation. Gmail OAuth expiring is a complete loss of email triage.
-- LLM model versions change monthly-quarterly. D's LiteLLM adapter layer means a model swap does not require an ops runbook change — only a config update. That is correct operational design.
+1. Find the lifecycle yaml (know the path format)
+2. Read it manually
+3. Find the audit JSONL
+4. Grep for the spec_id across potentially thousands of lines
+5. Interpret the reason string (free text, not enum)
+6. Run git log manually to verify
 
-D's "Observe at 100+ users, not day 1" position on OpenTelemetry contradicts my Phase 1 recommendations. D recommends structured logging + Fly.io built-in metrics at launch, deferring full OTel. I recommended OTel from day 1. After reading D, I am partially persuaded. 100% sampling of 500 traces per day is not operationally expensive, but the OTel SDK setup overhead for a 2-person team on a 30-day timeline is real. I am revising my position: structured logging + Pino from day 1, OTel as a month-2 addition when the briefing pipeline structure is stable.
+That is a 15-minute debugging path for a simple question. D proposes collapsing it to
+one CLI call that returns structured JSON. That is the 3 AM fix. When you are paged at
+3 AM, you do not want to construct shell pipelines. You want a tool that answers "why
+is this blocked?"
 
-**Missed gaps from ops perspective:**
-- D specifies "rollback is a 1-command operation" but does not specify what metrics trigger the rollback. Fly.io supports `fly releases rollback` but I want to know: what is the automated trigger? Error rate > 5% in the first 15 minutes post-deploy? Three consecutive health check failures? Manual only? The mechanism is right; the trigger is absent.
-- D does not address the cron scheduler observability problem at all. The fitness functions cover output quality (reliability-check.js) but not input health (did the scheduler actually fire?). The dead man's switch is my unique contribution to this peer set and D does not contradict or address it.
+The `BOOTSTRAP_ANOMALY: 15 lifecycle yaml created in 30s` warning (section 6.1) is
+operationally precise. This is the alert that would have surfaced the incident at 11:19
+instead of 16:00. Four hours and forty-one minutes of MTTD reduction from one
+`log.warning` call with a threshold check. That is concrete.
 
-**Rank: Strong**
+**Missed gaps from ops lens:**
+
+- D focuses heavily on agent ergonomics but light on human on-call ergonomics. The
+  `vps-orch.py` tools are excellent for an agent debugger. But the on-call human at
+  3 AM needs a dashboard or a Hermes message, not a CLI. D does not propose how the
+  structured gate output flows into an observable surface.
+
+- The error taxonomy (InfrastructureError, ConfigurationError, GateEvaluationError,
+  LifecycleWriteConflict, DataIntegrityError) is correct, but D does not map each error
+  class to an alert severity. InfrastructureError should auto-retry silently.
+  ConfigurationError should page the on-call immediately — it means the system is
+  misconfigured and no amount of retrying will fix it. DataIntegrityError should pause
+  the pipeline and page. This mapping is the runbook, and it is missing.
 
 ---
 
-### Analysis E (LLM Systems Architect — Erik Schluntz persona)
+### Analysis E — Dan (DX Pragmatist)
 
-**Agreement:** Agree
+**Agreement:** PARTIAL AGREE — directionally correct, too aggressive on migration
 
 **Reasoning from ops perspective:**
 
-E is operating at a different layer than me — LLM internals rather than infrastructure — but the two analyses are complementary, not competing.
+E's "innovation token" accounting is a useful mental model. From an ops perspective,
+every "innovative" technology choice is also an ops burden: it has custom failure modes,
+custom debugging procedures, and custom runbooks. The git-as-DB choice (ADR-023) has
+at least four unique failure modes that do not exist in SQLite: stale-index race, CAS
+retry exhaustion, push failure, and stale WT read. Each of those requires a different
+debugging path. You cannot use "check if the database is up" as a health check — you
+have to know about git object store consistency, private GIT_INDEX_FILE semantics, and
+`git update-ref` CAS semantics.
 
-E's two-stage pipeline pattern (Haiku extraction + Sonnet synthesis) has direct ops implications I had not fully specified:
-- The 76% context reduction in synthesis means synthesis latency is more predictable. Sonnet with 4-6K input tokens has much tighter p99 latency than Sonnet with 24K input tokens. That matters for SLO compliance — a slow synthesis call can push the briefing outside the 30-minute delivery window.
-- The deterministic trace ID pattern (`sha256(user_id + scheduled_window)`) which I specified for the OTel root span works perfectly with E's two-stage pipeline — the same trace ID flows from extraction spans through synthesis to delivery confirmation.
+E's 1-rule gate proposal (`git log origin/develop --grep SPEC-ID`) is operationally
+attractive because it is debuggable by any engineer who knows git. The current 8-rule
+gate requires knowing the specific regex in `_subject_implements`, the convention
+history of awardybot, the circuit-breaker state, the `started_at` null behavior — none
+of which appear in the logs.
 
-E's `DeterministicChecks` running before delivery is exactly the right production gate. From my perspective, these checks are not just eval — they are the automated rollback trigger for individual briefings. If `schema_valid = false`, you do not deliver. You retry (once). If `generation_within_window = false`, you alert. This is the pre-delivery gate that separates "we generated something" from "we are confident this is production-quality output."
+**Missed gaps from ops lens:**
 
-E's LiteLLM budget_manager with `on_budget_exceeded: "throttle"` (not "raise") is correct for ops. A hard exception at budget limit causes the briefing job to fail and pops an alert. A throttle degrades gracefully and notifies the user via the briefing itself. Ops prefers graceful degradation over hard failure whenever possible.
+- E proposes migrating lifecycle state to SQLite in Wave 2 as a "boring" alternative.
+  This is correct in principle but the operational risk of this migration is understated.
+  You currently have 190+ lifecycle YAML files in git with a CAS write history. If you
+  migrate to SQLite and the migration fails halfway through (partial state migration),
+  you have split-brain between the old git state and the new SQLite state with no
+  automatic reconciliation. E does not address the migration failure mode at all.
+  ADR-023 at least has the property that a failed write leaves the old state intact
+  (CAS failure = no write). A half-migrated SQLite schema does not have this property.
 
-E's cost estimate (~$0.066/day per user) aligns closely with my alert thresholds ($2/user/day as the anomaly alert). E's normal is $2/month; $2/day is 30x anomalous. That ratio gives me confidence my alert threshold is not too sensitive.
-
-**Missed gaps from ops perspective:**
-- E specifies the LLM-as-judge eval on 10% of briefings but does not specify the operational alert when the judge score drops below threshold. If judge scores drop from 3.8 to 3.1 over a week (model regression, prompt drift, source quality degradation), who finds out? E assumes a human reviews the score; I want an alert that fires when the 7-day rolling judge average drops below 3.5.
-- E does not address the failure mode where LiteLLM proxy itself goes down. If the proxy is unavailable, every briefing fails silently. The proxy needs its own health check and its own alert — separate from the Anthropic API health.
-- The golden dataset bootstrap problem (chicken-and-egg: you need 20 rated briefings before CI can run regression tests) is a real ops planning gap. E identifies it but proposes "use the first 14 days of free trial." That means CI regressions cannot be detected until day 14+. I would add: build the golden dataset from synthetic briefings using known-good inputs during the development phase, before any real users exist.
-
-**Rank: Moderate**
+- The SQLite proposal makes single-machine observability easier (SQL queries are instant,
+  no git log parsing) but makes multi-node visibility harder. E correctly notes that
+  multi-machine may be theoretical. If it ever becomes real, you need a plan. E proposes
+  "periodic backup to git" as the answer — that is hand-waving on an ops-critical
+  question. What is the RPO on that backup? What is the reconciliation procedure when
+  the backup is stale?
 
 ---
 
-### Analysis F (Devil's Advocate — Fred Brooks persona)
+### Analysis F — Martin (Data Architect)
 
-**Agreement:** Partially Agree
+**Agreement:** PARTIAL AGREE — excellent on schema, underweights operational failure modes
 
 **Reasoning from ops perspective:**
 
-F is the most useful analysis in the peer set from my perspective, not because F is right about everything, but because F identifies the failure mode I am most worried about: a team that builds infrastructure for 90 days and ships no briefing quality.
+The SoR conflict table (what is declared SoT vs what the code actually reads) is the
+most useful single table in all seven analyses from an operational standpoint. When you
+are debugging a false-done flip at 3 AM, you need to know which of three representations
+is "real." Right now, that question has no documented answer. F makes it explicit.
 
-F's minimum viable stack counter-proposal is operationally interesting:
+The `blocked_code` enum proposal (orphaned_crash, gate_reject, circuit_open,
+manual_hold, qa_fail, convention_miss) directly enables the SLI dashboard I would want:
+"what percentage of blocked specs are blocked due to convention_miss vs actual gate
+failures?" Right now that query is impossible because blocked_reason is free text. With
+an enum, you can alert on "convention_miss rate > 10% in the last hour" — which is
+exactly the leading indicator for the false-blocked problem.
 
-```
-Runtime:    Node.js 22 + TypeScript
-Cron:       node-cron
-LLM:        Anthropic SDK direct
-Storage:    SQLite file on Fly.io volume (WAL mode)
-Auth:       JWT + bcrypt
-Billing:    Stripe
-```
+The `dispatched_at` rename (from `started_at`) is operationally correct. You cannot
+compute mean time from dispatch to completion with a field that is always null. That
+is your SLI for pipeline throughput, and it is broken.
 
-This stack has significant ops advantages F does not fully articulate:
-- Fewer moving parts = fewer failure modes = simpler runbook
-- No Turso network dependency = no network partition between app and database at 6 AM
-- No Clerk webhook sync = no billing sync failure mode
-- Direct Anthropic SDK = LiteLLM proxy is not a SPOF
+**Missed gaps from ops lens:**
 
-But F's minimum viable stack has a critical ops flaw: node-cron is in-memory. F's counter-proposal does not address my primary concern — silent cron non-execution. F says "heartbeat monitoring" is mentioned in the architecture agenda but F does not propose a solution. F critiques the complexity of the proposed stack without acknowledging that some complexity (BullMQ + Redis for job persistence, Healthchecks.io for dead man's switch) is justified specifically by the 3 AM problem.
+- F proposes Wave 0 through Wave 3 data migrations but does not address the rollback
+  procedure for any of them at the operational level. "Rollback mechanism: revert
+  orchestrator.py commit" is a code-level answer. The ops question is: if Wave 0.1
+  (killing bootstrap_new_specs) is reverted at 2 AM because it caused a regression,
+  what happens to the 15 specs that were already bootstrapped incorrectly? Do they get
+  cleaned up? How? That is the operational gap in the migration plan.
 
-F's behavioral memory moat critique resonates: "A news aggregator has been collecting click signals for years; none of them have a defensible moat from it." This is true and has an ops implication — if behavioral memory is day-90 scope, then the memory signal collection infrastructure (briefing_feedback table, memory_signals table, weekly snapshot job) is day-90 scope too. That simplifies the MVP data model significantly.
-
-F's SPOF analysis ("the founder as sole architect") is a legitimate ops concern dressed in DX language. If the system is complex enough that only the founder can debug it at 3 AM, that is an ops risk, not just a team risk.
-
-F correctly identifies that LangGraph checkpointing creates a failure mode (corrupted checkpoint store causing duplicate or missing briefings) that a simple idempotent cron job with `user_id + date` uniqueness does not have. This is directly an ops concern I should have raised more explicitly in my Phase 1 analysis.
-
-**Missed gaps from ops perspective:**
-- F proposes email + password auth as simpler than Clerk. From an ops perspective, this is wrong. Building your own auth means you own the OAuth CSRF state handling, token rotation, session invalidation, and Google App Verification compliance. F treats auth as a simple database concern. B (Security) correctly identifies the CSRF state forgery on the OAuth callback as a CRITICAL vulnerability. F's "200-300 lines of TypeScript" does not include correct OAuth state handling.
-- F criticizes the reliability measurement pipeline as premature ("manual review of first 50 briefings"). From my perspective, this is the most dangerous simplification in the peer set. Manual review means you do not know about systematic quality degradation until a user cancels. That is too late. The deterministic checks (schema validation, on-time delivery flag) can be automated in 2 hours, cost nothing to run, and catch the most common failure modes.
-- F says nothing about what happens at 6 AM when something goes wrong. The "stress test" section covers failure scenarios but proposes no monitoring or runbook. Critique without counter-proposal is insufficient from an ops standpoint.
-
-**Rank: Moderate**
+- The PRAGMA user_version proposal is correct, but F does not address what happens if
+  the orchestrator starts and finds a database at version 3 when the code expects version
+  5. The current code (process-global flag) would re-apply migrations. With PRAGMA
+  user_version, a version mismatch means the code either refuses to start or applies
+  migrations automatically. F describes the happy path but not the operational procedure
+  for "we deployed a new version of the code and the DB migration failed."
 
 ---
 
-### Analysis G (Security Architect — Bruce Schneier persona)
+### Analysis G — Fred (Devil's Advocate / Brooks)
 
-**Agreement:** Agree
+**Agreement:** PARTIAL AGREE — philosophically correct, operationally vague
 
 **Reasoning from ops perspective:**
 
-G's threat model directly informs my ops runbooks. The STRIDE analysis maps cleanly to alert categories:
-- Spoofing → JWT validation failures alert
-- Information Disclosure → OAuth token decryption failures alert (if this fires, it is a breach indicator)
-- Denial of Service → LLM cost anomaly alert
-- Elevation of Privilege → workspace isolation query validation
+G's most important observation is not architectural — it is operational: the incident
+took from 11:19 to 16:00 to detect. That is 4 hours and 41 minutes of undetected
+production failure. G cites this but does not frame it as the ops verdict it is. A
+system that fails silently for 4 hours and 41 minutes does not have an architecture
+problem — it has an observability problem. The architecture problems created the failure
+mode, but the 4:41 gap is a pure observability gap.
 
-G's I4 point about Google OAuth App Verification is the most operationally critical timeline dependency in the entire peer set: "Start the verification process on day 31, not day 89. The review can take 4-6 weeks. Without it, users see a 'This app hasn't been verified' warning."
+G's 0-rule callback design (section II) is operationally important because it isolates
+the gate into a separate, independently observable process. A 60-second polling daemon
+has a health check endpoint. A callback script called by pueue does not. "Is the gate
+running?" is currently unanswerable without pueue integration knowledge. In a separate
+gate.py daemon, it is `systemctl status gate.service`.
 
-This is not a security concern — it is an ops/launch planning concern that G identified from the security angle. If the founder does not initiate Google Cloud OAuth verification on day 31, the Phase 2 launch at day 61 is blocked. No reviewer in this peer set except G identified this specific timeline risk.
+The Evaporating Cloud (section VIII) correctly identifies that the perceived binary
+choice (patch vs rewrite) is false. But from an ops perspective, the constraint is not
+"rewrite cost" — it is "who absorbs production risk during the transition?" G does not
+address this. A strangler fig migration means running two gate implementations in
+parallel. What is the consistency strategy during that period? If both gates disagree
+on a spec's status, which wins?
 
-G's deletion sequence (10-step ordered procedure: mark deletion_pending → revoke Google OAuth → revoke Telegram → cancel Stripe → delete DB records → delete Clerk) is an ops runbook masquerading as a security procedure. I want this as a documented runbook in the operations playbook, not just in the security architecture section. Account deletion failures at 3 AM are support tickets that escalate quickly.
+**Missed gaps from ops lens:**
 
-G's recommendation to NOT store Gmail email content (subjects, senders, snippets) in the database has an ops implication I did not address: it means the only data available for debugging "why did the briefing not include this email?" is the briefing_sources table showing fetch_status and items_fetched — not the actual email content. This is the right privacy tradeoff but it means my debugging runbook for email-related briefing issues needs to acknowledge that the raw email data is gone and I can only see aggregate statistics.
+- G's "gate.py polls every 60 seconds" proposal is architecturally clean but introduces
+  a new failure mode: what happens if gate.py fails silently? Right now, callback.py
+  runs synchronously in response to every pueue completion event. If it fails, pueue
+  records a non-zero exit code (or catches exit 0 with an error log). Gate.py as a
+  daemon can die silently between poll cycles and nothing will notice until specs stop
+  transitioning. G needs a health check + alert for gate.py.
 
-G's alert on "Google API returning 403 on token refresh" is exactly the alert I would write for the OAuth expiry failure mode. This is the production alert that fires when a user's Gmail integration breaks silently at 5 AM.
-
-**Missed gaps from ops perspective:**
-- G does not specify the Telegram webhook validation runbook. What happens at 3 AM when the webhook secret mismatch alert fires? Is it a probing attack? Is it a Telegram infrastructure issue? The alert is defined; the runbook is not.
-- G recommends Cloudflare in front of Fly.io for DDoS protection but does not address that Cloudflare in front of Fly.io adds an additional DNS/proxy layer that can cause its own incidents. Cloudflare has had multiple high-profile outages. At <500 users, a Fly.io-native rate limiter is simpler and has fewer moving parts.
-- G's suggestion to cache access tokens in memory (process-level) for 50 minutes conflicts with multi-process scenarios. If Fly.io auto-scales to 2 machines for a traffic spike (unlikely but possible), each machine has its own in-memory cache with a different token state. The per-machine inconsistency is usually harmless but should be documented as a known behavior.
-
-**Rank: Strong**
+- The "60-second delay is acceptable" argument is made on the basis that the current
+  system had 4:41 detection latency. That comparison is correct but the implication is
+  wrong: 60 seconds is acceptable for STATUS detection, but what is the latency for
+  QA/reflect dispatch? Currently those fire synchronously after verify_status_sync.
+  In G's model, the gate polls every 60s and presumably fires dispatch after detecting
+  done status. If a spec finishes at 11:19:01 and the gate polls at 11:19:00 and then
+  again at 11:20:00, QA dispatch happens at 11:20:00 — a 59-second delay on QA. At
+  high volume (10 projects, rapid completions), this creates a 59-second pipeline
+  stall per task. G should address the dispatch latency implication.
 
 ---
 
-## Ranking
+### Analysis H — Bruce (Security Architect)
 
-**Best Analysis:** C (Data Architect)
+**Agreement:** PARTIAL AGREE — security findings are correct, ops implications overstated
 
-**Reason:** C's analysis has the highest density of operationally relevant decisions. The usage_ledger append-only pattern, the briefing_sources lineage table, the `BEGIN IMMEDIATE` atomic cap enforcement, and the explicit treatment of Litestream as "non-negotiable" for backup — every design decision in C has a direct equivalent in my ops runbooks. C designed observability into the data model rather than bolting it on afterward. The `briefings.delivery_latency_ms`, `briefings.synthesis_duration_ms`, and `briefings.llm_cost_usd` fields ARE the SLO measurement data source. C understood that the database is not just storage — it is the audit trail and the debugging artifact.
+**Reasoning from ops perspective:**
 
-**Worst Analysis:** E (LLM Systems Architect)
+H's TELEGRAM_BOT_TOKEN exposure is correctly identified as P0. But from an ops
+perspective, the reason it is P0 is not primarily security — it is operational
+integrity. If an attacker is reading all bot messages, they have full visibility into
+what the operator is doing with the pipeline. That is an ops confidentiality issue as
+much as a security issue.
 
-**Reason:** E is technically correct but operationally incomplete. E specifies what to measure (eval pipeline, deterministic checks, golden dataset) without specifying who finds out when the measurements indicate a problem. The eval pipeline is a monitoring system without alerts. The golden dataset is a regression detector without a deployment gate. The COGS estimate is accurate but the alert threshold is not defined. E optimized for LLM system correctness; I am optimizing for what happens after the correctness checks fail. From a production readiness perspective, the eval pipeline without alerting is a tree falling in a forest — it makes a sound only if someone is watching the dashboard.
+H's audit JSONL HMAC proposal (section data protection) is an ops win beyond the
+security win. If every audit line has an HMAC and you find a line without a valid HMAC,
+you know exactly when the log was tampered with (the break in the chain). That is
+forensic capability, not just prevention. After the 4:41 undetected incident, being
+able to answer "was this log entry written by the callback or by something else?" is
+operationally valuable.
+
+The git plumbing timeout proposal (P1 DoS fix) is the most immediately actionable
+security recommendation from an ops standpoint. An unresponsive `git push` silently
+holding `_write_lock` is also an ops incident: all subsequent pueue completions queue
+up, slots are not released, the orchestrator effectively stalls. Timeout=30 in
+`lifecycle.py:_run()` is a two-line change that prevents a class of operational stalls.
+
+**Missed gaps from ops lens:**
+
+- H identifies the backlog.md WT read as "an active exploit path" (P0) but frames it
+  primarily as a security attack vector. The operational framing is equally important:
+  this is not a theoretical attack — it happened today, at 11:19, and produced 15
+  false-done transitions that were undetected until 16:00. The mitigation (read from
+  HEAD instead of WT) is the same regardless of whether you frame it as security or ops,
+  but the priority justification is stronger when you cite the actual incident.
+
+- H's defense-in-depth Layer 4 (alert when bootstrap creates > N yamls) is exactly
+  right but buried. This should be the headline recommendation from a security+ops
+  perspective: the one control that would have caught today's incident is a threshold
+  alert on mass-bootstrap events.
+
+---
+
+## Convergence
+
+All seven analyses converge on the following points, and the convergence is itself
+evidence of production-readiness issues:
+
+**C1: bootstrap_new_specs reads dirty WT — must die.**
+B, C, D, E, F, G, H all identify `orchestrator.py:295` as the root cause of the 15
+fake-done flips. No peer defends this code path. This is the clearest P0 consensus
+in the entire council.
+
+**C2: callback.py at 1374 LOC is the central source of ops brittleness.**
+Every analysis notes this. The reasons differ (domain boundaries for C, agent ergonomics
+for D, innovation tokens for E, DDIA for F, Brooks conceptual integrity for G, attack
+surface for H) but the verdict is unanimous.
+
+**C3: scripts/vps/tests/ not in CI is a one-line fix with maximum ops return.**
+B, D, E identify this. From an ops perspective: you are running 100 tests manually that
+CI does not run. Every deploy to develop happens without that test safety net. This is
+the cheapest production protection improvement available.
+
+**C4: _push_best_effort at DEBUG is a monitoring anti-pattern.**
+B, D, E, F, G all flag this. Multi-machine convergence failures are invisible. This is
+not a "nice to have" — it is a broken alert that should be firing and is not.
+
+**C5: _subject_implements at ~28% accuracy for awardybot is a systematic false-blocked
+generator.**
+B, C, D, E, F, G, H all identify this in some form. The gate is producing wrong
+outcomes at production scale.
+
+---
+
+## Divergence
+
+**D1: SQLite vs git as lifecycle SoT.**
+
+E (Dan) argues strongly for migrating to SQLite — the "boring" choice. G (Fred)
+also leans SQLite by implication (simpler, fewer failure modes). B (Neal) accepts
+ADR-023 git-YAML and argues for fixing the implementation bug rather than replacing
+the design. F (Martin) works within the git-YAML framework and proposes schema
+improvements to it.
+
+From an ops perspective: the git-YAML approach has unique failure modes (CAS retry
+exhaustion, stale-index race) that SQLite does not have. But SQLite-as-SoT has its own
+failure modes that git-YAML avoids: a corrupt SQLite file is not recoverable by git
+history alone. A corrupt lifecycle YAML git tree IS recoverable — `git fsck` and the
+commit history are your backup. The divergence is real and has operational substance.
+
+**D2: "60-second gate polling" vs "synchronous callback gate."**
+
+G proposes separating the gate into a polling daemon. D (Erik) implicitly supports this
+via the `gate-check` dry-run tool concept. B, C, E, F, H work within the synchronous
+callback model. From an ops perspective, the polling daemon has better isolation but
+worse latency guarantees and requires its own health monitoring. This is a genuine
+design trade-off, not a clear win either direction.
+
+**D3: Complexity of circuit breaker.**
+
+E argues the circuit breaker is justified ("innovation token: keep"). G argues it should
+be simplified to a log warning + alert, not a pueue pause. B accepts it as a useful
+operational control. From an ops perspective: a circuit breaker that pauses the entire
+orchestrator when triggered is a blunt instrument that converts a data problem (mass
+false-done) into an availability problem (nothing runs). A warning + alert preserves
+observability without adding a second failure mode.
+
+---
+
+## Ranking: Top 3 Proposals by Ops Leverage
+
+**Rank 1: D (Erik / LLM Architect)**
+
+Reason: D is the only peer who explicitly addresses the MTTD problem (from 11:19 to
+16:00) and proposes concrete operational tooling to close it. The `vps-orch.py status`
+CLI, the `BOOTSTRAP_ANOMALY` threshold warning, and the silent failure catalogue
+(section 6.2) are directly actionable runbook components. D's proposals reduce MTTD
+from 4:41 to minutes for the specific incident class that occurred today.
+
+**Rank 2: B (Neal / Evolutionary Architect)**
+
+Reason: B's fitness functions are executable and immediately deployable. The fix-train
+detector is a leading indicator that does not exist anywhere else in the seven analyses.
+A system where "more than 3 incident commits to callback.py in 30 days" triggers a
+mandatory architect review is a system that self-signals architectural distress before
+the next incident. FF-07 (convention tests that currently fail) makes the false-blocked
+problem a CI gate rather than a production surprise.
+
+**Rank 3: E (Dan / DX Pragmatist)**
+
+Reason: E's 1-rule gate proposal (`git log origin/develop --grep SPEC-ID`) reduces the
+debuggability surface from 8 inference rules to 1 verifiable git command. Any on-call
+engineer can run that command. You cannot run `_subject_implements` manually in the
+current system — it is an internal function with no CLI exposure. Ops observability
+is proportional to the debuggability of individual components.
+
+---
+
+## Ops-Specific Analysis
+
+### Which proposals are HARDER to debug in production than current state?
+
+**G's 60-second polling gate.py daemon:**
+
+The current callback.py runs synchronously and exits. If it fails, pueue records it.
+A polling daemon can fail silently between cycles with no pueue visibility. If gate.py
+crashes at 11:20 and no one checks until 16:00, specs sit in `in_progress` forever —
+the same MTTD problem that occurred today, now applied to the gate process itself.
+G's proposal requires gate.py to have its own health monitoring (systemd service,
+heartbeat alert) before it is operationally equivalent to the synchronous callback.
+Without that monitoring, it is harder to debug, not easier.
+
+**C's event-sourcing domain events:**
+
+Emitting domain events (SpecCreated, WorkCompleted, WorkVerified, StatusChanged) adds
+an asynchronous consumption path between status determination and status recording.
+If a StatusChanged event is emitted but the consumer fails, the spec status is not
+updated. That failure is silent by default. The current synchronous inline path has
+the same silent-failure problem (bare except) but at least the failure occurs in a
+single traceable code path. With events, you need to trace across the event bus,
+check consumer lag, verify delivery. C's proposal adds operational complexity without
+addressing the observability gap that makes the current system hard to debug.
+
+**H's HMAC audit JSONL:**
+
+This is the right idea operationally (tamper-evident logs are essential for forensics)
+but the implementation adds a new failure mode: if the HMAC key is rotated, all existing
+audit entries fail validation and `scan_queued` drops them. H does not address key
+rotation procedure. A HMAC implementation without a documented key rotation runbook is
+a future 3 AM incident.
+
+### Which proposals would have caught the incident at 11:19 vs 16:00?
+
+**Would have fired at 11:19 (within minutes of the incident):**
+
+1. D's `BOOTSTRAP_ANOMALY: N lifecycle yaml created in 30s` warning. This fires
+   immediately when bootstrap creates > 5 yamls in rapid succession. The 15 fake-done
+   flips would have produced this warning at the moment they occurred.
+
+2. B's FF-07 (convention test suite that currently fails). This does not prevent the
+   bootstrap incident directly, but running `scripts/vps/tests/` in CI (FF-04) would
+   have caught the bootstrap_new_specs WT read bug if a test existed for it. B's
+   FF-06 (incident regression bank) explicitly proposes `test_bootstrap_new_specs_skips_done_specs`
+   as the required test.
+
+3. H's alert: "bootstrap creates > N yamls in one pass." H proposes this in Layer 4
+   but it is essentially the same alert as D's.
+
+**Would have reduced detection from 16:00 to ~hours:**
+
+4. Any of the proposals that upgrade `_push_best_effort` from DEBUG to WARNING. If git
+   push failures were logging at WARNING, the operator would have seen anomaly signals
+   sooner — though not necessarily within minutes.
+
+**Would NOT have caught this incident regardless:**
+
+- B's LOC fitness function (FF-01) — the incident is not about LOC.
+- C's bounded context decomposition — the incident is caused by a specific code path
+  (WT read in bootstrap), not by bounded context violations.
+- E's SQLite migration — the incident would still occur if bootstrap read dirty WT
+  from an SQLite source.
+- H's TELEGRAM_BOT_TOKEN rotation — entirely unrelated to the bootstrap incident.
+
+### Are any peers adding silent failure modes?
+
+**Yes: C's event model without delivery guarantees.**
+
+If StatusChanged events are emitted but not consumed (consumer crash, queue full,
+delivery timeout), the spec status is never updated. C does not propose a delivery
+guarantee mechanism (at-least-once delivery, dead letter queue, consumer health check).
+The current synchronous call is bad (bare except, no retry) but the failure is locally
+visible. An unconsumed event is invisible without event bus monitoring.
+
+**Potentially: F's `dispatched_at` field rename.**
+
+F proposes renaming `started_at` to `dispatched_at` and setting it on pueue dispatch
+rather than on in_progress transition. This is a schema change. If the migration runs
+partially (some yamls updated, some not), you have a mixed schema in production. Reads
+that check `dispatched_at` will find null on old yamls (because the field was formerly
+`started_at`). F's rollback procedure for this is "revert code to use `started_at`" —
+but the old yamls that were already renamed to `dispatched_at` will then return null on
+every read. F should address the mixed-schema operational window.
+
+---
+
+## One Thing Peers Missed About Operability
+
+**No peer proposed SLOs.**
+
+Seven analyses identify failure modes, propose fixes, debate architecture — but not a
+single analysis defines what "healthy" looks like quantitatively. An SLO is not a
+philosophical statement. It is an operational contract: "99.X% of task completions
+produce a correct lifecycle transition within Y seconds."
+
+For this system, the SLIs that matter are:
+
+| SLI | What it measures | Target |
+|-----|-----------------|--------|
+| Gate accuracy | % of correct lifecycle transitions (no false-done, no false-blocked) | 99.5% |
+| MTTD on false-done | Time from first fake-done to detection alert | < 5 minutes |
+| Gate latency | Time from pueue completion to lifecycle write | < 30 seconds (p99) |
+| Commit recognition rate | % of commits on develop correctly matched by gate | > 99% |
+
+None of these SLIs are currently measurable. The gate accuracy metric requires the
+`blocked_code` enum (F's proposal). The commit recognition rate requires the audit JSONL
+to record `commits_scanned` and `commits_matched` counts (D's `GateResult` dataclass).
+MTTD on false-done requires the bootstrap threshold alert (D's section 6.1).
+
+Without SLOs, you cannot define what "fixed" looks like. The 8-rule redesign (cefaa55)
+was shipped without an SLO for gate accuracy. If it had been shipped with "gate accuracy
+must be > 99% on a representative commit sample" as an acceptance criterion, the
+trajectory convention test (FF-07 in B's analysis) would have been required before
+deploy, and the false-blocked problem on awardybot/dowry would have been caught in
+CI rather than discovered through a 4-hour production incident.
+
+**The specific SLO I would commit to as an acceptance criterion for the gate rewrite:**
+
+`_subject_implements` or its replacement must correctly classify ≥ 99% of commits
+in a golden test dataset containing both canonical-scope commits and trailer-convention
+commits from all managed projects. This dataset must be version-controlled and run in
+CI. Any gate change that regresses below 99% accuracy on this dataset is blocked.
+
+Without this SLO, the fix-train will resume. The next gate redesign (call it cefaa56)
+will optimise for a different subset of commit formats and break a third. The only way
+to stop the cycle is to define what "correct" means numerically before writing the code.
 
 ---
 
 ## Revised Position
 
-**Revised Verdict:** Partially changed from Phase 1.
+**Revised Verdict:** Refined from Phase 1
 
-**Changes based on peer critiques:**
+**Change Reason:**
 
-**1. OTel timing — revised.**
+Reading seven analyses confirms the ops gaps I would have flagged independently
+(MTTD too long, no leading indicators, silent failures dominate) but adds two
+refinements:
 
-D argued persuasively that structured logging + Fly.io metrics covers the Phase 2 MVP observability needs, and OTel adds setup overhead on a 30-day timeline. I was advocating 100% OTel from day 1. My revised position: Pino structured logging from day 1 (mandatory, non-negotiable), OTel SDK as month-2 addition. The trace_id in every log line (manually generated, not OTel-sourced) is sufficient for the MVP. OTel Tempo provides more, but it is additive, not foundational.
+1. The fix-train pattern (B) is a better leading indicator than any individual alert.
+   I would add fix-train monitoring to my ops toolkit.
 
-**2. BullMQ timing — unchanged.**
+2. The `vps-orch.py gate-check` dry-run tool (D) is the single highest-leverage ops
+   improvement available. It makes the gate debuggable without side effects — something
+   that currently does not exist and costs about 80 lines of Python.
 
-A suggested node-cron at launch, BullMQ at 100+ users. I disagree with this revision. F's analysis of the Fly.io rolling deploy failure mode confirmed my concern: if the deploy happens during the briefing window, node-cron jobs disappear silently. This is not a scale problem — it is a day-1 operational risk. BullMQ with Upstash Redis (free tier) is the right call from the first deploy.
+**Final Ops Recommendation:**
 
-**3. Behavioral memory monitoring — revised based on F.**
+**P0 (before next callback/lifecycle commit):**
+- One line: `pyproject.toml testpaths` adds `scripts/vps/tests`
+- Five lines: `bootstrap_new_specs` reads HEAD not WT (or kills the function)
+- One line: `_push_best_effort` promoted from DEBUG to WARNING
+- Five lines: `bootstrap_new_specs` fires `log.warning BOOTSTRAP_ANOMALY` if `created_count > 3`
 
-F convinced me that behavioral memory infrastructure is day-90 scope, not day-1. This means my initial design of the memory_signals monitoring and the weekly snapshot job alert should be deferred. The ops burden of monitoring the memory signal pipeline is real. For the MVP, "briefing preference configuration updated" is a simple log event — no complex feedback loop to monitor.
+These four changes are the minimum viable ops improvement. They close the MTTD gap
+for the specific incident class that occurred today and provide the basic observability
+foundation everything else builds on.
 
-**4. Google OAuth verification timeline — new critical item, from G.**
+**P1 (within this sprint):**
+- `vps-orch.py status SPEC-ID` CLI (D's proposal, ~50 LOC)
+- Fix-train detector integrated with Hermes alert (B's proposal, ~30 LOC)
+- blocked_code enum field in lifecycle YAML (F's proposal)
+- Add `commits_scanned`/`commits_matched` to audit JSONL (enables gate accuracy SLI)
 
-I missed this entirely in Phase 1. The Google Cloud OAuth verification process must start on day 31 of Phase 2 (the first day of building), not at launch. This is a 4-6 week external dependency that blocks production launch. It is now the first item on the Phase 2 operational checklist, before any other runbook.
+**P2 (architectural sprint):**
+- Gate accuracy SLO defined and enforced in CI via golden dataset test (the missing SLO)
+- B's convention test suite (FF-07) — makes gate regression a CI failure
+- D's full `vps-orch.py` CLI suite with structured gate output
 
-**5. LiteLLM proxy as SPOF — new concern, synthesized from F and E.**
-
-F's simplicity argument and E's LiteLLM dependency assumption together surfaced a gap I had not addressed: if the LiteLLM proxy is down, every briefing fails silently. The proxy needs its own health check endpoint and its own alert separate from the Anthropic API check. Alternatively: implement a direct-SDK fallback path (`if LITELLM_DOWN use anthropicClient directly`) that bypasses the proxy when it is unavailable. This adds code complexity but removes a SPOF.
-
----
-
-## Final Ops Recommendation
-
-**Production readiness for a 6 AM briefing agent requires exactly these five things, in priority order:**
-
-1. **Dead man's switch (Healthchecks.io)** — configured before the first production deploy. If the briefing cycle does not complete by 6:30 AM, the founder gets an SMS. This is the only alert that is unambiguously "wake up now."
-
-2. **BullMQ + Upstash Redis** — not node-cron. The persistent job queue is the difference between "we know this failed" and "we have no idea why the briefing never ran." On a 30-day build timeline with a 30-day free trial, one silent scheduler failure in the first two weeks is a conversion killer.
-
-3. **Google OAuth verification — start day 31, not day 89.** This is an external process with a 4-6 week timeline. It is the only item on this list that the team cannot control by writing code. Every other production readiness item can be completed in a sprint. This one cannot.
-
-4. **Structured logging with trace_id on every log line** (Pino from day 1). The trace_id can be manually generated (sha256 of user_id + scheduled_window) rather than OTel-generated. What matters is that every log line for a briefing run shares the same ID so I can reconstruct the entire execution in Loki with one query.
-
-5. **LLM cost alert before the first user** — a Grafana alert that fires when daily LLM spend exceeds $15. One misconfigured user with a large context can consume the entire $500/month budget in 3 days. This alert is the difference between catching a runaway cost before the invoice and finding out at the end of the month.
-
-Everything else — OTel Tempo, multi-region Fly.io, per-source circuit breakers, LLM-as-judge eval pipeline — is a month-2 concern after the first 50 users have been onboarded and the failure modes are empirically known.
-
-The system is not production-ready until you can answer this question with specific commands:
-
-"It is 6:35 AM. The Healthchecks.io SMS fires. What do you do next?"
-
-```
-1. fly logs -a briefing-prod | grep "briefing.cycle.failed" | tail -20
-2. redis-cli -u $REDIS_URL LLEN bull:morning-briefings:failed
-3. fly status -a briefing-prod
-4. POST /admin/briefings/retry?window=06:00&status=failed
-5. Monitor Telegram delivery confirmation in logs
-```
-
-If you cannot answer that question with specific commands, the system is not ready to take users.
+The architectural questions (SQLite vs git-YAML, polling gate vs synchronous callback,
+domain event model) are real but secondary. You cannot architect your way out of a
+4-hour MTTD. Fix the observability first. Then redesign from a position of visibility.
 
 ---
 
 ## References
 
-- My Phase 1 research: `/Users/desperado/dev/dld/ai/architect/research-ops.md`
-- Peer analyses reviewed: A (DX), B (Domain), C (Data), D (Evolutionary), E (LLM), F (Skeptic), G (Security)
-- [Google SRE Book — Service Level Objectives](https://sre.google/sre-book/service-level-objectives/)
-- [Charity Majors — Observability Engineering (O'Reilly)](https://www.oreilly.com/library/view/observability-engineering/9781492076438/)
-- [Healthchecks.io — Dead man's switch pattern](https://healthchecks.io/docs/)
-- [BullMQ — Job queue reliability](https://docs.bullmq.io/)
-- [Google OAuth App Verification — Timeline requirements](https://support.google.com/cloud/answer/9110914)
+- Peer analyses B through H (anonymized): `/home/dld/projects/dld/ai/architect/anonymous/`
+- Deep audit report: `/home/dld/projects/dld/ai/audit/deep-audit-report.md`
+- Architecture agenda: `/home/dld/projects/dld/ai/architect/architecture-agenda.md`
+- callback.py (1374 LOC): `/home/dld/projects/dld/scripts/vps/callback.py`
+- lifecycle.py (602 LOC): `/home/dld/projects/dld/scripts/vps/lifecycle.py`
+- orchestrator.py (667 LOC): `/home/dld/projects/dld/scripts/vps/orchestrator.py`

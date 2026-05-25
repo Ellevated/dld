@@ -662,8 +662,14 @@ Quick path:
 python3 scripts/vps/spec_verify.py <project_dir> <SPEC_ID>
 
 # Step 7 - if you need to demote a false-done
-python3 scripts/vps/spec_operator.py demote <project> <SPEC_ID> "<reason>"
+python3 scripts/vps/spec_operator.py demote <project> <SPEC_ID> "<reason>" --by=qa
 ```
+
+> **Identity contract (ADR-024):** `--by=qa` is a *statement* — it lands in
+> `ai/lifecycle/<SPEC>.yaml:transitions[].by` as a permanent audit record.
+> Passing `--by=operator` from a QA session is forgery. Use `--by=qa` for
+> QA-triggered demotes, `--by=operator` only when a human runs the CLI
+> interactively.
 
 Steps 4-6 (tests, migrations, acceptance) stay manual — exercise the product
 yourself, do NOT just trust the heuristic report.

@@ -1,0 +1,19 @@
+allowed_files_hash: null
+blocked_reason: fix merged c1068f5+bd1edca; spec was never bootstrapped (ARCH-193
+  forensic root cause)
+finished_at: '2026-05-25T07:19:06Z'
+kind: bug
+priority: p0
+pueue_id: null
+spec_id: BUG-192
+started_at: null
+status: done
+transitions:
+- at: '2026-05-25T07:19:06Z'
+  by: operator
+  from: queued
+  pueue_id: null
+  to: done
+updated_at: '2026-05-25T07:19:06Z'
+updated_by: operator
+version: 2

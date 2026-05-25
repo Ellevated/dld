@@ -88,7 +88,7 @@ night-reviewer.sh
       └─ Output: JSON array to stdout
   └─ Parse JSON array
   └─ For each finding: db.py save-finding (INSERT OR IGNORE)
-  └─ New findings → OpenClaw via event_writer.py
+  └─ New findings → Hermes via event_writer.py
 ```
 
 ---

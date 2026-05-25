@@ -6,7 +6,9 @@ Uses: sqlite3 (stdlib)
 Used by: orchestrator.py (get_all_projects, seed_projects_from_json, try_acquire_slot, log_task,
              update_project_phase, get_available_slots, get_occupied_slots),
          callback.py (release_slot, finish_task, update_project_phase),
-         night-reviewer.sh (via CLI: python3 db.py save-finding / get-new-findings / update-phase)
+         night-reviewer.sh (via CLI: python3 db.py save-finding / get-new-findings / update-phase),
+         claude-runner.py (log_sdk_post_result_error — BUG-188),
+         gate-daemon.py (log_gate_cycle, get_gate_health — ARCH-190)
 """
 
 import os
@@ -25,6 +27,7 @@ def _ensure_migrations(conn: sqlite3.Connection) -> None:
 
     TECH-170: add task_log.branch column for feature-branch awareness.
     TECH-169: add callback_decisions table + indexes.
+    BUG-188: add sdk_post_result_errors table + index.
     """
     global _MIGRATIONS_APPLIED
     if _MIGRATIONS_APPLIED:
@@ -56,6 +59,41 @@ def _ensure_migrations(conn: sqlite3.Connection) -> None:
             "CREATE INDEX IF NOT EXISTS idx_callback_decisions_demoted_ts "
             "ON callback_decisions(demoted, ts)"
         )
+    except sqlite3.OperationalError:
+        pass
+    # BUG-188: sdk_post_result_errors table for SDK post-ResultMessage diagnostics
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS sdk_post_result_errors ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+            "project_id TEXT NOT NULL,"
+            "task TEXT NOT NULL,"
+            "turns INTEGER,"
+            "cost_usd REAL,"
+            "error_msg TEXT,"
+            "stderr TEXT"
+            ")"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sdk_post_result_errors_ts ON sdk_post_result_errors(ts)"
+        )
+    except sqlite3.OperationalError:
+        pass
+    # ARCH-190: gate_health table for gate-daemon per-cycle metrics
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS gate_health ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+            "cycle_count INTEGER NOT NULL,"
+            "last_poll_at TEXT NOT NULL,"
+            "in_progress_specs INTEGER NOT NULL DEFAULT 0,"
+            "decisions_this_cycle INTEGER NOT NULL DEFAULT 0,"
+            "error_msg TEXT"
+            ")"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_gate_health_ts ON gate_health(ts)")
     except sqlite3.OperationalError:
         pass
     _MIGRATIONS_APPLIED = True
@@ -297,6 +335,71 @@ def clear_decisions(min_ago: int) -> int:
             (f"-{int(min_ago)} minutes",),
         )
         return cursor.rowcount or 0
+
+
+def log_sdk_post_result_error(
+    project_id: str,
+    task: str,
+    turns: int,
+    cost_usd: float,
+    error_msg: str,
+    stderr: Optional[str],
+) -> int:
+    """Record a post-ResultMessage SDK exception (BUG-188).
+
+    Called by claude-runner.py when the `result_received and not result_is_error`
+    branch fires (SDK threw AFTER successful ResultMessage). The runner does not
+    fail the task, but we still want telemetry so operators can spot drift.
+
+    Threshold-based alerting (>5/day) is a downstream concern.
+    """
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO sdk_post_result_errors "
+            "(project_id, task, turns, cost_usd, error_msg, stderr) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (project_id, task, turns, float(cost_usd or 0.0), error_msg, stderr),
+        )
+        return cursor.lastrowid or 0
+
+
+def log_gate_cycle(
+    cycle_count: int,
+    last_poll_at: str,
+    in_progress_specs: int,
+    decisions_this_cycle: int,
+    error_msg: Optional[str] = None,
+) -> int:
+    """Record gate-daemon per-cycle health metrics (ARCH-190).
+
+    Called by gate-daemon.py at the end of each polling cycle.
+    Returns the new row id.
+
+    Args:
+        cycle_count: Monotonically increasing cycle counter.
+        last_poll_at: ISO timestamp of when the poll was initiated.
+        in_progress_specs: Total in_progress specs evaluated across all projects.
+        decisions_this_cycle: Number of shadow verdicts written this cycle.
+        error_msg: Non-fatal error summary if any project fetch failed; None otherwise.
+    """
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO gate_health "
+            "(cycle_count, last_poll_at, in_progress_specs, decisions_this_cycle, error_msg) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (cycle_count, last_poll_at, in_progress_specs, decisions_this_cycle, error_msg),
+        )
+        return cursor.lastrowid or 0
+
+
+def get_gate_health() -> Optional[dict]:
+    """Return the latest gate_health row as dict, or None if table is empty (ARCH-190).
+
+    Used by operators and future vps-orch CLI (MP-014) to inspect daemon liveness.
+    """
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM gate_health ORDER BY id DESC LIMIT 1").fetchone()
+        return dict(row) if row else None
 
 
 def seed_projects_from_json(projects: list[dict]) -> None:

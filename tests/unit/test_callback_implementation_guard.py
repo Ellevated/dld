@@ -1,14 +1,13 @@
 """TECH-166 — unit tests for callback.py implementation guard.
 
-Covers EC-1..EC-7: parser variants, guard window/allowed-list semantics,
-degrade-open behavior, and reason annotation idempotency.
+EC-1..EC-3: _parse_allowed_files parser variants.
+EC-4..EC-6: _is_done_on_develop gate (replaces deleted _has_implementation_commits).
 """
 
 from __future__ import annotations
 
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -68,96 +67,67 @@ def test_ec3_parser_section_present_but_empty(tmp_path):
     assert callback._parse_allowed_files(spec) == []
 
 
-# --- _has_implementation_commits ---------------------------------------------
+# --- _is_done_on_develop (Rule 1 gate) ----------------------------------------
 
 
-@pytest.fixture
-def git_repo(tmp_path):
-    """Initialize a tmp git repo with one baseline commit."""
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    run = lambda *args: subprocess.run(  # noqa: E731
-        ["git", "-C", str(repo), *args], check=True, capture_output=True
-    )
-    run("init", "-q", "-b", "main")
-    run("config", "user.email", "t@t")
-    run("config", "user.name", "t")
-    (repo / "README.md").write_text("init\n")
-    run("add", "README.md")
-    run("commit", "-q", "-m", "init")
-    return repo
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True)
 
 
-def _commit(repo: Path, rel: str, content: str, msg: str) -> None:
+def _commit_to(repo: Path, rel: str, content: str, msg: str) -> None:
     full = repo / rel
     full.parent.mkdir(parents=True, exist_ok=True)
     full.write_text(content)
-    subprocess.run(["git", "-C", str(repo), "add", rel], check=True, capture_output=True)
+    _git(repo, "add", rel)
+    _git(repo, "commit", "-q", "-m", msg)
+
+
+@pytest.fixture
+def dev_repo(tmp_path):
+    """Local repo with bare remote; origin/develop tracking ref ready."""
+    bare = tmp_path / "remote.git"
+    bare.mkdir()
     subprocess.run(
-        ["git", "-C", str(repo), "commit", "-q", "-m", msg],
+        ["git", "init", "--bare", "-q", "-b", "develop", str(bare)],
         check=True,
         capture_output=True,
     )
+    local = tmp_path / "local"
+    local.mkdir()
+    _git(local, "init", "-q", "-b", "develop")
+    _git(local, "config", "user.email", "t@t")
+    _git(local, "config", "user.name", "t")
+    _git(local, "remote", "add", "origin", str(bare))
+    (local / "README.md").write_text("init\n")
+    _git(local, "add", "README.md")
+    _git(local, "commit", "-q", "-m", "init")
+    _git(local, "push", "-q", "-u", "origin", "develop")
+    return local
 
 
-def _now_iso() -> str:
-    # Match git log --since acceptance and task_log default format.
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+def test_ec4_done_on_develop_true(dev_repo):
+    """EC-4: commit on origin/develop with spec_id in subject + allowed file → True."""
+    _commit_to(dev_repo, "src/foo.py", "x=1\n", "feat(TECH-XXX): impl")
+    _git(dev_repo, "push", "-q", "origin", "develop")
+    _git(dev_repo, "fetch", "-q", "origin", "develop")
+
+    assert callback._is_done_on_develop(str(dev_repo), "TECH-XXX", ["src/foo.py"]) is True
 
 
-def test_ec4_guard_commit_on_allowed_file(git_repo):
-    """EC-4: commit touching allowed file after started_at → True."""
-    started_at = _now_iso()
-    time.sleep(1.1)
-    _commit(git_repo, "src/foo.py", "x=1\n", "feat: foo")
-    assert callback._has_implementation_commits(str(git_repo), ["src/foo.py"], started_at) is True
+def test_ec5_done_on_develop_wrong_file(dev_repo):
+    """EC-5: subject matches spec_id but allowed file not touched → False."""
+    _commit_to(dev_repo, "docs/note.md", "n\n", "feat(TECH-XXX): note only")
+    _git(dev_repo, "push", "-q", "origin", "develop")
+    _git(dev_repo, "fetch", "-q", "origin", "develop")
+
+    assert callback._is_done_on_develop(str(dev_repo), "TECH-XXX", ["src/foo.py"]) is False
 
 
-def test_ec5_guard_only_doc_commits(git_repo):
-    """EC-5: commit only on non-allowed path → False (demote)."""
-    started_at = _now_iso()
-    time.sleep(1.1)
-    _commit(git_repo, "docs/x.md", "doc\n", "docs: x")
-    assert callback._has_implementation_commits(str(git_repo), ["src/foo.py"], started_at) is False
-
-
-def test_ec6_guard_commit_before_started_at(git_repo):
-    """EC-6: commit predates started_at → window excludes it → False."""
-    _commit(git_repo, "src/foo.py", "x=1\n", "feat: foo (early)")
-    time.sleep(1.1)
-    started_at = _now_iso()
-    assert callback._has_implementation_commits(str(git_repo), ["src/foo.py"], started_at) is False
-
-
-def test_ec7_guard_no_started_at_or_allowed(git_repo):
-    """EC-7: missing started_at OR allowed=None → True (degrade open)."""
-    assert callback._has_implementation_commits(str(git_repo), ["src/foo.py"], None) is True
-    assert callback._has_implementation_commits(str(git_repo), None, _now_iso()) is True
-
-
-def test_guard_explicit_empty_allowlist_blocks(git_repo):
-    """EC-3 follow-through: empty allowed list → False (explicit no-impl)."""
-    assert callback._has_implementation_commits(str(git_repo), [], _now_iso()) is False
-
-
-# --- _append_blocked_reason --------------------------------------------------
-
-
-def test_append_blocked_reason_inserts_after_status(tmp_path):
-    spec = _spec(tmp_path, "# T\n\n**Status:** blocked\n**Priority:** P1\n")
-    callback._append_blocked_reason(spec, "no_implementation_commits")
-    text = spec.read_text()
-    assert "**Blocked Reason:** no_implementation_commits" in text
-    # Inserted right after Status line.
-    lines = text.splitlines()
-    status_idx = next(i for i, ln in enumerate(lines) if ln.startswith("**Status:"))
-    assert lines[status_idx + 1] == "**Blocked Reason:** no_implementation_commits"
-
-
-def test_append_blocked_reason_idempotent(tmp_path):
-    spec = _spec(tmp_path, "# T\n\n**Status:** blocked\n**Blocked Reason:** old_reason\n")
-    callback._append_blocked_reason(spec, "no_implementation_commits")
-    text = spec.read_text()
-    assert text.count("**Blocked Reason:**") == 1
-    assert "no_implementation_commits" in text
-    assert "old_reason" not in text
+def test_ec6_done_on_develop_no_remote(tmp_path):
+    """EC-6: no origin/develop exists → graceful False, no exception."""
+    repo = tmp_path / "bare"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "-C", str(repo), "init", "-q", "-b", "develop"], check=True, capture_output=True
+    )
+    assert callback._is_done_on_develop(str(repo), "TECH-XXX", ["src/foo.py"]) is False

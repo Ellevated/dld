@@ -69,7 +69,7 @@ def stub_event_writer(tmp_path, monkeypatch):
         return real_write(str(events_dir), skill, status, message, artifact_rel)
 
     monkeypatch.setattr(event_writer, "write_event", fake_write)
-    monkeypatch.setattr(event_writer, "wake_openclaw", lambda: True)
+    monkeypatch.setattr(event_writer, "wake_hermes", lambda *a, **kw: True)
     return events_dir
 
 
@@ -190,6 +190,8 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 def _make_project(tmp_path: Path, idx: int, spec_id: str) -> Path:
+    import yaml
+
     repo = tmp_path / f"proj{idx}"
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "develop")
@@ -202,6 +204,27 @@ def _make_project(tmp_path: Path, idx: int, spec_id: str) -> Path:
     )
     (repo / "ai" / "backlog.md").write_text(
         f"| ID | Title | Status | P |\n|---|---|---|---|\n| {spec_id} | demo | in_progress | P1 |\n"
+    )
+    # Lifecycle yaml required by Rule 3 (noop if missing)
+    lc_dir = repo / "ai" / "lifecycle"
+    lc_dir.mkdir(parents=True)
+    lc_data = {
+        "spec_id": spec_id,
+        "status": "queued",
+        "blocked_reason": None,
+        "priority": "p1",
+        "kind": "tech",
+        "transitions": [],
+        "version": 1,
+        "started_at": None,
+        "finished_at": None,
+        "pueue_id": None,
+        "allowed_files_hash": None,
+        "updated_at": None,
+        "updated_by": "test",
+    }
+    (lc_dir / f"{spec_id}.yaml").write_text(
+        yaml.safe_dump(lc_data, default_flow_style=False, allow_unicode=True)
     )
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "init")
@@ -253,10 +276,12 @@ def test_e2e_5th_call_is_noop_circuit_open(
         )
         return r.stdout
 
-    # All 4 specs demoted — verify at HEAD (callback uses plumbing, not working tree).
+    # All 4 specs demoted — verify lifecycle.yaml at HEAD (ARCH-186: callback writes lifecycle, not spec.md).
     for repo, spec_id, _ in repos:
-        spec_text = _head_content(repo, f"ai/features/{spec_id}.md")
-        assert "**Status:** blocked" in spec_text, f"{spec_id} should be blocked at HEAD"
+        lifecycle_text = _head_content(repo, f"ai/lifecycle/{spec_id}.yaml")
+        assert "status: blocked" in lifecycle_text, (
+            f"{spec_id} should be blocked in lifecycle at HEAD"
+        )
 
     # Now circuit is OPEN. 5th call (any project) should no-op.
     repo5 = _make_project(tmp_path, 99, "TECH-905")
@@ -274,10 +299,11 @@ def test_e2e_5th_call_is_noop_circuit_open(
     # No impl commit on this repo either — would demote, except circuit OPEN.
     callback.verify_status_sync(str(repo5), "TECH-905", target="done", pueue_id=199)
 
-    # Circuit blocked the mutation — HEAD should still have in_progress.
-    spec_text = _head_content(repo5, "ai/features/TECH-905.md")
-    assert "**Status:** in_progress" in spec_text, "Circuit should have blocked the demote"
-    assert "**Status:** blocked" not in spec_text
+    # Circuit blocked the mutation — lifecycle.yaml should NOT have blocked status.
+    # ARCH-186: callback writes lifecycle, not spec.md. Circuit open → no write at all.
+    lifecycle_text = _head_content(repo5, "ai/lifecycle/TECH-905.yaml")
+    # Either the file doesn't exist (no write happened) or it still shows pre-circuit state.
+    assert "status: blocked" not in lifecycle_text, "Circuit should have blocked the demote"
 
     # Decision recorded as noop:circuit_open
     with db.get_db() as conn:

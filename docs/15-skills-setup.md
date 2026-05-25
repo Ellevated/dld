@@ -299,8 +299,9 @@ Step 1: Branch by type
   → FTR → feature/FTR-XXX
   → BUG → fix/BUG-XXX
 
-Step 2: Create worktree
-  → git worktree add ".worktrees/{ID}" -b "{type}/{ID}"
+Step 2: Create worktree (base from origin/develop, not local HEAD)
+  → git fetch origin develop
+  → git worktree add ".worktrees/{ID}" -b "{type}/{ID}" origin/develop
 
 Step 3: Setup + baseline
   → pip install && ./test fast

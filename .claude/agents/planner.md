@@ -554,3 +554,4 @@ blocked_reason: "..." # only if blocked
 - **Be COMPLETE** — nothing left to interpretation
 - **Your context DIES** — plan must be self-contained
 - **Search before coding** — Exa finds better solutions than guessing
+- **NEVER write `**Status:**` or edit `ai/lifecycle/*.yaml`** — Status lives in `ai/lifecycle/{spec_id}.yaml` and is written ONLY by `scripts/vps/callback.py` (TECH-172/ADR-023). The spec body status line + backlog.md status column are READ-ONLY markdown views. Unchecked task checkboxes do NOT mean "not done"; if lifecycle.yaml says done — the spec is done, ignore the checkboxes.

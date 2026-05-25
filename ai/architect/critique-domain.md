@@ -1,238 +1,301 @@
 # Domain Architecture Cross-Critique
 
 **Persona:** Eric (Domain Modeler)
-**Phase:** 2 — Peer Review (Karpathy Protocol)
+**Phase:** 2 — Peer Review
+**Date:** 2026-05-23
+**Scope:** callback/lifecycle/orchestrator retrofit
 
 ---
 
 ## Peer Analysis Reviews
 
-### Analysis A — DX Architect (Dan)
+### Analysis A — Operations (Charity lens)
 
 **Agreement:** Partially Agree
 
 **Reasoning from domain perspective:**
 
-Dan raises a legitimate concern when he says "8 bounded contexts for a 2-person team" is excessive overhead. He is right that team size affects how many context boundaries can be actively maintained. But there is a critical conflation happening here: Dan is using "bounded context" and "microservice" interchangeably, which is an error.
+A correctly identifies that `callback.py` cannot be meaningfully observed because it bundles 7 responsibilities under one roof. The statement "operations requires named operations, and named operations require identifiable boundaries" is, from a domain lens, precisely a bounded context argument. Where A says "metric namespace per module," I say "ubiquitous language per context" — these are the same claim stated differently.
 
-A bounded context is a linguistic boundary — a place where the meaning of terms is stable. It is not a deployment unit. You can implement 7 bounded contexts as a single monolith with clean module boundaries, without a message broker, without microservices overhead. The cost of naming a thing correctly is nearly zero. The cost of not naming it — letting "order" mean different things in different parts of the codebase — compounds over time.
-
-Dan's recommendation to reduce to 4 domains (briefing, sources, memory, billing) collapses what I called "Workspace," "Identity," "Notification," and parts of "Priority" into the remaining four. That is fine as a deployment strategy. It is not fine as a naming strategy — the ubiquitous language still needs to be clear about what a "workspace" is versus a "user," what a "channel" is versus a "briefing."
-
-Where I agree with Dan: Clerk as an Auth bounded context wrapper is correct. The ACL pattern (Clerk speaks its own language; we translate to our domain's `User` concept at the boundary) is exactly right, and Dan names this correctly even without using the DDD terminology.
-
-Where Dan has a blind spot: he says "auth is handled by Clerk — not a domain." This is precisely backwards. Because Clerk handles auth, we need a domain boundary around it MORE, not less. The ACL must exist so that Clerk concepts (Organizations, Sessions, JWTs) do not leak into the briefing domain. "Not a domain" would mean importing Clerk directly throughout the codebase — which is the mistake we are trying to prevent.
+A's SLO-4 (Bootstrap Accuracy) implicitly acknowledges that `bootstrap_new_specs` exists in a different "context" than the lifecycle writer — one that reads from a rendered view (backlog.md WT) rather than the source of record. A treats this as an observability gap. I read it as a context boundary violation: the runtime dispatch context is consuming the output of the render context as if it were input. This is precisely the anti-pattern that corrupts language.
 
 **Missed gaps:**
 
-- Dan treats "4 domains" as a simpler alternative to "7 contexts" without acknowledging that the linguistic boundaries exist regardless of whether we name them. Unnamed boundaries create the same coupling problems as explicit ones — they are just invisible until they break.
-- The proposed `briefing/` domain in Dan's model collapses synthesis, delivery, and pipeline into one. This conflates "what is in the briefing" with "how the briefing is sent" — the exact boundary violation I flagged. Adding WhatsApp as a channel should not require touching the briefing synthesis logic.
-
-**Rank: Moderate**
+- A does not ask why `bootstrap_new_specs` reads `backlog.md` instead of lifecycle YAML HEAD. The answer is a domain boundary failure: the bootstrap function straddles two contexts (spec creation and runtime dispatch) and borrows its data from a third (the render context). No amount of alerting fixes a context that is reading from the wrong SoR.
+- The 5-SLO proposal maps to 5 different business capabilities, each of which corresponds to a bounded context. A catalogs them as metrics without drawing the domain lines that would make each independently measurable and independently deployable.
 
 ---
 
-### Analysis C — Data Architect (Martin)
+### Analysis B — Evolutionary Architecture (Neal lens)
 
 **Agreement:** Agree
 
 **Reasoning from domain perspective:**
 
-Martin's work is the strongest complement to my domain model. Where I define the conceptual boundaries and the language, Martin specifies the physical schema that enforces those boundaries. The alignment is precise.
+B's "fix train anti-pattern" is one of the strongest characterizations in the peer set. What B describes as "Conway's Law manifestation" — callback.py reflecting 5 different implicit authors with 5 different mental models — is exactly what I call ubiquitous language collapse. When the word "callback" can mean any of: pueue signal handler, spec gate, lifecycle writer, backlog renderer, or circuit breaker, the ubiquitous language has been lost. The code cannot speak the language of the business because it speaks 5 languages simultaneously.
 
-The most important DDD-relevant insight in Martin's analysis is the explicit separation of `preferences` (user-authored, explicit) from `memory_signals` (system-inferred, behavioral). In my Phase 1 analysis I named these `DeclaredPriority` and `LearnedSignal` within the Priority context. Martin's schema is the physical implementation of exactly this distinction. The two-table design with separate write paths is not a database optimization — it is a domain invariant made durable. A `DeclaredPriority` is user-owned. A `LearnedSignal` is system-owned. Conflating them into a single "preferences" table would create the dual-SoR problem Martin correctly identifies.
-
-Martin's `briefing_feedback` table and `memory_signals` table also reflect a domain modeling principle I named but did not fully specify: engagement (what the user did with a past briefing) is the input to the learning loop in the Priority context. Martin's schema makes this explicit: `briefing_feedback` is the event log (raw behavior), `memory_signals` is the derived state (inference). This is DDIA chapter 11's "derived data" pattern applied correctly to a domain aggregate.
-
-The `usage_ledger` as an append-only ledger is the correct data model for the `UsageLedger` entity within my Workspace context. Append-only is not just a database pattern here — it reflects a domain truth: a task consumption is an immutable fact about what happened. You cannot un-consume a task. The ledger models this correctly.
-
-One area of slight concern: Martin scopes everything under `workspace_id` as the aggregate root for all Phase 2 entities. While workspace isolation is correct, I want to be precise: `workspace_id` is the tenant boundary, not the aggregate root. Each bounded context has its own aggregate root (Briefing, Source, PriorityProfile, etc.). The `workspace_id` foreign key is the tenant isolation key that appears on all tables — it is not a DDD aggregate root in the technical sense. This conflation could lead to "query everything through the workspace" patterns that violate context boundaries.
+B's fitness function suite (FF-01 through FF-08) is the most technically grounded enforcement proposal. FF-03 (sole-writer check) and FF-07 (convention drift test) are the two that directly enforce bounded context invariants at the code level. B's "ADR Kill Section" proposal is important: ADR supersession without artifact cleanup is how dead language persists in code.
 
 **Missed gaps:**
 
-- Martin's schema has `source_configs` with `config_json` as a JSON blob. In my domain model, the Source context has specific entities: SourceType, FetchSchedule, SourceCredential. These should be typed columns or a strict schema, not an open JSON blob. A JSON blob for source config is a domain model that defers to runtime what should be compile-time validated.
-- Martin's `billing_cache` table correctly separates Stripe's truth from our local cache, but the analysis does not address how the domain communicates a tier change to the Workspace context aggregate. In my model, the Billing context publishes a `SubscriptionChanged` event that the Workspace context reacts to. Martin's schema update flow (webhook → billing_cache → workspaces.task_cap_monthly) is the implementation — but the event as a domain concept is missing.
-
-**Rank: Strong**
+- B identifies that `callback.py` needs to be decomposed into `gate | dispatcher | audit | circuit` but does not derive this decomposition from a linguistic boundary test. The correct question: does "gate" and "dispatcher" share any terms that mean different things? If "done" means something different to the gate (work merged to develop) versus the dispatcher (trigger QA/reflect), these are two separate bounded contexts with a translation requirement between them, not merely two modules.
+- FF-08 (GROWTH prefix consistency) is a shared kernel smell. The fact that `callback.py` and `orchestrator.py` have divergent `_SPEC_ID_RE` definitions is evidence that they share a concept (spec identity) without sharing a definition. A shared kernel contract — a single `common.py` constant — would resolve this.
 
 ---
 
-### Analysis D — Evolutionary Architect (Neal)
+### Analysis D — LLM Architect (Erik Schluntz lens)
 
 **Agreement:** Partially Agree
 
 **Reasoning from domain perspective:**
 
-Neal's fitness functions are a remarkable translation of architectural quality requirements into executable tests. From a domain perspective, the most relevant fitness function is the dependency direction check: `shared ← infra ← domains ← api`. This is not just an import hygiene rule. It IS the domain model enforced as code. When a domain module imports from an infra module only (never from another domain directly), you have enforced the bounded context boundary mechanically.
+D's `GateResult` dataclass proposal is — unknowingly — a domain event definition. `GateResult` with its `GateReason` enum is exactly the structure I would design for the "SpecStatusEvaluated" domain event: it has a source context (the gate), a trigger (pueue completion), a payload (all fields of GateResult), and it is consumed by downstream contexts (dispatcher, audit).
 
-Neal's change vector analysis correctly identifies that the `sources` domain is the highest-change-velocity component. This aligns with my recommendation that the Source context requires the most aggressive Anti-Corruption Layer work from day one. External APIs (Gmail, HN, RSS, Calendar) change on their own schedule. Without the ACL, every API change propagates into the briefing domain. Neal names this the "isolation strategy" requirement without using the ACL term — but the structural recommendation is identical.
-
-Where I have a significant disagreement: Neal (like Dan) recommends starting with 4 domains rather than my 7 contexts. He writes: "Phase 2 needs 4 core domains at launch, not 8. briefing, sources, memory, delivery are the load-bearing walls. auth, billing, workspace are infra concerns, not domains."
-
-This is the same categorical error as Dan's analysis, but Neal expresses it more sharply. The claim that "auth, billing, workspace are infra concerns, not domains" is simply incorrect from a DDD perspective. Workspace ownership, tier enforcement, and usage cap logic ARE domain logic — they encode business rules (Solo tier gets 500 tasks, Pro tier gets 2000) that change when the business model changes. These are not infrastructure concerns. They are not the same as "the database" or "the Fly.io deployment." They are business decisions encoded in the domain model.
-
-Neal's recommendation to "start simple, extract domains when coupling becomes visible" is operationally sound. But it assumes you can add domain boundaries later without the linguistic chaos that accumulates in the meantime. In my experience, the naming pollution that occurs when "workspace" is just a field on the user table and "tier" is just an enum embedded in the billing module is very hard to clean up. The cost of naming correctly from day one is small. The cost of renaming is enormous.
+D's `AuditPayload` dataclass and the 12-argument `_emit_audit` critique are ergonomics observations that point to a missing value object. In DDD terms, the audit record is a value object that should be constructed gradually as gate evaluation proceeds. The current 12-argument positional API fails because it treats a value object as a bag of parameters passed all at once.
 
 **Missed gaps:**
 
-- Neal's fitness function for behavioral memory focuses on schema migration safety but does not address the domain invariant: declared priorities take precedence over learned signals when scoring. This is a business rule, not a data rule. No fitness function currently tests this invariant.
-- Neal correctly defers LangGraph.js, but his alternative ("simple async pipeline") does not name what the pipeline actually is in domain terms. The briefing compilation is a domain process within the Briefing context — it should be named as such in the code even if the implementation is a simple function. `compileBriefing()` as a domain service, not `runPipeline()` as an infrastructure function.
-
-**Rank: Moderate**
+- D proposes a `vps-orch.py status SPEC-ID` CLI tool to expose lifecycle status. This is a Read Model in CQRS terms: the lifecycle YAML is the write model, the CLI is the read projection. D does not make this distinction explicit, but it matters: if the CLI reads from the lifecycle YAML directly (not from a derived view), then changes to the YAML schema will silently break the CLI's output format. A proper read model is explicitly decoupled from the write model with a translation layer.
+- D's `orchestrator_client.signal_completion()` proposal is the most interesting one for domain modeling: it inverts the control direction. Instead of the callback inferring "is work done?" from git artifacts, the agent explicitly signals completion. This is a domain event push model (agent publishes "WorkCompleted" event) versus the current pull model (gate polls git). D does not develop the implications: in the push model, the gate becomes a verifier, not a discoverer — a structurally different and simpler role.
 
 ---
 
-### Analysis E — LLM Systems Architect (Erik)
-
-**Agreement:** Agree
-
-**Reasoning from domain perspective:**
-
-Erik's analysis is primarily technical (model routing, context budgeting, eval strategy), but several insights have direct domain model implications that I want to affirm.
-
-The two-stage pipeline design — per-source summarization with Haiku (extraction), followed by synthesis with Sonnet — maps precisely to my Signal→Item transformation. A Signal is the raw material from a source (Erik's "raw article"). The extraction step (Haiku summarization) produces the structured `SourceItem` — this is the Signal being evaluated and summarized. The synthesis step takes these structured summaries and produces Items within a Briefing Section. Erik has independently derived the same two-entity distinction I identified (Signal vs Item) through the cost optimization lens.
-
-Erik's `UserPreferenceSnapshot` design maps directly to my Priority context's PriorityProfile aggregate with the `compact_text` field serving as the Published Language between the Priority context and the Briefing context. The 300-token bounded context injection is the correct way for the Priority context to provide its output to the Briefing context without the Briefing context needing to query and understand the full PriorityProfile aggregate structure. This is an excellent example of Published Language in practice.
-
-The eval strategy (three tiers: deterministic, LLM-as-judge, human sample) is domain-significant because it operationalizes what "briefing quality" means. In my domain model, the Briefing aggregate has an invariant: "A Briefing must have at least one Section to be marked Ready." Erik's deterministic checks make this invariant testable. The LLM-as-judge checks the semantic quality — whether the relevance scoring in the Priority context actually matched the content in the Briefing context.
-
-One domain model note: Erik's `BriefingOutput` schema has `top_items`, `full_digest`, and `action_items`. In my Briefing context, I named these constructs as Sections (grouped by type) containing Items. Erik's schema is a flat ranking view. These are different semantic structures — one is organized by section (topic grouping), the other by priority (ranked list). The domain should pick one and name it consistently. If the business says "briefing has sections," the schema should use sections, not ranked arrays.
-
-**Missed gaps:**
-
-- Erik's preference snapshot generation (weekly Haiku job) is a domain event in disguise. The `PriorityUpdated` event I named in my context map happens both when a user explicitly updates priorities AND when the system regenerates the learned preference snapshot. Erik does not surface this as a domain event — it is described as a technical background job. The domain model should name when a PriorityProfile is updated and who gets notified.
-- The `why_relevant` field on `BriefingItem` is a critical domain concept Erik buries in a schema detail. This is the explanation of relevance — why a particular signal became an item. This is not just a UX field; it is the feedback data that closes the learning loop in the Priority context. It deserves first-class treatment in the domain model.
-
-**Rank: Strong**
-
----
-
-### Analysis F — Devil's Advocate (Fred)
+### Analysis E — DX Architect (Dan/Pragmatist lens)
 
 **Agreement:** Partially Agree
 
 **Reasoning from domain perspective:**
 
-Fred's most powerful critique — the one I cannot dismiss — is Contradiction #1: the behavioral memory moat thesis conflicts with the 30-day build timeline and the 14-day trial conversion measurement.
+E's "innovation token" metaphor is pragmatically useful but domain-blind. The argument that git-as-lifecycle-DB should be replaced with SQLite is a technology argument, not a domain argument. The real question is: what is the ubiquitous language for spec status in this business? If the answer is "spec status is a fact about whether work was merged to the develop branch," then git IS the natural source of record — not because git is innovative, but because the business fact literally lives in git.
 
-Let me engage with this directly from the domain perspective. Fred says: "On day 1 of the free trial, behavioral memory is EMPTY. The moat does not exist at the point where the kill gate is measured."
-
-This is correct. But it does not mean the domain model for behavioral memory should be abandoned. It means the PHASE of the domain development is different from what the business blueprint implies.
-
-The Priority context I designed has two sub-components: DeclaredPriority (available on day 1 of the trial) and LearnedSignal (available after 14-90 days of engagement). The Phase 2 MVP needs the DeclaredPriority side fully built and working well to convert trial users. The LearnedSignal side needs to be designed but can be minimally implemented — even just capturing engagement events and storing them is sufficient to start accumulating the data for the moat.
-
-Fred's proposed fix — "a JSON file of explicit preferences is sufficient for the trial" — is acceptable for the DeclaredPriority half but catastrophically wrong for the LearnedSignal half. If we use a JSON blob for explicit preferences at launch, we will later need to migrate that blob into a structured schema at the exact moment when users have accumulated engagement data that we cannot retroactively attach to the new schema. This is the migration nightmare I named in my Critical Issues section. The schema must be correct from day one even if the learning algorithm is minimal.
-
-Fred's Contradiction #5 (8 bounded contexts for a 2-person team) repeats the conflation of domain model with deployment model. He quotes Sam Newman's "start with a monolith" rule — but Newman is talking about microservices deployment topology, not DDD bounded contexts. A monolith WITH clean domain boundaries is not a contradiction; it is Newman's preferred alternative to microservices. Fred is arguing against the wrong thing.
-
-Fred's critique of "DDD theater" is earned when the context boundaries are enforced via separate services, separate databases, and asynchronous messaging. It is not earned when the boundaries are enforced via module structure and naming conventions within a monolith.
-
-Fred's stress test #5 (kill gate fires at day 90) is the most useful challenge for me personally. He asks: "What is the minimum implementation that would let you MEASURE trial-to-paid conversion without building the full infrastructure?" From a domain perspective, the answer is: you need the Briefing context fully working (compilation, delivery), the Priority context working for declared preferences, the Workspace context with tier enforcement, and the Notification context for Telegram delivery. You can defer the Source ACL completeness (start with RSS and HN only, no Gmail), defer LearnedSignal implementation (capture events but don't use them yet), and defer multi-workspace support for Pro tier. That is still 4-5 context implementations, not the 3-table monolith Fred proposes — because the briefing compilation and the workspace tier enforcement are genuinely separate concerns with separate invariants.
+E's 1-rule gate proposal (`git log origin/develop --grep SPEC-ID`) is closer to the correct domain model than the 8-rule gate precisely because it is stated in business terms: "a spec is done when its implementation is merged." The 8-rule gate is an over-inference — it adds rules about LOC diffs, file paths, commit subject format — none of which are business facts. They are technical proxies for a business fact. E arrives at the right simplification from a DX angle; I arrive at the same simplification from the domain angle.
 
 **Missed gaps:**
 
-- Fred's proposed counter-architecture (3 tables: users, source_configs, briefings) has a fatal domain flaw: it has no Usage Ledger. The Board mandated hard caps at the infrastructure level. Without the UsageLedger domain concept, cap enforcement is either missing (costs spiral) or embedded as a column on the users table (race condition on concurrent briefings). This is not an academic concern — it is a financial control that the business explicitly requires.
-- Fred's claim that "behavioral memory is not the moat — prompt quality is the moat" may be correct for the 90-day kill gate, but it is not correct for the 12-24 month retention story. The moat at month 12 is the 10 months of learned user behavior that a competitor would need to replicate. Fred dismisses this in one paragraph without engaging with the data portability and retention design questions I raised.
-
-**Rank: Moderate**
+- E proposes removing `spec_operator.py` because "no real user needs it." This is not a YAGNI argument — it is a domain boundary argument. `spec_operator.py` exists because the system has no "Operator" bounded context: the operator's language (demote, force-done, reset-circuit) is not represented as a first-class context with its own ubiquitous language. If it were, the CLI would be a thin adapter into that context, not a cross-module private-function caller.
+- E's SQLite migration removes the lifecycle YAML files but does not address what happens to the transition history. The lifecycle YAML transitions list is an event log — a domain event ledger. SQLite `spec_transitions` table is the correct equivalent, but E should explicitly name this as a domain event store, not just a relational table, to preserve the append-only audit property.
 
 ---
 
-### Analysis G — Security Architect (Bruce)
+### Analysis F — Data Architecture (Martin lens)
 
 **Agreement:** Agree
 
 **Reasoning from domain perspective:**
 
-Bruce's analysis has one critical domain modeling implication that reinforces my architecture: his insistence that `oauth_tokens` belong to the auth domain (my Identity context), NOT the sources domain.
+F's entity relationship analysis is the most rigorous mapping of data ownership to bounded context in the peer set. The table showing "Declared SoR" vs "Actual SoR" for each entity is exactly the context map entry I would draw: where the declared and actual SoR diverge, there is a context boundary violation.
 
-Bruce writes: "The `sources` domain receives a decrypted access token injected at task start — it never touches the encrypted storage layer. This is critical for blast-radius containment."
+F's key insight — "orchestrator.bootstrap_new_specs reads backlog.md (render output) as if it were lifecycle truth — this is a cross-context data-flow violation" — is stated in domain terms. The render context is downstream of the lifecycle context. Reading data back from a downstream context's output as input to an upstream context reverses the context map relationship. This is the structural root of the 15 fake-done flips.
 
-This is exactly the Anti-Corruption Layer pattern applied for security. The Source context does not know how credentials are stored or encrypted. It receives a decrypted access token as an input to the ingestion process. The encrypted token storage is an infrastructure concern within the Identity/Auth context. Mixing credential storage into the Source context would create a coupling where source configuration changes could inadvertently affect credential access patterns — and vice versa.
-
-Bruce's prompt injection threat (Contradiction #3 from Fred's analysis reframed as a security concern) is also a domain modeling issue. The sanitization layer he proposes is the ACL for RSS content: untrusted external content must be translated into a Signal (our internal concept) BEFORE it enters the domain. Raw RSS content is not a Signal — it is external data. The ACL translates it. Bruce's sanitization function is the implementation of that translation step.
-
-The IDOR (Insecure Direct Object Reference) threat maps directly to my workspace isolation invariant. Bruce writes: "ALWAYS join workspace_id to user_id in every DB query." In domain terms: the Workspace context is the authorization boundary. Every other context must verify workspace ownership before operating. This is the `WorkspaceReady` event pattern I designed — downstream contexts only act within a workspace that has been authorized.
+F's VALID_TRANSITIONS state machine is a good start at making invalid states unrepresentable — a core aggregate invariant. However, the transition `queued → done` is listed as invalid in the proposed model, while `verify_status_sync` currently performs it. F is correct that this transition should not exist: the spec aggregate should pass through `in_progress` before reaching `done`. This invariant, enforced at the aggregate root, eliminates an entire class of stale-status bugs.
 
 **Missed gaps:**
 
-- Bruce identifies Google App Verification as a critical launch blocker (4-6 week review for Gmail scopes) but does not map this to the domain model. In domain terms: a Source with type `Gmail` is not activatable until the workspace's OAuth grant has been verified by Google. This is a domain state transition (Source status: pending-verification → verified) that should be modeled in the Source aggregate, not just in operations notes.
-- Bruce's data retention policy specifies that Gmail content should "never be stored" — only the briefing output persists. This has a direct implication for my Signal entity: Signals from Gmail are ephemeral (in-memory only, consumed during compilation, never persisted). This contradicts my Source context design where I modeled `Signal` as a persisted entity with a 48-hour garbage collection window. For Gmail specifically, the Signal is never persisted. This is an important domain rule that needs to be explicit: Signal persistence policy varies by SourceType.
-
-**Rank: Strong**
+- F's `blocked_code` enum addition (`blocked_reason` free-text + `blocked_code` machine code) is a good data design but misses the domain event implication. Each `blocked_code` value corresponds to a different domain event: `gate_reject` is "SpecGateRejected", `orphaned_crash` is "SpecOrphaned", `circuit_open` is "CircuitBreakerOpened". If these were modeled as domain events rather than YAML field values, the consumers (alerting, dashboards, downstream dispatchers) could subscribe to specific event types rather than polling and filtering the `blocked_code` field.
+- F accepts the lifecycle YAML as the permanent SoR. This is defensible, but F does not address the translation contract: when the lifecycle context publishes a domain event (e.g., "SpecStatusChanged"), what is the contract for the render context (backlog.md) to consume it? Currently there is no contract — the render is called synchronously from within the lifecycle writer. A proper context boundary would have the lifecycle publish an event and the render context subscribe asynchronously.
 
 ---
 
-### Analysis H — Operations Engineer (Charity)
+### Analysis G — Devil's Advocate (Fred Brooks lens)
 
 **Agreement:** Agree
 
 **Reasoning from domain perspective:**
 
-Charity's most domain-relevant insight is the BullMQ recommendation over node-cron. From a domain perspective, the shift from in-memory cron to persistent job queue is a domain state management decision. A scheduled briefing compilation is not just a scheduled function call — it is a domain event (`BriefingCompilationRequested`) with a specific workspace, a specific time window, and a durable commitment to execute. If that commitment is lost on process restart, it is a data integrity failure, not an infrastructure failure.
+G's conceptual integrity verdict ("D — no unifying idea, five unifying ideas in conflict") is correct and important. From a DDD perspective, "5 unifying ideas in conflict" means the system has no ubiquitous language. When ADR-023 says "callback is sole writer" but `_ALLOWED_WRITERS` has 8 entries, the word "sole" has lost meaning. When `by="callback"` can be written by the orchestrator without consequence, the word "callback" has lost meaning. A language without stable definitions is not a language.
 
-BullMQ with Redis persistence is the implementation of that commitment durability. When Charity says "a cron job that fails silently and produces no output is a conversion killer during a 14-day trial," she is making a domain reliability argument. The Briefing aggregate's invariant — "A scheduled briefing must either compile successfully or fail explicitly (and the failure must be visible)" — requires that the scheduling mechanism be durable. node-cron fails this invariant silently.
+G's "0-rule callback" hypothesis (50 LOC dispatcher + separate gate daemon) is the most radical domain decomposition proposed by any peer. In domain terms, G is proposing to separate two bounded contexts that are currently merged: the "Task Completion Context" (receives pueue signal, releases slot, dispatches QA/reflect) and the "Spec Lifecycle Context" (evaluates whether work is done and transitions spec status). These are genuinely different capabilities with different rates of change: the former changes when pueue integration changes, the latter changes when the business definition of "done" changes.
 
-The degraded mode delivery strategy Charity describes ("deliver something, always") maps to a domain design decision in the Briefing context. In my aggregate design, I said a Briefing must have at least one Section to be marked Ready. Charity's recommendation implies a "degraded" briefing status: compiled with fewer sources than configured, but still delivered. This may require adding a `BriefingStatus.degraded` state to my aggregate — delivered, but with explicit note of missing sources.
-
-The circuit breaker per source maps to the SourceHealth aggregate I designed in the Source context. Each Source has a SourceHealth value object. When the circuit breaker opens (3 consecutive failures), that is SourceHealth transitioning to "unhealthy." The `SourceHealthDegraded` domain event I defined fires at this transition, not just when delivery fails.
-
-The operations persona's recommendation that each domain boundary should correspond to a trace span boundary is important for practical domain visibility. It makes the domain model observable at runtime.
-
-One tension worth noting: Charity recommends using BullMQ + Redis as an "agent-runtime" domain concern, and even says "agent-runtime domain owns the BullMQ queue." I rejected "agent-runtime" as a bounded context in my Phase 1 analysis because it is a technical term. Charity is using it in a narrower sense — as the module that owns job scheduling infrastructure. This is a legitimate infrastructure module, but it is not a domain bounded context. The scheduling of a briefing compilation is triggered by the Briefing context (a `BriefingCompilationRequested` event). How that scheduling is implemented (BullMQ, cron, direct function call) is an infrastructure detail inside the Briefing context's infra adapter.
+G's Evaporating Cloud is valuable. The hidden assumption it surfaces — "we know all the edge cases now" — is precisely what a ubiquitous language prevents: if the language is clear, "done" has a single, unambiguous definition and edge cases are not about the language, they are about the implementation.
 
 **Missed gaps:**
 
-- Charity's graceful degradation decision tree does not distinguish between SourceType behavior. A Gmail failure is more significant than an RSS feed failure because Gmail failure means the user's email triage section is missing — which is specifically what many users will configure as their primary use case. The degradation policy should be weighted by source type importance, not just "required source" flag.
-- The observability model captures `sources_failed` as a log field but does not emit this as a domain event. `SourceHealthDegraded` should be a first-class domain event that the Notification context consumes to alert the user. Currently it appears as an operational alert to the founder's phone — the user who owns the source is not notified through the product.
-
-**Rank: Strong**
+- G proposes "gate.py polls origin/develop every 60 seconds." This is a pull model. From a domain events perspective, a push model would be cleaner: when `git push` succeeds for a managed project, the merge to develop is the domain event ("WorkMergedToDevelop"). The gate daemon could subscribe to this event rather than polling. G's 60-second polling is pragmatically fine but misses the opportunity to make the domain event explicit.
+- G's question "Is the gate's job to determine status, or to record status?" is exactly the CQRS question. The gate is a query (read git, evaluate predicate). The write (lifecycle YAML update) is a command. G identifies the conceptual distinction but does not name it as CQRS, which would clarify why `verify_status_sync` doing both is a violation of single responsibility at the domain level, not just the module level.
 
 ---
 
-## Ranking
+### Analysis H — Security (Bruce lens)
 
-**Best Analysis:** C (Martin, Data Architect)
+**Agreement:** Partially Agree
 
-**Reason:** Martin's schema design is the most faithful physical implementation of the domain model I designed. The separation of `preferences` from `memory_signals`, the append-only `usage_ledger`, and the `briefing_feedback` event log are all direct implementations of domain invariants I named (DeclaredPriority vs LearnedSignal, UsageLedger as a fact ledger, Engagement as behavioral data). Martin worked from the same truth about what the business requires and arrived at consistent structural conclusions. He also correctly identified the most dangerous data design mistake (mutable task counter under concurrency) and provided the atomically correct fix.
+**Reasoning from domain perspective:**
 
-**Worst Analysis:** A (Dan, DX Architect)
+H's STRIDE analysis maps threat categories to components, but the most interesting security finding — from a domain lens — is the `_ALLOWED_WRITERS` "theater" observation. H correctly notes that `_ALLOWED_WRITERS` is a string check, not a cryptographic assertion, and therefore constitutes security theater. In domain terms, this is an identity attribute masquerading as an aggregate invariant. The lifecycle aggregate accepts writes from any caller that passes the right string — which means the aggregate boundary is enforced by convention, not by the domain model.
 
-**Reason:** Dan makes the most consequential architectural error: he concludes that "auth is not a domain" because Clerk handles it, and therefore no domain boundary is needed around it. This is precisely backwards. Because Clerk is an external vendor with its own concepts (Organizations, Sessions, Members), a domain boundary with an Anti-Corruption Layer is MORE necessary, not less. Dan's recommendation to import Clerk directly throughout the codebase without a wrapper would be the most expensive technical debt in the system — the kind that requires a full rewrite when Clerk changes its pricing or API, or when you need to switch to BetterAuth. The briefing system's dependency on Clerk would be woven through every part of the codebase rather than isolated to a single adapter.
+H's recommendation to use git signed commits as identity is the correct long-term answer: identity is not a field in the YAML, it is a property of the git commit that writes the YAML. The git object store provides cryptographic identity as a first-class feature of the underlying infrastructure. Deriving `updated_by` from git author rather than the Python `by=` parameter aligns the identity model with the natural language of the system.
+
+**Missed gaps:**
+
+- H identifies that `_parse_allowed_files` has no validation against cross-directory paths but does not connect this to the aggregate boundary question. The `allowed_files` list in a spec is an assertion about which files belong to the spec's implementation. This is a domain concept — "files within scope of this spec's work" — not just a security constraint. The aggregate invariant should be: a spec's allowed files are a subset of the project's files, and the gate only validates commits touching files within this set. Expressing this as a domain invariant (not just a security check) makes the enforcement natural.
+- H's "process token" recommendation for `lifecycle.write_lifecycle()` is a security control. From a domain lens, it is also a bounded context boundary enforcement: only processes within the "Lifecycle Write Context" should hold the token. This is the same as saying "only the lifecycle bounded context can write lifecycle state." The token is an implementation of context isolation.
+
+---
+
+## Convergence — Where Multiple Peers Agree
+
+**Strong consensus (5+ peers):**
+
+1. **callback.py (1374 LOC) must be decomposed.** A, B, D, E, F, G, H all reach this conclusion independently from different angles. The decomposition axes proposed: gate + dispatcher + audit + circuit (B, D, E, G). This is a consensus recommendation with high structural soundness.
+
+2. **`bootstrap_new_specs` reading `backlog.md` WT is the structural root of today's incident.** A, B, D, E, F, G, H all identify this. The remediation paths differ (remove bootstrap, read from HEAD, have Spark write lifecycle YAML directly) but the diagnosis is unanimous.
+
+3. **`_push_best_effort` at DEBUG is a silent failure.** A, B, D, E, F, H all flag this specific 1-line fix. This is the highest-signal low-cost change in the entire analysis.
+
+4. **`scripts/vps/tests/` not in CI is the cheapest high-impact fix.** A, B, D, E all name `pyproject.toml:19` as a 1-line fix with 100-test payoff.
+
+5. **`_subject_implements` rejects the dominant commit convention (460/636 awardybot commits).** B, D, E, G all flag this as Root 3. The fix paths differ: extend regex (B, D), replace with `git log --grep` (E, G), build golden test dataset first (D).
+
+**Moderate consensus (3–4 peers):**
+
+6. **spec_lint.py is a zombie validator.** B, D, E, G all flag this. The DLD-CALLBACK-MARKER validator now tests for a format that was deliberately removed. Should be deleted or repurposed.
+
+7. **`lifecycle._run()` needs `timeout=30`.** A, D, H all flag the unbounded subprocess hang risk under `_write_lock`.
+
+8. **TELEGRAM_BOT_TOKEN must be rotated immediately.** D, H name this explicitly. It is a P0 action independent of architecture decisions.
+
+---
+
+## Divergence — Where Peers Contradict
+
+**Divergence 1: git-as-DB vs SQLite**
+
+E (Dan) argues that ADR-023 (lifecycle YAML in git) should be replaced with SQLite for spec status. The argument: simpler, no CAS complexity, no push/pull divergence risk, already in the codebase.
+
+F (Martin) and G (Fred) argue that git-as-SoT for spec status is conceptually correct — the status is a fact about what was committed to git, so git is the natural SoR. F proposes keeping lifecycle YAML but fixing the implementation (stale-index race). G agrees: "ADR-023a (status SoT is ai/lifecycle/*.yaml) — KEEP. ADR-023b (writes use private GIT_INDEX_FILE CAS) — REPLACE with simpler atomic write."
+
+**My domain verdict:** The divergence is between implementation and concept. The concept (spec status as a git-resident fact) is correct from a ubiquitous language perspective: in this business, "done" means "merged to develop," and that fact lives in git history. SQLite status would be a derived representation of a git truth, which reintroduces the two-representation problem from the other direction. However, the CAS implementation is over-engineered and should be simplified. F and G's middle path (keep YAML SoT, simplify the write mechanism) is the stronger domain recommendation.
+
+**Divergence 2: How to fix `_subject_implements`**
+
+B proposes extending the regex to accept both canonical and trailer conventions, verified by FF-07.
+D proposes building a golden test dataset first, then fixing.
+E proposes replacing the entire function with `git log --grep SPEC-ID` which ignores subject format entirely.
+G agrees with E's approach as the conceptually purest solution.
+
+**My domain verdict:** E and G's single-rule approach (`git log origin/develop --grep SPEC-ID`) is correct from a ubiquitous language perspective. The business meaning of "done" is "the spec ID appears in the commit history of the main branch." Subject format is a technical convention, not a business fact. A gate that tests subject format is testing an implementation artifact, not a business concept. The 1-rule gate aligns the gate's language with the business language.
+
+**Divergence 3: Remove bootstrap_new_specs vs fix it**
+
+F proposes killing `bootstrap_new_specs` entirely by having Spark write `lifecycle.create_initial()` at spec creation time (making bootstrap dead code).
+G agrees: "KILL. If Spark writes lifecycle yaml at spec creation, bootstrap has no purpose post-migration."
+E proposes the same but frames it as an innovation token removal.
+A and B focus on observable symptoms (mass bootstrap anomaly alert) without prescribing removal.
+
+**My domain verdict:** The "kill bootstrap" path is the correct domain redesign. `bootstrap_new_specs` exists because Spark and Orchestrator share a responsibility boundary confusion: Spark creates spec.md but the Orchestrator bootstraps the lifecycle. In DDD terms, a spec should be created in one bounded context (the Spark/spec-creation context) and its lifecycle managed by another (the lifecycle context). If Spark creates the lifecycle YAML at spec creation, the bootstrap function has no domain role. The simplification is structural, not just operational.
+
+---
+
+## Ranking — 3 Highest-Leverage Peer Recommendations
+
+**Rank 1: G's "200-LOC callback + separate gate daemon" (gate.py)**
+
+Impact: Structural decomposition that eliminates the entire fix-train pattern. The fix-train exists because status determination (reading git, inferring done) and task signal handling (pueue callback, slot release, dispatch) are interleaved in one module. Separating them creates two independently testable, independently deployable components with clear domain language.
+
+Structural soundness: High. The separation maps to two distinct bounded contexts with different triggers, different rates of change, and different failure modes. G provides a concrete migration path (Strangler Fig — parallel deployment to one test project).
+
+**Rank 2: F's "Spark writes lifecycle.create_initial() — remove bootstrap_new_specs"**
+
+Impact: Eliminates the structural root cause of the 15 fake-done flip incident and all future incidents of the same class. Bootstrap exists because there is no single owner of spec lifecycle creation. Assigning Spark as the sole creator closes the ownership gap.
+
+Structural soundness: High. Consistent with ADR-023 (callback is the only status updater) extended to: Spark is the only lifecycle creator, callback is the only lifecycle updater. One creation path, one update path. This simplifies the context map from a tangled graph to a clean directed flow.
+
+**Rank 3: B's Fitness Function Suite (FF-03 sole-writer + FF-07 convention drift)**
+
+Impact: Converts architectural invariants from documentation claims to CI-enforced executable specifications. Without fitness functions, each architectural decision is an honor system. With fitness functions, ADR-023 ("callback is sole writer") is a test that fails on CI if violated.
+
+Structural soundness: High. B provides ready-to-use code. The sole-writer check and convention test together prevent the two most common incident causes (false-blocked via wrong regex, unauthorized writers via migration script bypass) from recurring silently.
+
+---
+
+## Domain Lens: Bounded Context Violations in Peer Recommendations
+
+**Recommendation that violates bounded context principles:**
+
+H's "process token" proposal — adding an environment variable token required by `lifecycle.write_lifecycle()` — is a security improvement but risks becoming an implicit context boundary mechanism. If the token is shared between callback and orchestrator (because both are "allowed" to write lifecycle), the token enforces nothing about context boundaries; it merely authenticates the operating system user. For the token to enforce bounded context separation, each context (lifecycle-writer context, orchestrator-bootstrap context) would need its own token, and `write_lifecycle` would route based on which token is presented. H does not develop this, which means the recommendation as stated does not reinforce, and could obscure, the true context boundary.
+
+**Recommendation that partially conflates contexts:**
+
+D's `orchestrator_client.signal_completion()` proposal inverts control — agents signal completion explicitly rather than callback inferring it. This is a good domain event model, but D conflates two contexts: the "managed project agent context" (which knows it finished work) and the "spec lifecycle context" (which decides whether the spec is done). D's proposal has the agent call a completion API directly, coupling the managed project to the DLD orchestrator's internal API. A cleaner context map would have the agent publish a domain event ("WorkCompleted" with commit SHA) and the gate context subscribe to it — with an Anti-Corruption Layer translating the event into lifecycle terms.
+
+---
+
+## My Addition: The Missing Domain Event Model
+
+All 7 peers analyze callback.py as a module decomposition problem. None of them frame it as a **domain event model** problem.
+
+The fundamental issue: this system orchestrates work across multiple bounded contexts (spec creation, task execution, status management, QA, reflection, notification), but has no explicit domain event bus. Every cross-context interaction is implemented as a direct function call or file read — which means every context boundary is a coupling point.
+
+The context map for this system, stated in domain events:
+
+```
+Spec Creation Context
+  publishes: SpecCreated(spec_id, project_id, priority, kind)
+  consumed by: Lifecycle Context (creates lifecycle YAML)
+
+Task Execution Context
+  publishes: TaskCompleted(spec_id, pueue_id, exit_code, commit_sha)
+  publishes: TaskFailed(spec_id, pueue_id, reason)
+  consumed by: Gate Context
+
+Gate Context (formerly embedded in callback.py)
+  subscribes to: TaskCompleted
+  reads: git log origin/develop --grep spec_id
+  publishes: SpecStatusEvaluated(spec_id, new_status, reason, evidence)
+  consumed by: Lifecycle Context, Dispatch Context, Audit Context
+
+Lifecycle Context
+  subscribes to: SpecCreated, SpecStatusEvaluated
+  writes: ai/lifecycle/{spec_id}.yaml (HEAD, CAS)
+  publishes: LifecycleUpdated(spec_id, from_status, to_status, at)
+  consumed by: Render Context
+
+Dispatch Context (formerly embedded in callback.py)
+  subscribes to: SpecStatusEvaluated(new_status=done)
+  dispatches: QA task, Reflect task, Hermes notification
+
+Render Context
+  subscribes to: LifecycleUpdated
+  writes: ai/backlog.md (generated view, never read as input)
+```
+
+In this model:
+- `bootstrap_new_specs` disappears — Spec Creation Context owns creation
+- `verify_status_sync` disappears — Gate Context is a separate process
+- The 3-store status split disappears — only Lifecycle Context writes status
+- The circuit breaker becomes an event subscriber, not a gate rule
+- `_subject_implements` regex disappears — the gate asks git, not the commit subject
+
+The commit subject convention problem (460 vs 176 commits) dissolves: `git log --grep SPEC-ID` searches the entire commit message, not just the subject. The trailer convention `(FTR-1053 Task 4)` is found without any regex.
+
+This is not a rewrite proposal — it is a vocabulary correction. The code already has most of these pieces; they are just assembled without domain language guiding their arrangement. Name the events, draw the subscriptions, and the module decomposition follows naturally.
 
 ---
 
 ## Revised Position
 
-**Revised Verdict:** Same as Phase 1, with two refinements.
-
-**Refinement 1: Signal persistence policy varies by SourceType (from Bruce)**
-
-Bruce's security analysis identified that Gmail email content must never be stored persistently. This is correct both for security and privacy reasons. My Phase 1 analysis modeled `Signal` as a persisted entity with 48-hour garbage collection. I need to refine this:
-
-- RSS Signals: CAN be persisted (public content, no PII)
-- HN Signals: CAN be persisted (public content)
-- Gmail Signals: MUST NOT be persisted (private PII — email subjects, sender names, snippets)
-- Calendar Signals: MUST NOT be persisted (private PII — meeting titles, attendee names)
-
-The Signal entity needs a `persistencePolicy` value object that encodes this rule. Gmail and Calendar sources produce ephemeral Signals (consumed during compilation, never stored in the database). This affects the garbage collection logic — there is nothing to collect for ephemeral Signals because they are never written.
-
-**Refinement 2: Briefing has a Degraded state (from Charity)**
-
-My Phase 1 aggregate design had BriefingStatus: pending, compiling, ready, delivered, failed. Charity's degraded delivery pattern requires adding `degraded` as a valid terminal state: compilation completed with fewer sources than configured, but delivered. A `degraded` briefing is not a failed briefing. The user receives it with a note about unavailable sources. The Workspace context should still count it as a task consumed (the compilation ran). The Notification context should flag it visually (e.g., "partial briefing — 3 of 5 sources available").
+**Revised Verdict:** Same as Phase 1, strengthened by peer evidence.
 
 **Final Domain Recommendation:**
 
-The bounded context model stands with seven contexts as designed. The implementation approach should be monolith-first (single Fly.io deployment) with clean module boundaries enforcing the context separations. The specific implementation priorities for Phase 2 MVP are:
+The primary intervention is not a code rewrite — it is a bounded context clarification. The codebase has all the required capabilities; they are assembled without domain language as the organizing principle. Three decisions, in order:
 
-1. Briefing context (core domain — synthesis, Section/Item model, status machine including Degraded)
-2. Source context (supporting — with ACL for each external source, Signal ephemeral-by-default for PII sources)
-3. Priority context (core domain — DeclaredPriority first, LearnedSignal schema designed but minimally implemented)
-4. Workspace context (supporting — tier enforcement, UsageLedger as append-only, atomic cap check)
-5. Notification context (supporting — Telegram channel, DeliveryAttempt, graceful degradation notification)
-6. Identity context (generic — Clerk ACL, only in infra/auth, never imported elsewhere)
-7. Billing context (generic — Stripe ACL, SubscriptionChanged event)
+1. **Establish ownership**: Spec Creation → Spark owns lifecycle.create_initial(). Spec Status → Gate (new, standalone) owns status evaluation. Spec Recording → Lifecycle Context owns write_lifecycle. These three are currently tangled in one 1374-LOC file.
 
-The behavioral memory moat (LearnedSignal in Priority context) must have its schema designed correctly from day one (the feedback event table and signal table as Martin specified), even if the learning algorithm is minimal at launch. The data must be collected from the first user's first engagement. The algorithm can be improved later. You cannot retroactively collect data you did not design to collect.
+2. **Make events explicit**: Define SpecCreated, TaskCompleted, SpecStatusEvaluated, LifecycleUpdated as named domain events. Even without a formal event bus, naming these events in code (as dataclasses with clear source and consumer annotations) aligns the vocabulary.
 
-The kill question passes: the architecture can be explained entirely in business terms. A workspace is set up with sources. Every morning the system reads those sources, filters for what matters to the user's declared priorities, compiles a briefing, and delivers it. The system learns from how the user engages with each briefing to improve future relevance. Tiers limit how many briefings a workspace can compile per month. None of these sentences require technical jargon.
+3. **Kill the inference**: The 8-rule gate infers "done" from technical artifacts (commit subjects, LOC diffs, file paths). The 1-rule gate (`git log --grep SPEC-ID`) reads the business fact directly. The migration from inference to direct reading is not a performance trade-off — it is a domain language correction. "Done" means "merged to develop." Git says whether that is true. No rules needed.
+
+The fitness functions proposed by B (FF-03, FF-07) should be implemented immediately as they enforce invariants the domain model depends on. The Strangler Fig migration proposed by G provides the safest path to the simplified architecture without a big-bang rewrite.
+
+---
+
+## References
+
+- Peer analyses A, B, D, E, F, G, H (direct evidence, all claims cited by letter)
+- Eric Evans — Domain-Driven Design (2003) — Bounded Contexts, Ubiquitous Language, Context Mapping, Aggregate invariants
+- Vaughn Vernon — Implementing Domain-Driven Design (2013) — Domain Events, CQRS
+- `scripts/vps/callback.py` — 1374 LOC, 7 responsibilities (direct measurement from B)
+- `scripts/vps/lifecycle.py:551` — `by="callback"` misattribution from orchestrator (G, H)
+- `scripts/vps/orchestrator.py:295` — WT read as SoR violation (consensus across all peers)
+- `scripts/vps/lifecycle.py:266` — `_push_best_effort` at DEBUG (consensus across A, B, D, E, F, H)

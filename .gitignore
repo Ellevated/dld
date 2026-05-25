@@ -40,6 +40,15 @@ scripts/vps/.env
 scripts/vps/*.db
 scripts/vps/.notified-drafts-*
 scripts/vps/.task-cmd-*.txt
+scripts/vps/.orchestrator.pid
+scripts/vps/callback-audit.jsonl
+scripts/vps/ai/
+
+# Runtime артефакты (не коммитятся)
+/.claude/scheduled_tasks.lock
+ai/openclaw/pending-events/*.json
+ai/.spark/
+ai/.council/
 
 # Личная инфраструктура — отдельный приватный репо EllevatedAI/infra
 # (DLD публичный, серверы и VPN-документы туда не попадают)

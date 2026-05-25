@@ -1,244 +1,655 @@
 # Evolutionary Architecture Cross-Critique
 
 **Persona:** Neal (Evolutionary Architect)
-**Phase:** 2 — Peer Review (Karpathy Protocol)
-**Date:** 2026-02-27
+**Phase:** 2 — Peer Review
+**Date:** 2026-05-23
+**Scope:** scripts/vps/ contour — 7 peer analyses (A, C, D, E, F, G, H)
+
+---
+
+## Research Basis
+
+All claims below are grounded in direct codebase evidence read during the peer analyses
+and anchored to specific file:line references from the codebase. External search was
+unavailable (Exa 402) — the code IS the primary evidence.
 
 ---
 
 ## Peer Analysis Reviews
 
-### Analysis A — DX Architect (Dan McKinley persona)
+### Analysis A — Charity (Operations Engineer)
 
-**Agreement:** Agree — Strongly
-
-**Reasoning from evolutionary perspective:**
-
-Analysis A delivers the single most important evolutionary insight of the entire session: innovation tokens are not free, and every token spent on premature infrastructure is a token not available for the actual change vectors that matter. This is evolutionary architecture thinking even if the author does not frame it that way.
-
-From my perspective, the "choose boring technology" principle is a direct corollary of the evolutionary architecture principle that reversibility must be preserved. LangGraph.js is an irreversible architectural decision in the sense that its graph state model leaks into your business logic — once your briefing pipeline is modeled as a LangGraph state machine, extracting it is a rewrite, not a refactor. A simple `async function generateBriefing()` is trivially reversible. Analysis A gets this exactly right without naming it.
-
-The concrete cost calculation ("8-10 developer-hours to first production briefing with boring stack vs 30-50 with proposed CTO stack") is precisely the kind of thinking that identifies change vectors correctly. At 30 days to MVP, the highest-change vector is the synthesis prompt and source integration quality — both completely independent of orchestration framework. Spending 3-4 days of 30 on LangGraph creates debt that is actually hard to detect because LangGraph's code looks "architecturally sophisticated." Invisible debt is the worst debt.
-
-One evolutionary gap Analysis A does not address: the innovation token framework is a snapshot-in-time decision, but the architecture must evolve. A said "save LangGraph for Phase 3 when you have branching workflows" — correct, but there is no fitness function to detect when the cron-based linear pipeline has genuinely outgrown its abstraction. Without that fitness function, the team will either never upgrade (stuck on a cron that strains under real branching needs) or upgrade prematurely (because it "feels" complex). I would add: define a concrete trigger condition — e.g., "when the briefing pipeline has three or more conditional branches based on LLM output, evaluate LangGraph."
-
-**Missed gaps:**
-
-- No fitness functions. The entire analysis identifies good decisions but leaves them unprotected. "Don't use LangGraph" is an architectural decision. What automated check prevents it from creeping back in six months when a new engineer decides it would be "cleaner"?
-- No 5-year change vector analysis. The DX analysis is firmly focused on the 30-day horizon. What happens when the team grows to 5 engineers? At that point, "boring" choices sometimes become coordination bottlenecks. No discussion of what triggers the upgrade path.
-
-**Rank: Strong**
-
----
-
-### Analysis B — Domain Modeler (Eric Evans persona)
-
-**Agreement:** Partially Agree
+**Agreement:** AGREE
 
 **Reasoning from evolutionary perspective:**
 
-Analysis B does the best pure domain modeling of the session. The Signal vs Item distinction is brilliant — it correctly identifies that the transformation from raw ingested material to evaluated briefing item IS the core value proposition. This is exactly the kind of stable core that evolutionary architecture must protect with fitness functions.
+A is the closest to producing actual fitness functions. The metrics catalog (M-01 through
+M-15) reads like a partial fitness function suite: specific, measurable, automatable.
+The SLO-4 (Bootstrap Accuracy) is the most important one from an evolutionary lens —
+it directly protects the `bootstrap_new_specs → lifecycle.yaml` architecture decision
+made in ARCH-186.
 
-However, I have a significant evolutionary disagreement with the 7-bounded-context model. Bounded contexts are not just a domain concept — they are an organizational prediction. You are predicting that these boundaries will be load-bearing seams along which the system will evolve. For a 2-person team building a morning briefing in 30 days, predicting 7 evolution seams is premature and expensive.
+From a change-vector perspective, A correctly identifies the "5 incidents, same pattern"
+trajectory. This is a textbook evolutionary architecture signal: the failure mode is
+repeating because there is no automated check to prevent re-occurrence. Each incident
+adds prevention code but no fitness function. The codebase is accreting rules without
+accreting their protection.
 
-Martin Fowler's MonolithFirst is precisely the evolutionary argument here: you cannot know which seams matter until you have run the system under real load with real users. Start with the simplest model that captures the domain language, then extract contexts when coupling becomes visible and painful. The current proposal inverts this — it extracts 7 contexts before you have a single paying user.
+The ALERT-001 proposal (mass-bootstrap-as-done rate > 3 in 5 minutes) would have
+been a genuine fitness function protecting ADR-023's invariant. Today it does not
+exist. ARCH-186 introduced lifecycle.yaml as SoT but produced zero automated checks
+that this SoT remains the sole source. The drift happened immediately.
 
-What Analysis B gets right from an evolutionary perspective: naming the domain events correctly (SignalIngested, BriefingReady, BriefingEngaged) creates the seams that allow future extraction without requiring it now. The domain events are evolutionary escape hatches. The bounded contexts are evolutionary overhead. Separate the naming (do it) from the service extraction (don't do it yet).
+**Missed gaps from evolutionary lens:**
 
-The Priority context (behavioral memory) correctly identified as a separate domain with a different change profile than Briefing. That is real evolutionary thinking — the memory schema changes on a quarterly timeline, the briefing compilation logic changes weekly. Different change velocities justify different boundaries.
-
-**Missed gaps:**
-
-- No fitness functions for domain boundary integrity. The analysis defines 7 bounded contexts but provides no automated way to ensure domain code does not cross those boundaries. Without dependency-cruiser or equivalent, the boundaries exist only in documentation. Documentation boundaries always decay.
-- No discussion of the change vector profile of each context. The Priority context changes quarterly (behavioral model evolves as we learn what "useful" means). The Notification context changes annually (new delivery channels). The Source context changes continuously (external API instability). These different change velocities justify different architectural treatment but the analysis treats all 7 contexts symmetrically.
-- Signal garbage collection is noted but there is no fitness function. An append-only signal table without automated pruning becomes the largest table in 30 days. That is technical debt that requires a scheduled job from day 1.
-
-**Rank: Strong**
+- A catalogs metrics but does not articulate which metrics ARE fitness functions vs
+  which are operational dashboards. Fitness functions protect architectural decisions;
+  monitoring dashboards detect symptoms. M-12 (bootstrap_volume_per_cycle) is a fitness
+  function for ADR-023. M-09 (poll_cycle_duration) is an ops metric. The distinction
+  matters for ownership: fitness functions go in CI/CD, dashboards go in ops.
+- A does not address the change vector: what is going to change next that the ops
+  stack is NOT ready to observe? Answer from code: `scan_queued` in orchestrator.py
+  uses callback-audit.jsonl as anti-recency signal. This is an undocumented coupling
+  that no alert covers. When it breaks, it will be as invisible as today's incident.
+- The "minimum viable ops hardening" (~160 LOC) is correctly scoped for LLM-native
+  execution, but A doesn't distinguish between one-off fixes and architectural
+  protections. Paying the 160 LOC debt once is not enough if the next ADR produces
+  another unobservable path.
 
 ---
 
-### Analysis C — Data Architect (Martin Kleppmann persona)
+### Analysis C — Eric (Domain Modeler)
 
-**Agreement:** Agree — with one critical qualification
+**Agreement:** AGREE — particularly strong on the ACL violation diagnosis
 
 **Reasoning from evolutionary perspective:**
 
-Analysis C is the most technically precise work in the session. The append-only usage_ledger pattern, the explicit two-table separation of raw behavioral events from derived memory signals, and the BEGIN IMMEDIATE transaction pattern for cap enforcement — all of these are correct and show proper understanding of data system design under change.
+C identifies the evolutionary architecture root cause that others approach obliquely:
+the lack of bounded context boundaries means every change to the system touches
+everything. This is the primary driver of the 5-incident pattern. When Work
+Verification, Lifecycle Write, Circuit Breaker, and Dispatch all live in `callback.py`,
+any change vector that hits one of these touches all four. The coupling multiplies
+the blast radius of every change.
 
-From an evolutionary perspective, the most important decision in Analysis C is the `briefing_feedback` → `memory_signals` derived data architecture. This is textbook DDIA Chapter 11 thinking: the log (briefing_feedback) is the source of truth; the derived state (memory_signals) is a projection. If you change the learning algorithm, you can reproject from the log. This is exactly the reversibility pattern that evolutionary architecture demands for irreversible data decisions. The analysis earns full marks for identifying that behavioral memory is the highest-risk irreversible decision and designing accordingly.
+The "domain events" section is the evolutionary architect's natural conclusion: events
+are the canonical way to isolate what changes. If `SpecCreated` is an event, the
+Execution Context's bootstrap_new_specs goes away entirely — a major change vector
+(new spec creation) no longer requires a daemon-level polling loop reading stale
+working-tree files.
 
-My critical qualification: Analysis C recommends "single shared DB at launch, migrate to per-tenant at 1000+ users." The evolution path is sound, but there is no fitness function that enforces the workspace_id isolation requirement during the single-DB phase. In a single shared database, a query that accidentally omits `WHERE workspace_id = ?` returns cross-tenant data silently. This is a data isolation failure that is extremely hard to detect without an explicit integration test. The recommendation to use workspace_id on every table is correct; the missing piece is the automated check that enforces it.
+The language audit (five meanings for "status", six synonyms for "gate/guard/rule") is
+a fitness function signal in disguise. Martin Fowler's observation applies: when a
+term means different things in different contexts, you have an implicit bounded context
+boundary that has not been made explicit. The linguistic confusion IS the drift.
 
-The structured JSON briefing content approach (rather than Markdown prose) is a superb evolutionary decision I fully endorse. It enables deterministic reliability checks, versioned schema evolution (content_schema_version field), and rendering independence. This is exactly the kind of decision that isolates a high-change area (delivery format, rendering target) from a stable core (briefing content structure).
+**Missed gaps from evolutionary lens:**
 
-**Missed gaps:**
-
-- Workspace isolation integration test — there is an explicit recommendation for this but it is placed in the "Scale Point 1" section rather than "Day 1." Data isolation failures are catastrophic and their test should be in CI before any user data exists.
-- Memory signal confidence decay is noted as a "Phase 2+" enhancement. From an evolutionary perspective this should be designed into the schema as a DEBT comment on day 1 — the current schema will produce stale high-confidence signals for users who go dormant, which degrades briefing quality silently. Add the DEBT tag so it surfaces automatically.
-- The CAP trade-off discussion (CP for usage caps, AP for delivery) is correct but there is no fitness function for the CP invariant. The BEGIN IMMEDIATE pattern is specified but it is easy for a developer to accidentally write a non-transactional cap check path. A unit test that verifies concurrent cap checks under race conditions should be in the test suite from day 1.
-
-**Rank: Strong**
+- C proposes the TO-BE bounded context map but provides no fitness functions to protect
+  it. The map will drift without automated checks. Specifically: what detects when code
+  in `dispatcher.py` starts importing from `lifecycle_writer.py` directly? Dependency
+  direction tests (madge, dependency-cruiser, or import-linter for Python) are the
+  canonical fitness function here. Without them, the new bounded context map will be
+  violated within weeks of implementation — the same way the current ADR-023 "sole
+  writer" invariant was violated almost immediately.
+- C does not assign change frequencies to bounded contexts. From evolutionary lens,
+  the Work Verification Context is the highest-change area (5 rounds of gate rule
+  changes in 2.5 months). The Spec Lifecycle Context should be the most stable (it
+  is the SoT). Isolation strategy should reflect this asymmetry.
+- The `SpecCreated` event proposal solves bootstrap_new_specs, but C does not ask:
+  what fitness function ensures Spark emits this event? If Spark stops emitting it
+  (e.g., a prompt engineering change), the orchestrator silently stops seeing new specs.
+  A monitoring check on "zero new lifecycle yamls for N days on an active project"
+  would catch this.
 
 ---
 
-### Analysis E — LLM Systems Architect (Erik Schluntz persona)
+### Analysis D — Erik (LLM Architect)
 
-**Agreement:** Agree
+**Agreement:** PARTIAL
 
 **Reasoning from evolutionary perspective:**
 
-Analysis E answers the most practically important questions for the architecture: what does model routing actually look like in code, what are the real token economics, and how does the eval pipeline work? These are all questions that determine whether the 90-day kill gate is measurable or just a date.
+D's framing of "context budget" as an architectural concern is genuinely novel from an
+evolutionary perspective. The observation that callback.py requires 10,000 tokens of
+context to safely modify is a quantifiable fitness function target: after decomposition,
+modifying the gate module should require no more than 3,000 tokens of context load.
+This is testable — you can measure it. It is the evolutionary architect's dream: an
+architectural property expressed as a number with a threshold.
 
-From an evolutionary perspective, the two-stage pipeline (Haiku per-source extraction + Sonnet synthesis) is a change isolation technique. It creates a boundary between the extraction layer (high change — external APIs change format, new sources added) and the synthesis layer (more stable — the synthesis prompt evolves but the interface is a list of SourceItems). This is a correct architectural instinct even if not framed that way.
+The `GateResult` dataclass proposal is a reversibility improvement: once verify_status_sync
+returns a typed result rather than communicating via side effects, it becomes possible
+to swap the gate implementation without touching callers. This is the "defer irreversible
+decisions" principle applied at function granularity.
 
-The compressed preference snapshot (300-token bounded injection regardless of user tenure) is exactly the right approach to prevent behavioral memory context growth from becoming a scaling bottleneck. This is a fitness function in disguise: the snapshot regeneration job enforces a hard boundary on context injection size. I would formalize this as an explicit fitness function: "Preference context injection must never exceed 500 tokens. Monitored by daily log analysis."
+**Missed gaps from evolutionary lens:**
 
-The eval strategy (three-tier: deterministic + LLM-as-judge + human) is precisely the reliability measurement pipeline that the kill gate requires to be meaningful. The golden dataset for regression detection in CI is a fitness function for briefing quality — possibly the most valuable single fitness function in the entire system.
-
-**Missed gaps:**
-
-- The analysis notes LangGraph vs direct pipeline as an open question but does not commit to a recommendation. From an evolutionary perspective, this is the one question that needs resolution before build starts, because the LangGraph graph model is architecturally load-bearing — it cannot be added incrementally without significant refactoring of the orchestration layer.
-- No discussion of how the evaluation pipeline itself evolves. The LLM-as-judge rubric will need to evolve as the product's definition of "good briefing" changes. Without a version-controlled rubric schema, the eval pipeline has the same data model problem as the behavioral memory — unversioned mutations corrupt historical comparability.
-- The embeddings alternative for relevance scoring (mentioned as an open question) has a clear evolutionary answer: start with Haiku scoring (simpler, no additional service dependency), add embeddings as a named upgrade trigger when Haiku relevance quality falls below a measurable threshold. Define that threshold before build.
-
-**Rank: Strong**
+- D focuses on the current state of ergonomics but does not assess the change vector.
+  The gate logic has been rewritten 5 times in 2.5 months. The evolutionary question
+  is: given that this component changes quarterly, how do we isolate it so the next
+  change does NOT require 10,000 tokens of context? D proposes the solution (bounded
+  module decomposition) but frames it as a static quality improvement rather than a
+  dynamic isolation strategy.
+- The `AGENT_REFERENCE.md` proposal is good documentation but is not a fitness function.
+  Documentation drifts. The fitness function protecting the agent reference document
+  would be a test that verifies every public function in gate.py has a corresponding
+  entry in AGENT_REFERENCE.md. Without that, the reference will be stale within two
+  months of the first gate change — the same pattern we see with the ADR chain today.
+- D does not address the irreversibility question. The `_subject_implements` regex has
+  been patched 3+ times. Each patch is a small reversible decision. But the cumulative
+  effect (divergent commit conventions across 10 projects) is becoming irreversible.
+  After enough projects adopt the trailer format, standardizing to the canonical format
+  is no longer a trivial migration. D identifies the symptom but not this trajectory.
 
 ---
 
-### Analysis F — Devil's Advocate (Fred Brooks persona)
+### Analysis E — Dan (DX Architect / Pragmatist)
 
-**Agreement:** Partially Agree — with important reservations
+**Agreement:** PARTIAL — strong on boring tech, weak on fitness functions
 
 **Reasoning from evolutionary perspective:**
 
-Analysis F is the most important voice in the session precisely because it creates productive friction. The conceptual integrity argument is directly aligned with evolutionary architecture thinking: a system without a clear organizing principle cannot evolve coherently because each change pulls in a different direction.
+E's "innovation token" accounting is the best single analytical framework in the peer
+set for the evolutionary architect's reversibility question. Framing git-as-lifecycle-DB
+as "one token spent on infrastructure" and quantifying the bug debt it has produced is
+exactly the kind of decision archaeology that evolutionary architecture requires.
 
-The contradiction analysis is sharp. Contradiction #1 (Behavioral Memory Moat vs 30-Day Build) is the most important one from an evolutionary perspective: the memory schema is the highest-risk irreversible decision, but it cannot be validated in the 90-day kill gate window because learning requires time. Analysis F correctly identifies that the kill gate measures trial-to-paid conversion while the moat takes six months to compound. This is a real evolutionary problem.
+The SQLite migration proposal directly increases reversibility: SQLite WAL transactions
+are simpler, faster, and more debuggable than 8-subprocess git plumbing CAS. The
+decision to use git-as-DB was an irreversible commitment to a specific consistency
+mechanism that has produced two production bugs. Migrating to SQLite restores
+optionality: SQLite can be replaced with Postgres without changing the lifecycle
+semantics; git-as-DB cannot be replaced without a full lifecycle contract rewrite.
 
-However, I have a specific evolutionary disagreement with the minimalist counter-proposal (3-table monolith, `preferences JSONB` column). Analysis F is correct that the 9-context DDD model is premature. But the minimum viable architecture is not "preferences as a JSON column" — it is "preferences as a structure that can evolve without migration pain." A JSON column is the least evolvable storage pattern for the behavioral memory use case, precisely because it is opaque to queries, impossible to partially migrate, and cannot be incrementally extended. A structured table with clear fields is not DDD overhead — it is the minimum viable design for data that will need to evolve.
+The Wave ordering (Zero-Innovation Fixes → Boring Stack Migration → DX Hardening) is
+an evolutionary migration strategy, not a big-bang rewrite. Martin Fowler's Strangler
+Fig pattern applied to data storage.
 
-The stress test "Main developer quits tomorrow" (bus factor = 1) is a legitimate evolutionary concern. Simplicity IS the bus factor mitigation. But the mitigation is not "use fewer tables" — it is "make every architectural decision self-documenting." DEBT comments, dependency graphs, and fitness functions serve this purpose. A 3-table monolith without these is not more maintainable than a 5-table structured schema with them.
+**Missed gaps from evolutionary lens:**
 
-The question about Google OAuth verification timing (start day 31 of Phase 2, not day 89) is the most practically valuable single insight in the entire session. This is an external dependency with a 4-6 week lead time that can kill conversion if missed. This is a change vector that is completely outside the team's control and should be on the first-week checklist.
-
-**Missed gaps:**
-
-- Analysis F identifies complexity red flags but provides no mechanism to prevent complexity re-accumulation. Without fitness functions, the simple architecture it recommends will drift back toward complexity as the product grows and new engineers add abstractions. "Start simple" is advice; "enforce simplicity continuously" requires automation.
-- The behavioral memory counter-argument (it is just a JSON column) underestimates the reversibility risk. The analysis correctly states the moat is not validated at 90 days, but the conclusion (defer to Phase 3) is too strong. The correct evolutionary answer is: design the memory schema structurally from day 1 (to make it evolvable), but do not implement the learning algorithm until you have evidence it is needed.
-- No discussion of the Phase 1 → Phase 2 evolutionary relationship. The simplest possible stack for Phase 2 may actually be more complex if it cannot demonstrate the DLD patterns that are Phase 1's value proposition.
-
-**Rank: Moderate** — Correct on complexity, underspecified on alternatives.
+- E's entire analysis has zero fitness functions. The boring stack is a better
+  foundation, but "boring" without "verified" is just an opinion. After migrating
+  to SQLite, what prevents the next engineer from adding another git-based state store
+  "just for this one thing"? An import-checker fitness function (`no subprocess in db.py
+  for status writes`, `lifecycle status reads must go through db.get_spec()`) would
+  protect the boring architecture automatically.
+- E correctly identifies that `bootstrap_new_specs` reads WT rather than HEAD, but
+  frames it as a DX pain point. The evolutionary frame is stronger: this WT read is a
+  change vector. The backlog.md file is edited by humans, by render_backlog, and by
+  Spark. Any of these writers can inadvertently trigger a mass-bootstrap event. The
+  fitness function protecting against this is not "read HEAD instead of WT" — it is
+  a test that verifies `bootstrap_new_specs` raises an error when backlog.md is dirty.
+- E proposes removing spec_operator.py but does not ask: what is its replacement? If
+  the answer is "direct SQLite mutations," that is an operator workflow change that
+  will be reversed the first time the operator makes a typo and has no undo mechanism.
+  The evolutionary position is: retain a thin operator CLI (< 50 LOC) that wraps
+  SQLite, logs mutations to the audit trail, and is tested.
 
 ---
 
-### Analysis G — Security Architect (Bruce Schneier persona)
+### Analysis F — Martin (Data Architect)
 
-**Agreement:** Agree
+**Agreement:** AGREE — the most precise technical analysis in the peer set
 
 **Reasoning from evolutionary perspective:**
 
-Analysis G maps directly to evolutionary architecture's concern with non-functional characteristics that cannot be easily retrofitted. Security is the canonical example: you cannot bolt on OAuth CSRF protection after a breach. It is either designed in from the start or it is a disaster waiting to be measured.
+F's kill question answer ("What is the system of record for each entity?") is
+structurally equivalent to the evolutionary architect's "what fitness functions protect
+this decision?" For each entity, F provides: declared SoR, actual SoR, and conflict.
+This is a fitness function audit in everything but name.
 
-The most evolutionarily significant finding is the Google OAuth App Verification timeline (I4): a 4-6 week external dependency with a hard deadline before launch. This is a change vector that is completely outside the team's control and has zero flexibility in the schedule. It belongs on the first-week checklist. If this verification is missed, the "This app hasn't been verified" warning will kill trial-to-paid conversion at the exact moment the kill gate is measured. An external change vector with this severity deserves a fitness function: "Verify that Google Cloud Console OAuth application status is 'verified' before any public launch announcement."
+The state machine transition table (VALID_TRANSITIONS dict) is the exact pattern I
+would call a fitness function for the lifecycle architecture. Once encoded, a test
+suite can enumerate all (old_status, new_status) pairs that should be invalid and
+assert they raise ValueError. No drift from this invariant is possible without a
+failing test.
 
-The OAuth token architecture decisions (AES-256-GCM, IV per token, GCM auth tag, token never stored in access-token form beyond 1 hour) are irreversible decisions. Adding encryption to an existing table of plaintext tokens after the first 100 users is a live migration with zero downtime pressure. Analysis G correctly identifies these as day-1 decisions.
+The `dispatched_at` rename (from `started_at`) addresses the evolutionary concern
+about the queued→done shortcut: by capturing dispatch time rather than status-change
+time, the schema remains valid even when the pipeline completes faster than expected.
+This is a schema design that accommodates known change vectors.
 
-The prompt injection threat model is the most interesting evolutionary concern: the attack surface for this system will expand as source count grows. Every new source integration is a new injection vector. The sanitization layer must be designed as an extensible pattern (not a one-off for RSS), and its fitness function is: "Every source adapter must pass through the input sanitization layer before injecting content into the synthesis prompt." This can be enforced via TypeScript's type system — `SanitizedSourceItem` type that only the sanitization function can produce.
+**Missed gaps from evolutionary lens:**
 
-**Missed gaps:**
-
-- No fitness functions for security. The analysis identifies critical security decisions but leaves them as design recommendations. A pre-commit hook that scans for `access_token` or `refresh_token` in non-encrypted DB writes is automatable and would catch security regressions before they reach production.
-- Memory signal data as privacy risk (I5) is important but the response ("store minimum necessary") is too vague. An explicit enumeration of what the behavioral memory stores and what it does NOT store should be part of the data retention policy and verifiable in the schema. The fitness function here: "memory_signals table must not contain PII fields (email addresses, names, phone numbers). Enforced by schema review in CI."
-- The workspace IDOR concern (C4) recommends UUID workspace IDs. This is correct, but the fitness function is missing: integration test that attempts to access Workspace B's briefings with Workspace A's authenticated token and asserts HTTP 403. Without this test, the IDOR risk lives in documentation, not code.
-
-**Rank: Strong**
+- F proposes the differential renderer for backlog.md (sentinel-based) but does not
+  flag that the backlog.md file is now a change vector with no owner. Who is allowed
+  to edit the narrative sections? If a Claude agent edits the narrative sections during
+  an autopilot task, is that acceptable? A fitness function protecting the sentinel
+  boundaries (`grep "AUTO-GENERATED-START" ai/backlog.md | wc -l` == expected count)
+  would catch renderer bugs. Without it, the sentinel approach will drift.
+- F recommends keeping git-as-lifecycle-DB (aligned with ADR-023) while E recommends
+  migrating to SQLite. This is the central divergence in the peer set. From the
+  evolutionary lens: the reversibility question matters most. Git-as-DB is harder to
+  reverse than SQLite-as-DB. But F's proposed improvements (schema_version, VALID_TRANSITIONS,
+  remove allowed_files_hash) make the git-as-DB approach more maintainable. The
+  evolutionary answer is: F's improvements should be done regardless of which storage
+  wins, because they are schema-level invariants, not storage-level.
+- The `priority: p3` in 4 lifecycle files is a fitness function failure: the write-time
+  validation for valid priorities was never implemented. F proposes adding it now — this
+  is correct — but does not note that this failure pattern (schema declared, not
+  enforced) is a recurring structural problem. The same pattern exists for `updated_by`
+  (honor-system string), `blocked_reason` (free text), and `status` (no transition
+  guard). A fitness function at the schema level (`validate_lifecycle_yaml(path)` run
+  in CI) would catch all these violations in one pass.
 
 ---
 
-### Analysis H — Operations Engineer (Charity Majors persona)
+### Analysis G — Fred (The Skeptic / Brooks' Lens)
 
-**Agreement:** Agree — Strongly
+**Agreement:** AGREE — strongest on conceptual integrity, weakest on implementation path
 
 **Reasoning from evolutionary perspective:**
 
-Analysis H is the most operationally grounded work in the session and contains several insights that directly affect evolutionary architecture decisions. The "dead man's switch" pattern for cron non-execution detection is exactly the kind of fitness function I would propose for the briefing delivery SLO. Healthchecks.io heartbeat is the automated check that prevents silent cron failure — the architectural decision is "briefings must fire" and this is the fitness function that protects it.
+G's "0-rule design hypothesis" is the evolutionary architect's dream question: "what
+is the minimal architecture that would prevent this class of failure?" The Option C
+proposal (200-LOC callback + separate gate.py daemon) is not just a refactoring — it
+is a change in architectural style from "reactive callback-driven status determination"
+to "proactive poll-driven status determination." This has profound evolutionary
+implications.
 
-The BullMQ recommendation over node-cron is an evolutionary correctness argument, not just a preference: node-cron is in-memory, BullMQ is persistent. The system's ability to recover from machine restarts without losing scheduled jobs is an architectural property. It deserves a fitness function: "Integration test: simulate Fly.io machine restart during briefing window, verify job resumes without duplicate delivery."
+A poll-driven gate is easier to evolve. You can change the polling interval, add new
+rules, swap the git log query — all without touching the pueue callback contract. The
+current callback-driven design means every gate change must be deployed synchronously
+with pueue task completions. A separate gate daemon decouples the deployment and change
+vectors.
 
-The distributed tracing architecture (OTel + Grafana Tempo) with the deterministic trace_id generation (`sha256(user_id + scheduled_window)`) is an elegant evolutionary decision: it makes retries of the same briefing identifiable without ambiguity, and it allows the reliability measurement pipeline to correlate delivery attempts with their causes. This is data lineage — the same concept the Data Architect applied to the SQL schema, applied to the observability layer.
+The Evaporating Cloud analysis (Part VIII) is the most rigorous conflict resolution in
+the peer set. The hidden assumptions are correctly surfaced: "a rewrite must replace
+everything at once" (broken), "the incremental path converges" (broken by 5-iteration
+evidence). The Strangler Fig migration path is directly executable.
 
-The Upstash Redis free tier math (500 users × 2 ops/briefing = 1,000 ops/day, approaching the 10,000/day free tier at 5,000 users) is exactly the kind of "scale point" analysis that makes evolution paths concrete. This is the right way to plan scaling: not "Redis will be fine" but "Redis is free until N users, at which point it costs $X/month."
+**Missed gaps from evolutionary lens:**
 
-The timezone-aware scheduling comment (day-1 requirement, not day-60 enhancement) is important. BullMQ's `tz` parameter is cheap to add at the start; retrofitting timezone support into a production scheduling system is a painful migration. This is a reversibility concern that the other analyses missed.
-
-**Missed gaps:**
-
-- No fitness functions stated explicitly, though many of the recommendations ARE fitness functions by another name. Formalizing them as such (in CI or as runbook items) would make them more durable. The heartbeat check, the error rate threshold on deploy, the cost alert thresholds — these should all be declared as architectural invariants with named fitness functions.
-- The BullMQ recommendation conflicts with Analysis A's recommendation to use node-cron. This is a genuine architectural decision that the council must resolve. Analysis H makes the stronger evolutionary argument (persistence > simplicity for a scheduled job that must not silently fail), but the decision should be made explicitly with both trade-offs acknowledged.
-- The single-region trigger (100+ Pacific timezone users) is a good evolution point definition. But there is no fitness function for detecting this threshold. Add a metric: "When Pacific timezone users exceed 10% of total active users AND on-time delivery rate for UTC-8 drops below 95%, evaluate multi-region." Without this specific trigger, the team will either never migrate or migrate prematurely based on subjective feeling.
-
-**Rank: Strong**
+- G proposes the 200-LOC callback + gate.py architecture but provides no fitness
+  functions for the TO-BE state. The ADR chain that produced callback.py's bloat existed
+  precisely because there were no automated checks preventing accumulation of rules.
+  Without fitness functions, gate.py will be at 600 LOC within 6 months through the
+  same accretion pattern.
+- The "who is the sole owner of callback/lifecycle architecture?" question (Part X) is
+  important but not answered. In an LLM-maintained codebase, "sole owner" is the fitness
+  function suite itself. The answer to G's question is: "the architecture is owned by
+  the tests that enforce it." Without that answer, the next incident will produce the
+  same reactive-patch response.
+- G recommends removing _ALLOWED_WRITERS and replacing with git author identity. This
+  is a stronger identity guarantee but creates an irreversible decision: once lifecycle
+  writes are signed with a specific GPG key, rotating that key requires migrating all
+  lifecycle history. From the reversibility lens, the process-token approach (Layer 1
+  in H's security analysis) is more reversible: replace the env var, no git history
+  migration needed.
 
 ---
 
-## Ranking
+### Analysis H — Bruce (Security Architect)
 
-**Best Analysis:** C (Data Architect)
+**Agreement:** PARTIAL
 
-**Reason:** Analysis C makes the most irreversibility-correct decisions in the session. The append-only usage ledger, derived memory signals from event log, structured JSON briefing content, and the schema evolution strategy (additive-only for 90 days) are all examples of thinking in 5-year consequences, not 5-week consequences. Most importantly, the two-table separation of `briefing_feedback` (raw events) from `memory_signals` (derived state) is the single most important architectural decision in the system — it makes the behavioral memory schema reversible when everything else about behavioral memory is irreversible. That is evolutionary architecture applied correctly to the most critical data design question.
+**Reasoning from evolutionary perspective:**
 
-**Worst Analysis:** F (Devil's Advocate)
+H's threat model surfaces the most dangerous evolutionary failure mode: the system
+has accreted security declarations (identity enforcement, pre-commit hooks, ALLOWED_WRITERS)
+that do not function anywhere. This is architectural drift in its purest form — the
+declared architecture and the implemented architecture have diverged completely on
+the security axis.
 
-**Reason:** Analysis F correctly identifies the complexity problem but provides no evolutionary path forward. The 3-table counter-proposal is not a minimum viable evolutionary architecture — it is a tactical prototype. A `preferences JSONB` column is the least evolvable storage pattern for the stated moat mechanism. The analysis provides no fitness functions, no change vector analysis, and no discussion of what happens after the kill gate passes. The value of a devil's advocate in architecture is not to simplify to the point of no design — it is to challenge specific decisions with better alternatives. Analysis F challenges well but proposes poorly.
+From the evolutionary lens, this is the fitness function gap in its most concrete form:
+- Declared invariant: "only callback writes lifecycle status" (ADR-023)
+- Fitness function to protect it: pre-commit hook on ai/lifecycle/*.yaml writes
+- Status of fitness function: dead, not deployed anywhere (confirmed in deep-audit-report.md)
+
+The pre-commit hook is the canonical example of a fitness function that was defined,
+implemented, and then never deployed — and therefore never prevented any drift. The
+H analysis correctly identifies this as an "active incident" rather than a potential
+vulnerability.
+
+**Missed gaps from evolutionary lens:**
+
+- H's STRIDE analysis identifies threats but does not prioritize by change velocity.
+  The TELEGRAM_BOT_TOKEN is a P0 acute incident. The `_ALLOWED_WRITERS` theater is
+  a chronic drift problem. Evolutionary architecture distinguishes these: acute incidents
+  need immediate fixes; chronic drift needs fitness functions. H treats them similarly.
+- H proposes HMAC on callback-audit.jsonl, which is a security control, but does not
+  flag the architectural implication: callback-audit.jsonl being read by scan_queued
+  (orchestrator.py:520) for dispatch decisions is an undocumented cross-module data
+  dependency. This is a hidden change vector — changing the JSONL format or rotation
+  policy could silently affect dispatch behavior. A fitness function (integration test
+  that exercises the scan_queued → anti-recency path with known JSONL content) would
+  protect this coupling.
+- H recommends process tokens (env vars in systemd units) as a Layer 1 security
+  control. This is correct. But from the evolutionary perspective, the reversibility
+  question: if tokens change, how many files need to be updated? If ORCHESTRATOR_PROCESS_TOKEN
+  is used in 7 different call sites, token rotation becomes a coordinated multi-file
+  change. The fitness function protecting token rotation is a test that enumerates all
+  lifecycle.write_lifecycle call sites and verifies they all pass through the token
+  validation path — not that they hardcode specific token values.
+
+---
+
+## Convergence (What All Peers Agree On)
+
+**1. bootstrap_new_specs WT read is the root cause of today's incident (A, C, D, E, F, G, H all mention it)**
+
+Universal convergence. The fix is equally universal: read from HEAD or remove bootstrap_new_specs.
+From the evolutionary lens, this convergence indicates a clear fitness function target:
+`assert bootstrap_new_specs never calls Path.read_text() on a WT file` — verifiable
+with static analysis (ast.parse + visitor checking for Path.read_text calls in
+orchestrator.py).
+
+**2. callback.py is a god module that must be decomposed (A, C, D, E, F, G all agree)**
+
+Universal minus H (H focuses on security surface, implies decomposition indirectly).
+The decomposition is not optional from an evolutionary architecture perspective — it
+is the change that makes all subsequent changes possible without cascading blast radius.
+
+**3. pre-commit hook / identity enforcement is theatrical (C, G, H all confirm)**
+
+The declared architecture (sole writer, identity-verified writes) has drifted from the
+implemented architecture (any caller with filesystem access can write). This drift has
+persisted undetected because there is no fitness function checking it.
+
+**4. The three-store status split is a root structural problem (A, C, E, F, G, H all cite it)**
+
+lifecycle.yaml HEAD + backlog.md WT + spec body = three representations of one fact.
+This is the architectural source of today's incident and of BUG-185, ARCH-186, and
+the TECH-166/176/177 chain. Every peer identifies it. The fix (single SoR) is
+universally agreed upon.
+
+**5. `_push_best_effort` at DEBUG is a production safety defect (A, E, F, H all flag it)**
+
+A one-line change (DEBUG → WARNING) that would have made 3 of the 5 historical
+incidents faster to detect. No peer disagrees.
+
+---
+
+## Divergence (Where Peers Disagree)
+
+**1. Git-as-DB vs SQLite: E says replace, F says improve**
+
+E (Dan): lifecycle.py is an innovation-token overrun. SQLite transactions replace 8
+subprocess calls. Migration cost ~$10.
+
+F (Martin): ADR-023 is correct. The CAS mechanism is sound. Fix the schema, add
+transition validation, add schema_version. Keep git.
+
+**Evolutionary position:** Both are partially right. E is right that git-as-DB has
+generated an entire class of bugs (stale-index race, push-at-DEBUG, no timeout on
+_run()). F is right that the CAS concept is sound and that the schema improvements
+are needed regardless. The reversibility question resolves it: SQLite is more
+reversible. The migration from lifecycle.yaml to SQLite is a 3-4 file change costing
+~$10 in LLM compute. The migration from SQLite back to git is also feasible. Neither
+decision is irreversible. From the evolutionary lens, E's proposal wins on boring-tech
+grounds AND on the fitness function grounds: SQLite queries are easier to write fitness
+functions for than git plumbing operations.
+
+**2. Retain circuit breaker vs simplify to warning (G says simplify, E says keep)**
+
+G: circuit breaker fires on self-induced problems (bootstrap mass-demotes). If bootstrap
+is killed, the primary trigger disappears. Simplify to logging + alert.
+
+E: Keep circuit breaker, it is a legitimate operational concern.
+
+**Evolutionary position:** G is right that the circuit breaker is treating a symptom
+(mass-demotes) rather than the cause (unguarded bootstrap). But E is right that operational
+safety mechanisms have value even when imperfect. The evolutionary resolution: keep the
+circuit breaker as a last-resort safety net, but add a fitness function upstream
+(ALERT-001 in A's catalog) that fires before the circuit breaker threshold is reached.
+The circuit breaker should almost never fire if upstream fitness functions are healthy.
+
+**3. spec_operator.py: remove (E) vs thin wrapper (Neal's position) vs already dead (G)**
+
+E: Remove. YAGNI, zero users.
+G: Already dead (file does not exist on disk per G's reading, though C confirms it at spec_operator.py:116).
+
+**Evolutionary position:** The operator CLI should exist as a thin wrapper over the SoR
+(SQLite or lifecycle.write_lifecycle) with an audit trail. "Remove the tool" creates
+a gap: the next time an operator needs to manually reset a spec, they will use the
+most dangerous available mechanism (direct file edit or SQL without audit trail). A
+50-LOC CLI with `--dry-run` and audit trail is better than no CLI. The evolutionary
+test: does this CLI have 100% test coverage of every mutation it can perform?
+
+---
+
+## Ranking: Top 3 by Leverage for Evolutionary Architecture
+
+**1. Analysis A (Operations/Charity) — highest evolutionary leverage**
+
+Reason: A is the only peer that translates architectural decisions into measurable
+fitness functions (SLO-4, ALERT-001, M-01). The metrics catalog provides 15 specific,
+automatable checks that protect ARCH-186's architectural decisions. Without these,
+every future change to the lifecycle contour will be evaluated only after a 5-hour
+production incident. With them, drift is detected in under 5 minutes. This is the
+foundational evolutionary contribution.
+
+**2. Analysis G (Skeptic/Brooks) — highest conceptual leverage**
+
+Reason: G's "0-rule design hypothesis" and Evaporating Cloud analysis provide the
+architectural blueprint that should guide all decomposition decisions. The gate.py
+separation (poll-driven, pure function of git history) eliminates the entire class
+of "infer intent from artifacts" failures. G correctly identifies that the accumulation
+of rules is the failure mode, not any specific rule. This is the evolutionary insight
+that the other peers approach but do not state as directly.
+
+**3. Analysis F (Data/Martin) — highest precision leverage**
+
+Reason: F's VALID_TRANSITIONS dict, `_validate_transition` enforcement, and schema_version
+proposal are directly implementable fitness functions. The transition guard is the
+most important: once `queued → done` is rejected at write time, an entire class of
+bugs (bootstrap-as-done, gate shortcut) becomes structurally impossible. F provides
+the data-layer fitness functions that protect the lifecycle contract.
+
+---
+
+## Evolutionary-Specific Assessment
+
+### Which proposals have no fitness function (will silently drift again)?
+
+**Analysis C (Eric — Domain Modeler):**
+The TO-BE bounded context map has no proposed fitness functions. C correctly draws the
+boundaries but provides no automated check that the boundaries hold. In Python, import
+direction is enforced by convention and code review. Without a tool like `import-linter`
+or `dependency-cruiser` configured with the declared dependency rules, the new bounded
+contexts will be crossed within months. Specifically: the "no direct import from
+lifecycle_writer in gate.py" rule must be tested, or it will be violated.
+
+**Analysis D (Erik — LLM Architect):**
+The AGENT_REFERENCE.md is documentation, not a fitness function. The context-budget
+reduction (10K → 3K tokens) is stated as a goal but has no measurement mechanism.
+A fitness function would be: `wc -l scripts/vps/gate.py | awk '$1 > 200 {exit 1}'`.
+Without line-count guards on the decomposed modules, each will grow back to 500+ LOC
+through the same accretion pattern that produced callback.py.
+
+**Analysis E (Dan — Pragmatist):**
+The boring-stack migration removes technical complexity but produces no fitness functions
+protecting the simplicity. The SQLite gate (`git log origin/develop --grep SPEC-ID`) is
+elegant, but what prevents the next incident from adding a second flag (`--since`, a
+LOC threshold, a file-path filter) until it is 8 rules again? A fitness function:
+`grep -c "subprocess.run" scripts/vps/gate.py | awk '$1 > 1 {exit 1}'` — one subprocess
+call in the gate, no more.
+
+**Analysis H (Bruce — Security):**
+The HMAC proposal for callback-audit.jsonl is a security control, not a fitness function.
+A fitness function would be: CI test that writes a line to callback-audit.jsonl without
+the HMAC key and verifies scan_queued rejects it. Without this test, the HMAC validation
+code will be removed or bypassed the next time someone needs to debug the anti-recency
+logic.
+
+### Which proposals would FAIL the "would it have caught today's bug at PR-time?" test?
+
+**The 8-rule redesign (cefaa55) passed code review but introduced a regression:**
+The cross-project guard (Rule 8) fixed one problem while breaking `_subject_implements`
+for the awardybot/dowry commit convention (460 of 636 commits now false-blocked). None
+of the peer proposals include a fitness function that would catch this: a test suite
+for `_subject_implements` with golden dataset covering both commit conventions. This is
+specifically called out in D's analysis but framed as "build a test dataset first" —
+not as a pre-merge CI gate that MUST pass before any `_subject_implements` change is merged.
+
+**Today's bootstrap bug (bootstrap_new_specs reads WT) passed code review:**
+The fix was implemented without a test that would catch a regression. No peer proposes
+a specific test for this: `test_bootstrap_ignores_dirty_wt` — a test that modifies
+backlog.md in the WT without committing, then verifies bootstrap_new_specs produces
+zero lifecycle yaml changes. Until this test exists, the next person who "fixes"
+bootstrap_new_specs can inadvertently reintroduce the WT read. A, F, G all identify
+the root cause but none specify the regression test that would protect the fix.
+
+**The `_push_best_effort` at DEBUG level:**
+Every peer notes this. None propose a test that verifies push failures are logged at
+WARNING or above. A fitness function: `grep -n "log.debug.*push" scripts/vps/lifecycle.py`
+fails CI if any match is found. This is a 2-line git hook.
+
+### Which proposals create new dimensions of drift?
+
+**Analysis H's HMAC on audit JSONL:**
+If callback-audit.jsonl becomes HMAC-protected, the HMAC key in the systemd environment
+becomes a new secret that must be rotated. Rotation requires stopping callback,
+re-generating the JSONL file with new HMACs, restarting. This is a new operational
+complexity that H's proposal does not acknowledge. From the evolutionary lens, this is
+a new change vector being introduced to solve a threat that is currently theoretical
+(no evidence of audit JSONL injection in the incident history). The complexity cost
+may exceed the security benefit.
+
+**Analysis F's `schema_version` in lifecycle YAML:**
+Adding `schema_version: 1` to lifecycle YAML is correct in principle. But it introduces
+a migration obligation: every future schema change requires incrementing schema_version
+and writing migration code. In an LLM-maintained codebase, this obligation will be
+forgotten. A fitness function protecting it: `python3 -c "import yaml; d = yaml.safe_load(open('ai/lifecycle/TECH-001.yaml')); assert d.get('schema_version') == CURRENT_SCHEMA_VERSION"`
+run in CI against a sample of lifecycle yamls. Without this test, schema_version becomes
+another dead field like `allowed_files_hash` — always null, never meaningful.
+
+**Analysis G's removal of _ALLOWED_WRITERS in favor of git author identity:**
+Replacing the string-based identity check with GPG-signed commits is a higher-integrity
+approach. But it creates an irreversible coupling: once lifecycle writes carry GPG
+signatures, rotating the signing key requires migrating all historical lifecycle commits
+or accepting a split history. This is a new architectural constraint that G's proposal
+underweights. The process-token approach (H's Layer 1) is more reversible and achieves
+80% of the security benefit at 20% of the irreversibility cost.
+
+---
+
+## My Addition: The Missing Evolutionary Insight — Temporal Coupling as the Core Drift Vector
+
+The peer analyses collectively identify what is wrong (god module, three SoRs, theatrical
+identity) and what to do about it (decompose, consolidate, enforce). What they miss is
+WHY the architecture keeps drifting in the same way.
+
+The root cause, from an evolutionary architecture perspective, is **temporal coupling
+between the status determination event and the status write event**. Callback.py is a
+synchronous pueue callback: it fires at task completion, determines status, writes status,
+all in one execution. This temporal coupling means:
+
+1. Every change to "how we determine done" must be deployed atomically with the write
+   mechanism. The gate and the writer cannot evolve independently.
+2. The determination logic (git log scan) runs once, at completion time, with whatever
+   git state exists at that moment. If origin/develop has not been refreshed, the
+   determination is wrong. (This is Root 4 in the audit — WT-sync race during atomic write.)
+3. Bootstrap_new_specs exists because the Spark skill creates specs asynchronously,
+   but the callback contract expects specs to exist before pueue tasks fire. This
+   temporal mismatch between creation time and dispatch time is the source of the
+   bootstrap logic.
+
+The evolutionary fix — which G approaches but does not name as a temporal coupling fix —
+is to decouple the determination event from the completion event:
+
+```
+Completion event (pueue callback, ~milliseconds):
+  → release slot, dispatch QA/reflect, log task, exit
+  (no git reads, no status writes, no coupling to git state)
+
+Determination event (gate.py poll, every 60 seconds):
+  → for each in_progress spec: git log origin/develop --grep=<spec_id>
+  → if found: write_lifecycle(done)
+  (no pueue coupling, no completion event timing, pure git-state function)
+```
+
+This decoupling eliminates the WT-sync race (no WT touch in callback), eliminates the
+bootstrap race (gate.py finds specs regardless of when lifecycle yaml was created),
+and makes the gate logic independently evolvable and testable.
+
+The fitness function for this decoupling:
+```bash
+# Git hook or CI check:
+# callback.py must not import lifecycle or contain git subprocess calls
+grep -E "(import lifecycle|subprocess.*git)" scripts/vps/callback.py
+# Fails CI if any match found after decoupling
+```
+
+This is one grep. It protects the most important architectural decision in the system.
+
+No peer proposed it.
 
 ---
 
 ## Revised Position
 
-**Revised Verdict:** Largely the same as Phase 1, with two important updates.
+**Revised Verdict:** Refined from Phase 1
 
-**What peer analyses confirmed:**
-1. The behavioral memory schema as the highest-risk irreversible decision (confirmed by C, E, F, G). My Phase 1 recommendation to design it explicitly before any code is written is validated.
-2. The 4-6 week Google OAuth verification timeline (G) is a change vector I missed entirely in Phase 1. This needs a fitness function and a first-week checklist item.
-3. BullMQ over node-cron (H) is an evolutionary correctness argument I partially addressed (I mentioned the orchestration decision should be deferred) but did not state strongly enough. A cron job that silently drops jobs on restart is a fitness function violation — it fails the "briefing delivery" SLO without any observable signal.
+**Change Reason:**
 
-**What peer analyses revealed that changes my position:**
+The peer analyses confirm the evolutionary diagnosis but add important nuance:
 
-**Update 1: Defer behavioral memory implementation, not design**
+1. The git-as-DB vs SQLite debate is more nuanced than initially assessed. F's
+   improvements to git-as-DB are valid and should be done regardless of storage choice.
+   But E's boring-tech argument is stronger from an evolutionary lens: fewer moving
+   parts means fewer fitness functions needed to maintain integrity.
 
-Analysis F argued behavioral memory is a Phase 3 feature. Analysis C and E argued it needs design on day 1. I now believe both are partially correct: the memory SCHEMA must be designed on day 1 (for reversibility), but the LEARNING ALGORITHM should not be implemented until there is evidence from real users that learning improves retention. The correct Phase 2 MVP behavior for memory: store `briefing_feedback` events from day 1 (cheap, zero UX impact), do NOT implement the weekly snapshot regeneration until after the first conversion data arrives. This defers cost and complexity while preserving the option to build the moat.
+2. G's Brooks analysis provides the historical explanation I was missing: the second-
+   system effect explains why callback.py is a god module. The bash-era callback was
+   simple. The Python rewrite accumulated all the "held-back ideas" from the first
+   system. This pattern predicts that the third system (gate.py + callback.py split)
+   will be over-engineered UNLESS fitness functions prevent feature creep from the
+   start.
 
-**Update 2: The Google OAuth verification is an architectural dependency, not an operational note**
-
-Analysis G identified this as important, but I now believe it deserves treatment as a formal architectural constraint: the system cannot launch publicly until Google verification is complete. This is a hard external dependency with a non-negotiable lead time. It should be on the fitness function checklist as a pre-launch gate, not just as an operations recommendation.
+3. A's observability catalog provides the most immediately actionable fitness functions.
+   The minimum viable hardening (~160 LOC) should be the first wave — not because it
+   solves the architectural problem, but because it makes all subsequent changes safer
+   to execute. You cannot safely evolve what you cannot observe.
 
 **Final Evolutionary Recommendation:**
 
-The architecture has five decisions that are genuinely irreversible and must be made correctly before the first line of code:
+Three-wave evolutionary migration, ordered by reversibility risk and feedback speed:
 
-1. **Behavioral memory schema** (append-only events + derived state separation) — designed before day 1, implemented at MVP, learning algorithm deferred to post-trial data
-2. **Workspace data isolation** (UUID workspace IDs, workspace_id on every table, RLS enforcement verified by integration test) — day 1, never retrofitted
-3. **OAuth token encryption** (AES-256-GCM, IV per token, never plaintext) — day 1, migration is catastrophically difficult at 100+ users
-4. **Briefing content schema versioned from day 1** (content_schema_version field, structured JSON not Markdown) — enables future rendering flexibility without reprocessing historical briefings
-5. **Google OAuth App Verification initiated within first week of Phase 2 build** — external dependency with 4-6 week lead time, cannot be accelerated
+**Wave 0 (immediate, ~$5, all reversible):**
+- Promote `_push_best_effort` from DEBUG to WARNING (1 line)
+- Add orchestrator heartbeat file (8 lines)
+- Add bootstrap volume counter + ALERT-001 threshold check (15 lines)
+- Add `test_bootstrap_ignores_dirty_wt` regression test
+- Add `_subject_implements` golden dataset test with both commit conventions
 
-All other decisions (LangGraph vs cron, Clerk vs custom auth, Turso vs SQLite file, node-cron vs BullMQ) are reversible within the proposed abstractions and should be made based on the DX persona's innovation token framework: boring until proven insufficient.
+These are all fitness functions protecting current architectural decisions. Zero
+architectural change. Detects the next incident in minutes rather than hours.
 
-The fitness function suite from Phase 1 stands, with two additions:
+**Wave 1 (this week, ~$20, reversible):**
+- Decouple gate.py from callback.py (G's proposal + temporal coupling fix)
+- Add dependency direction fitness function (Python import-linter rule: gate.py must
+  not import lifecycle.py)
+- Add module LOC fitness function (gate.py < 200 LOC, callback.py < 150 LOC)
+- Kill bootstrap_new_specs from daemon loop (replace with Spark creating lifecycle yaml)
 
-**Addition 1: Job persistence test**
-```bash
-# CI integration test
-# Simulate process restart during scheduled job window
-# Verify job executes exactly once after restart (BullMQ idempotency_key)
-npm run test:integration -- --grep "cron-persistence"
-```
+These changes reduce the blast radius of the Work Verification change vector.
 
-**Addition 2: Google OAuth verification status gate**
-```bash
-# Pre-launch checklist (not automated — manual verification)
-# Verify OAuth application status in Google Cloud Console = "Verified"
-# This must be confirmed before any public announcement
-```
+**Wave 2 (next sprint, ~$30, partially reversible):**
+- Migrate lifecycle.py to SQLite (E's proposal, increases reversibility of SoR choice)
+- Add VALID_TRANSITIONS enforcement (F's proposal)
+- Add bounded context dependency rules (C's proposal, enforced by import-linter)
+- Add schema_version to lifecycle yaml with CI fitness function checking it
 
-The most important single insight from the cross-critique: fitness functions without ownership decay. Every architectural decision identified in this council needs a named owner (human or automated) who is responsible for verifying it. Without named ownership, architectural decisions live in documents and die in code.
+Each wave produces fitness functions that protect its own decisions. Architecture
+cannot drift if the tests that define it are running on every commit.
+
+The 5-incident pattern in the callback/lifecycle contour is not bad luck. It is the
+predictable consequence of an architecture with no automated protection for its own
+invariants. Every incident fixed one invariant and left the next one unprotected.
+The evolutionary answer is not to fix the invariants faster. It is to test them
+continuously.
+
+---
+
+## References
+
+- Neal Ford et al., Building Evolutionary Architectures (O'Reilly, 2017)
+- Martin Fowler, "Fitness Functions" (martinfowler.com)
+- Martin Fowler, Strangler Fig Application (martinfowler.com/bliki/StranglerFigApplication)
+- Fred Brooks, The Mythical Man-Month, ch. 5 (Second-System Effect)
+- Dan McKinley, "Choose Boring Technology"
+- scripts/vps/callback.py — 1374 LOC, 19 bare exceptions, 7 responsibilities
+- scripts/vps/lifecycle.py — _push_best_effort at DEBUG (line 265)
+- scripts/vps/orchestrator.py:295 — WT read of backlog.md (root cause of today's incident)
+- deep-audit-report.md — 85 findings, 5 historical incident pattern
+- architecture-agenda.md — per-persona scope

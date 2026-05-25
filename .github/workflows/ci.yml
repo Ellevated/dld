@@ -81,6 +81,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-cov ruff
+          # ARCH-186/BUG-188/ARCH-193: scripts/vps imports need pyyaml
+          # (lifecycle.py) and claude-agent-sdk (claude-runner.py).
+          pip install -r scripts/vps/requirements.txt
       - name: Run tests with coverage
         # TODO: raise --cov-fail-under once scripts/vps has proper test coverage
         run: |

@@ -86,3 +86,31 @@ CREATE INDEX IF NOT EXISTS idx_callback_decisions_ts
 
 CREATE INDEX IF NOT EXISTS idx_callback_decisions_demoted_ts
     ON callback_decisions(demoted, ts);
+
+-- BUG-188: SDK post-ResultMessage exception telemetry
+CREATE TABLE IF NOT EXISTS sdk_post_result_errors (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    project_id   TEXT NOT NULL,
+    task         TEXT NOT NULL,
+    turns        INTEGER,
+    cost_usd     REAL,
+    error_msg    TEXT,
+    stderr       TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sdk_post_result_errors_ts
+    ON sdk_post_result_errors(ts);
+
+-- ARCH-190: gate-daemon per-cycle health metrics
+CREATE TABLE IF NOT EXISTS gate_health (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts                    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    cycle_count           INTEGER NOT NULL,
+    last_poll_at          TEXT NOT NULL,
+    in_progress_specs     INTEGER NOT NULL DEFAULT 0,
+    decisions_this_cycle  INTEGER NOT NULL DEFAULT 0,
+    error_msg             TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_gate_health_ts ON gate_health(ts);

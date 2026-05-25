@@ -1,0 +1,13 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: null
+kind: tech
+priority: p0
+pueue_id: null
+spec_id: TECH-139
+started_at: null
+status: done
+transitions: []
+updated_at: '2026-05-16T11:22:47Z'
+updated_by: migration
+version: 1

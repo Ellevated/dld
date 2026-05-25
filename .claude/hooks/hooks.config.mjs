@@ -10,6 +10,14 @@
  * hooks.config.local.mjs in the same directory.
  *
  * See README.md -> Customizing Hooks for details.
+ *
+ * NOTE (ARCH-187 / ADR-024):
+ * `ai/lifecycle/*.yaml` commits are guarded by an *additional* git pre-commit
+ * hook at `.claude/hooks/pre-commit-lifecycle-guard.mjs`. That hook is invoked
+ * by `.git-hooks/pre-commit` when `git config core.hooksPath .git-hooks` is
+ * set. It is intentionally a standalone Node script (no utils.mjs import) so
+ * external CI or developer machines can wire it without Claude Code present.
+ * Bypass: `LIFECYCLE_WRITE_AUTHORIZED=1` or commit message `lifecycle(<ID>):`.
  */
 
 // F-011: Detect destructive git clean — handles separated flags and --force

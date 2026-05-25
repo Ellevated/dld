@@ -1,0 +1,13 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: null
+kind: tech
+priority: p1
+pueue_id: null
+spec_id: TECH-023
+started_at: null
+status: done
+transitions: []
+updated_at: '2026-05-16T13:36:03Z'
+updated_by: cleanup
+version: 1

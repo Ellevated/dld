@@ -45,6 +45,7 @@ Summary: {identical} up to date, {new_files} new, {different} changed, {protecte
 Groups:
   agents:         {N} new, {N} changed ({M} customized)  [safe — auto-update pristine only]
   hooks:          {N} new, {N} changed ({M} customized)  [safe — auto-update pristine only]
+  git-hooks:      {N} new, {N} changed                   [safe — wrapper file; activates core.hooksPath on apply]
   skills:         {N} new, {N} changed  [review recommended]
   rules:          {N} new, {N} changed  [review — contains project-specific ADRs/dependencies]
   scripts-claude: {N} new, {N} changed  [review — may contain custom project scripts]
@@ -61,12 +62,24 @@ On first upgrade (no hash history), all changed files require review (conservati
 
 ### Step 3: User Confirmation
 
-Ask: "Apply safe groups automatically? (agents, hooks — only pristine files) Y/n"
+Ask: "Apply safe groups automatically? (agents, hooks, git-hooks — only pristine files) Y/n"
 
 If yes:
 ```bash
 node .claude/scripts/upgrade.mjs --apply --groups safe,new
 ```
+
+If the result JSON contains `git_hooks.activated: true`, append to the user message:
+
+```
+Activated pre-commit hook: git config core.hooksPath .git-hooks
+  (ADR-187/ADR-193 — blocks unauthorized lifecycle yaml writes)
+```
+
+If `git_hooks.reason` is present (activation failed — rare), show the reason as
+a warning. The wrapper file was still applied; only the `git config` step
+failed (e.g. non-git target). User can re-run manually: `git config
+core.hooksPath .git-hooks`.
 
 ### Step 3b: Engine Updates
 
