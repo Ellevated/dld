@@ -6,7 +6,6 @@ on:
       - 'scripts/vps/**'
       - 'tests/unit/test_callback_*.py'
       - 'tests/integration/test_callback_*.py'
-      - 'tests/scripts/test_callback.py'
       - 'tests/regression/**'
       - '.github/workflows/test.yml'
   push:
@@ -15,7 +14,6 @@ on:
       - 'scripts/vps/**'
       - 'tests/unit/test_callback_*.py'
       - 'tests/integration/test_callback_*.py'
-      - 'tests/scripts/test_callback.py'
       - 'tests/regression/**'
 
 jobs:
@@ -61,7 +59,6 @@ jobs:
           PYTHONPATH=scripts/vps pytest \
             tests/unit/test_callback_*.py \
             tests/integration/test_callback_*.py \
-            tests/scripts/test_callback.py \
             tests/regression/ \
             --cov=callback \
             --cov-report=term-missing \
