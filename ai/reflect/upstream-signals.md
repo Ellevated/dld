@@ -112,3 +112,23 @@ Devil scout returned its analysis as a `result` message (text), not as a written
 
 `.claude/agents/spark/devil.md` could benefit from a more explicit "MUST use Write tool — text response alone is treated as DATA LOSS" reminder, mirroring the SUBAGENT MUST USE WRITE TOOL pattern from `spark/completion.md:298`. Low priority — fallback works — but if Devil drifts further, the meta-cost compounds.
 
+
+---
+
+### SIGNAL-2026-05-25-1340
+
+- **Source:** autopilot (ARCH-193)
+- **Target:** spark
+- **Type:** missing_rule
+- **Message:** Spec author listed `.claude/hooks/pre-commit-lifecycle-guard.mjs` in Allowed Files but missed `template/.claude/hooks/pre-commit-lifecycle-guard.mjs`. Coder correctly synced both copies per template-sync.md, forcing the autopilot operator to update Allowed Files mid-flow. Three other `template/.claude/*` mirrors WERE listed (coder.md, finishing.md, autopilot-git.md) — the omission was an oversight, not intent.
+- **Evidence:** ai/features/ARCH-193-*.md Allowed Files (before edit) vs `.claude/rules/template-sync.md` mandate
+- **Suggested Rule for /spark:** When a `.claude/<path>` file is added to Allowed Files AND a matching `template/.claude/<path>` exists, automatically include the template mirror. Could be enforced via Phase 5.5 SSOT lint or facilitator checklist.
+
+### SIGNAL-2026-05-25-1340-2
+
+- **Source:** autopilot (ARCH-193 Task 9)
+- **Target:** spec-reviewer agent
+- **Type:** prompt_gap
+- **Message:** Spec Reviewer flagged Test 8 as "needs_implementation — event_writer.notify not verified" but missed that spec line 577 explicitly grants the structural-only fallback: "Practical approach: directly call lifecycle.write_lifecycle(done→blocked) ... full integration is overkill". Reviewer matched the test name + first sentence and missed the inline scope relaxation.
+- **Evidence:** spec ai/features/ARCH-193-*.md line 577; spec-reviewer agent prompt in `.claude/agents/spec-reviewer.md`
+- **Suggested Rule:** Spec-reviewer prompt should instruct: "Read the FULL test description in the spec — especially watch for 'Practical approach' / 'overkill' / 'simplification' phrases that scope down the requirement. Do not flag deviation if the spec itself authorized it."
