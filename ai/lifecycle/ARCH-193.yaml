@@ -1,13 +1,20 @@
 allowed_files_hash: null
-blocked_reason: null
-finished_at: null
+blocked_reason: interactive autopilot completed, 8 commits merged cf94f5a..bfc3662,
+  all 170 tests pass; orchestrator service is dead so callback never fired — user
+  authorized closing
+finished_at: '2026-05-25T10:18:37Z'
 kind: arch
 priority: p1
 pueue_id: null
 spec_id: ARCH-193
 started_at: null
-status: queued
-transitions: []
-updated_at: '2026-05-25T07:21:27Z'
-updated_by: orchestrator
-version: 1
+status: done
+transitions:
+- at: '2026-05-25T10:18:37Z'
+  by: operator
+  from: queued
+  pueue_id: null
+  to: done
+updated_at: '2026-05-25T10:18:37Z'
+updated_by: operator
+version: 2
