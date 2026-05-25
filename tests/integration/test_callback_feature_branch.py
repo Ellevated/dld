@@ -12,7 +12,6 @@ EC-5: db.log_task without branch → branch column NULL
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 import subprocess
 import sys

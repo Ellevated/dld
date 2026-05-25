@@ -63,8 +63,14 @@ def test_t1_write_lifecycle_rejects_unknown_writer(tmp_path):
     # All 8 _ALLOWED_WRITERS members must be named in the error so the
     # caller can see what's expected without reading source.
     for expected in (
-        "callback", "orchestrator", "spark", "operator",
-        "qa", "audit", "autopilot", "migration",
+        "callback",
+        "orchestrator",
+        "spark",
+        "operator",
+        "qa",
+        "audit",
+        "autopilot",
+        "migration",
     ):
         assert expected in msg, f"allowed writer {expected!r} missing from error: {msg}"
 
@@ -76,9 +82,7 @@ def test_t2_write_lifecycle_accepts_all_allowed_writers(tmp_path):
 
     # Sweep all 8 — each call appends a transition; final state holds the last by.
     for writer in sorted(lifecycle._ALLOWED_WRITERS):
-        lifecycle.write_lifecycle(
-            repo, "TECH-902", "in_progress", by=writer, reason=None
-        )
+        lifecycle.write_lifecycle(repo, "TECH-902", "in_progress", by=writer, reason=None)
 
     final = lifecycle.read_lifecycle(repo, "TECH-902")
     assert final is not None
@@ -116,9 +120,7 @@ def test_t4_build_initial_yaml_rejects_unknown_writer():
     assert "migration" in str(exc.value)  # default acceptable writer
 
     # Sanity: default 'migration' works
-    out = lifecycle.build_initial_yaml(
-        "TECH-904", status="queued", priority="p1", kind="tech"
-    )
+    out = lifecycle.build_initial_yaml("TECH-904", status="queued", priority="p1", kind="tech")
     parsed = yaml.safe_load(out)
     assert parsed["spec_id"] == "TECH-904"
     assert parsed["updated_by"] == "migration"
@@ -137,9 +139,7 @@ def test_t5_by_value_lands_verbatim_in_audit_trail(tmp_path):
     lifecycle.write_lifecycle(
         repo, "TECH-905", "blocked", by="callback", reason="impl_guard demote"
     )
-    lifecycle.write_lifecycle(
-        repo, "TECH-905", "done", by="qa", reason="qa accepted"
-    )
+    lifecycle.write_lifecycle(repo, "TECH-905", "done", by="qa", reason="qa accepted")
 
     data = lifecycle.read_lifecycle(repo, "TECH-905")
     assert data is not None
@@ -149,9 +149,7 @@ def test_t5_by_value_lands_verbatim_in_audit_trail(tmp_path):
     transitions = data["transitions"]
     assert len(transitions) == 3, f"expected 3 transitions, got {len(transitions)}"
     by_chain = [t.get("by") for t in transitions]
-    assert by_chain == ["operator", "callback", "qa"], (
-        f"audit-trail order mismatch: {by_chain}"
-    )
+    assert by_chain == ["operator", "callback", "qa"], f"audit-trail order mismatch: {by_chain}"
     # updated_by reflects the LAST writer (post-overwrite)
     assert data.get("updated_by") == "qa"
     # blocked_reason field captures the latest non-None reason (qa supplied

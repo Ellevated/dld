@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-
 from lifecycle import LIFECYCLE_DIR
 
 log = logging.getLogger(__name__)
@@ -53,7 +52,9 @@ HEADER = """\
 """
 
 TABLE_HEADER = "| ID | Status | Kind | Updated | Spec |\n|----|--------|------|---------|------|\n"
-DONE_TABLE_HEADER = "| ID | Status | Kind | Finished | Spec |\n|----|--------|------|----------|------|\n"
+DONE_TABLE_HEADER = (
+    "| ID | Status | Kind | Finished | Spec |\n|----|--------|------|----------|------|\n"
+)
 
 
 def _load_all_yamls(repo_dir: Path) -> list[dict]:
@@ -67,15 +68,20 @@ def _load_all_yamls(repo_dir: Path) -> list[dict]:
     # Try HEAD first via git ls-tree
     r = subprocess.run(
         ["git", "ls-tree", "--name-only", f"HEAD:{LIFECYCLE_DIR}"],
-        cwd=repo_str, capture_output=True, text=True, check=False,
+        cwd=repo_str,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if r.returncode == 0:
         names = sorted(n for n in r.stdout.splitlines() if n.endswith(".yaml"))
         for name in names:
-            spec_id = name[:-5]
             show = subprocess.run(
                 ["git", "show", f"HEAD:{LIFECYCLE_DIR}/{name}"],
-                cwd=repo_str, capture_output=True, text=True, check=False,
+                cwd=repo_str,
+                capture_output=True,
+                text=True,
+                check=False,
             )
             if show.returncode != 0:
                 log.warning("render_backlog: cannot read %s from HEAD", name)

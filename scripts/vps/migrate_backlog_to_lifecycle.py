@@ -24,8 +24,7 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-
-from lifecycle import now_iso as _now_iso, build_initial_yaml, LIFECYCLE_DIR
+from lifecycle import build_initial_yaml
 
 BACKLOG_ROW_RE = re.compile(
     r"^\|\s*(?P<id>(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*)\s*\|"

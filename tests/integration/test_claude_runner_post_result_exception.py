@@ -23,9 +23,7 @@ import importlib.util
 import sqlite3
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
-import pytest
 
 # ---------------------------------------------------------------------------
 # SDK site-packages must be in sys.path BEFORE loading claude-runner module

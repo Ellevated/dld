@@ -24,7 +24,6 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import yaml  # noqa: E402
 
-import yaml  # noqa: E402
 
 import callback  # noqa: E402
 import db  # noqa: E402

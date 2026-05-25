@@ -12,7 +12,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 import yaml
 
 SCRIPT = Path(__file__).parent.parent / "migrate_backlog_to_lifecycle.py"
@@ -86,6 +85,7 @@ def _run(repo: Path, *extra_args: str) -> subprocess.CompletedProcess:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_happy_path_dry_run(tmp_path: Path) -> None:
     """Dry run: prints proposed YAML, exit 0, no files written."""

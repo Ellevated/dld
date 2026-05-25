@@ -24,6 +24,7 @@ import render_backlog  # noqa: E402
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def tmp_git_repo(tmp_path):
     """Minimal git repo with initial commit, ai/lifecycle/ and ai/features/ dirs."""
@@ -33,7 +34,10 @@ def tmp_git_repo(tmp_path):
     def git(*args):
         r = subprocess.run(
             ["git"] + list(args),
-            cwd=str(repo), capture_output=True, text=True, check=False,
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if r.returncode != 0:
             raise RuntimeError(f"git {args} failed: {r.stderr.strip()}")
@@ -65,7 +69,10 @@ def _write_yaml_and_commit(repo: Path, spec_id: str, data: dict) -> None:
     def git(*args):
         r = subprocess.run(
             ["git"] + list(args),
-            cwd=str(repo), capture_output=True, text=True, check=False,
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if r.returncode != 0:
             raise RuntimeError(f"git {args} failed: {r.stderr.strip()}")
@@ -79,24 +86,37 @@ def _write_yaml_and_commit(repo: Path, spec_id: str, data: dict) -> None:
 # Test 1: render_matches_format
 # ---------------------------------------------------------------------------
 
+
 def test_render_matches_format(tmp_git_repo):
     """Write 3 lifecycle YAMLs (p0/p1/p2 with mixed statuses), render, assert structure."""
     repo = tmp_git_repo
 
     p0_data = {
-        "spec_id": "TECH-100", "status": "in_progress", "priority": "p0",
-        "kind": "tech", "updated_at": "2026-05-16T10:00:00Z",
-        "finished_at": None, "blocked_reason": None,
+        "spec_id": "TECH-100",
+        "status": "in_progress",
+        "priority": "p0",
+        "kind": "tech",
+        "updated_at": "2026-05-16T10:00:00Z",
+        "finished_at": None,
+        "blocked_reason": None,
     }
     p1_data = {
-        "spec_id": "FTR-200", "status": "queued", "priority": "p1",
-        "kind": "ftr", "updated_at": "2026-05-15T08:00:00Z",
-        "finished_at": None, "blocked_reason": None,
+        "spec_id": "FTR-200",
+        "status": "queued",
+        "priority": "p1",
+        "kind": "ftr",
+        "updated_at": "2026-05-15T08:00:00Z",
+        "finished_at": None,
+        "blocked_reason": None,
     }
     p2_data = {
-        "spec_id": "BUG-300", "status": "blocked", "priority": "p2",
-        "kind": "bug", "updated_at": "2026-05-14T12:00:00Z",
-        "finished_at": None, "blocked_reason": "needs human",
+        "spec_id": "BUG-300",
+        "status": "blocked",
+        "priority": "p2",
+        "kind": "bug",
+        "updated_at": "2026-05-14T12:00:00Z",
+        "finished_at": None,
+        "blocked_reason": "needs human",
     }
 
     _write_yaml_and_commit(repo, "TECH-100", p0_data)
@@ -129,20 +149,30 @@ def test_render_matches_format(tmp_git_repo):
 # Test 2: render_skips_corrupt_yaml
 # ---------------------------------------------------------------------------
 
+
 def test_render_skips_corrupt_yaml(tmp_git_repo, caplog):
     """Write 2 valid + 1 corrupt yaml — valid specs appear, corrupt is skipped with warning."""
     import logging
+
     repo = tmp_git_repo
 
     valid1 = {
-        "spec_id": "TECH-10", "status": "queued", "priority": "p1",
-        "kind": "tech", "updated_at": "2026-05-16T09:00:00Z",
-        "finished_at": None, "blocked_reason": None,
+        "spec_id": "TECH-10",
+        "status": "queued",
+        "priority": "p1",
+        "kind": "tech",
+        "updated_at": "2026-05-16T09:00:00Z",
+        "finished_at": None,
+        "blocked_reason": None,
     }
     valid2 = {
-        "spec_id": "FTR-20", "status": "queued", "priority": "p1",
-        "kind": "ftr", "updated_at": "2026-05-16T09:30:00Z",
-        "finished_at": None, "blocked_reason": None,
+        "spec_id": "FTR-20",
+        "status": "queued",
+        "priority": "p1",
+        "kind": "ftr",
+        "updated_at": "2026-05-16T09:30:00Z",
+        "finished_at": None,
+        "blocked_reason": None,
     }
 
     _write_yaml_and_commit(repo, "TECH-10", valid1)
@@ -155,7 +185,10 @@ def test_render_skips_corrupt_yaml(tmp_git_repo, caplog):
     def git(*args):
         r = subprocess.run(
             ["git"] + list(args),
-            cwd=str(repo), capture_output=True, text=True, check=False,
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if r.returncode != 0:
             raise RuntimeError(f"git {args} failed: {r.stderr.strip()}")
@@ -181,18 +214,39 @@ def test_render_skips_corrupt_yaml(tmp_git_repo, caplog):
 # Test 3: render_round_trip
 # ---------------------------------------------------------------------------
 
+
 def test_render_round_trip(tmp_git_repo):
     """Write yamls, render, parse rendered markdown, assert status set matches."""
     repo = tmp_git_repo
 
     specs = [
-        {"spec_id": "TECH-1", "status": "queued",      "priority": "p1", "kind": "tech",
-         "updated_at": "2026-05-16T10:00:00Z", "finished_at": None, "blocked_reason": None},
-        {"spec_id": "FTR-2",  "status": "in_progress", "priority": "p0", "kind": "ftr",
-         "updated_at": "2026-05-16T11:00:00Z", "finished_at": None, "blocked_reason": None},
-        {"spec_id": "BUG-3",  "status": "done",        "priority": "p1", "kind": "bug",
-         "updated_at": "2026-05-16T12:00:00Z",
-         "finished_at": "2026-05-16T12:00:00Z", "blocked_reason": None},
+        {
+            "spec_id": "TECH-1",
+            "status": "queued",
+            "priority": "p1",
+            "kind": "tech",
+            "updated_at": "2026-05-16T10:00:00Z",
+            "finished_at": None,
+            "blocked_reason": None,
+        },
+        {
+            "spec_id": "FTR-2",
+            "status": "in_progress",
+            "priority": "p0",
+            "kind": "ftr",
+            "updated_at": "2026-05-16T11:00:00Z",
+            "finished_at": None,
+            "blocked_reason": None,
+        },
+        {
+            "spec_id": "BUG-3",
+            "status": "done",
+            "priority": "p1",
+            "kind": "bug",
+            "updated_at": "2026-05-16T12:00:00Z",
+            "finished_at": "2026-05-16T12:00:00Z",
+            "blocked_reason": None,
+        },
     ]
 
     for s in specs:

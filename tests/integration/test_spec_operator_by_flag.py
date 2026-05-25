@@ -69,9 +69,7 @@ def test_t2_demote_rejects_invalid_by(tmp_path, capsys):
     """T2: argparse rejects choices outside the allowed list."""
     repo = _make_project(tmp_path, "TECH-911")
     with pytest.raises(SystemExit) as exc:
-        spec_operator.main(
-            ["demote", str(repo), "TECH-911", "test", "--by=hacker"]
-        )
+        spec_operator.main(["demote", str(repo), "TECH-911", "test", "--by=hacker"])
     assert exc.value.code == 2
     captured = capsys.readouterr()
     # argparse error mentions invalid choice
@@ -82,14 +80,18 @@ def test_t3_demote_blocked_records_by_qa(tmp_path, capsys):
     """T3: demote --blocked --by=qa writes audit trail correctly."""
     repo = _make_project(tmp_path, "TECH-912")
     # Push spec to in_progress first (so demote → blocked is meaningful)
-    lifecycle.write_lifecycle(
-        repo, "TECH-912", "in_progress", by="orchestrator"
-    )
+    lifecycle.write_lifecycle(repo, "TECH-912", "in_progress", by="orchestrator")
 
-    rc = spec_operator.main([
-        "demote", str(repo), "TECH-912", "qa rejected",
-        "--blocked", "--by=qa",
-    ])
+    rc = spec_operator.main(
+        [
+            "demote",
+            str(repo),
+            "TECH-912",
+            "qa rejected",
+            "--blocked",
+            "--by=qa",
+        ]
+    )
     assert rc == 0
 
     data = lifecycle.read_lifecycle(repo, "TECH-912")
@@ -106,10 +108,15 @@ def test_t4_force_done_records_by_operator(tmp_path):
     """T4: force-done --by=operator writes audit trail with operator identity."""
     repo = _make_project(tmp_path, "TECH-913")
 
-    rc = spec_operator.main([
-        "force-done", str(repo), "TECH-913", "manual override after QA",
-        "--by=operator",
-    ])
+    rc = spec_operator.main(
+        [
+            "force-done",
+            str(repo),
+            "TECH-913",
+            "manual override after QA",
+            "--by=operator",
+        ]
+    )
     assert rc == 0
 
     data = lifecycle.read_lifecycle(repo, "TECH-913")
@@ -127,9 +134,15 @@ def test_t5_missing_lifecycle_yaml_returns_exit_3(tmp_path, capsys):
     """T5: project has spec but no lifecycle yaml → exit code 3 (proper signal)."""
     repo = _make_project(tmp_path, "TECH-914", with_lifecycle=False)
 
-    rc = spec_operator.main([
-        "demote", str(repo), "TECH-914", "test", "--by=qa",
-    ])
+    rc = spec_operator.main(
+        [
+            "demote",
+            str(repo),
+            "TECH-914",
+            "test",
+            "--by=qa",
+        ]
+    )
     assert rc == 3
     captured = capsys.readouterr()
     assert "lifecycle yaml not found" in captured.err

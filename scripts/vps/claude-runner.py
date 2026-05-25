@@ -277,9 +277,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
                     )
                 except Exception as log_exc:
                     # Telemetry must never break the runner (ADR-004 fail-safe).
-                    logger.warning(
-                        "Failed to log sdk_post_result_error: %s", log_exc
-                    )
+                    logger.warning("Failed to log sdk_post_result_error: %s", log_exc)
         elif "timeout" in err_str.lower():
             logger.error("SDK init timeout: %s", e)
             exit_code = 124

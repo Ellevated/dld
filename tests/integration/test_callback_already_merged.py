@@ -15,7 +15,6 @@ EC-5: done verdict does NOT count as demote (circuit breaker unaffected).
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 import subprocess
 import sys
