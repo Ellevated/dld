@@ -125,6 +125,25 @@ For EACH task from plan:
 
 ⛔ **Skipping any step = VIOLATION**
 
+### Commit Format (MANDATORY)
+
+Every PHASE 2 task commit MUST use Conventional Commits with the spec_id in scope:
+
+```
+<type>(SPEC_ID): <imperative description>
+```
+
+`type` ∈ {feat, fix, chore, docs, refactor, test}; `SPEC_ID` UPPERCASE inside `()`, NOT in trailing text.
+
+✅ `feat(FTR-1076): add WB API key schemas`  ✅ `fix(BUG-439): restore constraint`
+❌ `feat(billing): ... (FTR-1076 Task 3)`  ❌ `fix(db): ... (BUG-439)`
+
+Why: callback gate parses ONLY the scope. Non-compliant subjects cause false demote and burn compute on re-dispatch (BUG-192 night incident 2026-05-24/25 — 5 specs blind-demoted).
+
+PHASE 3 merge commits: `Merge feature/SPEC_ID: …` (or `autopilot/`, `fix/`) is accepted by gate.
+
+Full rules: `.claude/agents/coder.md` § Commit Format.
+
 ---
 
 ## Main Loop

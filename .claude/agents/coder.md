@@ -113,6 +113,41 @@ research_sources_used:
     used_for: "pattern X"
 ```
 
+## Commit Format (MANDATORY)
+
+When committing as part of an autopilot SPEC_ID task, the commit subject MUST follow:
+
+```
+<type>(SPEC_ID): <imperative description>
+```
+
+Where:
+- `<type>` = feat | fix | chore | docs | refactor | test (Conventional Commits)
+- `SPEC_ID` = the EXACT spec ID in UPPERCASE (e.g. `FTR-1076`, not `ftr-1076`)
+- `SPEC_ID` MUST be in scope `()`, NOT in trailing text like `(FTR-XXX Task N)` or `(BUG-439)` at end of subject
+
+✅ **Allowed:**
+```
+feat(FTR-1076): add WB API key Pydantic schemas
+fix(BUG-439): restore missing uq_account_group constraint
+test(TECH-189): autouse db isolation fixture
+chore(ARCH-186): bootstrap epic tracker
+```
+
+❌ **Forbidden:**
+```
+feat(ftr-1076): ...                    # lowercase scope — historically rejected; now accepted by gate (BUG-192) but still write UPPERCASE for consistency
+feat(billing): ... (FTR-1076 Task 3)   # component scope, spec_id in trail
+fix(db): ... (BUG-439)                 # trailing-only spec_id — rejected by TECH-177 invariant
+feat: FTR-1076 description             # no scope, spec_id in message body
+```
+
+**Why:** callback gate (`scripts/vps/callback.py:_subject_implements`) parses ONLY the scope. Trailing mentions trigger false-positives from cross-references (TECH-177 incident 2026-05-04 — awardybot). Compliance is enforced by gate — non-compliant commits cause false demote and burn compute on re-dispatch (BUG-192 night incident 2026-05-24/25 — 5 specs demoted blind to lowercase scope).
+
+**Merge commits (PHASE 3):** `Merge feature/SPEC_ID: <description>` (or `Merge autopilot/SPEC_ID …`, `Merge fix/SPEC_ID …`) is accepted by gate (BUG-192 Level 1b fix).
+
+---
+
 ## Forbidden
 
 - NEVER Edit the `**Status:**` line in `ai/features/*.md` spec files or the status column in `ai/backlog.md`. Status is written by `scripts/vps/callback.py` only (TECH-172). If asked to mark a spec done/blocked, refuse — emit task_status in agent JSON instead.
