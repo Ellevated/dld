@@ -1,8 +1,9 @@
 """
 Module: lifecycle
 Role: Atomic git-plumbing writer for per-spec lifecycle YAML state files.
-      Stores state in ai/lifecycle/{spec_id}.yaml via private GIT_INDEX_FILE,
-      never touching the working tree. CAS update-ref prevents race conditions.
+      Stores state in ai/lifecycle/{spec_id}.yaml via private GIT_INDEX_FILE.
+      CAS update-ref prevents race conditions. After each write, syncs the
+      working tree via `git checkout HEAD -- <path>` (TECH-194 Layer D fix).
       Identity enforcement: only _ALLOWED_WRITERS may call write functions (ADR-025).
       Rule 7 structural: done is terminal — LifecycleAlreadyDoneError raised on
       any non-done transition when HEAD yaml already shows status="done" (ARCH-193).
@@ -261,13 +262,16 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
             log.debug("CAS lost for %s (branch %s)", spec_id, branch)
             return False
 
-        # Layer 3 (ARCH-187 / ADR-024): sync WT to new HEAD blob so subsequent
-        # `git add .` from any agent cannot smuggle a stale yaml into a commit.
-        # Single-file checkout-index has no merge logic → race-free.
+        # Layer 3 (ARCH-187 / ADR-024 / TECH-194): sync WT to new HEAD blob so
+        # subsequent `git add .` from any agent cannot smuggle a stale yaml into
+        # a commit. Uses `git checkout HEAD -- <path>` (not checkout-index) so
+        # both the default .git/index and WT are updated atomically. checkout-index
+        # with a private GIT_INDEX_FILE only writes the WT file but leaves the
+        # default index with a staged deletion (`D  `) — fixed in TECH-194.
         # Best-effort: log on failure but don't fail the write
         # (assert_clean_lifecycle_tree at orchestrator boot is the backstop).
         sync_result = _run(
-            ["git", "checkout-index", "--force", "--", f"{LIFECYCLE_DIR}/{spec_id}.yaml"],
+            ["git", "checkout", "HEAD", "--", f"{LIFECYCLE_DIR}/{spec_id}.yaml"],
             cwd=repo_dir,
         )
         if sync_result.returncode != 0:
@@ -587,8 +591,11 @@ def _atomic_write_file(
         )
         if r.returncode != 0:
             return False
-        # Sync WT (best-effort; backlog.md is a render so stale WT is recoverable)
-        sync = _run(["git", "checkout-index", "--force", "--", rel_path], cwd=repo_dir)
+        # Sync WT (best-effort; backlog.md is a render so stale WT is recoverable).
+        # Uses `git checkout HEAD -- <path>` (not checkout-index) to update both
+        # default .git/index and WT. checkout-index with private GIT_INDEX_FILE
+        # only writes WT, leaving default index with staged deletion — TECH-194.
+        sync = _run(["git", "checkout", "HEAD", "--", rel_path], cwd=repo_dir)
         if sync.returncode != 0:
             log.warning("write_file_atomic WT sync failed: %s", sync.stderr.strip()[:200])
         return True
