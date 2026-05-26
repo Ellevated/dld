@@ -150,6 +150,7 @@ _no specs_
 | TECH-189 | done | tech | 2026-05-24 | [spec](features/TECH-189-2026-05-23-p0-hardening-cluster.md) |
 | TECH-191 | done | tech | 2026-05-24 | [spec](features/TECH-191-2026-05-24-autopilot-worktree-implicit-base-ref.md) |
 | TECH-194 | done | tech | 2026-05-26 | [spec](features/TECH-194-2026-05-25-arch193-followup-worktree-wtsync-callback-parser.md) |
+| TECH-195 | Orchestrator bootstrap fragility — column-aware parser + safe default + audit tool | queued | P0 | [spec](features/TECH-195-2026-05-26-orchestrator-bootstrap-fragility-default-to-done.md) |
 | FTR-085 | done | ftr |  | [spec](features/FTR-085-2026-02-14-release-skill.md) |
 | FTR-088 | done | ftr |  | [spec](features/FTR-088-2026-02-15-triz-skill-system-diagnostics.md) |
 | FTR-089 | done | ftr |  | [spec](features/FTR-089-2026-02-15-diagram-skill.md) |
