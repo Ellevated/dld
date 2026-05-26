@@ -238,10 +238,9 @@ Multi-project детектор drift'а отсутствует.
 - `scripts/vps/orchestrator.py`
 - `scripts/vps/lifecycle_audit.py`
 - `scripts/vps/recover_bootstrap_as_done.py`
-- `tests/test_orchestrator_bootstrap.py`
+- `scripts/vps/tests/test_orchestrator_bootstrap.py`
 - `.claude/rules/architecture.md`
 - `.claude/rules/dependencies.md`
-- `template/.claude/rules/architecture.md`
 
 ---
 

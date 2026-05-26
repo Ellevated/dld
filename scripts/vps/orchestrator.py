@@ -282,6 +282,97 @@ def git_pull(project_id: str, project_dir: str) -> None:
         log.warning("git_pull timeout for %s: %s", project_dir, exc)
 
 
+_VALID_STATUSES = frozenset(
+    {"queued", "in_progress", "blocked", "done", "resumed", "draft", "stale"}
+)
+_SPEC_ID_RE_BS = re.compile(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*")
+
+
+def _parse_backlog(text: str) -> dict[str, str | None]:
+    """Column-aware backlog parser: extract {spec_id: status_or_None} from markdown table.
+
+    Supports any column order (template format, awardybot/dowry short format, etc.).
+
+    Algorithm:
+    1. Find header row + divider pair (line with |---|---| pattern).
+    2. Build column map {name_lower: index} from header row.
+    3. For each spec-id data row:
+       a. If 'status' column found in header → use that column's value if valid.
+       b. Else (no header OR invalid value) → scan all columns for first valid status.
+       c. If nothing valid → store None.
+    4. If no header found → skip step 1/2; use scan-all-columns for every spec row.
+
+    Returns dict[spec_id, status_str | None].
+    """
+    lines = text.splitlines()
+    n = len(lines)
+
+    # Divider pattern: a line that is only pipes, dashes, colons, spaces
+    divider_re = re.compile(r"^\|[\s\-:|]+\|$")
+
+    # Find header row index: the line immediately before a divider
+    col_map: dict[str, int] = {}
+    for i in range(1, n):
+        if divider_re.match(lines[i].strip()):
+            # lines[i-1] is the header
+            raw_header = lines[i - 1]
+            parts = [p.strip().lower() for p in raw_header.split("|")]
+            # parts[0] == '' (before first |), parts[-1] == '' (after last |)
+            # real columns: parts[1:-1]
+            cols = parts[1:-1]
+            col_map = {name: idx for idx, name in enumerate(cols)}
+            break
+
+    result: dict[str, str | None] = {}
+
+    for line in lines:
+        stripped = line.strip()
+        # Must start with | and contain a spec-id in first pipe-column
+        if not stripped.startswith("|"):
+            continue
+        parts = [p.strip() for p in stripped.split("|")]
+        # parts[0] == '', spec-id in parts[1], parts[-1] == ''
+        if len(parts) < 3:
+            continue
+        spec_id_candidate = parts[1].strip()
+        if not _SPEC_ID_RE_BS.fullmatch(spec_id_candidate):
+            continue
+        spec_id = spec_id_candidate
+        data_cols = parts[1:-1]  # actual column values (0-indexed matches col_map)
+
+        status: str | None = None
+
+        # Try header-guided extraction first
+        if col_map and "status" in col_map:
+            status_idx = col_map["status"]
+            if status_idx < len(data_cols):
+                candidate = data_cols[status_idx].lower().strip()
+                if candidate in _VALID_STATUSES:
+                    status = candidate
+
+        # Fallback: scan all columns for a valid status value
+        if status is None:
+            for col_val in data_cols:
+                candidate = col_val.lower().strip()
+                if candidate in _VALID_STATUSES:
+                    status = candidate
+                    break
+
+        result[spec_id] = status
+
+    return result
+
+
+def _bump_unparsable_counter(project_dir: str) -> None:
+    """Increment ai/.bootstrap-unparsable-count for alerting; best-effort."""
+    counter_path = Path(project_dir) / "ai" / ".bootstrap-unparsable-count"
+    try:
+        prev = int(counter_path.read_text().strip()) if counter_path.is_file() else 0
+        counter_path.write_text(str(prev + 1))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def bootstrap_new_specs(project_dir: str) -> None:
     """Create ai/lifecycle/{spec_id}.yaml for any NEW Spark spec.md without one.
 
@@ -299,14 +390,9 @@ def bootstrap_new_specs(project_dir: str) -> None:
     if not backlog_path.is_file():
         return
     backlog_text = backlog_path.read_text(errors="replace")
-    # Active backlog rows: | ID | desc | status | priority | spec |
-    # Archive rows after "## ✅ DONE" header: | ID | desc | spec | (3 cols, implied done)
-    active_re = re.compile(
-        r"^\|\s*(?P<id>(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*)\s*\|"
-        r"[^|]+\|\s*(?P<status>queued|in_progress|blocked|done|resumed|draft)\s*\|",
-        re.MULTILINE,
-    )
-    active_status = {m.group("id"): m.group("status") for m in active_re.finditer(backlog_text)}
+    # Column-aware parser: handles template format (status in 3rd col),
+    # awardybot/dowry short format (status in 2nd col), and any other ordering.
+    active_status = _parse_backlog(backlog_text)
     backlog_ids = set(
         m.group(0) for m in re.finditer(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*", backlog_text)
     )
@@ -326,8 +412,18 @@ def bootstrap_new_specs(project_dir: str) -> None:
         priority, kind = _parse_priority_kind(spec_md)
         # Determine bootstrap status:
         #   - parseable active row → use its status (typically 'queued' for new Spark)
-        #   - in backlog but archive/malformed → 'done' (historical, never dispatch)
-        status = active_status.get(spec_id, "done")
+        #   - unparsable/missing row → 'queued' (safe fail-into-queue; logs WARNING +
+        #     bumps .bootstrap-unparsable-count for operator alerting)
+        status = active_status.get(spec_id)
+        if status is None:
+            log.warning(
+                "BOOTSTRAP_UNPARSABLE: backlog status unparsable for %s in %s — "
+                "defaulting to 'queued' (operator: verify backlog format)",
+                spec_id,
+                project_dir,
+            )
+            _bump_unparsable_counter(project_dir)
+            status = "queued"
         try:
             lifecycle.create_initial(project_dir, spec_id, priority, kind, status=status)
             created_count += 1
