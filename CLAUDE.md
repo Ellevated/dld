@@ -200,6 +200,8 @@ Escalation:   Autopilot → Spark → Architect → Board → Founder
 Brownfield:   /retrofit → /audit deep → /architect → /board → stabilize → normal
 ```
 
+**Interactive `/spark` workflow:** Run `/spark` interactive sessions from ONE machine at a time (laptop preferred). VPS spark runs only via orchestrator dispatch (headless). The spec-first ID CAS (ARCH-196) handles concurrent claims structurally, but this convention prevents push contention races.
+
 **New in v3.7:**
 - Spark auto-hands off to autopilot (no manual "plan" step)
 - Autopilot always uses worktree (isolation)
