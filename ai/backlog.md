@@ -7,6 +7,7 @@
 
 | ID | Status | Kind | Updated | Spec |
 |----|--------|------|---------|------|
+| ARCH-196 | queued | arch | 2026-05-27 | [spec](features/ARCH-196-2026-05-27-stabilize-spark-autopilot-loop.md) |
 | GROWTH-001 | blocked | ftr | 2026-05-16 | GROWTH-001 |
 
 ## P1 — High impact (default)
