@@ -54,6 +54,13 @@ MAX_CAS_RETRIES = 3
 # orchestrator.create_initial which writes by="orchestrator").
 _ALLOWED_WRITERS = frozenset({"callback", "orchestrator", "operator", "qa", "audit", "migration"})
 
+# ARCH-196 CR-7: surgical writer extension for spec-first ID claim.
+# Spark may invoke create_initial() to claim an ID via CAS (Kafka pattern),
+# but is NOT in _ALLOWED_WRITERS (which gates write_lifecycle status mutations).
+# This preserves Rule 7 (ADR-025) — spark cannot promote/demote status,
+# only create the initial queued row that callback then drives forward.
+_ALLOWED_WRITERS_FOR_CREATE = frozenset({"spark"}) | _ALLOWED_WRITERS
+
 # In-process lock: serializes plumbing writes within one Python process.
 # Eliminates intra-process CAS stampede (e.g. concurrent threads in callback).
 # Multi-machine CAS is still guarded by git update-ref.
@@ -425,17 +432,28 @@ def write_lifecycle(
 
 
 def create_initial(
-    repo_dir, spec_id: str, priority: str, kind: str, status: str = "queued"
+    repo_dir,
+    spec_id: str,
+    priority: str,
+    kind: str,
+    status: str = "queued",
+    *,
+    by: str = "orchestrator",
 ) -> None:
     """Bootstrap a new lifecycle.yaml (default status=queued, version=1).
 
     `status` override is used by orchestrator.bootstrap_new_specs when the
     spec is in the backlog DONE archive section — bootstrap as 'done' so it
     never dispatches.
+
+    `by` defaults to "orchestrator" for backward compatibility with existing
+    callers. Spark may pass by="spark" to claim an ID via CAS (ARCH-196 CR-7).
+    Gated by _ALLOWED_WRITERS_FOR_CREATE (superset of _ALLOWED_WRITERS).
     """
-    _by = "orchestrator"
-    if _by not in _ALLOWED_WRITERS:
-        raise ValueError(f"create_initial: invalid by={_by!r}; allowed={sorted(_ALLOWED_WRITERS)}")
+    if by not in _ALLOWED_WRITERS_FOR_CREATE:
+        raise ValueError(
+            f"create_initial: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS_FOR_CREATE)}"
+        )
     repo_dir = str(repo_dir)
     branch = _current_branch(repo_dir)
 
@@ -445,7 +463,7 @@ def create_initial(
             status,
             existing=None,
             reason=None,
-            by=_by,
+            by=by,
             pueue_id=None,
             allowed_files_hash=None,
             priority=priority,
@@ -680,8 +698,7 @@ def recover_bootstrap_artifact(
     """
     if by not in _ALLOWED_WRITERS:
         raise ValueError(
-            f"recover_bootstrap_artifact: invalid by={by!r}; "
-            f"allowed={sorted(_ALLOWED_WRITERS)}"
+            f"recover_bootstrap_artifact: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS)}"
         )
 
     repo_dir = str(repo_dir)
