@@ -190,4 +190,7 @@ When to set status=blocked:
 - Human decision needed
 - Git conflicts
 
-**Always update BOTH spec AND backlog!**
+**Emit `task_status: blocked` in the final JSON output.**
+Do NOT edit `**Status:**` markdown in spec or backlog — callback writes
+lifecycle yaml via atomic plumbing (ADR-023, single-writer). Any direct
+markdown edit will be overwritten by the next render_backlog pass.
