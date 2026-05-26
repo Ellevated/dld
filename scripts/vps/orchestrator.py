@@ -18,7 +18,7 @@ import re
 import signal
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Event
 
@@ -484,6 +484,64 @@ def _parse_priority_kind(spec_md: Path) -> tuple:
     return priority, kind
 
 
+def cleanup_stale_stashes(project_dir: str, age_hours: int = 24) -> int:
+    """Drop autopilot-temp-* stashes older than age_hours. Returns count dropped. Best-effort.
+
+    CR-12 (ARCH-196): Stale autopilot stashes accumulate when autopilot is interrupted
+    mid-stash and never pops. After 24h they're dead weight. Drop them at startup.
+    """
+    dropped = 0
+    try:
+        # Get stash list with timestamps
+        output = subprocess.check_output(
+            ["git", "stash", "list", "--format=%gd %gs %ci"],
+            cwd=project_dir,
+            text=True,
+            timeout=15,
+        ).strip()
+        if not output:
+            return 0
+
+        cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=age_hours)
+
+        # Parse stash entries (most recent first → drop in reverse to preserve indices)
+        to_drop = []
+        for line in output.splitlines():
+            parts = line.split(" ", 2)
+            if len(parts) < 3:
+                continue
+            stash_ref = parts[0]
+            msg_and_date = parts[2]
+            if "autopilot-temp-" not in msg_and_date and "autopilot-phase3" not in msg_and_date:
+                continue
+            # Try to extract ISO timestamp from end of line (from --format=%ci)
+            # Format: "stash@{N} On branch: msg YYYY-MM-DD HH:MM:SS +OFFSET"
+            try:
+                # The %ci is at the end of the format string
+                date_str = msg_and_date.rsplit(" ", 2)[-2] + " " + msg_and_date.rsplit(" ", 2)[-1]
+                stash_time = datetime.fromisoformat(date_str)
+                if stash_time < cutoff:
+                    to_drop.append(stash_ref)
+            except (ValueError, IndexError):
+                pass
+
+        # Drop in reverse order to avoid index shifts
+        for ref in reversed(to_drop):
+            try:
+                subprocess.check_call(
+                    ["git", "stash", "drop", ref],
+                    cwd=project_dir,
+                    timeout=10,
+                )
+                dropped += 1
+                log.info("Startup: dropped stale stash %s in %s", ref, project_dir)
+            except subprocess.CalledProcessError:
+                pass
+    except Exception:  # noqa: BLE001
+        pass  # best-effort
+    return dropped
+
+
 def startup_reconcile() -> None:
     """One-shot at daemon boot: assert clean lifecycle WT + reconcile orphans.
 
@@ -496,6 +554,7 @@ def startup_reconcile() -> None:
         pdir = proj["path"]
         if not os.path.isdir(os.path.join(pdir, "ai", "lifecycle")):
             continue
+        cleanup_stale_stashes(pdir)
         lifecycle.assert_clean_lifecycle_tree(pdir)  # raises on dirty
         reconciled = lifecycle.reconcile_orphans(pdir, alive)
         if reconciled:
