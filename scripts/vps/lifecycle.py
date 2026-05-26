@@ -86,6 +86,22 @@ class LifecycleAlreadyDoneError(Exception):
         self.by = by
 
 
+class NotBootstrapArtifactError(Exception):
+    """Raised by recover_bootstrap_artifact when the 4-criteria signature
+    does not match — i.e. the spec is a legitimate `done` (it ran and
+    completed) and must NOT be demoted.
+    """
+
+    def __init__(self, *, spec_id: str, criterion: str, value) -> None:
+        super().__init__(
+            f"lifecycle({spec_id}): not a bootstrap-as-done artifact — "
+            f"{criterion}={value!r}; refusing to recover (Rule 7 still applies)"
+        )
+        self.spec_id = spec_id
+        self.criterion = criterion
+        self.value = value
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -626,6 +642,98 @@ def reconcile_orphans(repo_dir, pueue_alive_ids: set) -> list:
         )
         reconciled.append(spec_id)
     return reconciled
+
+
+def recover_bootstrap_artifact(
+    repo_dir,
+    spec_id: str,
+    *,
+    reason: str,
+    by: str = "operator",
+) -> None:
+    """Demote a *bootstrap-as-done* lifecycle artifact (TECH-195).
+
+    Narrow Rule 7 escape — bypasses LifecycleAlreadyDoneError ONLY when the
+    HEAD yaml matches all four criteria of a silent-bootstrap signature:
+
+      * status == "done"
+      * transitions == [] (or absent)
+      * pueue_id is None (never dispatched)
+      * finished_at is None (callback never closed it)
+
+    Otherwise raises NotBootstrapArtifactError — legitimate `done` entries
+    remain protected by Rule 7. The recovery records a transition with
+    `by="operator"` (default) so the demote shows up in audit history.
+
+    Args:
+        repo_dir: Path to the project repo (with `ai/lifecycle/` directory).
+        spec_id: Spec identifier, e.g. "TECH-195".
+        reason: Reason recorded in lifecycle (e.g. "TECH-195 bootstrap recovery").
+        by: Writer identity. Must be in _ALLOWED_WRITERS; default "operator".
+
+    Raises:
+        ValueError: if `by` is not in _ALLOWED_WRITERS.
+        FileNotFoundError: if no HEAD yaml exists for spec_id.
+        NotBootstrapArtifactError: if any of the 4 criteria fails (legitimate
+            done — Rule 7 still applies, recovery refused).
+        LifecycleWriteRaceError: if CAS races exhaust retries.
+    """
+    if by not in _ALLOWED_WRITERS:
+        raise ValueError(
+            f"recover_bootstrap_artifact: invalid by={by!r}; "
+            f"allowed={sorted(_ALLOWED_WRITERS)}"
+        )
+
+    repo_dir = str(repo_dir)
+    existing = _read_yaml_from_head(repo_dir, spec_id)
+    if existing is None:
+        raise FileNotFoundError(
+            f"recover_bootstrap_artifact({spec_id}): no HEAD yaml in {repo_dir}"
+        )
+
+    # Validate ALL 4 criteria — refuse otherwise.
+    if existing.get("status") != "done":
+        raise NotBootstrapArtifactError(
+            spec_id=spec_id, criterion="status", value=existing.get("status")
+        )
+    if existing.get("transitions"):
+        raise NotBootstrapArtifactError(
+            spec_id=spec_id, criterion="transitions", value=existing.get("transitions")
+        )
+    if existing.get("pueue_id") is not None:
+        raise NotBootstrapArtifactError(
+            spec_id=spec_id, criterion="pueue_id", value=existing.get("pueue_id")
+        )
+    if existing.get("finished_at") is not None:
+        raise NotBootstrapArtifactError(
+            spec_id=spec_id, criterion="finished_at", value=existing.get("finished_at")
+        )
+
+    branch = _current_branch(repo_dir)
+
+    def make_yaml():
+        # Re-read HEAD inside CAS loop in case of concurrent writes.
+        head_now = _read_yaml_from_head(repo_dir, spec_id)
+        # If the artifact was already recovered between our pre-check and the
+        # CAS attempt, the 4-criteria check will fail again here — but we want
+        # the build to proceed once with the originally-validated `existing`.
+        # Use head_now if present (for version+transitions) else fall back.
+        base = head_now if head_now is not None else existing
+        return _build_yaml_content(
+            spec_id,
+            "queued",
+            existing=base,
+            reason=reason,
+            by=by,
+            pueue_id=None,
+            allowed_files_hash=None,
+        )
+
+    # NOTE: deliberately bypassing the Rule 7 guard in write_lifecycle — we
+    # have *just* validated the bootstrap-as-done signature above, which is
+    # the narrow operator-escape ADR-025 always envisioned (see
+    # recover_bootstrap_as_done.py docstring).
+    _cas_loop(repo_dir, spec_id, branch, make_yaml)
 
 
 def now_iso() -> str:

@@ -274,3 +274,188 @@ def test_bootstrap_skips_orphan_spec_not_in_backlog(tmp_git_repo):
     )
     orchestrator.bootstrap_new_specs(str(tmp_git_repo))
     assert lifecycle.read_lifecycle(tmp_git_repo, "TECH-777") is None
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Recovery script (Task 2)
+# ──────────────────────────────────────────────────────────────────────
+
+import json as _json  # noqa: E402
+
+from recover_bootstrap_as_done import (  # noqa: E402
+    _is_bootstrap_as_done,
+    find_bootstrap_as_done,
+    run as recover_run,
+)
+
+
+def test_is_bootstrap_as_done_classic_signature():
+    """status=done + empty transitions + null pueue_id + null finished_at → True."""
+    assert _is_bootstrap_as_done(
+        {
+            "status": "done",
+            "transitions": [],
+            "pueue_id": None,
+            "finished_at": None,
+        }
+    )
+
+
+def test_is_bootstrap_as_done_rejects_legitimate_done():
+    """Done with transitions populated → legitimate, NOT bootstrap artifact."""
+    assert not _is_bootstrap_as_done(
+        {
+            "status": "done",
+            "transitions": [{"to": "in_progress", "by": "callback", "at": "x"}],
+            "pueue_id": 42,
+            "finished_at": "2026-05-26T10:00:00Z",
+        }
+    )
+
+
+def test_is_bootstrap_as_done_rejects_non_done():
+    """Status != done → never a bootstrap-as-done candidate."""
+    assert not _is_bootstrap_as_done(
+        {"status": "queued", "transitions": [], "pueue_id": None, "finished_at": None}
+    )
+
+
+def test_is_bootstrap_as_done_rejects_dispatched_done():
+    """status=done but pueue_id present → ran at least once, not bootstrap artifact."""
+    assert not _is_bootstrap_as_done(
+        {"status": "done", "transitions": [], "pueue_id": 100, "finished_at": None}
+    )
+
+
+def test_find_bootstrap_as_done_filters_by_signature(tmp_git_repo):
+    """Mixed lifecycle: 2 bootstrap-as-done + 1 legit done → returns only the 2."""
+    # Bootstrap-as-done (S1 simulation) — create_initial(status="done")
+    # produces exactly the 4-criteria signature (no transitions, pueue_id=None,
+    # finished_at=None).
+    lifecycle.create_initial(tmp_git_repo, "TECH-1082", "p2", "tech", status="done")
+    lifecycle.create_initial(tmp_git_repo, "BUG-1074", "p1", "bug", status="done")
+    # Legitimate done (with transitions + auto-set finished_at):
+    lifecycle.create_initial(tmp_git_repo, "TECH-900", "p1", "tech", status="queued")
+    lifecycle.write_lifecycle(tmp_git_repo, "TECH-900", "done", pueue_id=42)
+    candidates = find_bootstrap_as_done(str(tmp_git_repo))
+    assert candidates == ["BUG-1074", "TECH-1082"]
+
+
+def test_recover_dry_run_makes_no_changes(tmp_git_repo, capsys, tmp_path):
+    """--dry-run (default) finds candidates but does not call spec_operator."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-1082", "p2", "tech", status="done")
+
+    # Build a minimal projects.json pointing at our tmp_git_repo
+    pj = tmp_path / "projects.json"
+    pj.write_text(_json.dumps([{"project_id": "tmp", "path": str(tmp_git_repo)}]))
+
+    rc = recover_run(
+        dry_run=True,
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=False,
+        reason="test",
+    )
+    assert rc == 0
+    # Status unchanged
+    data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-1082")
+    assert data["status"] == "done"
+    assert data["transitions"] == []
+    captured = capsys.readouterr()
+    assert "DRY-RUN" in captured.out
+    assert "TECH-1082" in captured.out
+
+
+def test_recover_confirm_demotes_via_recovery_primitive(tmp_git_repo, tmp_path):
+    """--confirm: bootstrap-as-done specs become status=queued with operator transition."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-1082", "p2", "tech", status="done")
+    lifecycle.create_initial(tmp_git_repo, "BUG-1074", "p1", "bug", status="done")
+
+    pj = tmp_path / "projects.json"
+    pj.write_text(_json.dumps([{"project_id": "tmp", "path": str(tmp_git_repo)}]))
+
+    rc = recover_run(
+        dry_run=False,
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=False,
+        reason="TECH-195 recovery test",
+    )
+    assert rc == 0
+    for spec_id in ("TECH-1082", "BUG-1074"):
+        data = lifecycle.read_lifecycle(tmp_git_repo, spec_id)
+        assert data["status"] == "queued", f"{spec_id} should be demoted to queued"
+        # recover_bootstrap_artifact records a transition with by=operator
+        assert any(t.get("by") == "operator" for t in data["transitions"]), (
+            f"{spec_id} should have an operator transition"
+        )
+
+
+def test_recover_json_output(tmp_git_repo, capsys, tmp_path):
+    """--json emits valid JSON structure with project list."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-1082", "p2", "tech", status="done")
+    pj = tmp_path / "projects.json"
+    pj.write_text(_json.dumps([{"project_id": "tmp", "path": str(tmp_git_repo)}]))
+
+    rc = recover_run(
+        dry_run=True,
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=True,
+        reason="test",
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    payload = _json.loads(out)
+    assert payload["dry_run"] is True
+    assert len(payload["projects"]) == 1
+    proj = payload["projects"][0]
+    assert proj["project_id"] == "tmp"
+    assert proj["candidates"] == ["TECH-1082"]
+    assert proj["count"] == 1
+
+
+def test_recover_does_not_touch_legitimate_done(tmp_git_repo, tmp_path):
+    """A done spec with transitions+pueue_id is NEVER demoted by recovery."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-900", "p1", "tech", status="queued")
+    # write_lifecycle("done") auto-sets finished_at and adds a transition,
+    # so this is a legitimate done.
+    lifecycle.write_lifecycle(tmp_git_repo, "TECH-900", "done", pueue_id=42)
+    pj = tmp_path / "projects.json"
+    pj.write_text(_json.dumps([{"project_id": "tmp", "path": str(tmp_git_repo)}]))
+
+    recover_run(
+        dry_run=False,
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=False,
+        reason="test",
+    )
+    data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-900")
+    assert data["status"] == "done", "legitimate done MUST remain done"
+
+
+def test_recover_bootstrap_artifact_refuses_legitimate_done(tmp_git_repo):
+    """Direct primitive call: legit done raises NotBootstrapArtifactError (Rule 7 honored)."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-901", "p1", "tech", status="queued")
+    lifecycle.write_lifecycle(tmp_git_repo, "TECH-901", "done", pueue_id=42)
+    import pytest
+
+    with pytest.raises(lifecycle.NotBootstrapArtifactError):
+        lifecycle.recover_bootstrap_artifact(
+            tmp_git_repo, "TECH-901", reason="test", by="operator"
+        )
+
+
+def test_recover_bootstrap_artifact_demotes_bootstrap_signature(tmp_git_repo):
+    """Direct primitive call: bootstrap-as-done → demoted to queued with transition."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-1082", "p2", "tech", status="done")
+    lifecycle.recover_bootstrap_artifact(
+        tmp_git_repo, "TECH-1082", reason="TECH-195 test", by="operator"
+    )
+    data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-1082")
+    assert data["status"] == "queued"
+    assert any(
+        t.get("by") == "operator" and t.get("to") == "queued"
+        for t in data.get("transitions", [])
+    )

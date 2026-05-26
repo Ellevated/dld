@@ -236,6 +236,7 @@ Multi-project детектор drift'а отсутствует.
 
 <!-- callback-allowlist v1 -->
 - `scripts/vps/orchestrator.py`
+- `scripts/vps/lifecycle.py`
 - `scripts/vps/lifecycle_audit.py`
 - `scripts/vps/recover_bootstrap_as_done.py`
 - `scripts/vps/tests/test_orchestrator_bootstrap.py`
