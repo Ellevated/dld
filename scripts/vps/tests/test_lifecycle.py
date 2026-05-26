@@ -363,3 +363,96 @@ def test_transitions_list_grows(tmp_git_repo):
     assert data["transitions"][0]["to"] == "in_progress"
     assert data["transitions"][1]["from"] == "in_progress"
     assert data["transitions"][1]["to"] == "done"
+
+
+# ---------------------------------------------------------------------------
+# Test CR-9: spec-first ID collision retry via multiprocessing CAS race
+# ---------------------------------------------------------------------------
+
+
+def _worker_create_initial(repo_dir: str, spec_id: str, barrier, result_queue) -> None:
+    """Worker function for multiprocessing CAS race test.
+
+    Waits at barrier so both processes start create_initial simultaneously,
+    then reports success or exception type to the result_queue.
+    """
+    import sys
+    from pathlib import Path
+
+    vps_dir = str(Path(__file__).resolve().parent.parent)
+    if vps_dir not in sys.path:
+        sys.path.insert(0, vps_dir)
+    import lifecycle as lc
+
+    barrier.wait()  # synchronize start
+    try:
+        lc.create_initial(repo_dir, spec_id, priority="P1", kind="ARCH", by="spark")
+        result_queue.put(("success", None))
+    except lc.LifecycleWriteRaceError as exc:
+        result_queue.put(("race_error", str(exc)))
+    except Exception as exc:
+        result_queue.put(("other_error", f"{type(exc).__name__}: {exc}"))
+
+
+def test_create_initial_cas_collision_retry(tmp_git_repo):
+    """CR-9: Two concurrent create_initial calls for same ID via separate processes.
+
+    One caller wins the CAS race (update-ref succeeds), the other exhausts
+    MAX_CAS_RETRIES and raises LifecycleWriteRaceError.
+
+    Uses multiprocessing (not threading) to bypass the in-process _write_lock
+    that serializes writes within a single Python process. Cross-process CAS
+    is protected only by git update-ref — the real guard being tested here.
+    """
+    import multiprocessing as mp
+
+    spec_id = "ARCH-999"
+    repo_dir = str(tmp_git_repo)
+
+    # Use a Barrier so both processes hit create_initial at the same moment.
+    barrier = mp.Barrier(2)
+    result_queue = mp.Queue()
+
+    p1 = mp.Process(
+        target=_worker_create_initial,
+        args=(repo_dir, spec_id, barrier, result_queue),
+    )
+    p2 = mp.Process(
+        target=_worker_create_initial,
+        args=(repo_dir, spec_id, barrier, result_queue),
+    )
+
+    p1.start()
+    p2.start()
+    p1.join(timeout=30)
+    p2.join(timeout=30)
+
+    assert not p1.is_alive(), "Process 1 hung (timeout)"
+    assert not p2.is_alive(), "Process 2 hung (timeout)"
+
+    results = []
+    while not result_queue.empty():
+        results.append(result_queue.get_nowait())
+
+    assert len(results) == 2, f"Expected 2 results from workers, got {len(results)}: {results}"
+
+    outcomes = [r[0] for r in results]
+    # Exactly one success and one race_error — or both success if git CAS
+    # serialized perfectly (both commits landed on different HEAD SHAs).
+    # The invariant we must enforce: ARCH-999.yaml appears exactly ONCE in HEAD.
+    head_files = subprocess.check_output(
+        ["git", "ls-tree", "HEAD:ai/lifecycle/"],
+        cwd=repo_dir,
+        text=True,
+    )
+    arch_999_count = head_files.count("ARCH-999.yaml")
+    assert arch_999_count == 1, (
+        f"Expected exactly 1 ARCH-999.yaml in HEAD, got {arch_999_count}. Outcomes: {outcomes}"
+    )
+
+    # At least one worker must have succeeded (i.e. no both-fail scenario).
+    assert "success" in outcomes, f"No worker succeeded: {results}"
+
+    # If one got a race error, confirm it's the expected type.
+    for outcome, detail in results:
+        assert outcome in ("success", "race_error"), f"Unexpected outcome {outcome!r}: {detail}"

@@ -72,11 +72,7 @@ def test_parse_backlog_short_format_status_in_column_2():
 
 def test_parse_backlog_case_insensitive_status_column():
     """Header `Status` (capital) and STATUS work too."""
-    text = (
-        "| ID | Status | Priority |\n"
-        "|---|---|---|\n"
-        "| TECH-1 | queued | P1 |\n"
-    )
+    text = "| ID | Status | Priority |\n|---|---|---|\n| TECH-1 | queued | P1 |\n"
     result = _parse_backlog(text)
     assert result["TECH-1"] == "queued"
 
@@ -95,9 +91,7 @@ def test_parse_backlog_no_header_falls_back_to_value_scan():
 def test_parse_backlog_unparsable_row_returns_none():
     """Row with no valid status anywhere → None (NOT 'done')."""
     text = (
-        "| ID | description |\n"
-        "|---|---|\n"
-        "| FTR-200 | this row is broken — no status anywhere |\n"
+        "| ID | description |\n|---|---|\n| FTR-200 | this row is broken — no status anywhere |\n"
     )
     result = _parse_backlog(text)
     assert result["FTR-200"] is None
@@ -105,23 +99,14 @@ def test_parse_backlog_unparsable_row_returns_none():
 
 def test_parse_backlog_invalid_status_value_falls_back():
     """Header has `status` col but value is garbage → fallback scan finds nothing valid."""
-    text = (
-        "| ID | status | kind |\n"
-        "|---|---|---|\n"
-        "| TECH-300 | not-a-status | bug |\n"
-    )
+    text = "| ID | status | kind |\n|---|---|---|\n| TECH-300 | not-a-status | bug |\n"
     result = _parse_backlog(text)
     assert result["TECH-300"] is None
 
 
 def test_parse_backlog_mixed_ids_growth_prefix():
     """GROWTH-N (added in TECH-189 Task 6) also parses."""
-    text = (
-        "| ID | status |\n"
-        "|---|---|\n"
-        "| GROWTH-1 | queued |\n"
-        "| TECH-1a  | done |\n"
-    )
+    text = "| ID | status |\n|---|---|\n| GROWTH-1 | queued |\n| TECH-1a  | done |\n"
     result = _parse_backlog(text)
     assert result["GROWTH-1"] == "queued"
     assert result["TECH-1a"] == "done"
@@ -129,12 +114,7 @@ def test_parse_backlog_mixed_ids_growth_prefix():
 
 def test_parse_backlog_skips_non_spec_rows():
     """Rows without spec_id (e.g. section markers) are not in result."""
-    text = (
-        "| ID | status |\n"
-        "|---|---|\n"
-        "| TECH-1 | queued |\n"
-        "| some other row | data |\n"
-    )
+    text = "| ID | status |\n|---|---|\n| TECH-1 | queued |\n| some other row | data |\n"
     result = _parse_backlog(text)
     assert "TECH-1" in result
     assert len(result) == 1
@@ -193,6 +173,28 @@ def tmp_git_repo(tmp_path):
     return repo
 
 
+def _git_add_commit(repo, *relative_paths: str) -> None:
+    """Commit given paths in repo so bootstrap_new_specs reads them from HEAD.
+
+    CR-5 (ARCH-196): bootstrap_new_specs now reads ai/backlog.md via
+    `git show HEAD:ai/backlog.md` instead of from WT. Integration tests must
+    commit any backlog.md they write before calling bootstrap_new_specs.
+    """
+    for rel in relative_paths:
+        subprocess.check_call(
+            ["git", "add", rel],
+            cwd=str(repo),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    subprocess.check_call(
+        ["git", "commit", "--allow-empty-message", "-m", "test: add backlog"],
+        cwd=str(repo),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def test_bootstrap_short_format_awardybot_style(tmp_git_repo):
     """awardybot/dowry-style backlog → bootstrap creates yaml status=queued (not done)."""
     spec = tmp_git_repo / "ai" / "features" / "TECH-1082-foo.md"
@@ -202,6 +204,8 @@ def test_bootstrap_short_format_awardybot_style(tmp_git_repo):
         "|---|---|---|---|---|\n"
         "| TECH-1082 | queued | tech | 2026-05-26 | [spec](x) |\n"
     )
+    # CR-5: bootstrap reads backlog from HEAD — must commit before calling.
+    _git_add_commit(tmp_git_repo, "ai/backlog.md")
     orchestrator.bootstrap_new_specs(str(tmp_git_repo))
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-1082")
     assert data is not None, "yaml should exist after bootstrap"
@@ -219,10 +223,10 @@ def test_bootstrap_default_queued_not_done(tmp_git_repo):
     spec.write_text("# TECH-999\n**Priority:** P1\n**Kind:** tech\n")
     # Row references spec_id but provides no parseable status anywhere.
     (tmp_git_repo / "ai" / "backlog.md").write_text(
-        "| ID | description |\n"
-        "|---|---|\n"
-        "| TECH-999 | this row has nothing parseable as status |\n"
+        "| ID | description |\n|---|---|\n| TECH-999 | this row has nothing parseable as status |\n"
     )
+    # CR-5: bootstrap reads backlog from HEAD — must commit before calling.
+    _git_add_commit(tmp_git_repo, "ai/backlog.md")
     orchestrator.bootstrap_new_specs(str(tmp_git_repo))
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-999")
     assert data is not None
@@ -245,6 +249,8 @@ def test_bootstrap_template_format_still_works(tmp_git_repo):
         "|---|---|---|---|---|\n"
         "| TECH-500 | foo bar | queued | P1 | [spec](x) |\n"
     )
+    # CR-5: bootstrap reads backlog from HEAD — must commit before calling.
+    _git_add_commit(tmp_git_repo, "ai/backlog.md")
     orchestrator.bootstrap_new_specs(str(tmp_git_repo))
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-500")
     assert data["status"] == "queued"
@@ -258,6 +264,8 @@ def test_bootstrap_idempotent_after_refactor(tmp_git_repo):
     (tmp_git_repo / "ai" / "backlog.md").write_text(
         "| ID | status |\n|---|---|\n| TECH-600 | done |\n"
     )
+    # CR-5: bootstrap reads backlog from HEAD — must commit before calling.
+    _git_add_commit(tmp_git_repo, "ai/backlog.md")
     # Bootstrap should be a no-op even though backlog claims `done`.
     orchestrator.bootstrap_new_specs(str(tmp_git_repo))
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-600")
@@ -272,8 +280,48 @@ def test_bootstrap_skips_orphan_spec_not_in_backlog(tmp_git_repo):
     (tmp_git_repo / "ai" / "backlog.md").write_text(
         "| ID | status |\n|---|---|\n| TECH-888 | queued |\n"
     )
+    # CR-5: bootstrap reads backlog from HEAD — must commit before calling.
+    _git_add_commit(tmp_git_repo, "ai/backlog.md")
     orchestrator.bootstrap_new_specs(str(tmp_git_repo))
     assert lifecycle.read_lifecycle(tmp_git_repo, "TECH-777") is None
+
+
+def test_bootstrap_reads_head_not_working_tree(tmp_git_repo):
+    """CR-5 (ARCH-196): bootstrap_new_specs uses HEAD content, not WT. CWE-367 fix."""
+    # HEAD backlog has TECH-888 as queued — this is what bootstrap must see.
+    head_backlog = (
+        "| ID | Status | Kind | Title |\n"
+        "|---|---|---|---|\n"
+        "| TECH-888 | queued | TECH | HEAD spec |\n"
+    )
+    (tmp_git_repo / "ai" / "backlog.md").write_text(head_backlog)
+    spec_file = tmp_git_repo / "ai" / "features" / "TECH-888-test-head-read.md"
+    spec_file.write_text("# Feature: TECH-888\n\n## Allowed Files\n\n- `src/foo.py`\n")
+    _git_add_commit(tmp_git_repo, "ai/backlog.md", "ai/features/TECH-888-test-head-read.md")
+
+    # Now overwrite WT backlog with TECH-999 (not committed) — simulates callback
+    # render commit race or local edit. bootstrap must NOT see TECH-999.
+    (tmp_git_repo / "ai" / "backlog.md").write_text(
+        "| ID | Status | Kind | Title |\n"
+        "|---|---|---|---|\n"
+        "| TECH-999 | done | TECH | WT only spec |\n"
+    )
+    # Do NOT commit the WT change — it stays only in working tree.
+
+    orchestrator.bootstrap_new_specs(str(tmp_git_repo))
+
+    # TECH-888 must be detected from HEAD.
+    data_888 = lifecycle.read_lifecycle(tmp_git_repo, "TECH-888")
+    assert data_888 is not None, (
+        "TECH-888 should be bootstrapped from HEAD backlog, not missed due to WT overwrite"
+    )
+    assert data_888["status"] == "queued"
+
+    # TECH-999 must NOT be bootstrapped — it exists only in WT, not HEAD.
+    data_999 = lifecycle.read_lifecycle(tmp_git_repo, "TECH-999")
+    assert data_999 is None, (
+        "TECH-999 is only in WT backlog (uncommitted); bootstrap must NOT see it"
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -442,9 +490,7 @@ def test_recover_bootstrap_artifact_refuses_legitimate_done(tmp_git_repo):
     import pytest
 
     with pytest.raises(lifecycle.NotBootstrapArtifactError):
-        lifecycle.recover_bootstrap_artifact(
-            tmp_git_repo, "TECH-901", reason="test", by="operator"
-        )
+        lifecycle.recover_bootstrap_artifact(tmp_git_repo, "TECH-901", reason="test", by="operator")
 
 
 def test_recover_bootstrap_artifact_demotes_bootstrap_signature(tmp_git_repo):
@@ -456,8 +502,7 @@ def test_recover_bootstrap_artifact_demotes_bootstrap_signature(tmp_git_repo):
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-1082")
     assert data["status"] == "queued"
     assert any(
-        t.get("by") == "operator" and t.get("to") == "queued"
-        for t in data.get("transitions", [])
+        t.get("by") == "operator" and t.get("to") == "queued" for t in data.get("transitions", [])
     )
 
 
@@ -465,7 +510,7 @@ def test_recover_bootstrap_artifact_demotes_bootstrap_signature(tmp_git_repo):
 # lifecycle_audit.py (Task 3) — READ-ONLY multi-project drift detector
 # ──────────────────────────────────────────────────────────────────────
 
-import lifecycle_audit  # noqa: E402
+import lifecycle_audit  # noqa: E402,F401
 from lifecycle_audit import (  # noqa: E402
     CATEGORIES,
     _parse_backlog_columns as audit_parse_backlog,
@@ -513,9 +558,7 @@ def test_audit_detects_unauthorized_writer(tmp_git_repo):
     # then mutate via the yaml file at HEAD by committing a hand-crafted file.
     import subprocess as sp
 
-    sp.run(
-        ["git", "config", "user.email", "test@test"], cwd=str(tmp_git_repo), check=True
-    )
+    sp.run(["git", "config", "user.email", "test@test"], cwd=str(tmp_git_repo), check=True)
     sp.run(["git", "config", "user.name", "t"], cwd=str(tmp_git_repo), check=True)
     target = tmp_git_repo / "ai" / "lifecycle" / "TECH-777.yaml"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -535,9 +578,7 @@ def test_audit_detects_unauthorized_writer(tmp_git_repo):
         "transitions:\n"
         "  - {from: queued, to: in_progress, at: '2026-05-26T10:00:00Z', by: spark, pueue_id: null}\n"
     )
-    sp.run(
-        ["git", "add", "ai/lifecycle/TECH-777.yaml"], cwd=str(tmp_git_repo), check=True
-    )
+    sp.run(["git", "add", "ai/lifecycle/TECH-777.yaml"], cwd=str(tmp_git_repo), check=True)
     sp.run(
         ["git", "commit", "-m", "test: inject unauthorized writer"],
         cwd=str(tmp_git_repo),
@@ -624,22 +665,26 @@ def test_audit_run_rejects_unknown_category(tmp_path):
 
 def test_audit_parse_backlog_columns_short_format():
     """Audit's parser handles awardybot short format identically to orchestrator's."""
-    text = (
-        "| ID | status | kind | date |\n"
-        "|---|---|---|---|\n"
-        "| TECH-1 | queued | tech | x |\n"
-    )
+    text = "| ID | status | kind | date |\n|---|---|---|---|\n| TECH-1 | queued | tech | x |\n"
     assert audit_parse_backlog(text)["TECH-1"] == "queued"
 
 
 def test_audit_categories_constant_complete():
     """CATEGORIES tuple covers all 14 documented detectors."""
     expected = {
-        "orphan_spec_md", "orphan_yaml", "missing_from_backlog",
-        "bootstrap_as_done", "markdown_status_mismatch",
-        "backlog_status_mismatch", "backlog_format_unparsed",
-        "wt_lifecycle_dirty", "wt_features_dirty", "unauthorized_writer",
-        "git_divergence", "push_failures_counter",
-        "bootstrap_anomaly", "bootstrap_unparsable",
+        "orphan_spec_md",
+        "orphan_yaml",
+        "missing_from_backlog",
+        "bootstrap_as_done",
+        "markdown_status_mismatch",
+        "backlog_status_mismatch",
+        "backlog_format_unparsed",
+        "wt_lifecycle_dirty",
+        "wt_features_dirty",
+        "unauthorized_writer",
+        "git_divergence",
+        "push_failures_counter",
+        "bootstrap_anomaly",
+        "bootstrap_unparsable",
     }
     assert set(CATEGORIES) == expected

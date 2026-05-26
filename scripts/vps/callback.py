@@ -1220,8 +1220,9 @@ def verify_status_sync(
         )
         return
 
-    # Rule 5: inline render of backlog.md
-    _render_and_commit_backlog(project_path, project_id)
+    # Rule 5 (ARCH-196): inline backlog render REMOVED — backlog.md is now
+    # single-writer (spark/autopilot Edit). The render helper is retained
+    # at line ~975 as an operator emergency CLI tool only.
 
     _emit_audit(
         project_id,

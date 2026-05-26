@@ -200,6 +200,8 @@ Escalation:   Autopilot → Spark → Architect → Board → Founder
 Brownfield:   /retrofit → /audit deep → /architect → /board → stabilize → normal
 ```
 
+**Interactive `/spark` workflow:** Run `/spark` interactive sessions from ONE machine at a time (laptop preferred). VPS spark runs only via orchestrator dispatch (headless). The spec-first ID CAS (ARCH-196) handles concurrent claims structurally, but this convention prevents push contention races.
+
 **New in v3.7:**
 - Spark auto-hands off to autopilot (no manual "plan" step)
 - Autopilot always uses worktree (isolation)
@@ -294,13 +296,7 @@ Risk replaces effort as the second axis of decision-making:
 | **R1** | High blast radius | 3+ files, cross-domain, external dependency, state machine change |
 | **R2** | Contained | 1-2 files, single domain, internal, trivially rollbackable |
 
-### Impact x Risk Routing
-
-| Impact \ Risk | R0 (Irreversible) | R1 (Blast radius) | R2 (Contained) |
-|---|---|---|---|
-| **P0** | COUNCIL | HUMAN | AUTO |
-| **P1** | COUNCIL | AUTO | AUTO |
-| **P2** | HUMAN | AUTO | AUTO |
+For Impact × Risk routing matrix, see `.claude/skills/spark/feature-mode.md` Phase 4 DECIDE — matrix applies ONLY during spec design, not during autopilot execution.
 
 ---
 
