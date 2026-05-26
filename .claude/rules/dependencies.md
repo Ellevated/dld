@@ -462,6 +462,65 @@ Dependency map between project components.
 
 ---
 
+## scripts/vps/cleanup-lifecycle-drift.sh (TECH-194)
+
+**Path:** `scripts/vps/cleanup-lifecycle-drift.sh`
+
+One-shot operator helper to recover from dirty `ai/lifecycle/` state in a project
+(staged/modified/deleted files left over from pre-TECH-194 `env=env` bug in
+`lifecycle.py`). HEAD is the canonical SoT — restores WT and unstages.
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| git CLI | PATH | `git status --porcelain ai/lifecycle/`, `git restore --staged`, `git checkout HEAD --` |
+| jq | PATH | parse projects.json `.[].path` (iteration mode) |
+| projects.json | $PROJECTS_JSON or scripts/vps/projects.json | list of project paths to clean |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| operator | manual | post-TECH-194 cleanup (one-shot or per-project) |
+
+### When changing API, check
+
+- [ ] projects.json schema (jq path stays `.[].path`)
+- [ ] lifecycle.py (if SoT layout changes, cleanup paths must update)
+
+---
+
+## scripts/vps/install-hooks-all-worktrees.sh (TECH-194 Layer C migration)
+
+**Path:** `scripts/vps/install-hooks-all-worktrees.sh`
+
+Migration helper that converts relative `core.hooksPath = .git-hooks` (broken in
+worktrees — resolves relative to `.git/worktrees/<name>/` instead of repo root)
+to absolute paths per project. Idempotent.
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| git CLI | PATH | `git -C <path> config core.hooksPath <absolute>` |
+| jq | PATH | parse projects.json `.[].path` |
+| projects.json | $PROJECTS_JSON or scripts/vps/projects.json | iterate project paths |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| operator | manual | one-shot Layer C migration on existing VPS deployments |
+| setup-vps.sh | new VPS setup (--phase4-hooks) | covers new projects natively; this helper covers backfill |
+
+### When changing API, check
+
+- [ ] setup-vps.sh --phase4-hooks (must produce identical absolute hooksPath value)
+- [ ] .git-hooks/pre-commit (GIT_COMMON_DIR resolution depends on absolute hooksPath)
+
+---
+
 ## Last Update
 
 | Date | What | Who |
@@ -487,3 +546,4 @@ Dependency map between project components.
 | 2026-05-24 | **ARCH-190 Task 5:** NEW tests/test_gate_logic.py (410 LOC) — 24 pure-function tests covering DA-1, DA-4, DA-5, DA-6, DA-9 + parse_allowed_files v1/legacy + match_subject 3 forms + fetch_develop timeout. Real git repos via subprocess + tmp_path (ADR-013). | coder |
 | 2026-05-24 | **ARCH-190 Task 6:** NEW tests/test_gate_daemon.py (515 LOC) — 8 integration tests covering SA-3 lifecycle-never-touched, SHADOW_ONLY_MODE guard, gate_health row, JSONL line count, per-project error isolation, SHA cache spy, heartbeat mtime, SIGTERM graceful exit. | coder |
 | 2026-05-24 | **ARCH-190 Task 7 (Wave 1 complete):** dependency map consolidated — gate-daemon.py + gate_logic.py sections; reverse-pointer rows added to db.py, lifecycle.py, setup-vps.sh sections. Shadow daemon ready for VPS deploy (Wave 2 parity check next). | autopilot |
+| 2026-05-26 | **TECH-194 (ARCH-193 follow-up):** Layer C — setup-vps.sh `core.hooksPath` absolute + `install-hooks-all-worktrees.sh` migration + `.git-hooks/pre-commit` uses `git rev-parse --git-common-dir` + `pre-commit-lifecycle-guard.mjs` resolves `event_writer.py` via `import.meta.url`; Layer D — `lifecycle._atomic_write` + `_atomic_write_file` use `git checkout HEAD --` (was `checkout-index --force` losing `env=env`); Layer E — callback Step 6 gates qa+reflect dispatch on `task_status not in ('blocked','needs_review')`; NEW `cleanup-lifecycle-drift.sh` operator helper; 11 new regression tests across 3 files. | autopilot |

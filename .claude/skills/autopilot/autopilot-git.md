@@ -217,6 +217,29 @@ may then run:
 ```
 python3 scripts/vps/spec_operator.py force-done <project> <SPEC_ID> "<reason>" --by=operator
 ```
+#### task_status JSON contract (TECH-194 Layer E)
+
+Autopilot's final JSON output MUST include `task_status`. Callback gates the
+post-autopilot dispatch of QA + reflect on this field — without it (or with
+an unknown value), callback falls back to "done" dispatch and burns ~$2.50
+on QA+reflect for non-done tasks.
+
+| value | semantics | callback action |
+|-------|-----------|-----------------|
+| `complete` | Spec finished, all tasks done | lifecycle → done, dispatch QA + reflect |
+| `blocked` | Needs human (write `## ACTION REQUIRED` in spec) | lifecycle → blocked, SKIP QA + reflect |
+| `needs_review` | Ambiguous result, human triage | lifecycle → blocked, SKIP QA + reflect |
+| `skipped` | Pre-flight early-exit (already merged) | lifecycle untouched, SKIP QA + reflect |
+| missing / unknown | (legacy) | lifecycle → done, dispatch QA + reflect (backward compat) |
+
+Final JSON shape:
+```json
+{
+  "task_status": "complete" | "blocked" | "needs_review" | "skipped",
+  "result_preview": "..."
+}
+```
+
 
 The `--by=autopilot` and `--by=spark` choices have been REMOVED (ADR-025).
 
