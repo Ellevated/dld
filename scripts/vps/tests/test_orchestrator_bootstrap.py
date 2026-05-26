@@ -459,3 +459,187 @@ def test_recover_bootstrap_artifact_demotes_bootstrap_signature(tmp_git_repo):
         t.get("by") == "operator" and t.get("to") == "queued"
         for t in data.get("transitions", [])
     )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# lifecycle_audit.py (Task 3) — READ-ONLY multi-project drift detector
+# ──────────────────────────────────────────────────────────────────────
+
+import lifecycle_audit  # noqa: E402
+from lifecycle_audit import (  # noqa: E402
+    CATEGORIES,
+    _parse_backlog_columns as audit_parse_backlog,
+    audit_project,
+    run as audit_run,
+)
+
+
+def test_audit_clean_repo_returns_no_findings(tmp_git_repo):
+    """Empty-but-valid repo (no specs at all) → no findings."""
+    findings = audit_project(str(tmp_git_repo))
+    assert findings == []
+
+
+def test_audit_detects_bootstrap_as_done(tmp_git_repo):
+    """Direct injection of bootstrap-as-done yaml → category fires."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-1082", "p2", "tech", status="done")
+    findings = audit_project(str(tmp_git_repo))
+    cats = [f["category"] for f in findings]
+    assert "bootstrap_as_done" in cats
+    bs = [f for f in findings if f["category"] == "bootstrap_as_done"]
+    assert bs[0]["spec_id"] == "TECH-1082"
+
+
+def test_audit_detects_orphan_yaml(tmp_git_repo):
+    """yaml in HEAD but no spec.md → orphan_yaml."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-555", "p1", "tech", status="queued")
+    findings = audit_project(str(tmp_git_repo))
+    cats = {f["category"] for f in findings}
+    assert "orphan_yaml" in cats
+
+
+def test_audit_detects_orphan_spec_md(tmp_git_repo):
+    """spec.md exists but yaml absent in HEAD → orphan_spec_md."""
+    spec = tmp_git_repo / "ai" / "features" / "TECH-666-x.md"
+    spec.write_text("# TECH-666\n**Status:** queued\n")
+    findings = audit_project(str(tmp_git_repo))
+    orphans = [f for f in findings if f["category"] == "orphan_spec_md"]
+    assert any(f["spec_id"] == "TECH-666" for f in orphans)
+
+
+def test_audit_detects_unauthorized_writer(tmp_git_repo):
+    """Yaml with transitions containing by=spark → unauthorized_writer."""
+    # Build a yaml manually with a forbidden transition. We use create_initial
+    # then mutate via the yaml file at HEAD by committing a hand-crafted file.
+    import subprocess as sp
+
+    sp.run(
+        ["git", "config", "user.email", "test@test"], cwd=str(tmp_git_repo), check=True
+    )
+    sp.run(["git", "config", "user.name", "t"], cwd=str(tmp_git_repo), check=True)
+    target = tmp_git_repo / "ai" / "lifecycle" / "TECH-777.yaml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "spec_id: TECH-777\n"
+        "status: in_progress\n"
+        "priority: p1\n"
+        "kind: tech\n"
+        "blocked_reason: null\n"
+        "started_at: null\n"
+        "finished_at: null\n"
+        "allowed_files_hash: null\n"
+        "updated_at: '2026-05-26T10:00:00Z'\n"
+        "updated_by: spark\n"
+        "version: 1\n"
+        "pueue_id: null\n"
+        "transitions:\n"
+        "  - {from: queued, to: in_progress, at: '2026-05-26T10:00:00Z', by: spark, pueue_id: null}\n"
+    )
+    sp.run(
+        ["git", "add", "ai/lifecycle/TECH-777.yaml"], cwd=str(tmp_git_repo), check=True
+    )
+    sp.run(
+        ["git", "commit", "-m", "test: inject unauthorized writer"],
+        cwd=str(tmp_git_repo),
+        check=True,
+    )
+    findings = audit_project(str(tmp_git_repo))
+    cats = {f["category"] for f in findings}
+    assert "unauthorized_writer" in cats
+
+
+def test_audit_counters_picked_up(tmp_git_repo):
+    """All three counter files → 3 separate findings."""
+    (tmp_git_repo / "ai" / ".bootstrap-unparsable-count").write_text("3")
+    (tmp_git_repo / "ai" / ".bootstrap-anomaly-count").write_text("1")
+    (tmp_git_repo / "ai" / ".lifecycle-push-failures").write_text("7")
+    findings = audit_project(str(tmp_git_repo))
+    cats = {f["category"] for f in findings}
+    assert "bootstrap_unparsable" in cats
+    assert "bootstrap_anomaly" in cats
+    assert "push_failures_counter" in cats
+
+
+def test_audit_run_dry_clean_returns_zero(tmp_git_repo, tmp_path, capsys):
+    """Run on empty project → exit 0 (clean)."""
+    pj = tmp_path / "projects.json"
+    pj.write_text(_json.dumps([{"project_id": "tmp", "path": str(tmp_git_repo)}]))
+    rc = audit_run(
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=False,
+        category_filter=None,
+        quiet=False,
+    )
+    assert rc == 0
+
+
+def test_audit_run_with_findings_returns_one(tmp_git_repo, tmp_path):
+    """Run on project with bootstrap-as-done → exit 1."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-X", "p1", "tech", status="done")
+    pj = tmp_path / "projects.json"
+    pj.write_text(_json.dumps([{"project_id": "tmp", "path": str(tmp_git_repo)}]))
+    rc = audit_run(
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=True,
+        category_filter=None,
+        quiet=False,
+    )
+    assert rc == 1
+
+
+def test_audit_category_filter_narrows_output(tmp_git_repo, tmp_path, capsys):
+    """--category=bootstrap_as_done excludes orphan_yaml from same yaml."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-Y", "p1", "tech", status="done")
+    # TECH-Y has no .md → orphan_yaml also fires; we want only bootstrap_as_done
+    pj = tmp_path / "projects.json"
+    pj.write_text(_json.dumps([{"project_id": "tmp", "path": str(tmp_git_repo)}]))
+    audit_run(
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=True,
+        category_filter="bootstrap_as_done",
+        quiet=False,
+    )
+    out = capsys.readouterr().out
+    payload = _json.loads(out)
+    cats = {f["category"] for f in payload["projects"][0]["findings"]}
+    assert cats == {"bootstrap_as_done"}
+
+
+def test_audit_run_rejects_unknown_category(tmp_path):
+    """--category=foo → rc=2 (usage error)."""
+    pj = tmp_path / "projects.json"
+    pj.write_text("[]")
+    rc = audit_run(
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=False,
+        category_filter="not_a_real_category",
+        quiet=False,
+    )
+    assert rc == 2
+
+
+def test_audit_parse_backlog_columns_short_format():
+    """Audit's parser handles awardybot short format identically to orchestrator's."""
+    text = (
+        "| ID | status | kind | date |\n"
+        "|---|---|---|---|\n"
+        "| TECH-1 | queued | tech | x |\n"
+    )
+    assert audit_parse_backlog(text)["TECH-1"] == "queued"
+
+
+def test_audit_categories_constant_complete():
+    """CATEGORIES tuple covers all 14 documented detectors."""
+    expected = {
+        "orphan_spec_md", "orphan_yaml", "missing_from_backlog",
+        "bootstrap_as_done", "markdown_status_mismatch",
+        "backlog_status_mismatch", "backlog_format_unparsed",
+        "wt_lifecycle_dirty", "wt_features_dirty", "unauthorized_writer",
+        "git_divergence", "push_failures_counter",
+        "bootstrap_anomaly", "bootstrap_unparsable",
+    }
+    assert set(CATEGORIES) == expected
