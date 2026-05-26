@@ -319,6 +319,31 @@ Common rationalization to REJECT: "I already know what the user wants"
 
 ## Phase 5: WRITE (Feature Spec Template)
 
+### Spec-First ID Generation (Kafka pattern via lifecycle CAS)
+
+Instead of "scan backlog → pick max+1 → write spec", use atomic CAS:
+
+1. **Compute candidate ID:**
+   ```bash
+   git ls-tree HEAD:ai/lifecycle/ | grep -oE '(TECH|FTR|BUG|ARCH|GROWTH)-[0-9]+' | sort -t- -k2 -n | tail -1
+   ```
+   Take the max number, add +1 for the candidate ID (keep same prefix as your spec type).
+
+2. **Attempt atomic claim:**
+   ```bash
+   python3 -c "
+   from scripts.vps.lifecycle import create_initial
+   create_initial('<REPO_DIR>', '<CANDIDATE_ID>', priority='<P0|P1|P2>', kind='<TECH|FTR|BUG|ARCH>', _by='spark', status='queued')
+   print('claimed')
+   "
+   ```
+
+3. **On `LifecycleWriteRaceError`** → re-read HEAD, increment, retry (max 5 attempts).
+
+4. **On success** → ID is yours. Write `ai/features/<ID>-<date>-<title>.md` and backlog row.
+
+5. **On exhausted retries** → log WARNING, use ID with "race-fallback" tag in transitions.
+
 Write spec using selected approach from Phase 4:
 
 ```markdown
