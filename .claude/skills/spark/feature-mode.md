@@ -265,6 +265,7 @@ Common rationalization to REJECT: "there's only one obvious approach"
 
 ## Phase 4: DECIDE
 
+<!-- This matrix applies ONLY in Spark Phase 4. Autopilot/callback MUST NOT apply this matrix. -->
 ### Impact x Risk Routing Matrix
 
 Assign Priority (P0/P1/P2) and Risk (R0/R1/R2) from research, then route:

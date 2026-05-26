@@ -282,13 +282,7 @@ Use Risk as the second decision axis (instead of effort):
 | **R1** | High blast radius | 3+ files, cross-domain, external dependency, state machine change |
 | **R2** | Contained | 1-2 files, single domain, internal, trivially rollbackable |
 
-### Impact x Risk Routing
-
-| Impact \ Risk | R0 (Irreversible) | R1 (Blast radius) | R2 (Contained) |
-|---|---|---|---|
-| **P0** | COUNCIL | HUMAN | AUTO |
-| **P1** | COUNCIL | AUTO | AUTO |
-| **P2** | HUMAN | AUTO | AUTO |
+For Impact × Risk routing matrix, see `.claude/skills/spark/feature-mode.md` Phase 4 DECIDE — matrix applies ONLY during spec design, not during autopilot execution.
 
 ---
 
