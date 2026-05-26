@@ -68,11 +68,12 @@ if [[ "${1:-}" == "--phase4-hooks" ]]; then
             warn "skip: ${proj_path} has no .claude/hooks/pre-commit-lifecycle-guard.mjs"
             continue
         fi
-        # Idempotent: set hooksPath + chmod
-        git -C "${proj_path}" config core.hooksPath .git-hooks
+        # Idempotent: set absolute hooksPath + chmod
+        # TECH-194 C1: absolute path ensures hook resolves from any worktree
+        git -C "${proj_path}" config core.hooksPath "${proj_path}/.git-hooks"
         chmod +x "${proj_path}/.git-hooks/pre-commit"
         chmod +x "${proj_path}/.claude/hooks/pre-commit-lifecycle-guard.mjs"
-        ok "installed hook: ${proj_path} (core.hooksPath=.git-hooks)"
+        ok "installed hook: ${proj_path} (core.hooksPath=${proj_path}/.git-hooks)"
     done < <(jq -r '.[].path' "$PROJECTS_FILE" | tr '\n' '\0')
 
     echo "=== Phase 4 Hooks Setup complete ==="
