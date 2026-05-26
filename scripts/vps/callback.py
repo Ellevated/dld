@@ -1354,21 +1354,30 @@ def main() -> None:  # pragma: no cover
             log.warning("write_event failed: %s", exc)
 
         # Step 6: Post-autopilot tail — dispatch QA + Reflect
+        # TECH-194 Layer E: gate on task_status. autopilot signals non-done via
+        # JSON task_status="blocked"|"needs_review"; without this gate callback
+        # burned ~$2.50/blocked task on unnecessary qa+reflect dispatch.
         if skill == "autopilot" and status == "done":
-            try:
-                state = db.get_project_state(project_id)
-                if state:
-                    project_path = state.get("path", "")
-                    provider = state.get("provider", "claude") or "claude"
-                    if project_path:
-                        spec_id = resolve_spec_id(task_label, preview, project_path)
-                        if spec_id:
-                            dispatch_qa(project_id, project_path, spec_id, provider)
-                        else:
-                            log.info("skip QA: no spec_id resolved for %s", task_label)
-                        dispatch_reflect(project_id, project_path, task_label, provider)
-            except Exception as exc:
-                log.warning("post-autopilot dispatch failed: %s", exc)
+            if task_status in ("blocked", "needs_review"):
+                log.info(
+                    "skip QA+reflect dispatch: task_status=%s (autopilot signaled non-done)",
+                    task_status,
+                )
+            else:
+                try:
+                    state = db.get_project_state(project_id)
+                    if state:
+                        project_path = state.get("path", "")
+                        provider = state.get("provider", "claude") or "claude"
+                        if project_path:
+                            spec_id = resolve_spec_id(task_label, preview, project_path)
+                            if spec_id:
+                                dispatch_qa(project_id, project_path, spec_id, provider)
+                            else:
+                                log.info("skip QA: no spec_id resolved for %s", task_label)
+                            dispatch_reflect(project_id, project_path, task_label, provider)
+                except Exception as exc:
+                    log.warning("post-autopilot dispatch failed: %s", exc)
 
         # Step 7: Verify spec + backlog status sync
         if skill == "autopilot" and status in ("done", "failed"):
