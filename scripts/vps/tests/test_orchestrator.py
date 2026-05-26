@@ -5,6 +5,7 @@ Covers: get_live_pueue_ids, release_orphan_slots, get_occupied_slots (db.py).
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -436,6 +437,37 @@ class TestBootstrapAnomaly:
             (features / f"{sid}-2026-05-23-anomaly-test.md").write_text(
                 "# test\n\n**Status:** queued\n**Priority:** P0\n**Kind:** tech\n"
             )
+        # CR-5 (ARCH-196): bootstrap_new_specs reads backlog from HEAD via git.
+        # Init a real git repo and commit backlog.md so HEAD contains the data.
+        subprocess.check_call(
+            ["git", "init", "-b", "main", str(tmp_path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.check_call(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=str(tmp_path),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.check_call(
+            ["git", "config", "user.name", "Test"],
+            cwd=str(tmp_path),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.check_call(
+            ["git", "add", "ai/backlog.md"],
+            cwd=str(tmp_path),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.check_call(
+            ["git", "commit", "-m", "test: add backlog"],
+            cwd=str(tmp_path),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         return tmp_path
 
     def test_no_anomaly_for_normal_count(self, tmp_path, caplog):

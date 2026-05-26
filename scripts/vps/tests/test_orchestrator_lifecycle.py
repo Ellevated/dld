@@ -77,10 +77,24 @@ def test_bootstrap_creates_lifecycle_for_new_spec(tmp_git_repo):
     """Spark created spec.md without lifecycle.yaml → orchestrator creates initial."""
     spec = tmp_git_repo / "ai" / "features" / "TECH-500-foo.md"
     spec.write_text("# TECH-500\n**Priority:** P1\n**Kind:** tech\n")
-    # bootstrap_new_specs requires backlog.md to guard against orphan spec.md files
+    # bootstrap_new_specs requires backlog.md to guard against orphan spec.md files.
+    # CR-5 (ARCH-196): backlog is now read from HEAD via `git show HEAD:ai/backlog.md`,
+    # so we must commit it before calling bootstrap_new_specs.
     (tmp_git_repo / "ai").mkdir(parents=True, exist_ok=True)
     (tmp_git_repo / "ai" / "backlog.md").write_text(
         "| ID | Title | Status | P |\n|---|---|---|---|\n| TECH-500 | foo | queued | P1 |\n"
+    )
+    subprocess.check_call(
+        ["git", "add", "ai/backlog.md"],
+        cwd=str(tmp_git_repo),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.check_call(
+        ["git", "commit", "-m", "test: add backlog"],
+        cwd=str(tmp_git_repo),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     assert not (tmp_git_repo / "ai" / "lifecycle" / "TECH-500.yaml").exists()
     orchestrator.bootstrap_new_specs(str(tmp_git_repo))

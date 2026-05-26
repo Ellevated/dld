@@ -386,10 +386,18 @@ def bootstrap_new_specs(project_dir: str) -> None:
     features_dir = Path(project_dir) / "ai" / "features"
     if not features_dir.is_dir():
         return
-    backlog_path = Path(project_dir) / "ai" / "backlog.md"
-    if not backlog_path.is_file():
-        return
-    backlog_text = backlog_path.read_text(errors="replace")
+    # CR-5 (ARCH-196): Read backlog from HEAD, not WT — prevents TOCTOU (CWE-367)
+    # when callback render commits or parallel spark edits are in flight.
+    # Falls back to empty string for brand-new repos with no HEAD yet.
+    try:
+        backlog_text = subprocess.check_output(
+            ["git", "show", "HEAD:ai/backlog.md"],
+            cwd=project_dir,
+            text=True,
+            timeout=10,
+        )
+    except subprocess.CalledProcessError:
+        backlog_text = ""  # new project / no HEAD yet
     # Column-aware parser: handles template format (status in 3rd col),
     # awardybot/dowry short format (status in 2nd col), and any other ordering.
     active_status = _parse_backlog(backlog_text)
