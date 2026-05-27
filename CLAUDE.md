@@ -290,6 +290,8 @@ Implementation effort is near-zero for AI agents. **Never deprioritize a task ba
 
 Risk replaces effort as the second axis of decision-making:
 
+> **Scope:** R0/R1/R2 are inputs for **Spark Phase 4 only**. Coder, tester, and autopilot agents do NOT route on this classification.
+
 | Risk | Definition | Examples |
 |------|-----------|----------|
 | **R0** | Irreversible | Data loss, schema migration, security exposure, public API break |

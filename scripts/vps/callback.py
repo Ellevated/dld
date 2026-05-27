@@ -1355,13 +1355,13 @@ def main() -> None:  # pragma: no cover
             log.warning("write_event failed: %s", exc)
 
         # Step 6: Post-autopilot tail — dispatch QA + Reflect
-        # TECH-194 Layer E: gate on task_status. autopilot signals non-done via
-        # JSON task_status="blocked"|"needs_review"; without this gate callback
-        # burned ~$2.50/blocked task on unnecessary qa+reflect dispatch.
+        # TECH-194 Layer E: allowlist gate. Only dispatch when autopilot explicitly
+        # signals complete. Blocklist (blocked/needs_review) was insufficient —
+        # task_status="" (SIGKILL, missing output) also dispatched incorrectly.
         if skill == "autopilot" and status == "done":
-            if task_status in ("blocked", "needs_review"):
+            if task_status != "complete":
                 log.info(
-                    "skip QA+reflect dispatch: task_status=%s (autopilot signaled non-done)",
+                    "skip QA+reflect dispatch: task_status=%r (expected 'complete')",
                     task_status,
                 )
             else:

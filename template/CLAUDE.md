@@ -278,6 +278,8 @@ For human teams, adjust these estimates to your team's velocity. The key princip
 
 Use Risk as the second decision axis (instead of effort):
 
+> **Scope:** R0/R1/R2 are inputs for **Spark Phase 4 only**. Coder, tester, and autopilot agents do NOT route on this classification.
+
 | Risk | Definition | Examples |
 |------|-----------|----------|
 | **R0** | Irreversible | Data loss, schema migration, security exposure, public API break |
