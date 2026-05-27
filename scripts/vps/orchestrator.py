@@ -517,8 +517,9 @@ def cleanup_stale_stashes(project_dir: str, age_hours: int = 24) -> int:
             # Try to extract ISO timestamp from end of line (from --format=%ci)
             # Format: "stash@{N} On branch: msg YYYY-MM-DD HH:MM:SS +OFFSET"
             try:
-                # The %ci is at the end of the format string
-                date_str = msg_and_date.rsplit(" ", 2)[-2] + " " + msg_and_date.rsplit(" ", 2)[-1]
+                # %ci = "YYYY-MM-DD HH:MM:SS +OFFSET" — take last 3 space-separated tokens
+                tokens = msg_and_date.rsplit(" ", 3)
+                date_str = " ".join(tokens[-3:])
                 stash_time = datetime.fromisoformat(date_str)
                 if stash_time < cutoff:
                     to_drop.append(stash_ref)

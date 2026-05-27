@@ -46,7 +46,7 @@ Sequential ID assignment is NOT atomic. If two spark instances run concurrently:
 6. [ ] **Allowlist Linter passed** (Phase 5.5) — `grep '<!-- callback-allowlist v1' ai/features/{TASK_ID}*.md` returns ≥1 line and `## Allowed Files` heading exists exactly once
 7. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
-8. [ ] **Auto-commit done** — `git add ai/ && git commit` (no push!)
+8. [ ] **Auto-commit + push done** — `## Auto-Commit + Push (MANDATORY)` block executed
 
 If any item not done — **STOP and do it**.
 
@@ -295,6 +295,10 @@ Spec is queued. Orchestrator will hand it to autopilot.
 ### If running as subagent (Task tool — no user interaction):
 ⛔ **MUST use Write tool to create spec file BEFORE returning!**
 ⛔ **MUST use Edit tool to add backlog entry BEFORE returning!**
+<HARD-GATE>
+After Write/Edit, MUST run `## Auto-Commit + Push (MANDATORY)` via Bash tool BEFORE returning.
+Returning without push = spec invisible to orchestrator (reads from remote HEAD on next cycle).
+</HARD-GATE>
 
 Returning spec_path without creating file = DATA LOSS (subagent context dies).
 

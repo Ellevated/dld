@@ -325,24 +325,30 @@ Instead of "scan backlog → pick max+1 → write spec", use atomic CAS:
 
 1. **Compute candidate ID:**
    ```bash
-   git ls-tree HEAD:ai/lifecycle/ | grep -oE '(TECH|FTR|BUG|ARCH|GROWTH)-[0-9]+' | sort -t- -k2 -n | tail -1
+   # Get max existing ID (returns empty if ai/lifecycle/ doesn't exist yet → start from 001)
+   MAX=$(git ls-tree HEAD:ai/lifecycle/ 2>/dev/null | grep -oE '(TECH|FTR|BUG|ARCH|GROWTH)-[0-9]+' | sort -t- -k2 -n | tail -1)
+   # If empty (new project), use 001; otherwise increment
+   CANDIDATE="${TYPE}-$(printf '%03d' $((${MAX##*-} + 1)))"
    ```
-   Take the max number, add +1 for the candidate ID (keep same prefix as your spec type).
+   Keep same prefix as your spec type (`TECH`/`FTR`/`BUG`/`ARCH`).
 
 2. **Attempt atomic claim:**
    ```bash
    python3 -c "
-   from scripts.vps.lifecycle import create_initial
-   create_initial('<REPO_DIR>', '<CANDIDATE_ID>', priority='<P0|P1|P2>', kind='<TECH|FTR|BUG|ARCH>', _by='spark', status='queued')
-   print('claimed')
+   from scripts.vps.lifecycle import create_initial, LifecycleWriteRaceError
+   try:
+       create_initial('<REPO_DIR>', '<CANDIDATE_ID>', priority='<P0|P1|P2>', kind='<TECH|FTR|BUG|ARCH>', by='spark', status='queued')
+       print('claimed')
+   except LifecycleWriteRaceError:
+       print('race')
    "
    ```
 
-3. **On `LifecycleWriteRaceError`** → re-read HEAD, increment, retry (max 5 attempts).
+3. **On `LifecycleWriteRaceError`** → re-read HEAD, increment candidate, retry (max 3 attempts — `MAX_CAS_RETRIES`).
 
 4. **On success** → ID is yours. Write `ai/features/<ID>-<date>-<title>.md` and backlog row.
 
-5. **On exhausted retries** → log WARNING, use ID with "race-fallback" tag in transitions.
+5. **On exhausted retries** → surface error to user; do NOT write spec with an unclaimed ID.
 
 Write spec using selected approach from Phase 4:
 

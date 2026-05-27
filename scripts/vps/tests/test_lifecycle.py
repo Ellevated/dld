@@ -456,3 +456,36 @@ def test_create_initial_cas_collision_retry(tmp_git_repo):
     # If one got a race error, confirm it's the expected type.
     for outcome, detail in results:
         assert outcome in ("success", "race_error"), f"Unexpected outcome {outcome!r}: {detail}"
+
+
+# ---------------------------------------------------------------------------
+# ADR-027: _ALLOWED_WRITERS security invariant tests
+# ---------------------------------------------------------------------------
+
+
+def test_allowed_writers_for_create_spark_isolation():
+    """ADR-027: spark in _ALLOWED_WRITERS_FOR_CREATE but NOT in _ALLOWED_WRITERS.
+    This ensures spark can claim IDs via create_initial but cannot mutate status.
+    """
+    assert "spark" in lifecycle._ALLOWED_WRITERS_FOR_CREATE
+    assert "spark" not in lifecycle._ALLOWED_WRITERS
+    assert "autopilot" not in lifecycle._ALLOWED_WRITERS_FOR_CREATE
+    assert "autopilot" not in lifecycle._ALLOWED_WRITERS
+
+
+def test_create_initial_rejects_disallowed_writer(tmp_git_repo):
+    """create_initial must reject by='autopilot' — autopilot is not in _ALLOWED_WRITERS_FOR_CREATE."""
+    with pytest.raises(ValueError, match="invalid by='autopilot'"):
+        lifecycle.create_initial(
+            tmp_git_repo, "TECH-901", priority="P1", kind="TECH", by="autopilot"
+        )
+
+
+def test_create_initial_respects_rule7(tmp_git_repo):
+    """Rule 7: create_initial raises LifecycleAlreadyDoneError on a done lifecycle (ADR-025)."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-902", priority="P1", kind="TECH")
+    lifecycle.write_lifecycle(tmp_git_repo, "TECH-902", "in_progress", by="callback")
+    lifecycle.write_lifecycle(tmp_git_repo, "TECH-902", "done", by="callback")
+
+    with pytest.raises(lifecycle.LifecycleAlreadyDoneError):
+        lifecycle.create_initial(tmp_git_repo, "TECH-902", priority="P1", kind="TECH", by="spark")

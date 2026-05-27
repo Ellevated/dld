@@ -457,6 +457,12 @@ def create_initial(
     repo_dir = str(repo_dir)
     branch = _current_branch(repo_dir)
 
+    # Rule 7: done is terminal — even create_initial cannot overwrite a done lifecycle.
+    # write_lifecycle has the same guard; mirroring here closes the spark CAS path.
+    _existing_head = _read_yaml_from_head(repo_dir, spec_id)
+    if _existing_head and _existing_head.get("status") == "done":
+        raise LifecycleAlreadyDoneError(spec_id=spec_id, attempted=status, by=by)
+
     def make_yaml():
         return _build_yaml_content(
             spec_id,

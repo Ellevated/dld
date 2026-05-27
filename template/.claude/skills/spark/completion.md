@@ -272,6 +272,10 @@ Spec is queued. Orchestrator will hand it to autopilot.
 ### If running as subagent (Task tool — no user interaction):
 ⛔ **MUST use Write tool to create spec file BEFORE returning!**
 ⛔ **MUST use Edit tool to add backlog entry BEFORE returning!**
+<HARD-GATE>
+After Write/Edit, MUST run `## Auto-Commit + Push (MANDATORY)` via Bash tool BEFORE returning.
+Returning without push = spec invisible to orchestrator (reads from remote HEAD on next cycle).
+</HARD-GATE>
 
 Returning spec_path without creating file = DATA LOSS (subagent context dies).
 
