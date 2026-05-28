@@ -155,6 +155,18 @@ if [[ "${1:-}" == "--phase3" ]]; then
         warn "heartbeat_monitor.py not found — cron not installed"
     fi
 
+    # 8c. Cron for orchestrator full-status monitor (every 30 min)
+    # Checks service alive, circuit breaker, active tasks, recent demotes.
+    ORCH_MONITOR_SCRIPT="${SCRIPT_DIR}/orchestrator_monitor.py"
+    if [[ -f "$ORCH_MONITOR_SCRIPT" ]]; then
+        ORCH_MONITOR_LOG="${LOG_DIR:-/var/log/dld-orchestrator}/orchestrator-monitor.log"
+        ORCH_MONITOR_CRON="*/30 * * * * ${SCRIPT_DIR}/venv/bin/python3 ${ORCH_MONITOR_SCRIPT} >> ${ORCH_MONITOR_LOG} 2>&1"
+        (crontab -l 2>/dev/null | grep -v "orchestrator_monitor.py"; echo "$ORCH_MONITOR_CRON") | crontab -
+        ok "Cron installed: orchestrator_monitor.py every 30 min"
+    else
+        warn "orchestrator_monitor.py not found — cron not installed"
+    fi
+
     # 9. Logrotate config for callback-audit.jsonl (TECH-171)
     LOGROTATE_TEMPLATE="${SCRIPT_DIR}/logrotate.callback-audit"
     LOGROTATE_DEST="/etc/logrotate.d/dld-callback-audit"

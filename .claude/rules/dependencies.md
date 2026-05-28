@@ -332,6 +332,33 @@ Dependency map between project components.
 
 ---
 
+## scripts/vps/orchestrator_monitor.py
+
+**Path:** `scripts/vps/orchestrator_monitor.py`
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| systemctl --user | stdlib subprocess | is-active dld-orchestrator.service |
+| pueue status --json | PATH | claude-runner group paused check + running/queued counts |
+| db.py | scripts/vps/db.py | callback_decisions — recent demotes in last 35 min |
+| event_writer | scripts/vps/event_writer.py | notify() on anomaly |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| cron | */30 * * * * | full-status monitor (installed by setup-vps.sh section 8c) |
+
+### When changing API, check
+
+- [ ] setup-vps.sh (cron line for orchestrator_monitor.py — section 8c)
+- [ ] event_writer.notify signature
+- [ ] db.py callback_decisions schema
+
+---
+
 ## scripts/vps/heartbeat_monitor.py (TECH-189 Task 8)
 
 **Path:** `scripts/vps/heartbeat_monitor.py`
@@ -613,4 +640,5 @@ Used as operator visibility tool and CI smoke gate.
 | 2026-05-24 | **ARCH-190 Task 6:** NEW tests/test_gate_daemon.py (515 LOC) — 8 integration tests covering SA-3 lifecycle-never-touched, SHADOW_ONLY_MODE guard, gate_health row, JSONL line count, per-project error isolation, SHA cache spy, heartbeat mtime, SIGTERM graceful exit. | coder |
 | 2026-05-24 | **ARCH-190 Task 7 (Wave 1 complete):** dependency map consolidated — gate-daemon.py + gate_logic.py sections; reverse-pointer rows added to db.py, lifecycle.py, setup-vps.sh sections. Shadow daemon ready for VPS deploy (Wave 2 parity check next). | autopilot |
 | 2026-05-26 | **TECH-195:** orchestrator._parse_backlog column-aware parser + safe default=queued (was: positional regex falling through to done); lifecycle.recover_bootstrap_artifact narrow Rule 7 escape + NotBootstrapArtifactError; NEW scripts/vps/recover_bootstrap_as_done.py operator helper (dry-run default); NEW scripts/vps/lifecycle_audit.py READ-ONLY 14-category drift detector; ADR-026 architecture.md; lifecycle.py reverse-pointers extended. +12 tests (recovery) + 12 tests (audit) in scripts/vps/tests/test_orchestrator_bootstrap.py (39 in file, 212 total). | autopilot |
+| 2026-05-28 | NEW scripts/vps/orchestrator_monitor.py — 30-min cron: service alive + CB state + active tasks + demote burst; setup-vps.sh section 8c. | manual |
 | 2026-05-26 | **TECH-194 (ARCH-193 follow-up):** Layer C — setup-vps.sh `core.hooksPath` absolute + `install-hooks-all-worktrees.sh` migration + `.git-hooks/pre-commit` uses `git rev-parse --git-common-dir` + `pre-commit-lifecycle-guard.mjs` resolves `event_writer.py` via `import.meta.url`; Layer D — `lifecycle._atomic_write` + `_atomic_write_file` use `git checkout HEAD --` (was `checkout-index --force` losing `env=env`); Layer E — callback Step 6 gates qa+reflect dispatch on `task_status not in ('blocked','needs_review')`; NEW `cleanup-lifecycle-drift.sh` operator helper; 11 new regression tests across 3 files. | autopilot |
