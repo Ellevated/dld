@@ -4,33 +4,49 @@
 
 ---
 
-## ID Determination Protocol (MANDATORY)
+## ID Determination Protocol (MANDATORY — Spec-First CAS, ARCH-196)
 
-Before creating spec — determine next ID:
+Use the Kafka-style spec-first pattern: **write claims the ID**. The lifecycle
+plumbing (`create_initial` + CAS via `git update-ref`) guarantees uniqueness
+even with concurrent spark sessions on multiple machines (multi-master).
 
-1. **Determine type:** FTR | BUG | TECH | ARCH
-2. **Scan backlog:** Open ai/backlog.md
-3. **Find ALL IDs across ALL types:** Use pattern `(FTR|BUG|TECH|ARCH)-(\d+)`
-4. **Take global maximum:** Sort ALL numbers, take max across ALL types
-5. **Add +1:** Next ID = TYPE-{max+1}
+### Protocol
 
-**Numbering is SEQUENTIAL ACROSS ALL TYPES** (see CLAUDE.md#Backlog-Rules).
+1. **Compute candidate ID from HEAD lifecycle:**
+   ```bash
+   MAX=$(git ls-tree HEAD:ai/lifecycle/ 2>/dev/null \
+         | grep -oE '(TECH|FTR|BUG|ARCH|GROWTH)-[0-9]+' \
+         | sort -t- -k2 -n | tail -1 | grep -oE '[0-9]+$' || echo 0)
+   NEXT=$((MAX + 1))
+   CANDIDATE="{TYPE}-$(printf '%03d' $NEXT)"
+   ```
+2. **Claim the ID via CAS:**
+   ```bash
+   python3 -c "
+   import sys; sys.path.insert(0, 'scripts/vps')
+   import lifecycle
+   lifecycle.create_initial('$REPO_DIR', '$CANDIDATE',
+                            priority='$PRIORITY', kind='$KIND',
+                            status='queued', by='spark')
+   "
+   ```
+3. **Handle CAS collision** (concurrent spark on another machine claimed the
+   same ID): if `LifecycleWriteRaceError` → re-read HEAD, recompute `NEXT = MAX + 1`,
+   retry. Cap at **5 attempts**.
+4. **On success** → lifecycle yaml is in HEAD with `by: spark`. Write
+   `ai/features/{CANDIDATE}-YYYY-MM-DD-name.md` and append the backlog row.
+5. **On exhausted retries** → log WARNING `SPARK_ID_CAS_EXHAUSTED`, bump
+   `ai/.spark-cas-exhausted-count`, fall back to `MAX + 5` with `cas-fallback`
+   in transitions[0].reason.
 
-**Example:**
-- Backlog contains: TECH-079, TECH-080, TECH-081
-- New bug → Next ID: **BUG-082** (not BUG-001!)
-- New feature → Next ID: **FTR-082**
+### Why this replaces "scan backlog → max+1"
 
-**FORBIDDEN:** Per-type numbering. Guessing ID. Using "approximately next".
+Previous protocol had a TOCTOU race: two machines scanning the same backlog get
+the same max, both write the same ID. With multi-master confirmed (10+ historical
+duplicates across awardybot/wb/dowry), the CAS approach moves uniqueness
+enforcement to the lifecycle SoT (git object store, serialised by `git update-ref`).
 
-### Concurrency Warning
-
-Sequential ID assignment is NOT atomic. If two spark instances run concurrently:
-1. Both read the same max ID from backlog.md
-2. Both create specs with the same next ID
-3. Git merge conflict or duplicate IDs result
-
-**Prevention:** Run spark from ONE terminal at a time. Do not run spark while autopilot is executing.
+**Numbering remains SEQUENTIAL ACROSS ALL TYPES** (see CLAUDE.md#Backlog-Rules).
 
 ---
 
