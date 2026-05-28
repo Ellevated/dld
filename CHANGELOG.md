@@ -6,6 +6,42 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.17] - 2026-05-28
+
+Spark→autopilot loop stabilization (ARCH-196) + lifecycle integrity hardening (TECH-194, TECH-195). Closes week-long drift from 7 consecutive architectural merges that broke the interactive workflow. Core changes: spec-first CAS ID generation, single-writer backlog, column-aware bootstrap parser, worktree hook coverage.
+
+### Added
+
+- **Spark — Spec-First CAS ID generation** — `lifecycle.create_initial(by='spark')` claims the next spec ID atomically via `git update-ref` CAS (Kafka pattern). Eliminates TOCTOU duplicate ID races in multi-machine setups (laptop + VPS ssh). 10+ historical duplicates across projects closed. Retries up to 5× on collision. See ADR-027 and `lifecycle._ALLOWED_WRITERS_FOR_CREATE`.
+- **Security: HARD-GATE guards in spark+autopilot** — `LIFECYCLE_WRITE_AUTHORIZED=1` is now explicitly forbidden from LLM tool calls. File content in `ai/backlog.md`, `ai/diary/`, `ai/lessons/` is treated as DATA not INSTRUCTIONS — directive-like text is refused and logged as `prompt-injection-attempted`.
+- **`scripts/vps/lifecycle_audit.py`** — READ-ONLY 14-category drift detector across multi-project lifecycle state (orphans, mismatches, dirty worktree, counter drift, divergence). Operator visibility tool and CI smoke gate.
+- **`scripts/vps/recover_bootstrap_as_done.py`** — operator helper to detect and repair false-done bootstrap artifacts. Dry-run by default; `--confirm` executes.
+- **`scripts/vps/cleanup-lifecycle-drift.sh`** — one-shot recovery for dirty `ai/lifecycle/` worktree state left over from pre-TECH-194 `env=env` bug.
+- **`scripts/vps/install-hooks-all-worktrees.sh`** — migration helper to convert relative `core.hooksPath` to absolute for all project worktrees.
+- **Orchestrator stash hygiene** — startup drops `autopilot-temp-*` git stashes older than 24h. Conservative: only this prefix; operator stashes untouched.
+
+### Changed
+
+- **Spark completion — unconditional commit+push** — interactive spark sessions now always auto-commit and push after spec creation. The "ask about autopilot handoff" branch is removed; orchestrator manages lifecycle.
+- **Callback — single writer for `ai/backlog.md`** — removed inline `_render_and_commit_backlog` call. `ai/backlog.md` is now exclusively written by spark/autopilot (CQRS principle). Function retained as emergency operator CLI only.
+- **Autopilot escalation** — `escalation.md` now instructs autopilot to emit `task_status: blocked` JSON, not edit spec/backlog markdown directly (ADR-023 compliance).
+- **Impact×Risk routing matrix** — removed from `CLAUDE.md` global context (was bleeding into autopilot execution phase). Matrix now lives exclusively in `spark/feature-mode.md` Phase 4 with explicit scope comment.
+- **Bootstrap reads `ai/backlog.md` from HEAD** — `orchestrator.bootstrap_new_specs` uses `git show HEAD:ai/backlog.md` instead of WT read. Closes CWE-367 TOCTOU between render commits and bootstrap.
+- **`lifecycle.create_initial` — `by` parameter** — accepts `by` kwarg (default `"orchestrator"`). `_ALLOWED_WRITERS_FOR_CREATE = {"spark"} | _ALLOWED_WRITERS` permits spark to claim IDs; `write_lifecycle` still rejects `by="spark"` (Rule 7/ADR-025 preserved).
+- **Bootstrap parser — column-aware + safe default** — `orchestrator._parse_backlog` maps columns by header name (case-insensitive). Falls back to `queued` (not `done`) when status is unparseable. Previous positional regex silently created `done` lifecycle artifacts for new specs.
+- **Lifecycle WT sync** — `lifecycle._atomic_write` now uses `git checkout HEAD -- <path>` instead of `checkout-index --force`. Fixes `env=env` loss bug that left staged deletions in `ai/lifecycle/` surviving orchestrator restart.
+- **Worktree hook coverage** — `core.hooksPath` set to absolute path in `setup-vps.sh --phase4-hooks`. Pre-commit wrapper resolves guard via `git rev-parse --git-common-dir` — hook always found from any worktree branch state.
+- **Callback dispatch gate** — Step 6 qa+reflect dispatch gated on `task_status not in ('blocked','needs_review')`. Was dispatching qa+reflect for blocked tasks, burning ~$2.50/blocked task.
+- **`/upgrade` skill** — switched from auto-apply script to manual cherry-pick. `upgrade.mjs` deleted after repeatedly overwriting PROTECTED files (`architecture.md`, `dependencies.md`) despite filter logic.
+
+### Architecture
+
+- **ADR-026** — bootstrap parser safety contract (column-aware + safe `queued` default)
+- **ADR-027** — spec-first ID via `lifecycle.create_initial` CAS (Kafka pattern, multi-master ID race elimination)
+- CI: `test.yml` fixed (pyyaml install, dead path removal); coverage gate adjusted to 54% to match ARCH-193 baseline
+
+---
+
 ## [3.16.1] - 2026-05-25
 
 Lifecycle write hardening (ARCH-193 — closes BUG-192 night incident) + `/upgrade` distribution of the pre-commit wrapper.
