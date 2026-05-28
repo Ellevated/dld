@@ -1,187 +1,83 @@
 ---
 name: upgrade
-description: Upgrade DLD framework files from latest template on GitHub.
+description: Manually update DLD framework files from latest GitHub template. NO auto-apply script (deleted 2026-05-25). Cherry-pick by hand.
 ---
 
-# /upgrade — DLD Framework Upgrade
+# /upgrade — DLD Framework Update (Manual)
 
-Deterministic upgrade of DLD skills, agents, hooks, rules, and scripts from the latest template.
+**Why manual:** Previous auto-apply script (`upgrade.mjs`) was deleted 2026-05-25 after repeatedly overwriting PROTECTED files (`architecture.md`, `dependencies.md`) despite filter logic. Manual cherry-pick is slower but does not destroy project ADRs.
 
-**Key principle:** The upgrade.mjs script does ALL file operations. You NEVER copy or modify files directly. You only:
-1. Run the script via Bash
-2. Read its JSON output
-3. Present results to user
-4. Pass user decisions back to the script
+---
 
-## Pre-flight
+## Operator Flow
 
-1. Verify `node --version` >= 18
-2. Verify `.claude/scripts/upgrade.mjs` exists
-3. If missing: "upgrade.mjs not found. Run `npx create-dld` to set up a DLD project first."
-
-## Flow
-
-### Step 1: Analyze
+### 1. Fetch latest template
 
 ```bash
-node .claude/scripts/upgrade.mjs --analyze
+TMP=$(mktemp -d)
+git clone --depth 1 --filter=blob:none --sparse https://github.com/Ellevated/dld.git "$TMP"
+git -C "$TMP" sparse-checkout set template
+SRC="$TMP/template"
 ```
 
-Parse the JSON output. If exit code 2: "Your DLD is up to date. No changes needed."
+### 2. Diff what's different
 
-If exit code 1: show error message from JSON and stop.
-
-### Step 2: Present Report
-
-Show grouped summary to user:
-
-```
-DLD Upgrade Report
-==================
-Template commit: {report.template_commit}
-
-Summary: {identical} up to date, {new_files} new, {different} changed, {protected} protected
-
-Groups:
-  agents:         {N} new, {N} changed ({M} customized)  [safe — auto-update pristine only]
-  hooks:          {N} new, {N} changed ({M} customized)  [safe — auto-update pristine only]
-  git-hooks:      {N} new, {N} changed                   [safe — wrapper file; activates core.hooksPath on apply]
-  skills:         {N} new, {N} changed  [review recommended]
-  rules:          {N} new, {N} changed  [review — contains project-specific ADRs/dependencies]
-  scripts-claude: {N} new, {N} changed  [review — may contain custom project scripts]
-  scripts-bash:   {N} new, {N} changed  [review — may contain custom project scripts]
-  settings:       {N} changed           [always ask]
-
-Protected (never touched): {protected count} files
-User-only (your files, untouched): {user_only count} files
-```
-
-Note: "customized" = files you modified since last upgrade (tracked via hash in `.dld-version`).
-Customized files in safe groups are NOT auto-applied — they go to Step 4 for per-file review.
-On first upgrade (no hash history), all changed files require review (conservative default).
-
-### Step 3: User Confirmation
-
-Ask: "Apply safe groups automatically? (agents, hooks, git-hooks — only pristine files) Y/n"
-
-If yes:
 ```bash
-node .claude/scripts/upgrade.mjs --apply --groups safe,new
+diff -rq "$SRC/.claude" .claude | head -50
+diff -rq "$SRC/scripts" scripts 2>/dev/null | head -20
 ```
 
-If the result JSON contains `git_hooks.activated: true`, append to the user message:
+### 3. Cherry-pick SAFE groups (canonical from template)
 
-```
-Activated pre-commit hook: git config core.hooksPath .git-hooks
-  (ADR-187/ADR-193 — blocks unauthorized lifecycle yaml writes)
-```
+- `.claude/agents/` — agent prompts
+- `.claude/hooks/*.mjs` — hook code (skip `hooks.config.local.mjs`)
+- `.claude/hooks/__tests__/` — hook tests
+- `.git-hooks/pre-commit` — wrapper (then `git config core.hooksPath .git-hooks`)
 
-If `git_hooks.reason` is present (activation failed — rare), show the reason as
-a warning. The wrapper file was still applied; only the `git config` step
-failed (e.g. non-git target). User can re-run manually: `git config
-core.hooksPath .git-hooks`.
-
-### Step 3b: Engine Updates
-
-If report contains infrastructure files with changes:
-
-Show:
-```
-ENGINE UPDATE (requires explicit approval):
-  .claude/scripts/upgrade.mjs — {status}
-  .claude/hooks/run-hook.mjs — {status}
-```
-
-For each, show diff:
 ```bash
-node .claude/scripts/upgrade.mjs --diff --file {path}
+cp -rv "$SRC/.claude/agents/." .claude/agents/
+cp -rv "$SRC/.claude/hooks/." .claude/hooks/
+cp -v  "$SRC/.git-hooks/pre-commit" .git-hooks/pre-commit && chmod +x .git-hooks/pre-commit
+git config core.hooksPath .git-hooks
 ```
 
-Ask: "Apply engine update? Y/n"
+### 4. Review-required (per-file decision)
 
-If yes:
+- `.claude/skills/` — may have project-specific overrides
+- `.claude/settings.json` — preferences differ per machine
+
 ```bash
-node .claude/scripts/upgrade.mjs --apply --files {path}
+diff "$SRC/.claude/skills/spark/SKILL.md" .claude/skills/spark/SKILL.md
+# Decide → cp only if accepting verbatim
 ```
 
-### Step 4: Handle Conflicts
+### 5. NEVER overwrite these (project-specific content)
 
-For each non-safe group with changes (skills, settings):
+| File | Why |
+|------|-----|
+| `CLAUDE.md` | Project description, custom rules |
+| `.claude/rules/architecture.md` | ADRs, anti-patterns — project specific |
+| `.claude/rules/dependencies.md` | Per-project dependency map |
+| `.claude/rules/localization.md` | Language triggers |
+| `.claude/rules/template-sync.md` | Drift policy |
+| `.claude/CUSTOMIZATIONS.md` | Per-project notes |
+| `.claude/hooks/hooks.config.mjs` | Hook routing |
+| `.claude/hooks/hooks.config.local.mjs` | Local overrides |
+| `.claude/settings.local.json` | Local machine settings |
+| `.gitignore`, `package.json`, `pyproject.toml`, `requirements.txt` | Project config |
 
-Note: `hooks.config.mjs` is PROTECTED and will never appear here. Users should use `hooks.config.local.mjs` for project-specific hook customizations — it is never touched by upgrades.
+If template introduced new ADRs/dependencies — manually **MERGE** them into the project file, do NOT replace.
 
-Show per-file diff:
+### 6. Cleanup
+
 ```bash
-node .claude/scripts/upgrade.mjs --diff --file {path}
+rm -rf "$TMP"
 ```
 
-For each file ask: "Take template version / Keep yours / Skip"
+---
 
-If "take":
-```bash
-node .claude/scripts/upgrade.mjs --apply --files {path}
-```
+## Notes
 
-### Step 5: Verification
-
-After all applies, run analyze again:
-```bash
-node .claude/scripts/upgrade.mjs --analyze
-```
-
-Report final state:
-```
-Upgrade complete.
-  Applied: {N} files
-  Skipped: {N} files (user decision)
-  Protected: {N} files (never touched)
-  Remaining differences: {N} files
-
-Restart Claude Code to activate changes.
-```
-
-If result contains `validation_issues`, show warning:
-```
-WARNING: Post-apply validation failed:
-  {validation_issues[]}
-
-Check .dld-upgrade-log for details.
-```
-
-If result contains `rolled_back: true`, inform user:
-```
-ROLLBACK: Changes were rolled back due to validation failure.
-  Stash ref: {stash_ref} (run `git stash show {stash_ref}` to inspect)
-  No files were modified.
-```
-
-If report contains deprecated files present in the project, offer cleanup:
-```
-DEPRECATED FILES found in your project:
-  {deprecated_files[]}
-
-These were removed from DLD template. Run cleanup? Y/n
-```
-
-If yes:
-```bash
-node .claude/scripts/upgrade.mjs --cleanup
-```
-
-## Rules
-
-- NEVER use Read/Edit/Write tools to copy template files
-- ALWAYS use upgrade.mjs for ALL file operations
-- Show diff before asking user to accept changes
-- Protected files are NEVER offered for update
-- settings.json ALWAYS requires explicit user approval
-- If --analyze fails with network error, suggest: "Try again or use --local if you have the DLD repo cloned"
-- After successful upgrade, remind user to restart Claude Code
-
-## Error Recovery
-
-- Network failure: suggest retry or `--local` mode
-- Partial apply (some errors): show what succeeded and what failed
-- Git dirty: tell user to commit or stash first
-- Validation failure + rollback: show stash ref, suggest manual inspection
-- Deprecated files remaining: run `node .claude/scripts/upgrade.mjs --cleanup`
+- For DLD-internal projects (root + template in same repo): use the `template-sync.md` workflow instead.
+- If a file currently in "never overwrite" actually should be auto-syncable — propose moving it via a TECH spec; don't bypass.
+- After update: restart Claude Code session to pick up new agent prompts.

@@ -51,7 +51,7 @@ These are NOT in template — edit directly in `.claude/`.
 ## Files in Both, but Root Has DLD-Specific Extensions
 
 These files exist in template AND root. Template has the baseline, root adds DLD-specific content.
-**`/upgrade` will NOT overwrite them** (added to PROTECTED in upgrade.mjs).
+**`/upgrade` will NOT overwrite them** — but only because `/upgrade` is now manual cherry-pick. The auto-apply `upgrade.mjs` was deleted 2026-05-25 after it overwrote these files in awardybot/dowry despite a PROTECTED filter. See `.claude/skills/upgrade/SKILL.md` for the manual flow.
 
 - `rules/architecture.md` — Root adds ADR-015..018 (DLD orchestrator decisions), shell script safety rules
 - `rules/dependencies.md` — Root has full DLD dependency map (scripts/vps/*, orchestrator, callback)
