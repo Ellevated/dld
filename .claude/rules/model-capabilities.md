@@ -1,15 +1,23 @@
-# Model Capabilities (Claude Opus 4.7)
+# Model Capabilities (Claude Opus 4.8)
 
 Reference for agents about current model capabilities.
-Last updated: 2026-04-24
+Last updated: 2026-06-03
 
 ---
 
-## Active Model: Claude Opus 4.7
+## Active Model: Claude Opus 4.8
 
-**Released:** April 16, 2026
-**Model ID:** `claude-opus-4-7`
-**Pricing:** $5/$25 per million tokens (input/output)
+**Model ID:** `claude-opus-4-8`
+**Pricing:** $5/$25 per million tokens (input/output) — same tier as 4.7 (verify against current Anthropic pricing if billing-critical)
+
+> **2026-06-03:** VPS pipeline switched 4.7 → 4.8. claude-runner main loop pinned
+> explicitly via `MODEL = AUTOPILOT_MODEL` env (default `claude-opus-4-8`) at
+> `scripts/vps/claude-runner.py:70` — no longer relying on the settings `"opus"`
+> alias. Availability verified headless (OAuth) before switch. Subagents still
+> resolve their model from agent frontmatter (`opus`/`sonnet`/`haiku`); the
+> `opus` alias resolves to the latest Opus the CLI build supports.
+
+**Previous:** Opus 4.7 (`claude-opus-4-7`, released April 16 2026) — superseded.
 
 ---
 
@@ -63,6 +71,15 @@ subagents (scope decomposition, findings collection, doc updates) at 95%
 quality of Sonnet at 3x lower cost. See ADR-019.
 
 ---
+
+## Breaking Changes from Opus 4.7
+
+| What | Impact | Action |
+|------|--------|--------|
+| None known affecting DLD | claude-runner uses default `query()` (no `thinking`/`temperature`/`top_p` overrides, no prefilling) | Switch is drop-in; headless availability verified 2026-06-03 before pinning |
+
+> If a 4.7→4.8 incompatibility surfaces, set `AUTOPILOT_MODEL=claude-opus-4-7` on the
+> runner to roll back instantly (no code change).
 
 ## Breaking Changes from Opus 4.6
 

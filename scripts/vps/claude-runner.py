@@ -64,6 +64,10 @@ except ImportError:
 # ---------------------------------------------------------------------------
 MAX_TURNS = 120
 TIMEOUT_SECONDS = 5400  # 90 min hard limit (R1 specs with 8+ tasks need >60m)
+# Main autopilot loop model. Explicit (not settings-alias "opus") so the SDK is
+# pinned deterministically. Override per-task via AUTOPILOT_MODEL env. Subagents
+# resolve their own model from agent frontmatter. See rules/model-capabilities.md.
+MODEL = os.environ.get("AUTOPILOT_MODEL", "claude-opus-4-8")
 
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -127,6 +131,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     # Agent SDK options
     options = ClaudeAgentOptions(
         cwd=str(project_path),
+        model=MODEL,  # pin main loop to Opus 4.8 (env: AUTOPILOT_MODEL)
         setting_sources=["user", "project"],  # Loads CLAUDE.md + .claude/skills/
         allowed_tools=ALLOWED_TOOLS,
         permission_mode="bypassPermissions",
