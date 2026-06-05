@@ -473,3 +473,305 @@ class TestMatchSubjectParityWithCallback:
             assert not match_subject(subject, spec_id), (
                 f"gate_logic wrongly accepted: {subject!r} {spec_id}"
             )
+
+
+# ---------------------------------------------------------------------------
+# TECH-197: Push-local + grace-retry + demote-once tests
+# ---------------------------------------------------------------------------
+
+
+def _make_origin_repo(tmp_path):
+    """Create a bare 'origin' repo and a working repo cloned from it."""
+    import os
+
+    origin = tmp_path / "origin.git"
+    origin.mkdir()
+    _git(origin, "init", "--bare", "-q", "-b", "develop")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "develop")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    _git(repo, "remote", "add", "origin", str(origin))
+    (repo / "README.md").write_text("init\n")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-q", "-m", "init")
+    _git(repo, "push", "-u", "origin", "develop")
+    return origin, repo
+
+
+class TestPushLocalBeforeGate:
+    """EC-6: impl merged to local develop, NOT pushed — callback pushes + gate→done.
+    EC-7: impl on feature branch only — stays blocked.
+    EC-9: push fails (no remote) → blocked, fail-closed, exactly 1 demote.
+    """
+
+    def test_ec6_push_local_recovers_timeout_interrupted_merge(
+        self, tmp_path, monkeypatch
+    ):
+        """BUG-1117 class: impl merged to local develop but not pushed to origin."""
+        origin, repo = _make_origin_repo(tmp_path)
+
+        # Create spec + lifecycle
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-T6-spec.md").write_text(
+            "# TECH-T6\n\n## Allowed Files\n\n- `src/main.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-T6", "in_progress")
+
+        # Simulate: impl commit on local develop (not pushed)
+        (repo / "src").mkdir(exist_ok=True)
+        (repo / "src" / "main.py").write_text("# impl\n")
+        _git(repo, "add", "src/main.py")
+        _git(repo, "commit", "-m", "feat(TECH-T6): implement feature")
+
+        # Stub _commit_stats — no pueue_id so started_at=None anyway
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
+        # Do NOT stub _fetch_develop or _is_done_on_develop — let them run real
+
+        # autopilot_signaled=False, target=blocked → push-local should flush
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-T6",
+            target="blocked",
+            autopilot_signaled=False,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-T6")
+        assert data["status"] == "done", (
+            f"push-local should flush impl to origin, gate→done; got {data['status']}"
+        )
+
+    def test_ec7_feature_branch_only_stays_blocked(self, tmp_path, monkeypatch):
+        """BUG-1118 class: impl on feature branch only, not merged to develop."""
+        origin, repo = _make_origin_repo(tmp_path)
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-T7-spec.md").write_text(
+            "# TECH-T7\n\n## Allowed Files\n\n- `src/app.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-T7", "in_progress")
+
+        # Create feature branch with impl — NOT merged to develop
+        _git(repo, "checkout", "-b", "feature/TECH-T7")
+        (repo / "src").mkdir(exist_ok=True)
+        (repo / "src" / "app.py").write_text("# feature\n")
+        _git(repo, "add", "src/app.py")
+        _git(repo, "commit", "-m", "feat(TECH-T7): feature impl")
+        _git(repo, "checkout", "develop")
+
+        # Stub _commit_stats
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
+        # Speed up grace-retry sleep
+        monkeypatch.setattr(callback.time, "sleep", lambda s: None)
+        # Mock db for circuit-breaker accounting
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-T7",
+            target="blocked",
+            autopilot_signaled=False,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-T7")
+        assert data["status"] == "blocked", (
+            "feature-branch-only must stay blocked (fail-closed)"
+        )
+
+    def test_ec9_push_fails_stays_blocked_one_demote(self, tmp_path, monkeypatch):
+        """Push origin fails (no remote) → blocked, exactly 1 demote."""
+        # Repo WITHOUT origin remote
+        repo = tmp_path / "no_origin"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "develop")
+        _git(repo, "config", "user.email", "t@t")
+        _git(repo, "config", "user.name", "t")
+        (repo / "README.md").write_text("init\n")
+        _git(repo, "add", "README.md")
+        _git(repo, "commit", "-q", "-m", "init")
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-T9-spec.md").write_text(
+            "# TECH-T9\n\n## Allowed Files\n\n- `src/x.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-T9", "in_progress")
+
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
+        monkeypatch.setattr(callback.time, "sleep", lambda s: None)
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-T9",
+            target="blocked",
+            autopilot_signaled=False,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-T9")
+        assert data["status"] == "blocked", "no remote → blocked (fail-closed)"
+
+        # Verify exactly 1 demote recorded
+        demote_calls = [
+            c for c in mock_db.record_decision.call_args_list
+            if (c.kwargs.get("demoted") is True)
+            or (len(c.args) > 4 and c.args[4] is True)
+        ]
+        assert len(demote_calls) == 1, (
+            f"expected exactly 1 demote, got {len(demote_calls)}"
+        )
+
+
+class TestDemoteOnce:
+    """EC-4: gate False × 3 retries → exactly 1 record_decision(demoted=True)."""
+
+    def test_ec4_single_demote_across_retries(self, tmp_path, monkeypatch):
+        origin, repo = _make_origin_repo(tmp_path)
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-D4-spec.md").write_text(
+            "# TECH-D4\n\n## Allowed Files\n\n- `src/d.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-D4", "in_progress")
+
+        # Gate always returns False (nothing implemented on origin/develop)
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
+        # Speed up: reduce sleep to 0
+        monkeypatch.setattr(callback.time, "sleep", lambda s: None)
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-D4",
+            target="blocked",
+            autopilot_signaled=False,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-D4")
+        assert data["status"] == "blocked"
+
+        # Exactly 1 demote, not 3+
+        demote_calls = [
+            c for c in mock_db.record_decision.call_args_list
+            if (c.kwargs.get("demoted") is True)
+            or (len(c.args) > 4 and c.args[4] is True)
+        ]
+        assert len(demote_calls) == 1, (
+            f"expected 1 demote across retries, got {len(demote_calls)}: {demote_calls}"
+        )
+
+
+class TestGraceRetry:
+    """EC-8: impl pushed to origin 1 fetch-cycle late → grace-retry resolves."""
+
+    def test_ec8_resolves_on_second_fetch(self, tmp_path, monkeypatch):
+        origin, repo = _make_origin_repo(tmp_path)
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-G8-spec.md").write_text(
+            "# TECH-G8\n\n## Allowed Files\n\n- `src/g.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-G8", "in_progress")
+
+        # Simulate: push impl to origin on the "second" fetch check
+        call_count = {"n": 0}
+        original_is_done = callback._is_done_on_develop
+
+        def _delayed_is_done(pp, sid, af):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return False  # first check: not visible yet
+            # Push impl BEFORE second check (simulates network lag)
+            (repo / "src").mkdir(exist_ok=True)
+            (repo / "src" / "g.py").write_text("# impl\n")
+            _git(repo, "add", "src/g.py")
+            _git(repo, "commit", "-m", "feat(TECH-G8): implement")
+            _git(repo, "push", "origin", "develop")
+            return original_is_done(pp, sid, af)
+
+        monkeypatch.setattr(callback, "_is_done_on_develop", _delayed_is_done)
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
+        monkeypatch.setattr(callback.time, "sleep", lambda s: None)
+
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-G8",
+            target="blocked",
+            autopilot_signaled=False,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-G8")
+        assert data["status"] == "done", (
+            f"grace-retry should resolve on 2nd attempt; got {data['status']}"
+        )
+
+
+class TestAutopilotSignaledOverride:
+    """TECH-197 critical: autopilot_signaled=True blocks gate=done override."""
+
+    def test_signaled_blocked_overrides_gate_done(self, tmp_path, monkeypatch):
+        """When autopilot explicitly signals blocked, gate=done is overridden."""
+        origin, repo = _make_origin_repo(tmp_path)
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-AS-spec.md").write_text(
+            "# TECH-AS\n\n## Allowed Files\n\n- `src/as.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-AS", "in_progress")
+
+        # Impl is on origin (gate would return True)
+        (repo / "src").mkdir(exist_ok=True)
+        (repo / "src" / "as.py").write_text("# impl\n")
+        _git(repo, "add", "src/as.py")
+        _git(repo, "commit", "-m", "feat(TECH-AS): implement")
+        _git(repo, "push", "origin", "develop")
+
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+
+        # autopilot_signaled=True + target=blocked → must stay blocked
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-AS",
+            target="blocked",
+            autopilot_signaled=True,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-AS")
+        assert data["status"] == "blocked", (
+            "autopilot_signaled=True must override gate=done"
+        )
+
+    def test_not_signaled_lets_gate_decide(self, tmp_path, monkeypatch):
+        """When autopilot did NOT signal (timeout), gate=done is honored."""
+        origin, repo = _make_origin_repo(tmp_path)
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-NS-spec.md").write_text(
+            "# TECH-NS\n\n## Allowed Files\n\n- `src/ns.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-NS", "in_progress")
+
+        # Impl on origin
+        (repo / "src").mkdir(exist_ok=True)
+        (repo / "src" / "ns.py").write_text("# impl\n")
+        _git(repo, "add", "src/ns.py")
+        _git(repo, "commit", "-m", "feat(TECH-NS): implement")
+        _git(repo, "push", "origin", "develop")
+
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
+
+        # autopilot_signaled=False + target=blocked → gate decides (done)
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-NS",
+            target="blocked",
+            autopilot_signaled=False,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-NS")
+        assert data["status"] == "done", (
+            "not-signaled + impl on origin → gate should decide done"
+        )
