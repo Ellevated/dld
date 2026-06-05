@@ -2,7 +2,7 @@
 """
 Module: claude-runner
 Role: Claude Code Agent SDK wrapper for programmatic task execution with Skills.
-Uses: claude-agent-sdk, db.py
+Uses: claude-agent-sdk, db.py, datetime (heartbeat timestamps)
 Used by: run-agent.sh (via Pueue)
 
 Key design (2026-03-11):
@@ -18,6 +18,7 @@ import os
 import shutil
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -106,6 +107,35 @@ logging.basicConfig(
 )
 logger = logging.getLogger("claude-runner")
 
+
+def _write_heartbeat(
+    log_dir: Path,
+    project_name: str,
+    ts_label: str,
+    turn: int,
+    elapsed_s: int,
+    last_tool: str | None,
+    started_at_iso: str,
+    model: str,
+) -> None:
+    """Atomic per-turn heartbeat (best-effort, ADR-004). cost_usd omitted (SDK: ResultMessage only)."""
+    try:
+        hb_path = log_dir / f"{project_name}-{ts_label}.heartbeat.json"
+        tmp_path = hb_path.with_suffix(".tmp")
+        data = {
+            "turn": turn,
+            "elapsed_s": elapsed_s,
+            "last_tool": last_tool,
+            "started_at": started_at_iso,
+            "model": model,
+            "updated_at": datetime.now(tz=timezone.utc).isoformat(),
+        }
+        tmp_path.write_text(json.dumps(data, ensure_ascii=False))
+        os.replace(str(tmp_path), str(hb_path))
+    except Exception:  # noqa: BLE001 — heartbeat is best-effort (ADR-004 style)
+        pass
+
+
 # All tools that DLD skills may need
 ALLOWED_TOOLS = [
     "Skill",
@@ -132,7 +162,10 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     """
     project_path = Path(project_dir).resolve()
     project_name = project_path.name
-    log_file = LOG_DIR / f"{project_name}-{time.strftime('%Y%m%d-%H%M%S')}.log"
+    ts_label = time.strftime("%Y%m%d-%H%M%S")
+    log_file = LOG_DIR / f"{project_name}-{ts_label}.log"
+    started_at_iso = datetime.now(tz=timezone.utc).isoformat()
+    started_mono = time.monotonic()
 
     # Build prompt with skill prefix
     if task.startswith("/"):
@@ -188,6 +221,8 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     turns = 0
     cost_usd = 0.0
     exit_code = 0
+    turn_count = 0  # per AssistantMessage (available before ResultMessage)
+    last_tool_name: str | None = None  # last tool used (for heartbeat + timeout report)
     usage_metrics = {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -201,66 +236,77 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     result_is_error = False
 
     try:
-        async for message in query(prompt=prompt, options=options):
-            # Log all messages
-            msg_line = str(message)
-            if len(msg_line) > 500:
-                msg_line = msg_line[:500] + "..."
-            logger.debug(msg_line)
+        async with asyncio.timeout(TIMEOUT_SECONDS):
+            async for message in query(prompt=prompt, options=options):
+                # Log all messages
+                msg_line = str(message)
+                if len(msg_line) > 500:
+                    msg_line = msg_line[:500] + "..."
+                logger.debug(msg_line)
 
-            # Capture assistant text (last response before ResultMessage)
-            if isinstance(message, AssistantMessage):
-                text_parts = []
-                for block in getattr(message, "content", []):
-                    if hasattr(block, "text"):
-                        text_parts.append(block.text)
-                if text_parts:
-                    last_assistant_text = "\n".join(text_parts)
+                # Capture assistant text (last response before ResultMessage)
+                if isinstance(message, AssistantMessage):
+                    turn_count += 1
+                    text_parts = []
+                    for block in getattr(message, "content", []):
+                        if hasattr(block, "text"):
+                            text_parts.append(block.text)
+                        if getattr(block, "name", None):  # tool use block
+                            last_tool_name = block.name
+                    if text_parts:
+                        last_assistant_text = "\n".join(text_parts)
+                    _write_heartbeat(
+                        LOG_DIR, project_name, ts_label, turn_count,
+                        int(time.monotonic() - started_mono),
+                        last_tool_name, started_at_iso, MODEL,
+                    )
 
-            # Capture task completion summary (autopilot uses Agent tool → Tasks)
-            if isinstance(message, TaskNotificationMessage):
-                summary = getattr(message, "summary", "")
-                if summary:
-                    result_text = summary
+                # Capture task completion summary (autopilot uses Agent tool → Tasks)
+                if isinstance(message, TaskNotificationMessage):
+                    summary = getattr(message, "summary", "")
+                    if summary:
+                        result_text = summary
 
-            # Track final result
-            if isinstance(message, ResultMessage):
-                result_received = True
-                result_is_error = bool(getattr(message, "is_error", False))
-                result_text = getattr(message, "result", "") or result_text
-                turns = getattr(message, "num_turns", 0)
-                cost_usd = getattr(message, "total_cost_usd", 0.0) or 0.0
-                if result_is_error:
-                    exit_code = 1
-                usage = getattr(message, "usage", None) or {}
-                if not isinstance(usage, dict):
-                    usage = getattr(usage, "__dict__", {}) or {}
-                # Flat keys (Anthropic API contract: input_tokens, output_tokens,
-                # cache_read_input_tokens). cache_creation is nested — see below.
-                for key in ("input_tokens", "output_tokens", "cache_read_input_tokens"):
-                    usage_metrics[key] = int(usage.get(key, 0) or 0)
-                # cache_creation moved to nested dict in 2026 API revision:
-                # usage.cache_creation.ephemeral_{1h,5m}_input_tokens
-                cc = usage.get("cache_creation", {}) if isinstance(usage, dict) else {}
-                if isinstance(cc, dict):
-                    h1 = int(cc.get("ephemeral_1h_input_tokens", 0) or 0)
-                    m5 = int(cc.get("ephemeral_5m_input_tokens", 0) or 0)
-                    usage_metrics["cache_creation_1h_input_tokens"] = h1
-                    usage_metrics["cache_creation_5m_input_tokens"] = m5
-                    usage_metrics["cache_creation_input_tokens"] = h1 + m5
-                # Per-model breakdown (Opus vs Sonnet vs Haiku in one run)
-                mu = getattr(message, "model_usage", None)
-                if isinstance(mu, dict):
-                    model_usage = mu
+                # Track final result
+                if isinstance(message, ResultMessage):
+                    result_received = True
+                    result_is_error = bool(getattr(message, "is_error", False))
+                    result_text = getattr(message, "result", "") or result_text
+                    turns = getattr(message, "num_turns", 0)
+                    cost_usd = getattr(message, "total_cost_usd", 0.0) or 0.0
+                    if result_is_error:
+                        exit_code = 1
+                    usage = getattr(message, "usage", None) or {}
+                    if not isinstance(usage, dict):
+                        usage = getattr(usage, "__dict__", {}) or {}
+                    # Flat keys (Anthropic API contract: input_tokens, output_tokens,
+                    # cache_read_input_tokens). cache_creation is nested — see below.
+                    for key in ("input_tokens", "output_tokens", "cache_read_input_tokens"):
+                        usage_metrics[key] = int(usage.get(key, 0) or 0)
+                    # cache_creation moved to nested dict in 2026 API revision:
+                    # usage.cache_creation.ephemeral_{1h,5m}_input_tokens
+                    cc = usage.get("cache_creation", {}) if isinstance(usage, dict) else {}
+                    if isinstance(cc, dict):
+                        h1 = int(cc.get("ephemeral_1h_input_tokens", 0) or 0)
+                        m5 = int(cc.get("ephemeral_5m_input_tokens", 0) or 0)
+                        usage_metrics["cache_creation_1h_input_tokens"] = h1
+                        usage_metrics["cache_creation_5m_input_tokens"] = m5
+                        usage_metrics["cache_creation_input_tokens"] = h1 + m5
+                    # Per-model breakdown (Opus vs Sonnet vs Haiku in one run)
+                    mu = getattr(message, "model_usage", None)
+                    if isinstance(mu, dict):
+                        model_usage = mu
 
         # Fallback: use last assistant message if no result_text
         if not result_text and last_assistant_text:
             result_text = last_assistant_text
 
-    except asyncio.TimeoutError:
-        logger.error("Timeout after %ds", TIMEOUT_SECONDS)
-        exit_code = 124  # timeout exit code
-        result_text = f"Timeout after {TIMEOUT_SECONDS}s"
+    except TimeoutError:
+        # asyncio.timeout() (Python 3.11+) — partial metrics (turn_count/cost_usd) are in scope
+        elapsed = int(time.monotonic() - started_mono)
+        logger.error("Timeout after %ds (partial: %d turns, $%.4f)", elapsed, turn_count, cost_usd)
+        exit_code = 124  # Unix timeout convention
+        result_text = f"Timeout after {elapsed}s (partial: {turn_count} turns, ${cost_usd:.4f}, last_tool={last_tool_name!r})"
     except CLIConnectionError as e:
         logger.error("CLI connection failed: %s", e)
         exit_code = 2
@@ -378,12 +424,8 @@ def main():
     for var in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"):
         os.environ.pop(var, None)
 
-    result = asyncio.run(
-        asyncio.wait_for(
-            run_task(project_dir, task, skill),
-            timeout=TIMEOUT_SECONDS,
-        )
-    )
+    # Timeout is inside run_task (asyncio.timeout context). No wait_for here.
+    result = asyncio.run(run_task(project_dir, task, skill))
 
     # Output structured JSON (same contract as bash version)
     print(json.dumps(result, ensure_ascii=False))
