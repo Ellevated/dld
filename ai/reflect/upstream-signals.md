@@ -132,3 +132,25 @@ Devil scout returned its analysis as a `result` message (text), not as a written
 - **Message:** Spec Reviewer flagged Test 8 as "needs_implementation — event_writer.notify not verified" but missed that spec line 577 explicitly grants the structural-only fallback: "Practical approach: directly call lifecycle.write_lifecycle(done→blocked) ... full integration is overkill". Reviewer matched the test name + first sentence and missed the inline scope relaxation.
 - **Evidence:** spec ai/features/ARCH-193-*.md line 577; spec-reviewer agent prompt in `.claude/agents/spec-reviewer.md`
 - **Suggested Rule:** Spec-reviewer prompt should instruct: "Read the FULL test description in the spec — especially watch for 'Practical approach' / 'overkill' / 'simplification' phrases that scope down the requirement. Do not flag deviation if the spec itself authorized it."
+
+## SIGNAL-2026-06-06-0001
+
+| Field | Value |
+|-------|-------|
+| Source | spark |
+| Spec ID | TECH-197 |
+| Target | architect |
+| Type | gap |
+| Severity | info |
+
+### Message
+Два независимых guard'а проверяют "impl merged on develop": `callback._is_done_on_develop` (origin/develop, bool) и `gate_logic.find_implementation_commit` (shadow gate-daemon, возвращает SHA). Дублирование логики subject-match + Allowed Files. Кандидат на унификацию в общий модуль после стабилизации TECH-197.
+
+### Evidence
+research-codebase.md: gate_logic.py:251 — переименованный _is_done_on_develop для shadow daemon (FF-09 clean separation, не импортирует callback). callback.py:736.
+
+### Suggested Action
+После TECH-197 — отдельный TECH на извлечение общего `is_implementation_on_develop(repo, spec_id, allowed) -> SHA|None`, используемого обоими (callback + gate-daemon), single source of subject/path matching.
+
+### Process note (local)
+4 scout'а сошлись на B (gate fetch-retry) + A (push-before-signal), но НЕДООЦЕНИЛИ timeout-interrupted-push подслучай: при timeout impl остаётся в LOCAL develop (autopilot убит между merge и push origin), и fetch-retry бесполезен — нечего fetch'ить. Push-local-before-gate выведен из reflog-форензики (BUG-1117: impl вошёл в origin только через callback lifecycle push, 13s после gate), НЕ из scout-research. Урок: для timing/race-багов git-форензика (reflog, commit timing vs gate timing) сильнее scout-research.

@@ -14,6 +14,7 @@
 
 | ID | Status | Kind | Updated | Spec |
 |----|--------|------|---------|------|
+| TECH-197 | queued | tech | 2026-06-06 | [spec](features/TECH-197-2026-06-06-autopilot-completion-reliability-timeout-observability-push-gate-race.md) |
 | GROWTH-002 | blocked | ftr | 2026-05-16 | GROWTH-002 |
 | GROWTH-003 | blocked | ftr | 2026-05-16 | GROWTH-003 |
 | GROWTH-004 | blocked | ftr | 2026-05-16 | GROWTH-004 |
