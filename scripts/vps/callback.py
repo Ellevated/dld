@@ -1005,6 +1005,7 @@ def verify_status_sync(
     spec_id: str,
     target: str = "done",
     pueue_id: int | None = None,
+    autopilot_signaled: bool = False,
 ) -> None:
     """Single gate: lifecycle.status = done iff origin/develop contains a commit
     with `<spec_id>:` in its subject AND touching at least one allowed file.
@@ -1097,6 +1098,22 @@ def verify_status_sync(
     started_at = _get_started_at(int(pueue_id)) if pueue_id else None
     code_loc, test_loc, code_commits = _commit_stats(project_path, allowed, started_at)
 
+    # TECH-197: push-local-before-gate — flush timeout-interrupted merge
+    # When timeout kills autopilot between "git merge" and "git push develop",
+    # implementation sits in local develop but NOT origin. Push it now.
+    if not autopilot_signaled and target == "blocked":
+        try:
+            subprocess.run(
+                ["git", "-C", project_path, "push", "origin", "develop"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            log.info("PUSH_LOCAL: %s — best-effort push develop for %s", spec_id, project_id)
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("PUSH_LOCAL: %s — failed: %s", spec_id, exc)
+
     if not allowed:
         # Cannot evaluate the gate → block with explicit reason.
         new_status = "blocked"
@@ -1110,16 +1127,34 @@ def verify_status_sync(
             new_status = "done"
             reason = ""
         else:
-            new_status = "blocked"
-            reason = (
+            # Default: blocked with operator recovery hint
+            blocked_reason = (
                 f"no_merged_implementation — if implementation IS real, run: "
                 f"python3 scripts/vps/spec_operator.py force-done {project_id} {spec_id} "
                 f"'gate regex bug, verified manually' --by=operator"
             )
+            # TECH-197: grace-retry — network race (impl pushed but not yet visible)
+            # Only retry when push-local was attempted or result=done (normal success)
+            if not autopilot_signaled:
+                for attempt in range(1, 4):  # up to 3 retries
+                    time.sleep(5)
+                    _fetch_develop(project_path)
+                    if _is_done_on_develop(project_path, spec_id, allowed):
+                        new_status = "done"
+                        reason = ""
+                        log.info("GRACE_RETRY: %s — resolved on attempt %d", spec_id, attempt)
+                        break
+                else:
+                    new_status = "blocked"
+                    reason = blocked_reason
+            else:
+                new_status = "blocked"
+                reason = blocked_reason
 
     # Autopilot explicitly signaled blocked/needs_review → honor over gate=done
     # (autopilot saw something the gate can't infer: tests failed, need human, etc.)
-    if target == "blocked" and new_status == "done":
+    # TECH-197: only override when autopilot EXPLICITLY signaled (not timeout/crash)
+    if autopilot_signaled and target == "blocked" and new_status == "done":
         new_status = "blocked"
         reason = "autopilot_signaled_blocked"
 
@@ -1407,6 +1442,7 @@ def main() -> None:  # pragma: no cover
                             sid,
                             target,
                             pueue_id=int(pueue_id) if pueue_id else None,
+                            autopilot_signaled=task_status in ("blocked", "needs_review"),
                         )
             except Exception as exc:
                 log.warning("status_sync check failed: %s", exc)
