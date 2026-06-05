@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -68,6 +69,33 @@ TIMEOUT_SECONDS = 5400  # 90 min hard limit (R1 specs with 8+ tasks need >60m)
 # pinned deterministically. Override per-task via AUTOPILOT_MODEL env. Subagents
 # resolve their own model from agent frontmatter. See rules/model-capabilities.md.
 MODEL = os.environ.get("AUTOPILOT_MODEL", "claude-opus-4-8")
+
+
+def _resolve_cli_path() -> str | None:
+    """Prefer the system Claude Code CLI over the SDK's bundled copy.
+
+    The bundled CLI in claude_agent_sdk/_bundled/ lags the daily-updated system
+    CLI; an old bundled build silently resolves the "opus" alias / `model=` to a
+    stale Opus (e.g. 4.7 instead of the pinned 4.8). Passing cli_path forces the
+    SDK to use the system install, eliminating recurring version drift.
+
+    Resolution order: CLAUDE_CLI_PATH env -> `claude` on PATH -> the installer's
+    stable launcher (~/.local/bin/claude, a symlink the installer repoints to the
+    current version on every update). Returns None if none exist, letting the SDK
+    fall back to its bundled CLI rather than crash.
+    """
+    candidates = [
+        os.environ.get("CLAUDE_CLI_PATH"),
+        shutil.which("claude"),
+        str(Path.home() / ".local" / "bin" / "claude"),
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return candidate
+    return None
+
+
+CLI_PATH = _resolve_cli_path()
 
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -132,6 +160,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     options = ClaudeAgentOptions(
         cwd=str(project_path),
         model=MODEL,  # pin main loop to Opus 4.8 (env: AUTOPILOT_MODEL)
+        cli_path=CLI_PATH,  # use system CLI, not stale bundled (else model pin drifts)
         setting_sources=["user", "project"],  # Loads CLAUDE.md + .claude/skills/
         allowed_tools=ALLOWED_TOOLS,
         permission_mode="bypassPermissions",
