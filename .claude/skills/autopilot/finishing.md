@@ -49,6 +49,12 @@ Final verification, status update, merge, and cleanup.
    git push origin develop
    git stash pop (if stashed)
 
+   ⛔ TECH-197 PUSH GUARD: If `git push origin develop` fails (even
+   after retry), emit `"task_status": "needs_review"` instead of
+   `"complete"` in the final JSON. Work is merged locally but not
+   on origin — callback push-local will attempt recovery, but the
+   signal must reflect the uncertainty.
+
 8.5. Preserve telemetry (before worktree cleanup):
    ```bash
    cp ".worktrees/{ID}/autopilot-state.json" "ai/diary/{ID}-state.json" 2>/dev/null || true

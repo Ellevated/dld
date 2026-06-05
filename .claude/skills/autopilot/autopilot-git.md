@@ -271,14 +271,23 @@ git pull --rebase origin develop
 # Fast-forward merge
 git merge --ff-only ${BRANCH_PREFIX}/${TASK_ID}
 
-# Push with retry
-git push origin develop || {
+# Push with retry — TECH-197: track success for push guard
+PUSH_OK=false
+git push origin develop && PUSH_OK=true || {
   git pull --rebase origin develop
-  git push origin develop
+  git push origin develop && PUSH_OK=true
 }
 
 # Restore stash
 [ "$STASHED" = true ] && git stash pop
+
+# TECH-197 PUSH GUARD: if develop push failed after retry,
+# emit "needs_review" instead of "complete" in final JSON.
+# Work is merged locally; callback push-local will attempt recovery.
+if [ "$PUSH_OK" = false ]; then
+  echo "WARNING: develop push failed — emitting needs_review"
+  # Autopilot must set task_status="needs_review" in final JSON
+fi
 ```
 
 ### 5.5 Cleanup
