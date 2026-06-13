@@ -172,15 +172,20 @@ class TestHeartbeatWriter:
         assert data["turn"] == 2, "second write must overwrite first"
         assert data["last_tool"] == "Write"
 
-    def test_heartbeat_called_per_assistant_message_in_source(self):
-        """Verify _write_heartbeat is called inside AssistantMessage handling."""
+    def test_heartbeat_called_per_message_in_source(self):
+        """Verify _write_heartbeat is called for every SDK message (TECH-198).
+
+        Post-TECH-198: heartbeat fires at the top of `async for message`,
+        BEFORE the isinstance(AssistantMessage) branch, so updated_at stays
+        fresh during long tool-execution phases.
+        """
         source = (Path(VPS_DIR) / "claude-runner.py").read_text()
-        # The heartbeat call must appear after 'isinstance(message, AssistantMessage)'
+        # The heartbeat call must appear inside the async for loop,
+        # BEFORE the AssistantMessage check (TECH-198 Layer A)
+        idx_hb = source.index("_write_heartbeat(")
         idx_assistant = source.index("isinstance(message, AssistantMessage)")
-        idx_hb = source.index("_write_heartbeat(", idx_assistant)
-        # There must be a _write_heartbeat call after AssistantMessage check
-        assert idx_hb > idx_assistant, \
-            "_write_heartbeat must be called inside AssistantMessage handling"
+        assert idx_hb < idx_assistant, \
+            "_write_heartbeat must be called before AssistantMessage check (per-message)"
 
 
 class TestVariantCNeverIntroduced:

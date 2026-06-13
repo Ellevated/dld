@@ -157,6 +157,25 @@ research-codebase.md: gate_logic.py:251 — переименованный _is_d
 
 ---
 
+## SIGNAL-2026-06-13-TECH198
+
+| Field | Value |
+|-------|-------|
+| Source | autopilot (TECH-198) |
+| Target | architect |
+| Type | follow-up |
+| Severity | low |
+
+### Message
+
+`claude-runner.py` per-session heartbeat filename uses `ts_label = time.strftime("%Y%m%d-%H%M%S")` — 1-second resolution. Two same-project sessions starting in the same second collide on the heartbeat filename (second overwrites first). The reaper mitigates this via `started_at` cross-check + fail-open on ambiguity, but a future improvement should append pueue task ID or PID to `ts_label` for guaranteed uniqueness. Low priority — collision requires same-project, same-second start which is gated by the slot system (max 2 concurrent claude slots).
+
+### Suggested Action
+
+Add a follow-up TECH spec to change `ts_label` format from `%Y%m%d-%H%M%S` to `%Y%m%d-%H%M%S-{pueue_id}` or `%Y%m%d-%H%M%S-{pid}` in `claude-runner.py`. Coordinate with log file naming (same `ts_label` used for `.log` files).
+
+---
+
 ### SIGNAL-2026-06-13-BUG199
 
 - **Source:** autopilot (BUG-199 incident, awardybot pueue #574)

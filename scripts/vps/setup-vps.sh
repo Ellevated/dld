@@ -155,6 +155,17 @@ if [[ "${1:-}" == "--phase3" ]]; then
         warn "heartbeat_monitor.py not found — cron not installed"
     fi
 
+    # 8d. Cron for per-session heartbeat reaper (TECH-198)
+    # Kills wedged claude-runner sessions whose heartbeat is stale + process idle.
+    REAPER_SCRIPT="${SCRIPT_DIR}/heartbeat_reaper.py"
+    if [[ -f "$REAPER_SCRIPT" ]]; then
+        REAPER_CRON_LINE="*/5 * * * * ${SCRIPT_DIR}/venv/bin/python3 ${REAPER_SCRIPT} >> /var/log/dld-orchestrator/heartbeat-reaper.log 2>&1"
+        (crontab -l 2>/dev/null | grep -v "heartbeat_reaper.py"; echo "$REAPER_CRON_LINE") | crontab -
+        ok "Cron installed: heartbeat_reaper.py every 5 min"
+    else
+        warn "heartbeat_reaper.py not found — cron not installed"
+    fi
+
     # 8c. Cron for orchestrator full-status monitor (every 30 min)
     # Checks service alive, circuit breaker, active tasks, recent demotes.
     ORCH_MONITOR_SCRIPT="${SCRIPT_DIR}/orchestrator_monitor.py"

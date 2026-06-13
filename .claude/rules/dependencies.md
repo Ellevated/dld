@@ -134,6 +134,7 @@ Dependency map between project components.
 | Who | File:line | Function |
 |-----|-----------|----------|
 | run-agent.sh | scripts/vps/run-agent.sh:47 | exec dispatch (provider=claude) |
+| heartbeat_reaper.py | scripts/vps/heartbeat_reaper.py | reads logs/*.heartbeat.json files written by _write_heartbeat (TECH-198) |
 
 ---
 
@@ -273,11 +274,13 @@ Dependency map between project components.
 | callback.py | scripts/vps/callback.py | import: notify() |
 | callback.py | scripts/vps/callback.py | import: notify_circuit_event() (TECH-169) |
 | night-reviewer.sh | scripts/vps/night-reviewer.sh | CLI: python3 event_writer.py <project_id> <msg> |
+| heartbeat_reaper.py | scripts/vps/heartbeat_reaper.py | import: notify() — reap alert (TECH-198) |
 
 ### When changing API, check
 
 - [ ] callback.py (notify import)
 - [ ] night-reviewer.sh (CLI arg order)
+- [ ] heartbeat_reaper.py (notify 5-arg signature — TECH-198)
 
 ---
 
@@ -423,6 +426,7 @@ Dependency map between project components.
 | callback.py | scripts/vps/callback.py | registered in pueue.yml callback |
 | orchestrator.py | scripts/vps/orchestrator.py | ExecStart in dld-orchestrator.service |
 | gate-daemon.py | scripts/vps/gate-daemon.py | ExecStart in dld-gate-daemon.service (ARCH-190) |
+| heartbeat_reaper.py | scripts/vps/heartbeat_reaper.py | cron install section 8d (TECH-198) |
 | .env | scripts/vps/.env | EnvironmentFile in systemd unit |
 
 ### Used by (←)
@@ -614,6 +618,33 @@ Used as operator visibility tool and CI smoke gate.
 
 ---
 
+## scripts/vps/heartbeat_reaper.py (TECH-198)
+
+**Path:** `scripts/vps/heartbeat_reaper.py`
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| subprocess | stdlib | `pueue status --json`, `pueue kill`, `pgrep`, `/proc/*/stat` (CPU sample) |
+| event_writer | scripts/vps/event_writer.py | notify() — Hermes alert on reap |
+| heartbeat files | scripts/vps/logs/*.heartbeat.json | read `updated_at`, `started_at` for staleness/cross-check |
+| json, datetime, pathlib | stdlib | parse heartbeat, ISO timestamps, file paths |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| cron | */5 * * * * | session liveness reaper (installed by setup-vps.sh section 8d) |
+
+### When changing API, check
+
+- [ ] setup-vps.sh (cron line for heartbeat_reaper.py — section 8d)
+- [ ] event_writer.notify signature (5-arg: project_path, skill, status, message, artifact_rel)
+- [ ] claude-runner.py heartbeat file format (fields: turn, elapsed_s, last_tool, started_at, model, updated_at)
+
+---
+
 ## Last Update
 
 | Date | What | Who |
@@ -642,3 +673,4 @@ Used as operator visibility tool and CI smoke gate.
 | 2026-05-26 | **TECH-195:** orchestrator._parse_backlog column-aware parser + safe default=queued (was: positional regex falling through to done); lifecycle.recover_bootstrap_artifact narrow Rule 7 escape + NotBootstrapArtifactError; NEW scripts/vps/recover_bootstrap_as_done.py operator helper (dry-run default); NEW scripts/vps/lifecycle_audit.py READ-ONLY 14-category drift detector; ADR-026 architecture.md; lifecycle.py reverse-pointers extended. +12 tests (recovery) + 12 tests (audit) in scripts/vps/tests/test_orchestrator_bootstrap.py (39 in file, 212 total). | autopilot |
 | 2026-05-28 | NEW scripts/vps/orchestrator_monitor.py — 30-min cron: service alive + CB state + active tasks + demote burst; setup-vps.sh section 8c. | manual |
 | 2026-05-26 | **TECH-194 (ARCH-193 follow-up):** Layer C — setup-vps.sh `core.hooksPath` absolute + `install-hooks-all-worktrees.sh` migration + `.git-hooks/pre-commit` uses `git rev-parse --git-common-dir` + `pre-commit-lifecycle-guard.mjs` resolves `event_writer.py` via `import.meta.url`; Layer D — `lifecycle._atomic_write` + `_atomic_write_file` use `git checkout HEAD --` (was `checkout-index --force` losing `env=env`); Layer E — callback Step 6 gates qa+reflect dispatch on `task_status not in ('blocked','needs_review')`; NEW `cleanup-lifecycle-drift.sh` operator helper; 11 new regression tests across 3 files. | autopilot |
+| 2026-06-13 | **TECH-198:** Layer A: claude-runner heartbeat on every SDK message (was AssistantMessage-only). Layer B: NEW heartbeat_reaper.py (cron */5, kills wedged sessions: stale >25min + process idle + fail-open). setup-vps.sh section 8d cron install. 27 tests (5 Layer A + 22 Layer B). dependencies.md reaper section + reverse-pointers (claude-runner, event_writer, setup-vps). | autopilot |
