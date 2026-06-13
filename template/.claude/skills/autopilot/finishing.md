@@ -79,14 +79,22 @@ Final verification, status update, merge, and cleanup.
    git worktree prune
 
 10. Loop Mode Exit Check:
+
+    ⛔ MANDATORY — check this BEFORE doing anything else after cleanup.
+
     If SPEC_ID was provided (loop mode):
+    - STOP HERE. Session is COMPLETE.
     - Do NOT continue to next spec
     - Do NOT call /compact
+    - Do NOT read backlog for more work
+    - Do NOT start any unrelated work
     - EXIT cleanly — external orchestrator handles next
     - Fresh context will be provided for next spec
+    - ANY further work is a governance violation (BUG-199)
 
     If interactive mode (no SPEC_ID):
     - Continue to next queued spec
+    - If queue empty → STOP
     - Context already managed by orchestrator
 ```
 
