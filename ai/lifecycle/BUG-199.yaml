@@ -2,12 +2,12 @@ allowed_files_hash: null
 blocked_reason: null
 finished_at: null
 kind: BUG
-priority: P1
+priority: p1
 pueue_id: null
 spec_id: BUG-199
 started_at: null
 status: queued
 transitions: []
-updated_at: '2026-06-13T17:38:36Z'
+updated_at: '2026-06-13T17:44:52Z'
 updated_by: spark
 version: 1
