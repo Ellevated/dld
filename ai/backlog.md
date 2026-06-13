@@ -7,19 +7,19 @@
 
 | ID | Status | Kind | Updated | Spec |
 |----|--------|------|---------|------|
-| ARCH-196 | queued | arch | 2026-05-27 | [spec](features/ARCH-196-2026-05-27-stabilize-spark-autopilot-loop.md) |
 | GROWTH-001 | blocked | ftr | 2026-05-16 | GROWTH-001 |
 
 ## P1 — High impact (default)
 
 | ID | Status | Kind | Updated | Spec |
 |----|--------|------|---------|------|
-| TECH-197 | queued | tech | 2026-06-06 | [spec](features/TECH-197-2026-06-06-autopilot-completion-reliability-timeout-observability-push-gate-race.md) |
 | GROWTH-002 | blocked | ftr | 2026-05-16 | GROWTH-002 |
 | GROWTH-003 | blocked | ftr | 2026-05-16 | GROWTH-003 |
 | GROWTH-004 | blocked | ftr | 2026-05-16 | GROWTH-004 |
 | GROWTH-005 | blocked | ftr | 2026-05-16 | GROWTH-005 |
 | GROWTH-006 | blocked | ftr | 2026-05-16 | GROWTH-006 |
+| BUG-199 | queued | BUG | 2026-06-13 | [spec](features/BUG-199-2026-06-13-autopilot-scope-creep-no-stop-on-done.md) |
+| TECH-198 | queued | TECH | 2026-06-13 | [spec](features/TECH-198-2026-06-13-heartbeat-liveness-fix-session-reaper.md) |
 
 ## P2 — Nice-to-have
 
@@ -30,6 +30,7 @@ _no specs_
 | ID | Status | Kind | Finished | Spec |
 |----|--------|------|----------|------|
 | ARCH-187 | done | tech | 2026-05-20 | [spec](features/ARCH-187-2026-05-20-lifecycle-write-identity-enforcement.md) |
+| ARCH-196 | done | tech | 2026-05-28 | [spec](features/ARCH-196-2026-05-27-stabilize-spark-autopilot-loop.md) |
 | BUG-188 | done | tech | 2026-05-20 | [spec](features/BUG-188-2026-05-20-claude-runner-post-result-exception-false-fail.md) |
 | TECH-001 | done | tech |  | [spec](features/TECH-001-split-autopilot.md) |
 | TECH-003 | done | tech |  | [spec](features/TECH-003-2026-01-24-clean-claude-md-template.md) |
@@ -153,6 +154,7 @@ _no specs_
 | TECH-191 | done | tech | 2026-05-24 | [spec](features/TECH-191-2026-05-24-autopilot-worktree-implicit-base-ref.md) |
 | TECH-194 | done | tech | 2026-05-26 | [spec](features/TECH-194-2026-05-25-arch193-followup-worktree-wtsync-callback-parser.md) |
 | TECH-195 | done | tech | 2026-05-26 | [spec](features/TECH-195-2026-05-26-orchestrator-bootstrap-fragility-default-to-done.md) |
+| TECH-197 | done | tech | 2026-06-05 | [spec](features/TECH-197-2026-06-06-autopilot-completion-reliability-timeout-observability-push-gate-race.md) |
 | FTR-085 | done | ftr |  | [spec](features/FTR-085-2026-02-14-release-skill.md) |
 | FTR-088 | done | ftr |  | [spec](features/FTR-088-2026-02-15-triz-skill-system-diagnostics.md) |
 | FTR-089 | done | ftr |  | [spec](features/FTR-089-2026-02-15-diagram-skill.md) |
