@@ -244,6 +244,15 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
                     msg_line = msg_line[:500] + "..."
                 logger.debug(msg_line)
 
+                # TECH-198 Layer A: heartbeat on EVERY message (not just
+                # AssistantMessage) so updated_at stays fresh during long
+                # tool-execution phases between assistant turns.
+                _write_heartbeat(
+                    LOG_DIR, project_name, ts_label, turn_count,
+                    int(time.monotonic() - started_mono),
+                    last_tool_name, started_at_iso, MODEL,
+                )
+
                 # Capture assistant text (last response before ResultMessage)
                 if isinstance(message, AssistantMessage):
                     turn_count += 1
@@ -255,11 +264,6 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
                             last_tool_name = block.name
                     if text_parts:
                         last_assistant_text = "\n".join(text_parts)
-                    _write_heartbeat(
-                        LOG_DIR, project_name, ts_label, turn_count,
-                        int(time.monotonic() - started_mono),
-                        last_tool_name, started_at_iso, MODEL,
-                    )
 
                 # Capture task completion summary (autopilot uses Agent tool → Tasks)
                 if isinstance(message, TaskNotificationMessage):
