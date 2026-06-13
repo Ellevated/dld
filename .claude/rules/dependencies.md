@@ -164,7 +164,7 @@ Dependency map between project components.
 | What | Where | Function |
 |------|-------|----------|
 | db.py | scripts/vps/db.py | seed_projects_from_json(), get_all_projects(), get_project_state(), get_available_slots(), try_acquire_slot(), log_task(), update_project_phase() |
-| run-agent.sh | scripts/vps/run-agent.sh | pueue add autopilot + inbox dispatch |
+| run-agent.sh | scripts/vps/run-agent.sh | pueue add autopilot + inbox dispatch (CLAUDE_CURRENT_SPEC_PATH env for both, BUG-199) |
 | night-reviewer.sh | scripts/vps/night-reviewer.sh | pueue add --group night-reviewer (dispatch_night_review) |
 | pueue CLI | PATH | pueue add --group --label --print-task-id |
 | git CLI | PATH | git -C <dir> pull --ff-only origin develop |
@@ -200,7 +200,7 @@ Dependency map between project components.
 | run-agent.sh | scripts/vps/run-agent.sh | pueue add for QA/Reflect dispatch |
 | pueue CLI | PATH | pueue status --json, pueue log --json, pueue add |
 | pueue CLI | PATH | pueue pause/start --group claude-runner (TECH-169 circuit) |
-| spec files | ai/features/{SPEC_ID}*.md | _parse_allowed_files() reads `## Allowed Files` for implementation guard |
+| spec files | ai/features/{SPEC_ID}*.md | _parse_allowed_files() reads `## Allowed Files` for implementation guard + _detect_out_of_scope_files() warning (BUG-199) |
 
 ### Used by (←)
 

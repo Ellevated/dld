@@ -35,6 +35,17 @@ When called with `autopilot TECH-069` (specific SPEC_ID):
 2. **Exit after completion** — do NOT continue to next spec
 3. **Let external orchestrator handle next** — fresh context per spec
 
+<HARD-GATE id="LOOP-MODE-SCOPE-FENCE">
+**LOOP MODE = SINGLE SPEC ONLY.** After emitting `task_status` JSON and completing
+PHASE 3 (merge + cleanup), you MUST EXIT IMMEDIATELY. Do NOT:
+- Read the backlog for more work
+- Pick another spec
+- Start ANY work not in this spec's `## Allowed Files`
+- Write code, create files, or run commands unrelated to this spec
+The external orchestrator dispatches the next spec with fresh context.
+Any work beyond the dispatched SPEC_ID is a governance violation (BUG-199).
+</HARD-GATE>
+
 This is the mode the VPS orchestrator (`scripts/vps/orchestrator.py` → pueue → `claude-runner.py` via Agent SDK) uses: it dispatches one spec at a time as a fresh Agent SDK session.
 
 **Detection:** If first argument matches pattern `(TECH|FTR|BUG|ARCH)-\d+`, enter loop mode.
@@ -163,6 +174,10 @@ Full rules: `.claude/agents/coder.md` § Commit Format.
 ## Main Loop
 
 ### Interactive Mode (no SPEC_ID)
+
+**This mode is ONLY active when autopilot is invoked WITHOUT a SPEC_ID argument.**
+If a SPEC_ID was provided (loop mode), this section DOES NOT APPLY — see Loop Mode above.
+
 ```
 while (queued/resumed tasks in ai/backlog.md):
   1. Read backlog → find first queued/resumed (P0 first)
@@ -189,7 +204,8 @@ while (queued/resumed tasks in ai/backlog.md):
   6. PHASE 3: Finishing
      See: finishing.md
 
-  7. Continue to next spec
+  7. Continue to next spec (INTERACTIVE ONLY — never in loop mode)
+     If queue empty → STOP
 ```
 
 ### Loop Mode (SPEC_ID provided)
@@ -198,8 +214,10 @@ while (queued/resumed tasks in ai/backlog.md):
 2. Verify status is queued or resumed (not in_progress!)
 3. (Status written by callback only — do NOT edit spec/backlog Status field)
 4. PHASE 0-3: Same as interactive (including push in Phase 3!)
-5. EXIT (do NOT continue to next spec)
+5. EXIT IMMEDIATELY (do NOT continue to next spec)
    └─ External orchestrator provides fresh context
+   └─ Do NOT read backlog, do NOT scan for more work
+   └─ Do NOT start ANY unrelated work after this point
 ```
 
 **Why loop mode?** Prevents context accumulation. Each spec = fresh Claude session.

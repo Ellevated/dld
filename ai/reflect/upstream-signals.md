@@ -154,3 +154,14 @@ research-codebase.md: gate_logic.py:251 — переименованный _is_d
 
 ### Process note (local)
 4 scout'а сошлись на B (gate fetch-retry) + A (push-before-signal), но НЕДООЦЕНИЛИ timeout-interrupted-push подслучай: при timeout impl остаётся в LOCAL develop (autopilot убит между merge и push origin), и fetch-retry бесполезен — нечего fetch'ить. Push-local-before-gate выведен из reflog-форензики (BUG-1117: impl вошёл в origin только через callback lifecycle push, 13s после gate), НЕ из scout-research. Урок: для timing/race-багов git-форензика (reflog, commit timing vs gate timing) сильнее scout-research.
+
+---
+
+### SIGNAL-2026-06-13-BUG199
+
+- **Source:** autopilot (BUG-199 incident, awardybot pueue #574)
+- **Target:** architect
+- **Type:** gap
+- **Message:** The autopilot execution contract has a dual-layer defense-in-depth gap: (1) the prompt's loop-mode EXIT directive was soft enough that the model continued working after spec completion, and (2) the only hard enforcement layer (pre-edit.mjs Allowed Files hook) degrades open on develop because the orchestrator did not pin the spec path via env var for autopilot dispatch (only inbox dispatch was wired). Both layers failed simultaneously, allowing out-of-scope commits to flow to origin/develop.
+- **Evidence:** Commit `5196867e` (awardybot, 12:54:23 2026-06-13): `flows/cb-wb-end.yaml` + `scripts/create_flow_campaign.py` + `tests/architecture/test_flows_artefacts_packaged.py` — none in FTR-1185 Allowed Files. Pre-edit hook returned allow because `inferSpecFromBranch()` returns null on develop branch.
+- **Fix applied:** BUG-199: (A) HARD-GATE in SKILL.md loop-mode section, (B) orchestrator now sets CLAUDE_CURRENT_SPEC_PATH for autopilot dispatch (not just inbox), (C) callback logs WARNING on out-of-scope files.

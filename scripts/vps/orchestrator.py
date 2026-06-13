@@ -761,6 +761,11 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
     if pueue_has_active_spec(spec_id):
         log.info("skip dispatch: %s live in pueue under another project (Rule 8)", spec_id)
         return False
+    # BUG-199: pin spec path for the pre-edit hook's Allowed Files enforcement.
+    # Without this, inferSpecFromBranch() returns null on develop after merge-back,
+    # and the hook degrades open — allowing out-of-scope edits.
+    spec_path = str(spec_files[0]) if spec_files else ""
+    pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": spec_path}
     pueue_id = _pueue_add(
         f"{provider}-runner",
         task_label,
@@ -771,6 +776,7 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
             "autopilot",
             f"/autopilot {spec_id}",
         ],
+        env=pueue_env,
     )
     if pueue_id is None:
         log.error("pueue submission failed: %s/%s", project_id, spec_id)

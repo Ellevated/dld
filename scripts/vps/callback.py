@@ -670,6 +670,55 @@ def _commit_stats(
     return code_loc, test_loc, code_commits
 
 
+def _detect_out_of_scope_files(
+    project_path: str,
+    spec_id: str,
+    allowed: list[str] | None,
+    started_at: str | None,
+) -> list[str]:
+    """Return files touched by spec-attributed commits but NOT in the allowlist.
+
+    BUG-199 Fix C: detection-only (WARNING), not enforcement.
+    Inspects commits since started_at whose subject implements spec_id,
+    and returns any paths they touched that are NOT in the allowed list.
+    """
+    if not allowed or not started_at or not spec_id:
+        return []
+    cmd = [
+        "git",
+        "-C",
+        project_path,
+        "log",
+        "--all",
+        f"--since={started_at}",
+        "--pretty=format:%h%x00%s",
+        "--name-only",
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if r.returncode != 0:
+        return []
+
+    allowed_set = set(allowed)
+    out_of_scope: set[str] = set()
+    is_spec_commit = False
+
+    for line in r.stdout.splitlines():
+        if "\x00" in line:
+            # New commit header: hash\x00subject
+            _, _, current_subject = line.partition("\x00")
+            is_spec_commit = _subject_implements(current_subject, spec_id)
+        elif line.strip() and is_spec_commit:
+            # File path from --name-only
+            rel_path = line.strip()
+            if rel_path not in allowed_set and not rel_path.startswith("ai/"):
+                out_of_scope.add(rel_path)
+
+    return sorted(out_of_scope)
+
+
 def _subject_implements(subject: str, spec_id: str) -> bool:
     """Return True iff the commit *subject* (first line) declares it implements spec_id.
 
@@ -943,6 +992,7 @@ def _emit_audit(
     code_commits: int,
     started_at: str | None,
     start_wall: float,
+    **extra: object,
 ) -> None:
     """Build audit record and write one JSONL line. Called once per verify_status_sync exit."""
     duration_ms = int((time.monotonic() - start_wall) * 1000)
@@ -961,6 +1011,8 @@ def _emit_audit(
         "started_at": started_at,
         "duration_ms": duration_ms,
     }
+    if extra:
+        record.update(extra)
     _write_audit(record)
 
 
@@ -1097,6 +1149,17 @@ def verify_status_sync(
     allowed = _parse_allowed_files(spec_file) if spec_file else None
     started_at = _get_started_at(int(pueue_id)) if pueue_id else None
     code_loc, test_loc, code_commits = _commit_stats(project_path, allowed, started_at)
+
+    # BUG-199 Fix C: detect out-of-scope files touched by spec-attributed commits
+    out_of_scope_files = _detect_out_of_scope_files(project_path, spec_id, allowed, started_at)
+    if out_of_scope_files:
+        log.warning(
+            "OUT_OF_SCOPE: %s — commits attributed to %s touched %d file(s) outside allowlist: %s",
+            project_id,
+            spec_id,
+            len(out_of_scope_files),
+            ", ".join(out_of_scope_files[:10]),
+        )
 
     # TECH-197: push-local-before-gate — flush timeout-interrupted merge
     # When timeout kills autopilot between "git merge" and "git push develop",
@@ -1272,6 +1335,7 @@ def verify_status_sync(
         code_commits,
         started_at,
         start_wall,
+        out_of_scope_files=out_of_scope_files if out_of_scope_files else None,
     )
 
 
