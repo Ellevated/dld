@@ -18,12 +18,12 @@
 | GROWTH-004 | blocked | ftr | 2026-05-16 | GROWTH-004 |
 | GROWTH-005 | blocked | ftr | 2026-05-16 | GROWTH-005 |
 | GROWTH-006 | blocked | ftr | 2026-05-16 | GROWTH-006 |
-| BUG-199 | queued | BUG | 2026-06-13 | [spec](features/BUG-199-2026-06-13-autopilot-scope-creep-no-stop-on-done.md) |
-| TECH-198 | queued | TECH | 2026-06-13 | [spec](features/TECH-198-2026-06-13-heartbeat-liveness-fix-session-reaper.md) |
 
 ## P2 — Nice-to-have
 
-_no specs_
+| ID | Status | Kind | Updated | Spec |
+|----|--------|------|---------|------|
+| TECH-200 | queued | TECH | 2026-06-13 | [spec](features/TECH-200-2026-06-13-create-initial-normalize-priority.md) |
 
 ## Done (last 30 days)
 
@@ -209,4 +209,6 @@ _no specs_
 | ARCH-186 | done | arch |  | [spec](features/ARCH-186-2026-05-16-orchestrator-lifecycle-file-sot.md) |
 | ARCH-190 | done | arch | 2026-05-24 | [spec](features/ARCH-190-2026-05-23-gate-daemon-shadow.md) |
 | ARCH-193 | done | arch | 2026-05-25 | [spec](features/ARCH-193-2026-05-25-lifecycle-write-once-done-invariant.md) |
+| BUG-199 | done | BUG | 2026-06-13 | [spec](features/BUG-199-2026-06-13-autopilot-scope-creep-no-stop-on-done.md) |
+| TECH-198 | done | TECH | 2026-06-13 | [spec](features/TECH-198-2026-06-13-heartbeat-liveness-fix-session-reaper.md) |
 
