@@ -61,6 +61,9 @@ _ALLOWED_WRITERS = frozenset({"callback", "orchestrator", "operator", "qa", "aud
 # only create the initial queued row that callback then drives forward.
 _ALLOWED_WRITERS_FOR_CREATE = frozenset({"spark"}) | _ALLOWED_WRITERS
 
+# TECH-200: valid priority enum — matches render_backlog.PRIORITY_ORDER.
+_VALID_PRIORITIES = frozenset({"p0", "p1", "p2"})
+
 # In-process lock: serializes plumbing writes within one Python process.
 # Eliminates intra-process CAS stampede (e.g. concurrent threads in callback).
 # Multi-machine CAS is still guarded by git update-ref.
@@ -454,6 +457,15 @@ def create_initial(
         raise ValueError(
             f"create_initial: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS_FOR_CREATE)}"
         )
+    # Normalize priority: lowercase, strip whitespace, validate enum (TECH-200)
+    priority = (priority or "p1").strip().lower()
+    if priority not in _VALID_PRIORITIES:
+        log.warning(
+            "create_initial %s: unknown priority %r, defaulting to p1",
+            spec_id,
+            priority,
+        )
+        priority = "p1"
     repo_dir = str(repo_dir)
     branch = _current_branch(repo_dir)
 
