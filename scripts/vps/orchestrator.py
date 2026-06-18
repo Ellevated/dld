@@ -252,13 +252,19 @@ def is_agent_running(project_id: str) -> bool:
 
 
 def git_pull(project_id: str, project_dir: str) -> None:
-    """Pull develop branch via ff-only. Skip cycle if not fast-forward.
+    """Advance develop via fetch + ff-only merge. Skip cycle if not fast-forward.
 
     Post-ARCH-186: no autostash, no stash pop, no marker restore. The
     no-dirty-WT invariant (assert_clean_lifecycle_tree at startup +
     structural impossibility from lifecycle.py atomic plumbing) means
-    the WT is always clean when this runs. If pull fails (e.g. divergence),
+    the WT is always clean when this runs. If the merge fails (e.g. divergence),
     skip the cycle and log — operator will resolve.
+
+    Uses `fetch` + `merge --ff-only origin/develop` rather than
+    `pull --ff-only origin develop`: the latter merges from the shared,
+    non-atomic .git/FETCH_HEAD, which races with the gate-daemon's concurrent
+    `git fetch` and intermittently dies "Cannot fast-forward to multiple
+    branches". Merging from the tracking ref is immune to that race.
     """
     if not os.path.isdir(os.path.join(project_dir, ".git")):
         return
@@ -266,17 +272,37 @@ def git_pull(project_id: str, project_dir: str) -> None:
         log.info("skip git pull — agent running: %s", project_id)
         return
     try:
-        pull = subprocess.run(
-            ["git", "-C", project_dir, "pull", "--ff-only", "origin", "develop"],
+        # FETCH_HEAD-race fix: gate-daemon (git fetch, 60s) and orchestrator
+        # (here) both touch the shared, non-atomic .git/FETCH_HEAD. Plain
+        # `git pull origin develop` resolves its merge head from FETCH_HEAD, so
+        # a concurrent fetch can inject a second for-merge entry →
+        # "Cannot fast-forward to multiple branches". Fetch, then merge from the
+        # atomically-updated tracking ref (origin/develop) — never FETCH_HEAD —
+        # which can only ever point at a single commit.
+        fetch = subprocess.run(
+            ["git", "-C", project_dir, "fetch", "--quiet", "origin", "develop"],
             capture_output=True,
             text=True,
             timeout=120,
         )
-        if pull.returncode != 0:
+        if fetch.returncode != 0:
             log.warning(
-                "git pull (ff-only) failed for %s: %s — skip cycle",
+                "git fetch failed for %s: %s — skip cycle",
                 project_dir,
-                (pull.stderr or "")[:200],
+                (fetch.stderr or "")[:200],
+            )
+            return
+        merge = subprocess.run(
+            ["git", "-C", project_dir, "merge", "--ff-only", "origin/develop"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if merge.returncode != 0:
+            log.warning(
+                "git merge --ff-only origin/develop failed for %s: %s — skip cycle",
+                project_dir,
+                (merge.stderr or "")[:200],
             )
     except subprocess.TimeoutExpired as exc:
         log.warning("git_pull timeout for %s: %s", project_dir, exc)
