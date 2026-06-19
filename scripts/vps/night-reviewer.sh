@@ -21,6 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -d "${SCRIPT_DIR}/venv" ]] && export PATH="${SCRIPT_DIR}/venv/bin:$PATH"
 
 PID_FILE="/tmp/night-reviewer.pid"
+MAX_HERMES_PER_RUN="${MAX_HERMES_PER_RUN:-10}"
 
 # ---------------------------------------------------------------------------
 # PID file guard — prevent concurrent runs
@@ -191,7 +192,12 @@ print(s['path'] if s else '')
     else
         local new_count
         new_count=$(printf '%s' "$new_findings_json" | jq 'length' 2>/dev/null || echo "0")
-        log "info" "sending ${new_count} new findings for ${PROJECT_ID}"
+        log "info" "${new_count} new findings for ${PROJECT_ID} (notify cap=${MAX_HERMES_PER_RUN})"
+
+        # Filter to medium+ confidence, cap at MAX_HERMES_PER_RUN, summary for remainder
+        local notified=0
+        local skipped_low=0
+        local skipped_cap=0
 
         while IFS= read -r nf; do
             local nf_severity nf_confidence nf_file nf_line nf_desc nf_sugg nf_id
@@ -205,6 +211,18 @@ print(s['path'] if s else '')
             nf_sugg=$(printf '%s' "$nf" | jq -r '.suggestion // ""')
             set -e
 
+            # Skip low-confidence findings from Telegram notifications
+            if [[ "$nf_confidence" == "low" ]]; then
+                skipped_low=$((skipped_low + 1))
+                continue
+            fi
+
+            # Cap notifications at MAX_HERMES_PER_RUN
+            if (( notified >= MAX_HERMES_PER_RUN )); then
+                skipped_cap=$((skipped_cap + 1))
+                continue
+            fi
+
             local msg
             msg="[${nf_severity}/${nf_confidence}] Finding #${nf_id}
 File: ${nf_file}:${nf_line}
@@ -215,7 +233,23 @@ Suggestion: ${nf_sugg}"
             python3 "${SCRIPT_DIR}/event_writer.py" "${PROJECT_PATH}" "night-review" "done" "${msg}" 2>/dev/null
             set -e
 
+            notified=$((notified + 1))
         done < <(printf '%s' "$new_findings_json" | jq -c '.[]' 2>/dev/null)
+
+        # Summary line for remaining findings (capped or low-confidence)
+        local remainder=$((skipped_low + skipped_cap))
+        if (( remainder > 0 )); then
+            local summary_msg="+${remainder} more findings"
+            [[ $skipped_low -gt 0 ]] && summary_msg="${summary_msg} (${skipped_low} low-confidence)"
+            [[ $skipped_cap -gt 0 ]] && summary_msg="${summary_msg} (${skipped_cap} over cap)"
+            summary_msg="${summary_msg}, see night_findings DB"
+
+            set +e
+            python3 "${SCRIPT_DIR}/event_writer.py" "${PROJECT_PATH}" "night-review" "done" "${summary_msg}" 2>/dev/null
+            set -e
+        fi
+
+        log "info" "notified ${notified}, skipped_low=${skipped_low}, skipped_cap=${skipped_cap}"
     fi
 
     # Reset phase to idle
