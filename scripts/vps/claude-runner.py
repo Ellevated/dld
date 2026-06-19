@@ -70,6 +70,13 @@ TIMEOUT_SECONDS = 5400  # 90 min hard limit (R1 specs with 8+ tasks need >60m)
 # pinned deterministically. Override per-task via AUTOPILOT_MODEL env. Subagents
 # resolve their own model from agent frontmatter. See rules/model-capabilities.md.
 MODEL = os.environ.get("AUTOPILOT_MODEL", "claude-opus-4-8")
+# Main loop effort level.  SDK enum: low|medium|high|max (the "extra-high" level
+# accepted by CLI/frontmatter is NOT part of the SDK enum and would be rejected
+# by ClaudeAgentOptions).  Subagents resolve effort from frontmatter.  ADR-028.
+AUTOPILOT_EFFORT = os.environ.get("AUTOPILOT_EFFORT", "high")
+_VALID_EFFORT = {"low", "medium", "high", "max"}
+if AUTOPILOT_EFFORT not in _VALID_EFFORT:
+    AUTOPILOT_EFFORT = "high"  # fail-safe: unknown value → default
 
 
 def _resolve_cli_path() -> str | None:
@@ -193,6 +200,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     options = ClaudeAgentOptions(
         cwd=str(project_path),
         model=MODEL,  # pin main loop to Opus 4.8 (env: AUTOPILOT_MODEL)
+        effort=AUTOPILOT_EFFORT,  # pin effort (default high); see ADR-028
         cli_path=CLI_PATH,  # use system CLI, not stale bundled (else model pin drifts)
         setting_sources=["user", "project"],  # Loads CLAUDE.md + .claude/skills/
         allowed_tools=ALLOWED_TOOLS,
