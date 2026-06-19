@@ -251,29 +251,281 @@ Add a "Last Update" row:
 ## Implementation Plan
 
 ### Task 1: TOCTOU re-check in scan_queued
+
 **Type:** code
-**Files:** `scripts/vps/orchestrator.py`
-**Acceptance:** `read_lifecycle` consulted for the chosen `spec_id` immediately before
-`_pueue_add`; dispatch aborts (return False, INFO log) when status ∉ {queued, resumed}
-or read returns None. File parses (`ast.parse`).
+**Files:**
+- Modify: `scripts/vps/orchestrator.py:794-795`
+
+**Context:** Insert an authoritative lifecycle re-read immediately before the
+`_pueue_add` call (line 795). This is the last gate before dispatch, closing the
+TOCTOU window between the `list_by_status` snapshot (line 731) and the actual
+pueue submission. The new code goes between the `pueue_env` dict (line 794) and
+the `pueue_id = _pueue_add(...)` call (line 795).
+
+**Step 1: Insert TOCTOU re-check**
+
+In `scripts/vps/orchestrator.py`, find the exact block:
+
+```python
+    pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": spec_path}
+    pueue_id = _pueue_add(
+```
+
+Replace with:
+
+```python
+    pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": spec_path}
+    # BUG-205: authoritative TOCTOU re-check.  The list_by_status() snapshot
+    # (top of scan_queued) can go stale: callback runs as a SEPARATE process
+    # and may have written blocked/done for this spec via git plumbing while
+    # we were doing slot/pueue checks above.  Re-read the lifecycle SoT (HEAD)
+    # for THIS spec right before pueue add; abort if no longer dispatchable.
+    fresh = lifecycle.read_lifecycle(project_dir, spec_id)
+    fresh_status = fresh.get("status") if fresh else None
+    if fresh_status not in ("queued", "resumed"):
+        log.info(
+            "skip dispatch: %s status changed to %s after scan (TOCTOU re-check)",
+            spec_id,
+            fresh_status,
+        )
+        return False
+    pueue_id = _pueue_add(
+```
+
+**Step 2: Verify file parses**
+
+```bash
+python3 -c "import ast; ast.parse(open('scripts/vps/orchestrator.py').read()); print('OK')"
+```
+
+Expected: `OK`
+
+**Acceptance Criteria:**
+- [ ] `grep -c "TOCTOU re-check" scripts/vps/orchestrator.py` returns >= 1
+- [ ] `read_lifecycle` called for `spec_id` immediately before `_pueue_add` in `scan_queued`
+- [ ] Dispatch aborts (return False, INFO log) when status not in {queued, resumed} or read returns None
+- [ ] `ast.parse` succeeds
+- [ ] No changes to `_pueue_add` signature or `scan_inbox`
+
+---
 
 ### Task 2: Regression tests
+
 **Type:** test
-**Files:** `scripts/vps/tests/test_orchestrator.py`
-**Acceptance:** (a) stale-block test — `list_by_status` returns a queued spec but
-`read_lifecycle` returns `{"status":"blocked"}` ⇒ `_pueue_add` NOT called, returns
-False; (b) happy-path test — `read_lifecycle` returns `{"status":"queued"}` ⇒
-`_pueue_add` called once; (c) read-None test — `read_lifecycle` returns None ⇒ no
-dispatch. Follow the existing `patch("orchestrator._pueue_add")` /
-`patch.object(orchestrator.lifecycle, "read_lifecycle", ...)` patterns.
+**Files:**
+- Modify: `scripts/vps/tests/test_orchestrator.py` (append at end of file)
+
+**Context:** Add three regression tests proving the TOCTOU re-check works: (a) stale-block
+blocks dispatch, (b) happy-path still dispatches, (c) read-None blocks dispatch. Follow
+the existing test patterns: class-based, `seed_project` fixture, `patch("orchestrator._pueue_add")`,
+`patch.object(orchestrator.lifecycle, ...)`.
+
+**Step 1: Append test class at end of file**
+
+Append the following after the last line of `test_orchestrator.py` (after the
+`TestHeartbeatMonitor` class, currently ending at line 559):
+
+```python
+
+
+class TestScanQueuedTOCTOU:
+    """BUG-205: authoritative lifecycle re-check before _pueue_add in scan_queued."""
+
+    def _seed_queued_spec(self, tmp_path: Path, spec_id: str = "BUG-100") -> Path:
+        """Create minimal features dir with a spec file so scan_queued finds it."""
+        features = tmp_path / "ai" / "features"
+        features.mkdir(parents=True)
+        spec = features / f"{spec_id}-2026-06-19-toctou-test.md"
+        spec.write_text("# test\n\n**Priority:** P1\n")
+        return tmp_path
+
+    def test_stale_block_prevents_dispatch(self, tmp_path, seed_project):
+        """EC-4: list_by_status returns queued but read_lifecycle returns blocked
+        => _pueue_add NOT called, scan_queued returns False."""
+        project_dir = str(self._seed_queued_spec(tmp_path))
+        with (
+            patch.object(
+                orchestrator.lifecycle,
+                "list_by_status",
+                return_value=[{"spec_id": "BUG-100", "status": "queued"}],
+            ),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"spec_id": "BUG-100", "status": "blocked"},
+            ),
+            patch("orchestrator._pueue_add") as mock_add,
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator.db.get_available_slots", return_value=2),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+        ):
+            result = orchestrator.scan_queued("testproject", project_dir)
+
+        assert result is False
+        mock_add.assert_not_called()
+
+    def test_happy_path_dispatches(self, tmp_path, seed_project):
+        """EC-5: read_lifecycle returns queued => _pueue_add called once."""
+        project_dir = str(self._seed_queued_spec(tmp_path))
+        with (
+            patch.object(
+                orchestrator.lifecycle,
+                "list_by_status",
+                return_value=[{"spec_id": "BUG-100", "status": "queued"}],
+            ),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"spec_id": "BUG-100", "status": "queued"},
+            ),
+            patch("orchestrator._pueue_add", return_value=42) as mock_add,
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator.db.get_available_slots", return_value=2),
+            patch("orchestrator.db.try_acquire_slot"),
+            patch("orchestrator.db.log_task"),
+            patch("orchestrator.db.update_project_phase"),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+        ):
+            result = orchestrator.scan_queued("testproject", project_dir)
+
+        assert result is True
+        mock_add.assert_called_once()
+
+    def test_read_none_prevents_dispatch(self, tmp_path, seed_project):
+        """EC-6: read_lifecycle returns None => _pueue_add NOT called."""
+        project_dir = str(self._seed_queued_spec(tmp_path))
+        with (
+            patch.object(
+                orchestrator.lifecycle,
+                "list_by_status",
+                return_value=[{"spec_id": "BUG-100", "status": "queued"}],
+            ),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value=None,
+            ),
+            patch("orchestrator._pueue_add") as mock_add,
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator.db.get_available_slots", return_value=2),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+        ):
+            result = orchestrator.scan_queued("testproject", project_dir)
+
+        assert result is False
+        mock_add.assert_not_called()
+
+    def test_stale_done_prevents_dispatch(self, tmp_path, seed_project):
+        """Variant: spec flipped to done between snapshot and dispatch."""
+        project_dir = str(self._seed_queued_spec(tmp_path))
+        with (
+            patch.object(
+                orchestrator.lifecycle,
+                "list_by_status",
+                return_value=[{"spec_id": "BUG-100", "status": "queued"}],
+            ),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"spec_id": "BUG-100", "status": "done"},
+            ),
+            patch("orchestrator._pueue_add") as mock_add,
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator.db.get_available_slots", return_value=2),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+        ):
+            result = orchestrator.scan_queued("testproject", project_dir)
+
+        assert result is False
+        mock_add.assert_not_called()
+
+    def test_resumed_status_dispatches(self, tmp_path, seed_project):
+        """Resumed is a valid dispatchable status — re-check must allow it."""
+        project_dir = str(self._seed_queued_spec(tmp_path))
+        with (
+            patch.object(
+                orchestrator.lifecycle,
+                "list_by_status",
+                return_value=[{"spec_id": "BUG-100", "status": "resumed"}],
+            ),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"spec_id": "BUG-100", "status": "resumed"},
+            ),
+            patch("orchestrator._pueue_add", return_value=42) as mock_add,
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator.db.get_available_slots", return_value=2),
+            patch("orchestrator.db.try_acquire_slot"),
+            patch("orchestrator.db.log_task"),
+            patch("orchestrator.db.update_project_phase"),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+        ):
+            result = orchestrator.scan_queued("testproject", project_dir)
+
+        assert result is True
+        mock_add.assert_called_once()
+```
+
+**Step 2: Verify tests are discoverable**
+
+```bash
+cd /home/dld/projects/dld
+scripts/vps/venv/bin/python -m pytest scripts/vps/tests/test_orchestrator.py::TestScanQueuedTOCTOU --collect-only
+```
+
+Expected: 5 tests collected.
+
+**Acceptance Criteria:**
+- [ ] 5 tests in `TestScanQueuedTOCTOU` class (stale-block, happy-path, read-None, stale-done, resumed)
+- [ ] All 5 tests pass after Task 1 implementation
+- [ ] Full `test_orchestrator.py` suite green (no regressions)
+- [ ] Tests follow existing patterns (class-based, `seed_project` fixture, `patch`)
+
+---
 
 ### Task 3: dependencies.md row
+
 **Type:** docs
-**Files:** `.claude/rules/dependencies.md`
-**Acceptance:** Last Update row present.
+**Files:**
+- Modify: `.claude/rules/dependencies.md:677`
+
+**Context:** Add a Last Update row documenting the BUG-205 change.
+
+**Step 1: Append row**
+
+In `.claude/rules/dependencies.md`, find:
+
+```
+| 2026-06-19 | **TECH-203:** claude-runner.py: AUTOPILOT_EFFORT env (default high, enum-validated) + ClaudeAgentOptions(effort=...). model-capabilities.md table synced to frontmatter SSOT. ADR-028 added. 9 template agent files synced to ADR-019 frontmatter. | autopilot |
+```
+
+Append after it:
+
+```
+| 2026-06-19 | **BUG-205:** scan_queued authoritative lifecycle re-read before _pueue_add (TOCTOU close). orchestrator.py reads lifecycle.read_lifecycle for chosen spec_id as last gate before dispatch; aborts if status changed. 5 regression tests. | autopilot |
+```
+
+**Acceptance Criteria:**
+- [ ] `grep -c "BUG-205" .claude/rules/dependencies.md` returns >= 1
+
+---
 
 ### Execution Order
-1 → 2 → 3
+
+Task 1 → Task 2 → Task 3
+
+(Sequential: Task 2 tests verify Task 1 code; Task 3 is docs, no code dependency.)
+
+### Dependencies
+
+- Task 2 depends on Task 1 (tests exercise the new re-check code)
+- Task 3 is independent (docs-only)
 
 ---
 
@@ -361,6 +613,23 @@ DEPLOY_URL=local-only
 - [ ] No `template/` edits (orchestrator is DLD-specific)
 - [ ] `dependencies.md` "Last Update" row added
 - [ ] No inter-spec dependency/DAG logic added (out of scope — separate future FTR)
+
+---
+
+## Drift Log
+
+**Checked:** 2026-06-19 UTC
+**Result:** no_drift
+
+### Changes Detected
+| File | Change Type | Action Taken |
+|------|-------------|--------------|
+| `scripts/vps/orchestrator.py` | no change | Line refs verified: L731 list_by_status, L737 spec_id, L742-765 audit guard, L783-789 pueue dedup, L794 pueue_env, L795 _pueue_add — all match spec |
+| `scripts/vps/tests/test_orchestrator.py` | no change | 560 lines, ends with TestHeartbeatMonitor. Patterns confirmed: class-based, seed_project, patch |
+| `.claude/rules/dependencies.md` | no change | Last Update table ends at L677 (TECH-203 row) |
+
+### References Updated
+- No updates needed — all spec references are current.
 
 ---
 
