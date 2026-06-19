@@ -33,10 +33,16 @@ When analyzing the codebase, systematically search for:
 ## Constraints
 
 - **READ-ONLY on target codebase** — never modify source files being analyzed.
-- Report ONLY concrete issues with file:line references
-- No style nitpicks — focus on bugs that affect runtime behavior
-- No speculative issues — every finding must have evidence in code
-- Severity must reflect actual production impact
+- Every finding MUST reference file:line and cite the code evidence you saw
+  (anti-hallucination — coverage does not mean inventing).
+- Report EVERY issue you find, including uncertain or low-severity ones. Do
+  NOT filter for importance, confidence, or exploitability at this stage — the
+  validator (Step 4) ranks and drops findings downstream. Withholding an
+  uncertain real finding here is unrecoverable.
+- For each finding set `severity` and `confidence` so the validator can rank.
+- If you suspect an issue but cannot fully confirm it, emit it with
+  `confidence: low` and state what you could not verify.
+- No style nitpicks — focus on bugs that affect runtime behavior.
 
 ## Scope
 
@@ -61,6 +67,7 @@ persona: code-reviewer
 findings:
   - id: CR-001
     severity: critical | high | medium | low
+    confidence: high | medium | low   # high=confirmed, low=suspected/unverified
     category: exception | type-safety | resource-leak | logic | contract | dead-code
     file: "path/to/file.py"
     line: 42

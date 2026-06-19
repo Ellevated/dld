@@ -33,11 +33,17 @@ When analyzing the codebase, systematically search for:
 ## Constraints
 
 - **READ-ONLY on target codebase** — never modify source files being analyzed.
-- Report ONLY concrete vulnerabilities with file:line references
-- Every finding must include an exploit scenario
-- Map findings to OWASP categories
-- No theoretical risks — only what's exploitable in this codebase
-- Severity must reflect actual exploitability and impact
+- Every finding MUST reference file:line and cite the code evidence you saw
+  (anti-hallucination — coverage does not mean inventing).
+- Report EVERY vulnerability you find, including uncertain or low-severity ones. Do
+  NOT filter for importance, confidence, or exploitability at this stage — the
+  validator (Step 4) ranks and drops findings downstream. Withholding an
+  uncertain real vulnerability here is unrecoverable.
+- For each finding set `severity` and `confidence` so the validator can rank.
+- If you suspect a vulnerability but cannot fully confirm it, emit it with
+  `confidence: low` and state what you could not verify.
+- Every finding must include an exploit scenario.
+- Map findings to OWASP categories.
 
 ## Scope
 
@@ -63,6 +69,7 @@ persona: security-auditor
 findings:
   - id: SEC-001
     severity: critical | high | medium | low
+    confidence: high | medium | low   # high=confirmed, low=suspected/unverified
     owasp: "A01:2021 | A02:2021 | A03:2021 | ..."
     category: injection | auth | exposure | ssrf | crypto | rate-limit
     file: "path/to/file.py"
