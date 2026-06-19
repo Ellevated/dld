@@ -31,10 +31,10 @@ For each potential finding, the persona must argue BOTH sides:
 FINDING CANDIDATE: {description}
 FOR: {why this is a real issue}
 AGAINST: {why this might be false positive}
-VERDICT: include (confidence: high) | include (confidence: medium) | exclude
+VERDICT: include (confidence: high) | include (confidence: medium) | include (confidence: low) | exclude (proven non-issue)
 ```
 
-**Rule:** Only include findings with confidence >= medium.
+**Rule:** Emit EVERY finding tagged with confidence (high|medium|low). The self-debate sets the confidence label; it MUST NOT exclude a candidate based on low confidence alone. Exclude ONLY if the AGAINST argument proves it is not a defect at all (i.e. the 'bug' is correct behavior), not merely uncertain.
 
 ---
 
@@ -61,7 +61,7 @@ Each persona outputs a JSON array. The orchestrator (night-reviewer.sh) collects
 | Field | Values | Notes |
 |-------|--------|-------|
 | severity | `critical`, `high`, `medium`, `low` | Based on impact |
-| confidence | `high`, `medium` | Low confidence = excluded by self-debate |
+| confidence | `high`, `medium`, `low` | Low confidence = retained in DB, not notified to Telegram |
 | file | relative path | From project root |
 | line | `"42"` or `"42-48"` | Single line or range |
 | issue_type | snake_case category | e.g., `sql_injection`, `dead_code`, `missing_error_handling` |
@@ -101,6 +101,6 @@ When dispatching personas in night mode, prepend this context:
 MODE: night (automated nightly scan)
 OUTPUT: JSON array ONLY — no prose, no markdown report
 SELF-DEBATE: For each finding, argue for AND against before including
-CONFIDENCE: Only include if confidence >= medium
+CONFIDENCE: Tag every finding with confidence (high/medium/low); emit all; exclude only proven non-issues
 DURATION: Keep scan focused, 5-10 min per persona
 ```
