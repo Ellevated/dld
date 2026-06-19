@@ -18,10 +18,7 @@
 | GROWTH-004 | blocked | ftr | 2026-05-16 | GROWTH-004 |
 | GROWTH-005 | blocked | ftr | 2026-05-16 | GROWTH-005 |
 | GROWTH-006 | blocked | ftr | 2026-05-16 | GROWTH-006 |
-| TECH-201 | queued | TECH | 2026-06-19 | [spec](features/TECH-201-2026-06-19-bughunt-coverage-mode-recall.md) |
-| TECH-202 | queued | TECH | 2026-06-19 | [spec](features/TECH-202-2026-06-19-fanout-single-message-parallelism.md) |
-| TECH-203 | queued | TECH | 2026-06-19 | [spec](features/TECH-203-2026-06-19-effort-config-4-8-alignment.md) |
-| TECH-204 | queued | TECH | 2026-06-19 | [spec](features/TECH-204-2026-06-19-night-mode-coverage-with-notify-cap.md) |
+| BUG-205 | queued | BUG | 2026-06-19 | [spec](features/BUG-205-2026-06-19-orchestrator-dispatch-toctou.md) |
 
 ## P2 — Nice-to-have
 
@@ -46,6 +43,10 @@ _no specs_
 | BUG-199 | done | BUG | 2026-06-13 | [spec](features/BUG-199-2026-06-13-autopilot-scope-creep-no-stop-on-done.md) |
 | TECH-198 | done | TECH | 2026-06-13 | [spec](features/TECH-198-2026-06-13-heartbeat-liveness-fix-session-reaper.md) |
 | TECH-200 | done | TECH | 2026-06-13 | [spec](features/TECH-200-2026-06-13-create-initial-normalize-priority.md) |
+| TECH-201 | done | TECH | 2026-06-19 | [spec](features/TECH-201-2026-06-19-bughunt-coverage-mode-recall.md) |
+| TECH-202 | done | TECH | 2026-06-19 | [spec](features/TECH-202-2026-06-19-fanout-single-message-parallelism.md) |
+| TECH-203 | done | TECH | 2026-06-19 | [spec](features/TECH-203-2026-06-19-effort-config-4-8-alignment.md) |
+| TECH-204 | done | TECH | 2026-06-19 | [spec](features/TECH-204-2026-06-19-night-mode-coverage-with-notify-cap.md) |
 
 | Older than 30 days: 168 specs |
 
