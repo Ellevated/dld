@@ -184,3 +184,35 @@ Add a follow-up TECH spec to change `ts_label` format from `%Y%m%d-%H%M%S` to `%
 - **Message:** The autopilot execution contract has a dual-layer defense-in-depth gap: (1) the prompt's loop-mode EXIT directive was soft enough that the model continued working after spec completion, and (2) the only hard enforcement layer (pre-edit.mjs Allowed Files hook) degrades open on develop because the orchestrator did not pin the spec path via env var for autopilot dispatch (only inbox dispatch was wired). Both layers failed simultaneously, allowing out-of-scope commits to flow to origin/develop.
 - **Evidence:** Commit `5196867e` (awardybot, 12:54:23 2026-06-13): `flows/cb-wb-end.yaml` + `scripts/create_flow_campaign.py` + `tests/architecture/test_flows_artefacts_packaged.py` — none in FTR-1185 Allowed Files. Pre-edit hook returned allow because `inferSpecFromBranch()` returns null on develop branch.
 - **Fix applied:** BUG-199: (A) HARD-GATE in SKILL.md loop-mode section, (B) orchestrator now sets CLAUDE_CURRENT_SPEC_PATH for autopilot dispatch (not just inbox), (C) callback logs WARNING on out-of-scope files.
+
+## SIGNAL-20260619-opus48-alignment
+
+| Field | Value |
+|-------|-------|
+| Source | spark |
+| Spec ID | TECH-201..204 |
+| Target | architect |
+| Type | missing_rule |
+| Severity | warning |
+
+### Message
+DLD has no standing process to re-align agent/skill prompts + effort/model
+config when Anthropic ships a new model + prompting guide. The 4.7→4.8 switch
+(2026-06-03) silently introduced recall regressions in finding-stage gates
+(bughunt/night-mode/review obeyed "be conservative" literally) and fan-out
+serialization (no "single message" instruction), discovered only by an ad-hoc
+audit 16 days later. ADR-005/019 were also frozen at 4.6/4.7-era rationale.
+
+### Evidence
+Opus 4.8 guide (memory/reference_opus-4-8-prompting-guide.md): literal
+instruction-following + code-review harness recall trap + fewer subagents by
+default + effort default=high. Audit 2026-06-19 found ~20 affected files across
+both .claude/ trees; SDK effort enum (low|medium|high|max) lacks the `xhigh`
+DLD uses pervasively in frontmatter.
+
+### Suggested Action
+Architect: add a lightweight "model-upgrade checklist" ritual (or extend
+/upgrade) that, on each Anthropic model bump, diffs the new prompting guide
+against (a) finding-stage gate prompts, (b) fan-out dispatch blocks, (c)
+effort/model routing tables + ADRs. Make model-capabilities.md the SSOT mirror
+of frontmatter (TECH-203 starts this).
