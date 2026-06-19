@@ -56,6 +56,11 @@ Each receives:
 **Do NOT see each other's conclusions.**
 
 Dispatch 8 parallel background agents (each has its own persona file in `agents/architect/`):
+
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
 ```yaml
 # All 8 in parallel, ALL background — each persona is a dedicated agent
 Task tool:
@@ -180,6 +185,11 @@ Each persona reads ANONYMOUS research via Read tool (NOT passed in prompt):
 Labels A-H instead of names → reduces anchoring bias.
 
 Dispatch 8 parallel background agents (same personas, Phase 2):
+
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
 ```yaml
 # All 8 in parallel, ALL background — same personas, now reading anonymous peer research
 Task tool:

@@ -146,6 +146,11 @@ Each expert — separate background subagent with isolated context.
 
 ### Phase 1: PARALLEL ANALYSIS
 
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
+
 ```yaml
 # Before launching: read .claude/rules/dependencies.md and .claude/rules/architecture.md
 # Compute SESSION_DIR = ai/.council/{YYYYMMDD}-{spec_id}/
@@ -222,6 +227,11 @@ Each expert knows which label is theirs (to exclude from review)
 ### Phase 2: CROSS-CRITIQUE (Peer Review)
 
 Each expert reads **anonymous** peer files via Read tool (NOT passed in prompt):
+
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
 
 ```yaml
 # Launch cross-critique (ALL background, ALL parallel)

@@ -156,6 +156,11 @@ Common rationalization to REJECT: "the feature is obvious, no need for questions
 
 Dispatch 4 isolated scouts in parallel. Each scout gets a frozen snapshot — they do NOT see each other's work.
 
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
+
 ```yaml
 # Scout 1: External (best practices, libraries)
 Task tool:

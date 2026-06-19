@@ -54,11 +54,17 @@ Each receives:
 | **Fred (Devil)** | "What assumptions about this code are WRONG? What if we rewrite?" |
 
 Dispatch 8 parallel agents (same agent files as greenfield, MODE: retrofit):
+
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
 ```yaml
 # All 8 in parallel — MODE: retrofit changes the questions they ask
 Task tool:
   description: "Architect: domain research (retrofit)"
   subagent_type: architect-domain      # → agents/architect/domain.md
+  run_in_background: true
   prompt: |
     MODE: retrofit
     PHASE: 1
@@ -69,6 +75,7 @@ Task tool:
 Task tool:
   description: "Architect: data research (retrofit)"
   subagent_type: architect-data
+  run_in_background: true
   prompt: |
     MODE: retrofit
     PHASE: 1
@@ -79,6 +86,7 @@ Task tool:
 Task tool:
   description: "Architect: ops research (retrofit)"
   subagent_type: architect-ops
+  run_in_background: true
   prompt: |
     MODE: retrofit
     PHASE: 1
@@ -89,6 +97,7 @@ Task tool:
 Task tool:
   description: "Architect: security research (retrofit)"
   subagent_type: architect-security
+  run_in_background: true
   prompt: |
     MODE: retrofit
     PHASE: 1
@@ -99,6 +108,7 @@ Task tool:
 Task tool:
   description: "Architect: evolutionary research (retrofit)"
   subagent_type: architect-evolutionary
+  run_in_background: true
   prompt: |
     MODE: retrofit
     PHASE: 1
@@ -109,6 +119,7 @@ Task tool:
 Task tool:
   description: "Architect: DX research (retrofit)"
   subagent_type: architect-dx
+  run_in_background: true
   prompt: |
     MODE: retrofit
     PHASE: 1
@@ -119,6 +130,7 @@ Task tool:
 Task tool:
   description: "Architect: LLM research (retrofit)"
   subagent_type: architect-llm
+  run_in_background: true
   prompt: |
     MODE: retrofit
     PHASE: 1
@@ -129,6 +141,7 @@ Task tool:
 Task tool:
   description: "Architect: Devil research (retrofit)"
   subagent_type: architect-devil
+  run_in_background: true
   prompt: |
     MODE: retrofit
     PHASE: 1
@@ -147,11 +160,18 @@ Same as Greenfield. Each persona sees ANONYMOUS research from others (A-G).
 Each responds: agree/disagree + gaps + ranking.
 
 Dispatch 8 parallel agents (same personas, Phase 2):
+
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
 ```yaml
 # All 8 in parallel — same personas, now with anonymous peer research
+# ALL use run_in_background: true (same as Phase 2)
 Task tool:
   description: "Architect: domain critique"
   subagent_type: architect-domain
+  run_in_background: true
   prompt: |
     PHASE: 2
     ANONYMOUS RESEARCH:

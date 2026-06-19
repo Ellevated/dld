@@ -70,11 +70,17 @@ After Phase 1, dispatch 4 scouts in parallel. Each scout is isolated — they do
 **Blueprint Constraint:**
 If `ai/blueprint/system-blueprint/` exists, ALL scouts receive it as context.
 
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
+
 ```yaml
 # Scout 1: External Research
 Task:
   description: "Spark scout: external research for {feature}"
   subagent_type: "spark-external"
+  run_in_background: true
   prompt: |
     FEATURE: {feature_description_from_dialogue}
 
@@ -91,6 +97,7 @@ Task:
 Task:
   description: "Spark scout: codebase analysis for {feature}"
   subagent_type: "spark-codebase"
+  run_in_background: true
   prompt: |
     FEATURE: {feature_description_from_dialogue}
 
@@ -107,6 +114,7 @@ Task:
 Task:
   description: "Spark scout: pattern alternatives for {feature}"
   subagent_type: "spark-patterns"
+  run_in_background: true
   prompt: |
     FEATURE: {feature_description_from_dialogue}
 
@@ -123,6 +131,7 @@ Task:
 Task:
   description: "Spark scout: devil's advocate for {feature}"
   subagent_type: "spark-devil"
+  run_in_background: true
   prompt: |
     FEATURE: {feature_description_from_dialogue}
 

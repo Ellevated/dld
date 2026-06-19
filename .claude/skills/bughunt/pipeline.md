@@ -64,10 +64,16 @@ Fallback: single zone = entire target.
 
 ## Step 1: Persona Analysis (Background Fan-Out)
 
-Launch ALL 6 personas × N zones in background:
+Compute the full persona × zone matrix (6 personas × N zones), then emit
+EVERY Task call in ONE assistant message. Do not loop-and-wait per agent.
+
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
 
 ```yaml
-For each zone Z and persona P:
+# Emit ALL 6×N Task calls in a single turn (one call per persona-zone pair):
   Task:
     subagent_type: bughunt-{persona_type}
     run_in_background: true
