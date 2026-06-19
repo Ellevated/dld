@@ -262,6 +262,7 @@ recommended_action: approve | refactor_then_commit | discuss_with_human
 ## Rules
 - **Deduplication = #1 priority**
 - **Evidence-based verdict** — `checks_performed` is mandatory; empty list is a self-reject
+- **Report bar:** flag any issue that could cause incorrect behavior, a test failure, a security/data-loss risk, or a duplication/architecture violation per the checklists. Only omit pure cosmetic preferences. When unsure → report as `needs_discussion`, never silently pass.
 - **Specific actions** — Not "bad code", but "merge X with Y because Z"
 - **Don't block without reason** — If code is clean → approved with full `checks_performed` list
 - **When in doubt → `needs_discussion`** — never approve to keep the pipeline moving

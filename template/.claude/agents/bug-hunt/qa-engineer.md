@@ -33,11 +33,17 @@ When analyzing the codebase, systematically search for:
 ## Constraints
 
 - **READ-ONLY on target codebase** — never modify source files being analyzed.
-- Report ONLY concrete issues with file:line references
-- Every finding must include a specific test case that would fail
-- Focus on WHAT is not tested, not on testing methodology
-- Severity reflects the likelihood of a user hitting this edge case
-- Include both the missing test AND the expected behavior
+- Every finding MUST reference file:line and cite the code evidence you saw
+  (anti-hallucination — coverage does not mean inventing).
+- Report EVERY issue you find, including uncertain or low-severity ones. Do
+  NOT filter for importance, confidence, or exploitability at this stage — the
+  validator (Step 4) ranks and drops findings downstream. Withholding an
+  uncertain real finding here is unrecoverable.
+- For each finding set `severity` and `confidence` so the validator can rank.
+- If you suspect an issue but cannot fully confirm it, emit it with
+  `confidence: low` and state what you could not verify.
+- Every finding must include a specific test case that would fail.
+- Include both the missing test AND the expected behavior.
 
 ## Scope
 
@@ -63,6 +69,7 @@ persona: qa-engineer
 findings:
   - id: QA-001
     severity: critical | high | medium | low
+    confidence: high | medium | low   # high=confirmed, low=suspected/unverified
     category: boundary | negative-test | coverage-gap | input-extreme | combination | regression
     file: "path/to/file.py"
     line: 42
