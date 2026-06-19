@@ -792,6 +792,22 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
     # and the hook degrades open — allowing out-of-scope edits.
     spec_path = str(spec_files[0]) if spec_files else ""
     pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": spec_path}
+    # BUG-205: authoritative TOCTOU re-check.  The list_by_status() snapshot
+    # (top of scan_queued) can go stale before we actually dispatch: callback
+    # runs as a SEPARATE process and may have written blocked/done for this
+    # spec via git plumbing, and git_pull is skipped while an agent is running
+    # (stale local HEAD).  The callback-audit.jsonl guard above is node-local +
+    # time-windowed, NOT authoritative.  Re-read the lifecycle SoT (HEAD) for
+    # THIS spec right before pueue add; abort if it is no longer dispatchable.
+    fresh = lifecycle.read_lifecycle(project_dir, spec_id)
+    fresh_status = fresh.get("status") if fresh else None
+    if fresh_status not in ("queued", "resumed"):
+        log.info(
+            "skip dispatch: %s status changed to %s after scan (TOCTOU re-check)",
+            spec_id,
+            fresh_status,
+        )
+        return False
     pueue_id = _pueue_add(
         f"{provider}-runner",
         task_label,

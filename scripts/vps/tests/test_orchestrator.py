@@ -557,3 +557,120 @@ class TestHeartbeatMonitor:
         heartbeat_monitor.main()
         captured = capsys.readouterr()
         assert "WARN: no heartbeat file" in captured.err
+
+
+class TestTOCTOURecheck:
+    """BUG-205: scan_queued TOCTOU re-check — authoritative lifecycle re-read before dispatch.
+
+    After all dedup checks pass, scan_queued re-reads the lifecycle YAML for the
+    candidate spec.  If the status has changed (e.g. callback wrote blocked/done
+    while we were checking pueue), dispatch is aborted.  These tests cover the
+    five equivalence classes introduced in the BUG-205 spec.
+    """
+
+    def _setup_features(self, tmp_path: Path, spec_id: str) -> None:
+        """Create a dummy spec file so scan_queued can glob for it."""
+        features = tmp_path / "ai" / "features"
+        features.mkdir(parents=True, exist_ok=True)
+        (features / f"{spec_id}-dummy.md").write_text("# Dummy spec\n")
+
+    def test_stale_block_stops_dispatch(self, tmp_path, seed_project):
+        """EC-4: lifecycle re-read returns 'blocked' → abort, no pueue add."""
+        spec_id = "BUG-TEST1"
+        self._setup_features(tmp_path, spec_id)
+        mock_add = MagicMock(return_value=None)
+
+        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]):
+            with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value={"status": "blocked", "spec_id": spec_id}):
+                with patch("orchestrator.pueue_has_active_label", return_value=False):
+                    with patch("orchestrator.pueue_has_active_spec", return_value=False):
+                        with patch("orchestrator.db.get_available_slots", return_value=1):
+                            with patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}):
+                                with patch("orchestrator._pueue_add", mock_add):
+                                    with patch("orchestrator.SCRIPT_DIR", tmp_path):
+                                        result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is False
+        mock_add.assert_not_called()
+
+    def test_happy_path_dispatches(self, tmp_path, seed_project):
+        """EC-5: lifecycle re-read returns 'queued' → dispatch proceeds."""
+        spec_id = "BUG-TEST2"
+        self._setup_features(tmp_path, spec_id)
+        mock_add = MagicMock(return_value=42)
+
+        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]):
+            with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value={"status": "queued", "spec_id": spec_id}):
+                with patch("orchestrator.pueue_has_active_label", return_value=False):
+                    with patch("orchestrator.pueue_has_active_spec", return_value=False):
+                        with patch("orchestrator.db.get_available_slots", return_value=1):
+                            with patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}):
+                                with patch("orchestrator._pueue_add", mock_add):
+                                    with patch("orchestrator.SCRIPT_DIR", tmp_path):
+                                        with patch("orchestrator.db.try_acquire_slot"):
+                                            with patch("orchestrator.db.log_task"):
+                                                with patch("orchestrator.db.update_project_phase"):
+                                                    result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is True
+        mock_add.assert_called_once()
+
+    def test_read_none_stops_dispatch(self, tmp_path, seed_project):
+        """EC-6: lifecycle re-read returns None (yaml missing) → abort, no pueue add."""
+        spec_id = "BUG-TEST3"
+        self._setup_features(tmp_path, spec_id)
+        mock_add = MagicMock(return_value=None)
+
+        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]):
+            with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value=None):
+                with patch("orchestrator.pueue_has_active_label", return_value=False):
+                    with patch("orchestrator.pueue_has_active_spec", return_value=False):
+                        with patch("orchestrator.db.get_available_slots", return_value=1):
+                            with patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}):
+                                with patch("orchestrator._pueue_add", mock_add):
+                                    with patch("orchestrator.SCRIPT_DIR", tmp_path):
+                                        result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is False
+        mock_add.assert_not_called()
+
+    def test_stale_done_stops_dispatch(self, tmp_path, seed_project):
+        """lifecycle re-read returns 'done' → abort (callback wrote done mid-cycle)."""
+        spec_id = "BUG-TEST4"
+        self._setup_features(tmp_path, spec_id)
+        mock_add = MagicMock(return_value=None)
+
+        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]):
+            with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value={"status": "done", "spec_id": spec_id}):
+                with patch("orchestrator.pueue_has_active_label", return_value=False):
+                    with patch("orchestrator.pueue_has_active_spec", return_value=False):
+                        with patch("orchestrator.db.get_available_slots", return_value=1):
+                            with patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}):
+                                with patch("orchestrator._pueue_add", mock_add):
+                                    with patch("orchestrator.SCRIPT_DIR", tmp_path):
+                                        result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is False
+        mock_add.assert_not_called()
+
+    def test_resumed_status_dispatches(self, tmp_path, seed_project):
+        """'resumed' is also an allowed dispatch status → pueue add called."""
+        spec_id = "BUG-TEST5"
+        self._setup_features(tmp_path, spec_id)
+        mock_add = MagicMock(return_value=42)
+
+        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]):
+            with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value={"status": "resumed", "spec_id": spec_id}):
+                with patch("orchestrator.pueue_has_active_label", return_value=False):
+                    with patch("orchestrator.pueue_has_active_spec", return_value=False):
+                        with patch("orchestrator.db.get_available_slots", return_value=1):
+                            with patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}):
+                                with patch("orchestrator._pueue_add", mock_add):
+                                    with patch("orchestrator.SCRIPT_DIR", tmp_path):
+                                        with patch("orchestrator.db.try_acquire_slot"):
+                                            with patch("orchestrator.db.log_task"):
+                                                with patch("orchestrator.db.update_project_phase"):
+                                                    result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is True
+        mock_add.assert_called_once()
