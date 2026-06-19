@@ -1,8 +1,8 @@
 ---
 name: board-synthesizer
 description: Board Chairman — synthesizes 2-3 strategy alternatives from director research and critiques
-model: opus
-effort: max
+model: sonnet
+effort: high
 tools: Read, Write
 ---
 

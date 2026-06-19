@@ -1,8 +1,8 @@
 ---
 name: audit-synthesizer
 description: Deep Audit Synthesizer — reads 6 persona reports + inventory, produces consolidated deep-audit-report.md.
-model: opus
-effort: max
+model: sonnet
+effort: xhigh
 tools: Read, Write
 ---
 

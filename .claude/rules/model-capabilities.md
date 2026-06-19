@@ -1,7 +1,7 @@
 # Model Capabilities (Claude Opus 4.8)
 
 Reference for agents about current model capabilities.
-Last updated: 2026-06-03
+Last updated: 2026-06-19
 
 ---
 
@@ -40,13 +40,13 @@ Agents should operate at different effort levels based on task complexity:
 
 | Agent Role | Model | Recommended Effort | Rationale |
 |------------|-------|-------------------|-----------|
-| planner | opus | xhigh | Deep analysis, drift detection, long-horizon agentic |
-| council experts | opus | xhigh | Expert-level architectural decisions, adversarial |
+| planner | opus | high | Deep analysis, drift detection. Kept at high (not xhigh) to stay within 90-min TIMEOUT_SECONDS budget (BUG-1101). |
+| council experts | opus | max | Expert-level architectural decisions, adversarial |
 | debugger | opus | high | Root cause analysis requires deep thinking |
-| review (Code Quality Gate) | sonnet | xhigh | Critical commit gate. SWE-bench: Opus 87.6% / Sonnet 80.8% — the 7pp gap is on end-to-end coding, not on deduplication/LOC/anti-pattern checks where Sonnet + strict checklist + `checks_performed` evidence gap closes. 12× cheaper on Max compute and runs once per task = massive saving. Prompt hardened 2026-04-24 with reviewer-discipline section. |
+| review (Code Quality Gate) | sonnet | xhigh | Critical commit gate (TECH-201 owns review.md). 12x cheaper on Max compute. |
 | solution-architect (bughunt) | opus | high | Fix design needs careful reasoning |
-| triz toc-analyst, triz-analyst | opus | high | System-level contradiction/constraint resolution |
-| coder | sonnet | medium | Pattern-following coding (Sonnet 4.6 = 80.8% SWE-bench, 5x cheaper) |
+| triz toc-analyst, triz-analyst | opus | max | System-level contradiction/constraint resolution |
+| coder | sonnet | high | Implementation coding (Sonnet 4.6 = 80.8% SWE-bench, 5x cheaper) |
 | scout | sonnet | high | Research quality matters, but knowledge tasks favor Sonnet |
 | tester | sonnet | medium | Execution-focused, smart-testing logic |
 | spec-reviewer | sonnet | medium | Checklist verification, not creative |
@@ -56,7 +56,7 @@ Agents should operate at different effort levels based on task complexity:
 | bughunt validator | sonnet | high | Triage requires good judgment |
 | audit/synthesizer | sonnet | xhigh | Merges 6 persona reports — needs deep synthesis (changed 2026-04-24) |
 | synthesizers (board, triz) | sonnet | high | Merge/format structured output — Opus overkill (changed 2026-04-24) |
-| council-synthesizer, facilitators (architect/board/spark) | sonnet | medium | Process keeper / orchestration |
+| council-synthesizer, facilitators (architect/board/spark) | sonnet | max | Process keeper / orchestration (synced to frontmatter 2026-06-19) |
 | documenter | haiku | low | Structured release notes, shaped by CHANGELOG template (changed 2026-04-24) |
 | bughunt scope-decomposer | haiku | low | File listing and zone grouping (changed 2026-04-24) |
 | bughunt findings-collector | haiku | low | Normalization, no reasoning (changed 2026-04-24) |
@@ -64,11 +64,22 @@ Agents should operate at different effort levels based on task complexity:
 | triz data-collector | sonnet | medium | Pure data extraction (shell + aggregation) |
 | ~~diary-recorder~~ | haiku | low | DEPRECATED: inline in task-loop Step 6.5 (ADR-007). If used: haiku. |
 
+> **Opus 4.8 effort (TECH-203, 2026-06-19):** Default effort on all surfaces is
+> `high`. CLI/frontmatter levels: `low | medium | high | xhigh | max`. **Agent SDK
+> `ClaudeAgentOptions.effort` enum: `low | medium | high | max` (no xhigh)** — the
+> claude-runner main loop pins `high` via `AUTOPILOT_EFFORT` env. Subagents resolve
+> effort from their own frontmatter (which CAN use xhigh). Thinking is
+> adaptive-only; depth is controlled by effort, not the old "thinking budget" format.
+
 **2026-04-24 rationale:** Opus 4.7 on structured merge/format tasks (synthesizers)
 showed overthinking + cost without quality gain. Sonnet 4.6 benchmarks tighter
 on knowledge/merge tasks and costs 5x less. Haiku 4.5 handles format-heavy
 subagents (scope decomposition, findings collection, doc updates) at 95%
 quality of Sonnet at 3x lower cost. See ADR-019.
+
+**2026-06-19 sync (TECH-203):** Table realigned to frontmatter SSOT. Key changes:
+planner xhigh→high, council experts xhigh→max, coder medium→high, triz analysts
+high→max, council-synthesizer/facilitators medium→max. See ADR-028.
 
 ---
 
