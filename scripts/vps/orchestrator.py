@@ -722,6 +722,53 @@ def scan_inbox(project_id: str, project_dir: str) -> int:
     return count
 
 
+# BUG-206: dependency-aware dispatch. Specs declare ordering with an
+# "AFTER <SPEC-ID>" marker in their backlog row (the uniform place this
+# convention lives — spec prose is too noisy to parse reliably). scan_queued
+# must not dispatch a spec whose declared dependency is not yet done, or the
+# autopilot burns a full run self-blocking on the unmet prerequisite
+# (ARCH-1246/FTR-1245 vs the still-queued TECH-1244, awardybot 2026-06-20).
+# Dependency EDGE comes from the backlog; dependency STATUS from the lifecycle SoT.
+_AFTER_DEP_RE = re.compile(r"\bafter\s+([A-Z]{2,5}-\d+)", re.IGNORECASE)
+
+
+def _backlog_deps(project_dir: str, spec_id: str) -> set:
+    """Declared 'AFTER <ID>' dependencies for spec_id, read from its backlog row.
+
+    Returns an empty set when the backlog, the row, or the marker is absent —
+    conservative by design: a missing marker means no gate, never a stall.
+    """
+    backlog = Path(project_dir) / "ai" / "backlog.md"
+    if not backlog.is_file():
+        return set()
+    row_re = re.compile(rf"^\s*\|\s*{re.escape(spec_id)}\s*\|")
+    try:
+        for line in backlog.read_text(errors="replace").splitlines():
+            if row_re.match(line):
+                deps = {m.group(1).upper() for m in _AFTER_DEP_RE.finditer(line)}
+                deps.discard(spec_id)
+                return deps
+    except OSError:
+        pass
+    return set()
+
+
+def _unmet_dependencies(project_dir: str, spec_id: str) -> list:
+    """Subset of spec_id's declared deps whose lifecycle status is not 'done'.
+
+    A dependency absent from lifecycle is treated as MET — avoids a permanent
+    stall on a stale/archived reference. Prefer a false-negative (dispatch, then
+    the autopilot self-blocks and is correctly labeled by callback) over a
+    false-positive (a spec that silently never dispatches).
+    """
+    unmet = []
+    for dep in sorted(_backlog_deps(project_dir, spec_id)):
+        dep_lc = lifecycle.read_lifecycle(project_dir, dep)
+        if dep_lc and dep_lc.get("status") != "done":
+            unmet.append(dep)
+    return unmet
+
+
 def scan_queued(project_id: str, project_dir: str) -> bool:
     """Find first queued/resumed spec via lifecycle.yaml and dispatch autopilot.
 
@@ -732,9 +779,22 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
     if not queued_list:
         return False
 
-    # First match wins. (Priority sorting can be layered later; current
-    # backlog.md picked first textual match too.)
-    spec_id = queued_list[0]["spec_id"]
+    # BUG-206: dependency-aware selection. Pick the first queued/resumed spec
+    # whose declared "AFTER <ID>" dependencies are all done. Skipping a
+    # dep-unmet spec (instead of dispatching it) prevents the autopilot from
+    # burning a full run self-blocking on an unmet prerequisite. Specs without a
+    # marker, or whose deps are all done, dispatch as before (first match wins).
+    spec_id = None
+    for cand in queued_list:
+        cid = cand["spec_id"]
+        unmet = _unmet_dependencies(project_dir, cid)
+        if unmet:
+            log.info("DEP_GATE: skip %s — unmet dependency %s (not done)", cid, ", ".join(unmet))
+            continue
+        spec_id = cid
+        break
+    if spec_id is None:
+        return False
 
     # Skip dispatch if this spec was recently processed — avoids re-dispatch loops.
     # - blocked in last 30 min: guard demoted it, needs human intervention

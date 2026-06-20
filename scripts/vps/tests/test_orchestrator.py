@@ -580,15 +580,26 @@ class TestTOCTOURecheck:
         self._setup_features(tmp_path, spec_id)
         mock_add = MagicMock(return_value=None)
 
-        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]):
-            with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value={"status": "blocked", "spec_id": spec_id}):
+        with patch.object(
+            orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+        ):
+            with patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "blocked", "spec_id": spec_id},
+            ):
                 with patch("orchestrator.pueue_has_active_label", return_value=False):
                     with patch("orchestrator.pueue_has_active_spec", return_value=False):
                         with patch("orchestrator.db.get_available_slots", return_value=1):
-                            with patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}):
+                            with patch(
+                                "orchestrator.db.get_project_state",
+                                return_value={"provider": "claude"},
+                            ):
                                 with patch("orchestrator._pueue_add", mock_add):
                                     with patch("orchestrator.SCRIPT_DIR", tmp_path):
-                                        result = orchestrator.scan_queued("testproject", str(tmp_path))
+                                        result = orchestrator.scan_queued(
+                                            "testproject", str(tmp_path)
+                                        )
 
         assert result is False
         mock_add.assert_not_called()
@@ -599,18 +610,29 @@ class TestTOCTOURecheck:
         self._setup_features(tmp_path, spec_id)
         mock_add = MagicMock(return_value=42)
 
-        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]):
-            with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value={"status": "queued", "spec_id": spec_id}):
+        with patch.object(
+            orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+        ):
+            with patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "queued", "spec_id": spec_id},
+            ):
                 with patch("orchestrator.pueue_has_active_label", return_value=False):
                     with patch("orchestrator.pueue_has_active_spec", return_value=False):
                         with patch("orchestrator.db.get_available_slots", return_value=1):
-                            with patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}):
+                            with patch(
+                                "orchestrator.db.get_project_state",
+                                return_value={"provider": "claude"},
+                            ):
                                 with patch("orchestrator._pueue_add", mock_add):
                                     with patch("orchestrator.SCRIPT_DIR", tmp_path):
                                         with patch("orchestrator.db.try_acquire_slot"):
                                             with patch("orchestrator.db.log_task"):
                                                 with patch("orchestrator.db.update_project_phase"):
-                                                    result = orchestrator.scan_queued("testproject", str(tmp_path))
+                                                    result = orchestrator.scan_queued(
+                                                        "testproject", str(tmp_path)
+                                                    )
 
         assert result is True
         mock_add.assert_called_once()
@@ -621,15 +643,22 @@ class TestTOCTOURecheck:
         self._setup_features(tmp_path, spec_id)
         mock_add = MagicMock(return_value=None)
 
-        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]):
+        with patch.object(
+            orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+        ):
             with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value=None):
                 with patch("orchestrator.pueue_has_active_label", return_value=False):
                     with patch("orchestrator.pueue_has_active_spec", return_value=False):
                         with patch("orchestrator.db.get_available_slots", return_value=1):
-                            with patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}):
+                            with patch(
+                                "orchestrator.db.get_project_state",
+                                return_value={"provider": "claude"},
+                            ):
                                 with patch("orchestrator._pueue_add", mock_add):
                                     with patch("orchestrator.SCRIPT_DIR", tmp_path):
-                                        result = orchestrator.scan_queued("testproject", str(tmp_path))
+                                        result = orchestrator.scan_queued(
+                                            "testproject", str(tmp_path)
+                                        )
 
         assert result is False
         mock_add.assert_not_called()
@@ -640,15 +669,26 @@ class TestTOCTOURecheck:
         self._setup_features(tmp_path, spec_id)
         mock_add = MagicMock(return_value=None)
 
-        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]):
-            with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value={"status": "done", "spec_id": spec_id}):
+        with patch.object(
+            orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+        ):
+            with patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "done", "spec_id": spec_id},
+            ):
                 with patch("orchestrator.pueue_has_active_label", return_value=False):
                     with patch("orchestrator.pueue_has_active_spec", return_value=False):
                         with patch("orchestrator.db.get_available_slots", return_value=1):
-                            with patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}):
+                            with patch(
+                                "orchestrator.db.get_project_state",
+                                return_value={"provider": "claude"},
+                            ):
                                 with patch("orchestrator._pueue_add", mock_add):
                                     with patch("orchestrator.SCRIPT_DIR", tmp_path):
-                                        result = orchestrator.scan_queued("testproject", str(tmp_path))
+                                        result = orchestrator.scan_queued(
+                                            "testproject", str(tmp_path)
+                                        )
 
         assert result is False
         mock_add.assert_not_called()
@@ -659,18 +699,161 @@ class TestTOCTOURecheck:
         self._setup_features(tmp_path, spec_id)
         mock_add = MagicMock(return_value=42)
 
-        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]):
-            with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value={"status": "resumed", "spec_id": spec_id}):
+        with patch.object(
+            orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+        ):
+            with patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "resumed", "spec_id": spec_id},
+            ):
                 with patch("orchestrator.pueue_has_active_label", return_value=False):
                     with patch("orchestrator.pueue_has_active_spec", return_value=False):
                         with patch("orchestrator.db.get_available_slots", return_value=1):
-                            with patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}):
+                            with patch(
+                                "orchestrator.db.get_project_state",
+                                return_value={"provider": "claude"},
+                            ):
                                 with patch("orchestrator._pueue_add", mock_add):
                                     with patch("orchestrator.SCRIPT_DIR", tmp_path):
                                         with patch("orchestrator.db.try_acquire_slot"):
                                             with patch("orchestrator.db.log_task"):
                                                 with patch("orchestrator.db.update_project_phase"):
-                                                    result = orchestrator.scan_queued("testproject", str(tmp_path))
+                                                    result = orchestrator.scan_queued(
+                                                        "testproject", str(tmp_path)
+                                                    )
 
         assert result is True
         mock_add.assert_called_once()
+
+
+class TestDependencyGate:
+    """BUG-206: dependency-aware dispatch. scan_queued must skip a queued spec
+    whose declared 'AFTER <ID>' backlog dependency is not yet done, and dispatch
+    the next dependency-satisfied candidate instead.
+
+    Regression: ARCH-1246 / FTR-1245 (awardybot 2026-06-20) were dispatched
+    while their prerequisite TECH-1244 was still queued (alphabetical-first
+    selection is dependency-blind), and the autopilot burned a run self-blocking.
+    """
+
+    def _write_backlog(self, tmp_path, rows):
+        backlog = tmp_path / "ai" / "backlog.md"
+        backlog.parent.mkdir(parents=True, exist_ok=True)
+        header = "| ID | status | kind | date | desc |\n| --- | --- | --- | --- | --- |\n"
+        backlog.write_text(header + "\n".join(rows) + "\n")
+
+    # --- _backlog_deps ---
+
+    def test_backlog_deps_extracts_after_marker(self, tmp_path):
+        self._write_backlog(
+            tmp_path,
+            [
+                "| ARCH-1246 | queued | arch | 2026-06-20 | flow registry. AFTER TECH-1244 |",
+                "| TECH-1244 | queued | tech | 2026-06-20 | the prerequisite |",
+            ],
+        )
+        assert orchestrator._backlog_deps(str(tmp_path), "ARCH-1246") == {"TECH-1244"}
+        # the dependency itself declares nothing
+        assert orchestrator._backlog_deps(str(tmp_path), "TECH-1244") == set()
+
+    def test_backlog_deps_decorated_and_lowercase(self, tmp_path):
+        self._write_backlog(
+            tmp_path,
+            [
+                "| FTR-1245 | queued | ftr | 2026-06-20 | mirror. ⛔ AFTER TECH-1244 |",
+                "| FTR-9 | queued | ftr | 2026-06-20 | x. after BUG-192 |",
+            ],
+        )
+        assert orchestrator._backlog_deps(str(tmp_path), "FTR-1245") == {"TECH-1244"}
+        assert orchestrator._backlog_deps(str(tmp_path), "FTR-9") == {"BUG-192"}
+
+    def test_backlog_deps_absent_marker_or_file(self, tmp_path):
+        assert orchestrator._backlog_deps(str(tmp_path), "X-1") == set()  # no backlog file
+        self._write_backlog(tmp_path, ["| X-1 | queued | ftr | 2026-06-20 | no deps here |"])
+        assert orchestrator._backlog_deps(str(tmp_path), "X-1") == set()  # no marker
+
+    # --- _unmet_dependencies ---
+
+    def test_unmet_when_dep_not_done(self, tmp_path):
+        self._write_backlog(
+            tmp_path, ["| ARCH-1246 | queued | arch | 2026-06-20 | x. AFTER TECH-1244 |"]
+        )
+        with patch.object(
+            orchestrator.lifecycle, "read_lifecycle", return_value={"status": "queued"}
+        ):
+            assert orchestrator._unmet_dependencies(str(tmp_path), "ARCH-1246") == ["TECH-1244"]
+
+    def test_met_when_dep_done(self, tmp_path):
+        self._write_backlog(
+            tmp_path, ["| ARCH-1246 | queued | arch | 2026-06-20 | x. AFTER TECH-1244 |"]
+        )
+        with patch.object(
+            orchestrator.lifecycle, "read_lifecycle", return_value={"status": "done"}
+        ):
+            assert orchestrator._unmet_dependencies(str(tmp_path), "ARCH-1246") == []
+
+    def test_met_when_dep_absent_from_lifecycle(self, tmp_path):
+        """Stale/archived reference → treated as met (avoid permanent stall)."""
+        self._write_backlog(
+            tmp_path, ["| ARCH-1246 | queued | arch | 2026-06-20 | x. AFTER TECH-999 |"]
+        )
+        with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value=None):
+            assert orchestrator._unmet_dependencies(str(tmp_path), "ARCH-1246") == []
+
+    # --- scan_queued integration ---
+
+    def test_scan_queued_skips_dep_unmet_dispatches_next(self, tmp_path, seed_project):
+        """ARCH-1246 (dep unmet) skipped → FTR-1247 (no dep) dispatched."""
+        features = tmp_path / "ai" / "features"
+        features.mkdir(parents=True, exist_ok=True)
+        (features / "FTR-1247-dummy.md").write_text("# dummy\n")
+        queued = [{"spec_id": "ARCH-1246"}, {"spec_id": "FTR-1247"}]
+        mock_add = MagicMock(return_value=42)
+
+        def fake_unmet(_pd, sid):
+            return ["TECH-1244"] if sid == "ARCH-1246" else []
+
+        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=queued):
+            with patch("orchestrator._unmet_dependencies", side_effect=fake_unmet):
+                with patch.object(
+                    orchestrator.lifecycle,
+                    "read_lifecycle",
+                    return_value={"status": "queued", "spec_id": "FTR-1247"},
+                ):
+                    with patch("orchestrator.pueue_has_active_label", return_value=False):
+                        with patch("orchestrator.pueue_has_active_spec", return_value=False):
+                            with patch("orchestrator.db.get_available_slots", return_value=1):
+                                with patch(
+                                    "orchestrator.db.get_project_state",
+                                    return_value={"provider": "claude"},
+                                ):
+                                    with patch("orchestrator._pueue_add", mock_add):
+                                        with patch("orchestrator.SCRIPT_DIR", tmp_path):
+                                            with patch("orchestrator.db.try_acquire_slot"):
+                                                with patch("orchestrator.db.log_task"):
+                                                    with patch(
+                                                        "orchestrator.db.update_project_phase"
+                                                    ):
+                                                        result = orchestrator.scan_queued(
+                                                            "testproject", str(tmp_path)
+                                                        )
+
+        assert result is True
+        mock_add.assert_called_once()
+        assert "FTR-1247" in str(mock_add.call_args)
+        assert "ARCH-1246" not in str(mock_add.call_args)
+
+    def test_scan_queued_all_deps_unmet_returns_false(self, tmp_path, seed_project):
+        """Every queued candidate has an unmet dependency → nothing dispatched."""
+        queued = [{"spec_id": "ARCH-1246"}, {"spec_id": "FTR-1245"}]
+        mock_add = MagicMock(return_value=None)
+
+        with patch.object(orchestrator.lifecycle, "list_by_status", return_value=queued):
+            with patch("orchestrator._unmet_dependencies", return_value=["TECH-1244"]):
+                with patch("orchestrator._pueue_add", mock_add):
+                    with patch("orchestrator.SCRIPT_DIR", tmp_path):
+                        result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is False
+        mock_add.assert_not_called()

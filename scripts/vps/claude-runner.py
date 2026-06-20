@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import time
@@ -159,6 +160,27 @@ ALLOWED_TOOLS = [
 ]
 
 
+# Autopilot's structured completion signal. The agent is told to emit a final
+# JSON object with `task_status`, but Opus 4.x often wraps it in a markdown
+# report (```json fence inside prose). Scan the full result text for the token
+# so the callback gets the signal regardless of formatting / truncation.
+_TASK_STATUS_RE = re.compile(r'"task_status"\s*:\s*"([a-z_]+)"')
+
+
+def _extract_task_status(result_text: str) -> str:
+    """Best-effort extraction of task_status from the agent's final text.
+
+    Robust to the value being embedded in a markdown ```json fence rather than
+    a bare top-level JSON object. Returns "" if not found. Lifted to a
+    top-level log field so callback._parse_log_file never depends on the
+    (truncated) result_preview being valid JSON.
+    """
+    if not result_text:
+        return ""
+    m = _TASK_STATUS_RE.search(result_text)
+    return m.group(1) if m else ""
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -256,9 +278,14 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
                 # AssistantMessage) so updated_at stays fresh during long
                 # tool-execution phases between assistant turns.
                 _write_heartbeat(
-                    LOG_DIR, project_name, ts_label, turn_count,
+                    LOG_DIR,
+                    project_name,
+                    ts_label,
+                    turn_count,
                     int(time.monotonic() - started_mono),
-                    last_tool_name, started_at_iso, MODEL,
+                    last_tool_name,
+                    started_at_iso,
+                    MODEL,
                 )
 
                 # Capture assistant text (last response before ResultMessage)
@@ -402,6 +429,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         "cache_read_input_tokens": usage_metrics["cache_read_input_tokens"],
         "cache_hit_rate": cache_hit_rate,
         "model_usage": model_usage,
+        "task_status": _extract_task_status(result_text),
         "result_preview": result_text[:1000] if result_text else "",
     }
     log_file.write_text(json.dumps(log_data, ensure_ascii=False, indent=2))

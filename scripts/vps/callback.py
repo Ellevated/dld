@@ -200,9 +200,17 @@ def _parse_log_file(log_path: Path) -> tuple:
     try:
         data = json.loads(log_path.read_text())
         skill = data.get("skill", "")
-        preview = str(data.get("result_preview", ""))[:500]
+        full_preview = str(data.get("result_preview", ""))
+        preview = full_preview[:500]
 
-        # task_status: prefer top-level field; fall back to parsing result_preview as JSON
+        # task_status resolution (most→least reliable):
+        #   1. top-level field — claude-runner._extract_task_status writes it
+        #      from the FULL result text (untruncated, format-agnostic).
+        #   2. whole-preview JSON — legacy bare-JSON final message.
+        #   3. regex scan of full preview — agent wrapped task_status in a
+        #      markdown ```json fence (Opus 4.x). Scans full_preview (up to
+        #      1000 chars) NOT the 500-char display preview, so the token is
+        #      not lost to truncation.
         task_status = str(data.get("task_status", "") or "")
         if not task_status and preview:
             try:
@@ -210,6 +218,10 @@ def _parse_log_file(log_path: Path) -> tuple:
                 task_status = str(inner.get("task_status", "") or "")
             except json.JSONDecodeError:
                 pass
+        if not task_status and full_preview:
+            m = re.search(r'"task_status"\s*:\s*"([a-z_]+)"', full_preview)
+            if m:
+                task_status = m.group(1)
 
         input_tokens = int(data.get("input_tokens", 0) or 0)
         output_tokens = int(data.get("output_tokens", 0) or 0)
@@ -1211,8 +1223,14 @@ def verify_status_sync(
                     new_status = "blocked"
                     reason = blocked_reason
             else:
+                # Autopilot EXPLICITLY signaled blocked/needs_review and the gate
+                # finds no merged implementation — this is the expected, correct
+                # outcome of a deliberate self-block (e.g. unmet dependency), NOT
+                # a gate/guard anomaly. Surface the real cause instead of the
+                # misleading no_merged_implementation hint (which tells the
+                # operator to force-done a spec the autopilot intentionally held).
                 new_status = "blocked"
-                reason = blocked_reason
+                reason = "autopilot_signaled_blocked"
 
     # Autopilot explicitly signaled blocked/needs_review → honor over gate=done
     # (autopilot saw something the gate can't infer: tests failed, need human, etc.)
