@@ -507,9 +507,7 @@ class TestPushLocalBeforeGate:
     EC-9: push fails (no remote) → blocked, fail-closed, exactly 1 demote.
     """
 
-    def test_ec6_push_local_recovers_timeout_interrupted_merge(
-        self, tmp_path, monkeypatch
-    ):
+    def test_ec6_push_local_recovers_timeout_interrupted_merge(self, tmp_path, monkeypatch):
         """BUG-1117 class: impl merged to local develop but not pushed to origin."""
         origin, repo = _make_origin_repo(tmp_path)
 
@@ -576,9 +574,7 @@ class TestPushLocalBeforeGate:
             autopilot_signaled=False,
         )
         data = lifecycle.read_lifecycle(str(repo), "TECH-T7")
-        assert data["status"] == "blocked", (
-            "feature-branch-only must stay blocked (fail-closed)"
-        )
+        assert data["status"] == "blocked", "feature-branch-only must stay blocked (fail-closed)"
 
     def test_ec9_push_fails_stays_blocked_one_demote(self, tmp_path, monkeypatch):
         """Push origin fails (no remote) → blocked, exactly 1 demote."""
@@ -615,13 +611,11 @@ class TestPushLocalBeforeGate:
 
         # Verify exactly 1 demote recorded
         demote_calls = [
-            c for c in mock_db.record_decision.call_args_list
-            if (c.kwargs.get("demoted") is True)
-            or (len(c.args) > 4 and c.args[4] is True)
+            c
+            for c in mock_db.record_decision.call_args_list
+            if (c.kwargs.get("demoted") is True) or (len(c.args) > 4 and c.args[4] is True)
         ]
-        assert len(demote_calls) == 1, (
-            f"expected exactly 1 demote, got {len(demote_calls)}"
-        )
+        assert len(demote_calls) == 1, f"expected exactly 1 demote, got {len(demote_calls)}"
 
 
 class TestDemoteOnce:
@@ -655,9 +649,9 @@ class TestDemoteOnce:
 
         # Exactly 1 demote, not 3+
         demote_calls = [
-            c for c in mock_db.record_decision.call_args_list
-            if (c.kwargs.get("demoted") is True)
-            or (len(c.args) > 4 and c.args[4] is True)
+            c
+            for c in mock_db.record_decision.call_args_list
+            if (c.kwargs.get("demoted") is True) or (len(c.args) > 4 and c.args[4] is True)
         ]
         assert len(demote_calls) == 1, (
             f"expected 1 demote across retries, got {len(demote_calls)}: {demote_calls}"
@@ -741,9 +735,7 @@ class TestAutopilotSignaledOverride:
             autopilot_signaled=True,
         )
         data = lifecycle.read_lifecycle(str(repo), "TECH-AS")
-        assert data["status"] == "blocked", (
-            "autopilot_signaled=True must override gate=done"
-        )
+        assert data["status"] == "blocked", "autopilot_signaled=True must override gate=done"
 
     def test_not_signaled_lets_gate_decide(self, tmp_path, monkeypatch):
         """When autopilot did NOT signal (timeout), gate=done is honored."""
@@ -772,6 +764,92 @@ class TestAutopilotSignaledOverride:
             autopilot_signaled=False,
         )
         data = lifecycle.read_lifecycle(str(repo), "TECH-NS")
-        assert data["status"] == "done", (
-            "not-signaled + impl on origin → gate should decide done"
+        assert data["status"] == "done", "not-signaled + impl on origin → gate should decide done"
+
+    def test_signaled_blocked_no_impl_reason_is_autopilot_not_no_merged(
+        self, tmp_path, monkeypatch
+    ):
+        """Regression (ARCH-1246 / FTR-1245, 2026-06-20): a deliberate self-block
+        on an unmet dependency makes 0 commits. The blocked_reason must reflect
+        the autopilot's explicit signal — NOT the misleading
+        no_merged_implementation hint that tells the operator to force-done."""
+        origin, repo = _make_origin_repo(tmp_path)
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "ARCH-DEP-spec.md").write_text(
+            "# ARCH-DEP\n\n## Allowed Files\n\n- `src/dep.py`\n"
         )
+        lifecycle.write_lifecycle(str(repo), "ARCH-DEP", "in_progress")
+
+        # Gate is FALSE (no impl on origin) + autopilot explicitly blocked.
+        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
+        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
+        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+
+        callback.verify_status_sync(
+            str(repo),
+            "ARCH-DEP",
+            target="blocked",
+            pueue_id=631,
+            autopilot_signaled=True,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "ARCH-DEP")
+        assert data["status"] == "blocked"
+        assert data.get("blocked_reason") == "autopilot_signaled_blocked"
+        assert "no_merged_implementation" not in (data.get("blocked_reason") or "")
+
+
+class TestParseLogTaskStatus:
+    """_parse_log_file must recover task_status even when the agent wraps it in a
+    markdown ```json fence instead of a bare-JSON final message.
+
+    Regression (ARCH-1246 / FTR-1245, 2026-06-20): Opus 4.x emitted a markdown
+    block report with task_status inside a fence; the old whole-preview json.loads
+    failed, the blocked signal was lost, and the spec was mislabeled
+    no_merged_implementation instead of being honored as a deliberate block.
+    """
+
+    def _write_log(self, tmp_path, payload):
+        p = tmp_path / "proj-20260620-000000.log"
+        p.write_text(json.dumps(payload, ensure_ascii=False))
+        return p
+
+    def test_top_level_field_preferred(self, tmp_path):
+        log = self._write_log(
+            tmp_path,
+            {"skill": "autopilot", "task_status": "blocked", "result_preview": "prose"},
+        )
+        _skill, _preview, task_status = callback._parse_log_file(log)
+        assert task_status == "blocked"
+
+    def test_markdown_fenced_json_extracted(self, tmp_path):
+        preview = (
+            "**ARCH-1246 заблокирован — зависимость TECH-1244 не выполнена.**\n\n"
+            "Рекомендация: сначала запустить TECH-1244.\n\n"
+            '```json\n{\n  "task_status": "blocked",\n'
+            '  "result_preview": "dep not done"\n}\n```'
+        )
+        log = self._write_log(tmp_path, {"skill": "autopilot", "result_preview": preview})
+        _skill, _preview, task_status = callback._parse_log_file(log)
+        assert task_status == "blocked"
+
+    def test_not_lost_to_500_char_truncation(self, tmp_path):
+        # task_status sits beyond the 500-char display preview but within full text.
+        preview = ("x" * 600) + '\n```json\n{"task_status": "needs_review"}\n```'
+        log = self._write_log(tmp_path, {"skill": "autopilot", "result_preview": preview})
+        _skill, _preview, task_status = callback._parse_log_file(log)
+        assert task_status == "needs_review"
+
+    def test_bare_json_legacy_preview_still_works(self, tmp_path):
+        preview = '{"task_status": "complete", "result_preview": "done"}'
+        log = self._write_log(tmp_path, {"skill": "autopilot", "result_preview": preview})
+        _skill, _preview, task_status = callback._parse_log_file(log)
+        assert task_status == "complete"
+
+    def test_no_signal_returns_empty(self, tmp_path):
+        log = self._write_log(tmp_path, {"skill": "autopilot", "result_preview": "no signal here"})
+        _skill, _preview, task_status = callback._parse_log_file(log)
+        assert task_status == ""
