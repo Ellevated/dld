@@ -8,7 +8,8 @@ When to escalate and how to handle failures.
 |-----------|-------|-------------|
 | Debug retry (code bug) | 3 | → Spark (BUG spec) |
 | Debug retry (architecture) | 3 | → Council |
-| ./test fast fail | 5 | → STOP (ask human) |
+| ./test fast fail (per-task gate) | 5 | → STOP (ask human) |
+| ./test ci fail (finishing gate, TECH-206) | 3 | → STOP (ask human) |
 | ./test llm fail | 2 | → STOP (ask human) |
 | Reviewer refactor | 2 | → Council |
 | Heavy drift (planner) | 0 | → Council (immediate) |
