@@ -9,8 +9,9 @@ Final verification, status update, merge, and cleanup.
 ## Flow
 
 ```
-1. Final test: ./test fast
-   └─ must pass!
+1. Final test: ./test ci
+   └─ must pass! (CI-parity gate, TECH-206)
+   └─ no `./test ci`? → CI_PARITY_UNAVAILABLE fallback (see autopilot-git.md §5.6)
 
 2. Exa Verification (see below)
    └─ warnings only, never block
@@ -46,6 +47,12 @@ Final verification, status update, merge, and cleanup.
    git stash push -m "autopilot-temp" (if uncommitted)
    git pull --rebase origin develop
    git merge --ff-only {type}/{ID}
+
+   CI-parity merge gate (TECH-206) — BEFORE push:
+   ./test ci on merged tree. Red → git reset --hard origin/develop
+   (abort merge), emit needs_review, do NOT push.
+   No `./test ci`? → CI_PARITY_UNAVAILABLE fallback (autopilot-git.md §5.6).
+
    git push origin develop
    git stash pop (if stashed)
 
@@ -136,7 +143,7 @@ If no issues → write nothing (no empty signals!).
 
 ## Exa Verification
 
-After `./test fast` passes, verify the approach against known pitfalls:
+After `./test ci` passes (step 1), verify the approach against known pitfalls:
 
 **Step 1:** Extract key patterns from spec
 - Read spec's `## Design` and `## Approaches` sections
@@ -170,7 +177,7 @@ mcp__exa__web_search_exa:
 ⛔ **Before setting status=done, verify ALL items:**
 
 ### Code Quality
-- [ ] `./test fast` passes (run it!)
+- [ ] `./test ci` passes (CI-parity gate, TECH-206)
 - [ ] No `# TODO` or `# FIXME` in changed files
 - [ ] All tasks from Implementation Plan completed
 
