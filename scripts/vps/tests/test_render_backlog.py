@@ -7,6 +7,7 @@ Shares tmp_git_repo fixture pattern from test_lifecycle.py.
 
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -219,6 +220,12 @@ def test_render_round_trip(tmp_git_repo):
     """Write yamls, render, parse rendered markdown, assert status set matches."""
     repo = tmp_git_repo
 
+    # Use a recent finished_at so the done spec lands in "Done (last 30 days)"
+    # rather than the collapsed "Older than 30 days" bucket. Computed relative
+    # to now so the round-trip assertion can never age out (was a date-bomb:
+    # hardcoded 2026-05-16 silently dropped BUG-3 once 30 days elapsed).
+    recent = (datetime.now(tz=timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     specs = [
         {
             "spec_id": "TECH-1",
@@ -243,8 +250,8 @@ def test_render_round_trip(tmp_git_repo):
             "status": "done",
             "priority": "p1",
             "kind": "bug",
-            "updated_at": "2026-05-16T12:00:00Z",
-            "finished_at": "2026-05-16T12:00:00Z",
+            "updated_at": recent,
+            "finished_at": recent,
             "blocked_reason": None,
         },
     ]
@@ -267,3 +274,69 @@ def test_render_round_trip(tmp_git_repo):
 
     expected_ids = {s["spec_id"] for s in specs}
     assert expected_ids == found_ids, f"Mismatch: expected {expected_ids}, found {found_ids}"
+
+
+# ---------------------------------------------------------------------------
+# sync_status — status-only in-place update (preserves founder content)
+# ---------------------------------------------------------------------------
+
+
+def test_sync_status_updates_only_status_preserving_content(tmp_git_repo):
+    repo = tmp_git_repo
+    _write_yaml_and_commit(repo, "TECH-1", {"spec_id": "TECH-1", "status": "done", "kind": "tech"})
+    _write_yaml_and_commit(repo, "FTR-2", {"spec_id": "FTR-2", "status": "blocked", "kind": "ftr"})
+
+    backlog = (
+        "# DLD Backlog\n\n## P1\n\n"
+        "| ID | Status | Kind | Updated | Spec |\n|----|--------|------|---------|------|\n"
+        "| TECH-1 | queued | tech | 2026-06-20 | [spec](features/x.md) — rich — desc ⛔ AFTER FTR-2 |\n"
+        "| FTR-2 | queued | ftr | 2026-06-20 | [spec](features/y.md) — keep me |\n"
+    )
+    out = render_backlog.sync_status(repo, backlog)
+    assert (
+        "| TECH-1 | done | tech | 2026-06-20 | [spec](features/x.md) — rich — desc ⛔ AFTER FTR-2 |"
+        in out
+    )
+    assert "| FTR-2 | blocked | ftr | 2026-06-20 | [spec](features/y.md) — keep me |" in out
+    # rich description + AFTER marker survive exactly once
+    assert out.count("⛔ AFTER FTR-2") == 1
+
+
+def test_sync_status_leaves_unknown_specs_and_prose_untouched(tmp_git_repo):
+    repo = tmp_git_repo
+    _write_yaml_and_commit(repo, "TECH-1", {"spec_id": "TECH-1", "status": "done", "kind": "tech"})
+    backlog = (
+        "| ID | Status | Kind | Updated | Spec |\n|----|--------|------|---------|------|\n"
+        "| TECH-1 | queued | tech | 2026-06-20 | x |\n"
+        "| NOPE-9 | queued | bug | 2026-06-20 | not in lifecycle |\n"
+        "\nProse — untouched | with a pipe |\n"
+    )
+    out = render_backlog.sync_status(repo, backlog)
+    assert "| TECH-1 | done |" in out
+    assert "| NOPE-9 | queued |" in out  # absent from lifecycle → unchanged
+    assert "Prose — untouched | with a pipe |" in out
+
+
+def test_sync_status_override_for_inflight_write(tmp_git_repo):
+    """override carries the status of a spec whose YAML is not yet in HEAD."""
+    repo = tmp_git_repo
+    _write_yaml_and_commit(
+        repo, "TECH-1", {"spec_id": "TECH-1", "status": "queued", "kind": "tech"}
+    )
+    backlog = (
+        "| ID | Status | Kind | Updated | Spec |\n|----|--------|------|---------|------|\n"
+        "| TECH-1 | queued | tech | 2026-06-20 | x |\n"
+    )
+    out = render_backlog.sync_status(repo, backlog, overrides={"TECH-1": "done"})
+    assert "| TECH-1 | done |" in out
+
+
+def test_sync_status_byte_identical_when_already_synced(tmp_git_repo):
+    repo = tmp_git_repo
+    _write_yaml_and_commit(repo, "TECH-1", {"spec_id": "TECH-1", "status": "done", "kind": "tech"})
+    backlog = (
+        "| ID | Status | Kind | Updated | Spec |\n|----|--------|------|---------|------|\n"
+        "| TECH-1 | done | tech | 2026-06-20 | x |\n"
+    )
+    out = render_backlog.sync_status(repo, backlog)
+    assert out == backlog

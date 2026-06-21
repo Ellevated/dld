@@ -20,6 +20,7 @@ Glossary: ai/glossary/orchestrator.md
 """
 
 import logging
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -217,3 +218,56 @@ def render_backlog(repo_dir) -> str:
     lines.append("\n")
 
     return "".join(lines)
+
+
+# A backlog table data row whose first cell is a spec ID:  | <ID> | <status> | ...
+# Groups: (1) leading "| ", (2) spec id, (3) " | " separator, (4) status value,
+# (5) " |" closing. Everything after group 5 (kind / date / rich spec cell) is
+# left untouched.
+_BACKLOG_ROW_RE = re.compile(r"^(\s*\|\s*)([A-Z]{2,5}-\d+)(\s*\|\s*)([^|]*?)(\s*\|)")
+
+
+def status_map(repo_dir, overrides: Optional[dict] = None) -> dict:
+    """spec_id -> status from the lifecycle SoT (HEAD), plus optional overrides.
+
+    overrides maps spec_id -> status for an in-flight write whose YAML is not yet
+    visible in HEAD (e.g. the spec currently being committed by _atomic_write).
+    """
+    out: dict = {}
+    for data in _load_all_yamls(Path(repo_dir)):
+        sid = data.get("spec_id")
+        if sid:
+            out[sid] = str(data.get("status", "") or "")
+    if overrides:
+        out.update(overrides)
+    return out
+
+
+def sync_status(repo_dir, backlog_text: str, overrides: Optional[dict] = None) -> str:
+    """Update ONLY the Status cell of each spec row in an EXISTING backlog.md
+    from the lifecycle SoT, preserving every other byte.
+
+    backlog.md is not the source of truth (ADR-023) — but "not the SoT" and
+    "never updated" are different things. Unlike render_backlog() (which rebuilds
+    the whole file and destroys founder descriptions / section structure / AFTER
+    markers), this rewrites just the status value in rows that already exist.
+
+    Rows whose spec_id has no lifecycle entry are left untouched. Non-row lines
+    (headers, prose, section titles) are never modified.
+    """
+    smap = status_map(repo_dir, overrides)
+
+    def _fix(line: str) -> str:
+        m = _BACKLOG_ROW_RE.match(line)
+        if not m:
+            return line
+        new = smap.get(m.group(2))
+        if not new or new == m.group(4).strip():
+            return line
+        return _BACKLOG_ROW_RE.sub(
+            lambda mm: f"{mm.group(1)}{mm.group(2)}{mm.group(3)}{new}{mm.group(5)}",
+            line,
+            count=1,
+        )
+
+    return "".join(_fix(ln) for ln in backlog_text.splitlines(keepends=True))

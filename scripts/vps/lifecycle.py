@@ -262,11 +262,42 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
         ):
             return False
 
-        # NOTE: backlog.md auto-render disabled (2026-05-16 post-merge fix).
-        # The plain-table render strips founder's rich descriptions/sections
-        # (LAUNCH BLOCKERS / GROWTH / INTERNAL). backlog.md remains a
-        # manually-maintained file. lifecycle.yaml is SoT for status; render
-        # can be re-enabled in a follow-up spec that preserves structure.
+        # backlog.md status sync (re-enabled, status-only). lifecycle.yaml stays
+        # the SoT; backlog.md is a human-authored view. The OLD plain-table render
+        # was disabled 2026-05-16 because it destroyed founder descriptions /
+        # section structure. render_backlog.sync_status rewrites ONLY the Status
+        # cell of existing rows (override carries THIS spec's new status, which is
+        # not in HEAD yet) and is folded into the SAME atomic commit as the YAML —
+        # no second commit, no WT race. Best-effort: never break the status write.
+        try:
+            import render_backlog
+
+            bl = _run(["git", "show", "HEAD:ai/backlog.md"], cwd=repo_dir)
+            if bl.returncode == 0:
+                m_status = re.search(r"status:\s*(\S+)", yaml_content)
+                override = {spec_id: m_status.group(1)} if m_status else None
+                synced = render_backlog.sync_status(repo_dir, bl.stdout, overrides=override)
+                if synced != bl.stdout:
+                    blob = _run(
+                        ["git", "hash-object", "-w", "--stdin"],
+                        cwd=repo_dir,
+                        env=env,
+                        input_text=synced,
+                    )
+                    if blob.returncode == 0:
+                        _run(
+                            [
+                                "git",
+                                "update-index",
+                                "--add",
+                                "--cacheinfo",
+                                f"100644,{blob.stdout.strip()},ai/backlog.md",
+                            ],
+                            cwd=repo_dir,
+                            env=env,
+                        )
+        except Exception as exc:  # noqa: BLE001 — render must never break the write
+            log.warning("backlog sync skipped for %s: %s", spec_id, exc)
 
         r = _run(["git", "write-tree"], cwd=repo_dir, env=env)
         if r.returncode != 0:
@@ -310,6 +341,11 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
                 sync_result.returncode,
                 sync_result.stderr.strip(),
             )
+
+        # Sync WT for backlog.md too (it was folded into the commit above). Best-
+        # effort + separate: backlog.md may not exist in some projects, and a miss
+        # here must not fail the lifecycle write.
+        _run(["git", "checkout", "HEAD", "--", "ai/backlog.md"], cwd=repo_dir)
 
         return True
 
