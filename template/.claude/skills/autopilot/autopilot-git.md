@@ -70,7 +70,8 @@ esac
 
 | Exit | Meaning | Action |
 |------|---------|--------|
-| 0 | Green or CI-only failures | Continue |
+| 0 | Green (all CI checks pass) | Continue |
+| 0 | CI-only red (lint, spec compliance, file size — not deploy) | Continue in **REGRESSION-ONLY mode**: record baseline red set. Merge gate (§5.4) requires no NEW failures vs this baseline. Log `CI_BASELINE_RED: {failing checks}`. |
 | 2 | Deploy failure | DEPLOY ERROR PROTOCOL |
 
 **Deploy failure → BLOCKING:**
@@ -131,7 +132,7 @@ cp "${MAIN_REPO}/.env" .env 2>/dev/null || true
 
 ```bash
 ./test fast
-# FAIL → STOP, don't proceed
+# FAIL → STOP. Quick smoke only — CI-parity gate is `./test ci` (§5.1, TECH-206).
 ```
 
 ### Skip Worktree (rare)
@@ -199,8 +200,9 @@ End of spec: Push feature → Merge develop → Push develop
 ### 5.1 Final Test
 
 ```bash
-./test fast
-# FAIL → STOP, fix first
+./test ci
+# FAIL → STOP, fix first. Mirrors project's GitHub CI exactly (TECH-206).
+# No `./test ci` case? → see §5.6 CI_PARITY_UNAVAILABLE fallback.
 ```
 
 ### 5.2 Update Status — REMOVED (ARCH-187 / ADR-024 / ADR-025)
@@ -271,6 +273,14 @@ git pull --rebase origin develop
 # Fast-forward merge
 git merge --ff-only ${BRANCH_PREFIX}/${TASK_ID}
 
+# CI-parity merge gate (TECH-206): red → abort, no push, needs_review.
+# REGRESSION-ONLY mode: only NEW failures vs PHASE-0 baseline count.
+if ! ./test ci; then
+  git reset --hard origin/develop   # abort: develop stays at origin state
+  echo "BLOCKED: ./test ci red on merged develop — emitting needs_review"
+  # Set task_status="needs_review" in final JSON. Do NOT push.
+fi
+
 # Push with retry — TECH-197: track success for push guard
 PUSH_OK=false
 git push origin develop && PUSH_OK=true || {
@@ -298,6 +308,12 @@ git worktree remove "${WORKTREE_DIR}/${TASK_ID}" --force
 git branch -d ${BRANCH_PREFIX}/${TASK_ID}  # safe delete (-d not -D)
 git worktree prune
 ```
+
+### 5.6 CI-Parity Fallback (TECH-206)
+
+If `./test ci` is absent (exit 127): log `CI_PARITY_UNAVAILABLE`, run `./test`
+(full suite) or `./test fast`, emit `needs_review` on any red. **NEVER** silently
+degrade to `./test fast` alone. Projects adopt `./test ci` via Wave 2 specs.
 
 ---
 
