@@ -18,7 +18,7 @@
 | GROWTH-004 | blocked | ftr | 2026-05-16 | GROWTH-004 |
 | GROWTH-005 | blocked | ftr | 2026-05-16 | GROWTH-005 |
 | GROWTH-006 | blocked | ftr | 2026-05-16 | GROWTH-006 |
-| BUG-205 | queued | BUG | 2026-06-19 | [spec](features/BUG-205-2026-06-19-orchestrator-dispatch-toctou.md) |
+| BUG-205 | done | BUG | 2026-06-19 | [spec](features/BUG-205-2026-06-19-orchestrator-dispatch-toctou.md) |
 
 ## P2 — Nice-to-have
 
