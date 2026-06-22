@@ -235,7 +235,18 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
     try:
         env = {**os.environ, "GIT_INDEX_FILE": idx_path}
 
-        if _run(["git", "read-tree", "HEAD"], cwd=repo_dir, env=env).returncode != 0:
+        # TOCTOU fix (FTR-1270 wipe, 2026-06-22): pin HEAD once so the tree
+        # snapshot, the commit parent, and the CAS all reference the SAME commit.
+        # Reading HEAD twice (read-tree HEAD ... later rev-parse HEAD) let a
+        # concurrent push land between them — the tree snapshotted the OLD HEAD
+        # while the parent was the NEW HEAD; the CAS only guards parent==branch,
+        # so it committed a stale tree that silently reverted everything in between.
+        hr = _run(["git", "rev-parse", "HEAD"], cwd=repo_dir)
+        if hr.returncode != 0:
+            return False
+        head_sha = hr.stdout.strip()
+
+        if _run(["git", "read-tree", head_sha], cwd=repo_dir, env=env).returncode != 0:
             return False
 
         r = _run(
@@ -272,7 +283,7 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
         try:
             import render_backlog
 
-            bl = _run(["git", "show", "HEAD:ai/backlog.md"], cwd=repo_dir)
+            bl = _run(["git", "show", f"{head_sha}:ai/backlog.md"], cwd=repo_dir)
             if bl.returncode == 0:
                 m_status = re.search(r"status:\s*(\S+)", yaml_content)
                 override = {spec_id: m_status.group(1)} if m_status else None
@@ -303,11 +314,6 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
         if r.returncode != 0:
             return False
         tree_sha = r.stdout.strip()
-
-        r = _run(["git", "rev-parse", "HEAD"], cwd=repo_dir)
-        if r.returncode != 0:
-            return False
-        head_sha = r.stdout.strip()
 
         m = re.search(r"status:\s*(\S+)", yaml_content)
         status_str = m.group(1) if m else "update"
@@ -761,7 +767,14 @@ def _atomic_write_file(
         idx_path = f.name
     try:
         env = {**os.environ, "GIT_INDEX_FILE": idx_path}
-        if _run(["git", "read-tree", "HEAD"], cwd=repo_dir, env=env).returncode != 0:
+        # TOCTOU fix (FTR-1270 wipe): pin HEAD once — tree, parent, CAS all on the
+        # same commit (see _atomic_write). Reading HEAD twice raced a concurrent
+        # push and silently reverted in-between commits.
+        hr = _run(["git", "rev-parse", "HEAD"], cwd=repo_dir)
+        if hr.returncode != 0:
+            return False
+        head_sha = hr.stdout.strip()
+        if _run(["git", "read-tree", head_sha], cwd=repo_dir, env=env).returncode != 0:
             return False
         r = _run(
             ["git", "hash-object", "-w", "--stdin"],
@@ -785,10 +798,6 @@ def _atomic_write_file(
         if r.returncode != 0:
             return False
         tree_sha = r.stdout.strip()
-        r = _run(["git", "rev-parse", "HEAD"], cwd=repo_dir)
-        if r.returncode != 0:
-            return False
-        head_sha = r.stdout.strip()
         r = _run(
             ["git", "commit-tree", tree_sha, "-p", head_sha, "-m", commit_message],
             cwd=repo_dir,
