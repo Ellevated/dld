@@ -86,6 +86,56 @@ def test_concurrent_writes_no_loss(tmp_git_repo):
         assert data["version"] >= 1
 
 
+def test_concurrent_commit_during_write_not_reverted(tmp_git_repo):
+    """TOCTOU regression (FTR-1270 wipe, fd9455f): a commit landing on the branch
+    DURING a lifecycle write must NOT be silently reverted.
+
+    test_concurrent_writes_no_loss above only exercises the in-process
+    _write_lock (10 threads, one process — serialized). It cannot catch THIS
+    bug, which is a cross-process race: the OLD code read HEAD twice
+    (read-tree HEAD ... later rev-parse HEAD). A commit landing between the two
+    reads produced a tree snapshotted off the OLD HEAD but parented on the NEW
+    HEAD; the CAS only guards parent==branch, so it passed and committed a stale
+    tree that DROPPED the concurrent commit's files (data loss). Pinning HEAD
+    once makes the CAS fail on a moved HEAD → _cas_loop retries → no loss.
+
+    Injection point: the first `git write-tree`, which in BOTH old and new code
+    runs after the tree snapshot is taken. With the fix the retry picks up
+    concurrent.txt; without it the file vanishes from HEAD.
+    """
+    real_run = lifecycle._run
+    state = {"injected": False}
+
+    def injecting_run(cmd, **kwargs):
+        if not state["injected"] and cmd[:2] == ["git", "write-tree"]:
+            state["injected"] = True
+            # Simulate a parallel process advancing the branch mid-write.
+            (tmp_git_repo / "concurrent.txt").write_text("from a parallel writer")
+            subprocess.run(["git", "add", "concurrent.txt"], cwd=str(tmp_git_repo), check=True)
+            subprocess.run(
+                ["git", "commit", "-m", "concurrent commit during lifecycle write"],
+                cwd=str(tmp_git_repo),
+                check=True,
+                capture_output=True,
+            )
+        return real_run(cmd, **kwargs)
+
+    with patch.object(lifecycle, "_run", injecting_run):
+        lifecycle.write_lifecycle(tmp_git_repo, "TECH-700", "queued")
+
+    # 1) The lifecycle write itself landed.
+    data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-700")
+    assert data is not None and data["status"] == "queued"
+
+    # 2) The concurrent commit's file is STILL in HEAD — not reverted (the bug).
+    r = subprocess.run(
+        ["git", "cat-file", "-e", "HEAD:concurrent.txt"],
+        cwd=str(tmp_git_repo),
+        capture_output=True,
+    )
+    assert r.returncode == 0, "concurrent.txt was silently reverted — TOCTOU regression"
+
+
 # ---------------------------------------------------------------------------
 # Test 2 (spec line 618): private GIT_INDEX_FILE — operator-staged files don't leak
 # ---------------------------------------------------------------------------
