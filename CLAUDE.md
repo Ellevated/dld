@@ -319,18 +319,23 @@ For Impact × Risk routing matrix, see `.claude/skills/spark/feature-mode.md` Ph
 
 **Callback Enforcement (DLD-specific):**
 После завершения pueue задачи `callback.py` — единственный writer статусов спек.
-Implementation guard проверяет коммиты в Allowed Files. См. dld-orchestrator.md§5
+Статус живёт в `ai/lifecycle/*.yaml` (git HEAD = SoT), пишется атомарным CAS-plumbing.
+Implementation guard проверяет коммиты в Allowed Files. См. `docs/orchestrator/status-model.md`
 
 ---
 
 ## DLD Orchestrator Reference
 
-VPS daemon координирующий multi-project AI execution через pueue + SQLite SoT.
-Callback enforces spec/backlog status атомарно (ADR-018). Critical path:
-pueue completion → callback.py → verify_status_sync → plumbing commit.
+VPS daemon координирующий multi-project AI execution через pueue + SQLite (рантайм)
++ git per-spec YAML (статус SoT, ADR-023). Critical path:
+pueue completion → callback.py → guard → lifecycle.write_lifecycle (CAS) → push.
 
-Full docs: `~/.claude/projects/-root/memory/dld-orchestrator.md`
-Runbook:   `~/.claude/projects/-root/memory/orchestrator-runbook.md`
+**Канонические доки (in-repo, версионируются с кодом):** `docs/orchestrator/`
+- `README.md` — что/зачем, архитектура, поток задачи, два контракта, ADR-индекс
+- `status-model.md` — lifecycle-SoT, запись статуса, write-once-done, guard, инварианты
+- `components.md` — покомпонентный справочник + инварианты диспатча
+- `runbook.md` — операционка, инцидент-восстановление, drift-инструменты
+- `verification.md` — протокол ручной верификации спеки
 
 ---
 
