@@ -16,7 +16,7 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 
 | Функция | Что делает | file:line |
 |---------|-----------|-----------|
-| `scan_queued` | Источник — `lifecycle.list_by_status({queued,resumed})` (HEAD, не backlog.md). Dependency-gate, dup-guard, **TOCTOU re-check**, dispatch | `:772-898` |
+| `scan_queued` | Источник — `lifecycle.list_by_status({queued,resumed})` (HEAD, не backlog.md). Dependency-gate, dup-guard, **TOCTOU re-check**, **reconciliation gate**, dispatch | `:772-898` |
 | `scan_inbox` | Hermes intake: только `**Status:** queued` (ADR-021/022), route по `_ROUTE_SKILL_MAP` | `:662-722` |
 | `bootstrap_new_specs` | Создаёт yaml для новых spec.md. Column-aware parser, читает HEAD не WT (CWE-367), safe default `queued` | `:402-495` |
 | `startup_reconcile` | На старте: `cleanup_stale_stashes` → `assert_clean_lifecycle_tree` (abort на dirty) → `reconcile_orphans` | `:572-593` |
@@ -31,6 +31,13 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
   `list_by_status` устаревает (callback — отдельный процесс; git_pull пропущен пока агент работает).
 - **Dependency gate (BUG-206, `:782-795`):** spec с `AFTER <ID>` в backlog-строке диспатчится только
   когда все зависимости `done` (status из lifecycle SoT). Отсутствующая зависимость = MET (анти-stall).
+- **Reconciliation gate (2026-06-26):** ПЕРЕД `pueue add` — `gate_logic.find_implementation_commit`
+  на `origin/develop` (та же проверка, что callback-guard и gate-daemon). Если работа уже на develop →
+  orchestrator сам пишет `done` (`by="orchestrator"`, reason `already_implemented_on_develop:<sha>`),
+  сессию НЕ запускает. Закрывает дыру single-writer (ADR-023): работа, пришедшая мимо callback (другой
+  разработчик / другое окно / другой узел / сессия, чей callback не сработал), оставляла lifecycle
+  `queued`, и оркестратор переделывал готовое. Fail-closed: реконсилит только при позитивном allowlist
+  И позитивном совпадении коммита; иначе диспатчит как раньше.
 - **Dup-guard:** `pueue_has_active_label` (project:spec) + `pueue_has_active_spec` (Rule 8 —
   кросс-проектный double-dispatch одного spec_id).
 - **CLAUDE_CURRENT_SPEC_PATH (BUG-199):** pin spec path в pueue env для pre-edit hook Allowed Files.
@@ -189,3 +196,5 @@ alert/blocked), оба heartbeat-инструмента fail-open (никогд�
 11. **Crash recovery** — `reconcile_orphans` демоутит `in_progress` без живого pueue_id.
 12. **Timeout как hard-limit** (claude 90м/codex 15м/gemini 30м) + heartbeat-reaper добивает зависшие.
 13. **exit_code contract (ADR-024)** — post-result Exception не оверрайдит `exit_code=0`.
+14. **Reconciliation перед диспатчем** — не запускать сессию на спеке, чья работа уже на `origin/develop`
+    (out-of-band completion). `scan_queued` помечает её `done` напрямую (`by="orchestrator"`) и пропускает.

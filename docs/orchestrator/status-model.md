@@ -67,6 +67,10 @@ _ALLOWED_WRITERS_FOR_CREATE  = {spark} | _ALLOWED_WRITERS                       
 - `write_lifecycle` гейтит `by`: вне `_ALLOWED_WRITERS` → `ValueError` (`:576`).
 - **`autopilot` и `spark` — НЕ writers** (ADR-025). autopilot сигналит статус через JSON
   `task_status` (callback его исполняет); spark клеймит ID, но статус не мутирует.
+- **`orchestrator` пишет статус в двух местах:** `reconcile_orphans` (демоут `in_progress` без живого
+  pueue_id) и **reconciliation gate** в `scan_queued` (если queued-спека уже реализована на
+  origin/develop → `done`, `reason=already_implemented_on_develop:<sha>`, без сессии). Оба — легитимны,
+  `orchestrator ∈ _ALLOWED_WRITERS`. Reconciliation использует ту же `gate_logic`-проверку, что guard.
 - `spark` может **только `create_initial`** (claim ID через CAS), не `write_lifecycle` —
   Rule 7 (§4) всё равно держит.
 

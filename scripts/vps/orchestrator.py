@@ -25,6 +25,7 @@ from threading import Event
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
+import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 
 log = logging.getLogger("orchestrator")
@@ -868,6 +869,41 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
             fresh_status,
         )
         return False
+    # RECONCILIATION GATE: a queued spec may already be implemented on
+    # origin/develop — work landed via another developer, another window,
+    # another node, or an autopilot session whose callback never fired. The
+    # single-writer model (ADR-023) only updates status through callback on THIS
+    # orchestrator's pueue completions, so out-of-band work leaves the lifecycle
+    # stuck at queued. Without this gate we re-dispatch (burn a full session)
+    # only for the callback guard to rubber-stamp done post-hoc. Run the SAME
+    # check the callback guard / gate-daemon use (gate_logic), but BEFORE
+    # dispatch: if the work is already on develop, mark done directly
+    # (orchestrator is in _ALLOWED_WRITERS) and skip the session. Fail-closed:
+    # only reconcile on a positive allowlist AND a positive commit match;
+    # otherwise dispatch as normal (no worse than before this gate existed).
+    allowed_files = gate_logic.parse_allowed_files(spec_files[0]) if spec_files else None
+    if allowed_files:
+        gate_logic.fetch_develop(project_dir)
+        impl_sha = gate_logic.find_implementation_commit(project_dir, spec_id, allowed_files)
+        if impl_sha:
+            try:
+                lifecycle.write_lifecycle(
+                    project_dir,
+                    spec_id,
+                    "done",
+                    by="orchestrator",
+                    reason=f"already_implemented_on_develop:{impl_sha[:12]}",
+                )
+                log.info(
+                    "reconciled: %s already implemented on develop (%s) — marked done, no dispatch",
+                    spec_id,
+                    impl_sha[:12],
+                )
+            except lifecycle.LifecycleAlreadyDoneError:
+                log.info("reconcile noop: %s already done (race)", spec_id)
+            except lifecycle.LifecycleWriteRaceError:
+                log.info("reconcile deferred: %s CAS race, retry next cycle", spec_id)
+            return False
     pueue_id = _pueue_add(
         f"{provider}-runner",
         task_label,

@@ -170,6 +170,8 @@ Dependency map between project components.
 | pueue CLI | PATH | pueue add --group --label --print-task-id |
 | git CLI | PATH | git -C <dir> pull --ff-only origin develop |
 | projects.json | PROJECTS_JSON env | hot-reload project list each cycle |
+| lifecycle.py | scripts/vps/lifecycle.py | list_by_status(), read_lifecycle(), create_initial(), write_lifecycle() — reconciliation gate marks done by="orchestrator" |
+| gate_logic.py | scripts/vps/gate_logic.py | parse_allowed_files(), fetch_develop(), find_implementation_commit() — scan_queued reconciliation gate (pre-dispatch "already on develop" check) |
 
 ### Used by (←)
 
@@ -489,10 +491,12 @@ Dependency map between project components.
 | Who | File:line | Function |
 |-----|-----------|----------|
 | gate-daemon.py | scripts/vps/gate-daemon.py | fetch_develop(), parse_allowed_files(), find_implementation_commit() |
+| orchestrator.py | scripts/vps/orchestrator.py | scan_queued reconciliation gate — parse_allowed_files(), fetch_develop(), find_implementation_commit() before dispatch |
 
 ### When changing API, check
 
 - [ ] gate-daemon.py (_evaluate_project — all three call sites)
+- [ ] orchestrator.py (scan_queued reconciliation gate — same three functions)
 - [ ] tests/test_gate_logic.py (pure-function tests, Wave 1 Task 2)
 
 ---
@@ -676,3 +680,4 @@ Used as operator visibility tool and CI smoke gate.
 | 2026-06-13 | **TECH-198:** Layer A: claude-runner heartbeat on every SDK message (was AssistantMessage-only). Layer B: NEW heartbeat_reaper.py (cron */5, kills wedged sessions: stale >25min + process idle + fail-open). setup-vps.sh section 8d cron install. 27 tests (5 Layer A + 22 Layer B). dependencies.md reaper section + reverse-pointers (claude-runner, event_writer, setup-vps). | autopilot |
 | 2026-06-19 | **TECH-203:** claude-runner.py: AUTOPILOT_EFFORT env (default high, enum-validated) + ClaudeAgentOptions(effort=...). model-capabilities.md table synced to frontmatter SSOT. ADR-028 added. 9 template agent files synced to ADR-019 frontmatter. | autopilot |
 | 2026-06-19 | **BUG-205:** scan_queued authoritative lifecycle re-read before _pueue_add (TOCTOU close). 5 regression tests in test_orchestrator.py (stale-block, happy-path, read-None, stale-done, resumed). | autopilot |
+| 2026-06-26 | **scan_queued reconciliation gate:** orchestrator.py imports gate_logic; before _pueue_add checks `find_implementation_commit` on origin/develop and, if already implemented, writes done by="orchestrator" (no session). Closes single-writer hole (ADR-023) for out-of-band completion (other dev/window/node, callback never fired). 3 regression tests (TestReconciliationGate). dependencies.md orchestrator Uses += lifecycle/gate_logic + gate_logic reverse-pointer. | interactive |

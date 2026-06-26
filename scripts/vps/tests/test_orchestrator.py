@@ -857,3 +857,136 @@ class TestDependencyGate:
 
         assert result is False
         mock_add.assert_not_called()
+
+
+class TestReconciliationGate:
+    """scan_queued reconciliation gate: a queued spec already implemented on
+    origin/develop is marked done in place (by=orchestrator) WITHOUT dispatching
+    a session. Closes the single-writer hole (ADR-023): when work lands
+    out-of-band (another dev, another window, another node, a callback that
+    never fired), the lifecycle stays queued and we would re-run done work just
+    for the callback guard to rubber-stamp done post-hoc. Same check the guard /
+    gate-daemon use (gate_logic), but BEFORE dispatch.
+    """
+
+    def _setup_features(self, tmp_path: Path, spec_id: str) -> None:
+        features = tmp_path / "ai" / "features"
+        features.mkdir(parents=True, exist_ok=True)
+        (features / f"{spec_id}-dummy.md").write_text("# Dummy spec\n")
+
+    def test_already_implemented_marks_done_no_dispatch(self, tmp_path, seed_project):
+        """Positive allowlist + implementation commit on develop → write done, no pueue add."""
+        spec_id = "FTR-RECON1"
+        self._setup_features(tmp_path, spec_id)
+        mock_add = MagicMock(return_value=42)
+
+        with (
+            patch.object(
+                orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+            ),
+            patch("orchestrator._unmet_dependencies", return_value=[]),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "queued", "spec_id": spec_id},
+            ),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+            patch("orchestrator.db.get_available_slots", return_value=1),
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator._pueue_add", mock_add),
+            patch("orchestrator.SCRIPT_DIR", tmp_path),
+            patch.object(
+                orchestrator.gate_logic, "parse_allowed_files", return_value=["scripts/vps/x.py"]
+            ),
+            patch.object(orchestrator.gate_logic, "fetch_develop", return_value=True),
+            patch.object(
+                orchestrator.gate_logic,
+                "find_implementation_commit",
+                return_value="abc123def4567890",
+            ),
+            patch.object(orchestrator.lifecycle, "write_lifecycle") as mock_write,
+        ):
+            result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is False
+        mock_add.assert_not_called()
+        mock_write.assert_called_once()
+        args, kwargs = mock_write.call_args
+        assert args[2] == "done"
+        assert kwargs["by"] == "orchestrator"
+        assert "already_implemented_on_develop" in kwargs["reason"]
+
+    def test_no_implementation_dispatches_normally(self, tmp_path, seed_project):
+        """Positive allowlist but no matching commit → gate transparent, dispatch proceeds."""
+        spec_id = "FTR-RECON2"
+        self._setup_features(tmp_path, spec_id)
+        mock_add = MagicMock(return_value=42)
+
+        with (
+            patch.object(
+                orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+            ),
+            patch("orchestrator._unmet_dependencies", return_value=[]),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "queued", "spec_id": spec_id},
+            ),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+            patch("orchestrator.db.get_available_slots", return_value=1),
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator._pueue_add", mock_add),
+            patch("orchestrator.SCRIPT_DIR", tmp_path),
+            patch("orchestrator.db.try_acquire_slot"),
+            patch("orchestrator.db.log_task"),
+            patch("orchestrator.db.update_project_phase"),
+            patch.object(
+                orchestrator.gate_logic, "parse_allowed_files", return_value=["scripts/vps/x.py"]
+            ),
+            patch.object(orchestrator.gate_logic, "fetch_develop", return_value=True),
+            patch.object(orchestrator.gate_logic, "find_implementation_commit", return_value=None),
+            patch.object(orchestrator.lifecycle, "write_lifecycle") as mock_write,
+        ):
+            result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is True
+        mock_add.assert_called_once()
+        mock_write.assert_not_called()
+
+    def test_no_allowlist_skips_reconcile_and_dispatches(self, tmp_path, seed_project):
+        """No allowlist (parse returns None) → reconcile skipped (degrade), dispatch proceeds."""
+        spec_id = "FTR-RECON3"
+        self._setup_features(tmp_path, spec_id)
+        mock_add = MagicMock(return_value=42)
+
+        with (
+            patch.object(
+                orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+            ),
+            patch("orchestrator._unmet_dependencies", return_value=[]),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "queued", "spec_id": spec_id},
+            ),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+            patch("orchestrator.db.get_available_slots", return_value=1),
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator._pueue_add", mock_add),
+            patch("orchestrator.SCRIPT_DIR", tmp_path),
+            patch("orchestrator.db.try_acquire_slot"),
+            patch("orchestrator.db.log_task"),
+            patch("orchestrator.db.update_project_phase"),
+            patch.object(orchestrator.gate_logic, "parse_allowed_files", return_value=None),
+            patch.object(orchestrator.gate_logic, "find_implementation_commit") as mock_find,
+            patch.object(orchestrator.lifecycle, "write_lifecycle") as mock_write,
+        ):
+            result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is True
+        mock_add.assert_called_once()
+        mock_write.assert_not_called()
+        mock_find.assert_not_called()
