@@ -80,7 +80,11 @@ Only after root cause is found → create BUG-XXX spec:
 ```markdown
 # Bug Fix: [BUG-XXX] Title
 
-**Status:** queued | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
+**Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
+
+> **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml` (ARCH-186).
+> Callback is the single writer; status/blocked_reason/transitions live there.
+> Do not add a `Status:` field to the spec body — it's no longer authoritative.
 
 ## Symptom
 [What user sees / test failure]
