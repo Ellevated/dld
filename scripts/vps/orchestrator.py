@@ -18,6 +18,7 @@ import re
 import signal
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Event
@@ -963,6 +964,22 @@ def process_project(project_id: str, project_dir: str) -> None:
         db.update_project_phase(project_id, "idle", None)
 
 
+MIN_CYCLE_SLEEP = 30  # floor (s): a pass slower than the window must not busy-loop git
+
+
+def _next_sleep(poll_interval: float, pass_elapsed: float) -> float:
+    """Remaining poll window after a pass that took pass_elapsed seconds.
+
+    Keeps the cycle PERIOD at poll_interval rather than poll_interval + pass
+    time. The old flat sleep-after-pass pushed the real period to ~7-8 min
+    (300s sleep + ~3 min pass over 10 projects), so a queued spec that landed
+    just after its project's turn waited a whole extra pass before dispatch.
+    Floored at MIN_CYCLE_SLEEP so a pass slower than the window can't hammer git
+    in a tight loop.
+    """
+    return max(float(MIN_CYCLE_SLEEP), poll_interval - pass_elapsed)
+
+
 def main() -> None:
     """Main entry point — poll loop."""
     _load_env()
@@ -982,6 +999,7 @@ def main() -> None:
         return
 
     while not _stop.is_set():
+        cycle_start = time.monotonic()
         try:
             release_orphan_slots()  # BUG-162: clean stale slots before dispatch
             sync_projects()
@@ -1003,8 +1021,18 @@ def main() -> None:
             (SCRIPT_DIR / ".orchestrator-heartbeat").write_text(ts)
         except Exception:  # noqa: BLE001
             log.warning("heartbeat write failed")
-        log.info("cycle complete, sleeping %ds", poll_interval)
-        _stop.wait(poll_interval)
+        # Pace by PERIOD, not delay-after-pass: subtract how long the pass took
+        # so passes recur every poll_interval (intended 5 min) instead of
+        # poll_interval + pass_duration (~7-8 min).
+        pass_elapsed = time.monotonic() - cycle_start
+        sleep_for = _next_sleep(poll_interval, pass_elapsed)
+        log.info(
+            "cycle complete in %.0fs, sleeping %.0fs (period target %ds)",
+            pass_elapsed,
+            sleep_for,
+            poll_interval,
+        )
+        _stop.wait(sleep_for)
 
     log.info("orchestrator stopped")
 

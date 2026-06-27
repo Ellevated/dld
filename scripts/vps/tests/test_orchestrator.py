@@ -990,3 +990,30 @@ class TestReconciliationGate:
         mock_add.assert_called_once()
         mock_write.assert_not_called()
         mock_find.assert_not_called()
+
+
+# --- Cycle pacing: honest 5-min period (_next_sleep) ---
+
+
+class TestNextSleep:
+    """Sleep the REMAINDER of the poll window, so the cycle period == poll_interval
+    instead of poll_interval + pass_duration (the old flat-sleep behaviour pushed
+    the real period to ~7-8 min)."""
+
+    def test_subtracts_pass_duration(self):
+        # 3-min pass within a 5-min window → sleep the remaining 2 min.
+        assert orchestrator._next_sleep(300, 180) == 120
+
+    def test_fast_pass_sleeps_almost_full_window(self):
+        assert orchestrator._next_sleep(300, 5) == 295
+
+    def test_overlong_pass_floored_not_negative(self):
+        # Pass longer than the window must floor, never go negative (busy-loop).
+        assert orchestrator._next_sleep(300, 600) == orchestrator.MIN_CYCLE_SLEEP
+
+    def test_pass_equal_to_window_floored(self):
+        assert orchestrator._next_sleep(300, 300) == orchestrator.MIN_CYCLE_SLEEP
+
+    def test_just_under_floor_clamped(self):
+        # Remainder smaller than the floor → clamp up to MIN_CYCLE_SLEEP.
+        assert orchestrator._next_sleep(300, 290) == orchestrator.MIN_CYCLE_SLEEP
