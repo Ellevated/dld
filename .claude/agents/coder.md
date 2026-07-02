@@ -137,14 +137,14 @@ chore(ARCH-186): bootstrap epic tracker
 ❌ **Forbidden:**
 ```
 feat(ftr-1076): ...                    # lowercase scope — historically rejected; now accepted by gate (BUG-192) but still write UPPERCASE for consistency
-feat(billing): ... (FTR-1076 Task 3)   # component scope, spec_id in trail
-fix(db): ... (BUG-439)                 # trailing-only spec_id — rejected by TECH-177 invariant
-feat: FTR-1076 description             # no scope, spec_id in message body
+feat(billing): ... (FTR-1076 Task 3)   # free text in trailing parens — gate rejects
+fix(db): ... (BUG-439)                 # trailing-only spec_id — tolerated by gate since 2026-07-02, but scope form is canonical
+feat: FTR-1076 description             # no scope, no parens — INVISIBLE to gate, guaranteed false demote
 ```
 
-**Why:** callback gate (`scripts/vps/callback.py:_subject_implements`) parses ONLY the scope. Trailing mentions trigger false-positives from cross-references (TECH-177 incident 2026-05-04 — awardybot). Compliance is enforced by gate — non-compliant commits cause false demote and burn compute on re-dispatch (BUG-192 night incident 2026-05-24/25 — 5 specs demoted blind to lowercase scope).
+**Why:** the callback gate (DLD `scripts/vps/callback.py:_subject_implements`) matches the SUBJECT LINE only. Scope form is canonical. Since 2026-07-02 the gate also tolerates a pure trailing `(SPEC_ID)` — every element inside the parens must be a spec id; free text like `(FTR-X Task 3)` or `(see BUG-439)` stays rejected (TECH-177 discipline). A subject with NO spec_id anywhere can NEVER match — that commit is invisible to the gate, the spec gets a false `no_merged_implementation` demote and compute burns on re-dispatch (BUG-192 night 2026-05-24/25; plpilot false-blocked wave BUG-338..347 + TECH-349 on 2026-07-01/02).
 
-**Merge commits (PHASE 3):** `Merge feature/SPEC_ID: <description>` (or `Merge autopilot/SPEC_ID …`, `Merge fix/SPEC_ID …`) is accepted by gate (BUG-192 Level 1b fix).
+**Merge commits (PHASE 3):** `Merge feature/SPEC_ID: <description>` (also `Merge autopilot/SPEC_ID …`, `Merge fix/SPEC_ID …`, `merge: feature/SPEC_ID — …`, git-default `Merge branch 'fix/SPEC_ID-slug'`) is accepted; since 2026-07-02 the gate sees merge commits via a `--first-parent` pass (BUG-192 Level 1b + plpilot BUG-338 fix).
 
 ---
 
