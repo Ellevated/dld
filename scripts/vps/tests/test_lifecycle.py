@@ -539,3 +539,32 @@ def test_create_initial_respects_rule7(tmp_git_repo):
 
     with pytest.raises(lifecycle.LifecycleAlreadyDoneError):
         lifecycle.create_initial(tmp_git_repo, "TECH-902", priority="P1", kind="TECH", by="spark")
+
+
+def test_create_initial_spark_rejects_non_queued(tmp_git_repo):
+    """Spark may only create status='queued': council decisions happen in Spark
+    Phase 4 before the spec exists, so a spark-born blocked spec (e.g.
+    'council_required' pre-implementation gate) is a process violation."""
+    for status in ("blocked", "done", "in_progress"):
+        with pytest.raises(ValueError, match="by='spark' may only create status='queued'"):
+            lifecycle.create_initial(
+                tmp_git_repo,
+                "TECH-903",
+                priority="P1",
+                kind="TECH",
+                status=status,
+                by="spark",
+            )
+
+    # queued still works, and orchestrator keeps its status override (ADR-026 bootstrap-as-done)
+    lifecycle.create_initial(tmp_git_repo, "TECH-903", priority="P1", kind="TECH", by="spark")
+    assert lifecycle.read_lifecycle(tmp_git_repo, "TECH-903")["status"] == "queued"
+    lifecycle.create_initial(
+        tmp_git_repo,
+        "TECH-904",
+        priority="P1",
+        kind="TECH",
+        status="done",
+        by="orchestrator",
+    )
+    assert lifecycle.read_lifecycle(tmp_git_repo, "TECH-904")["status"] == "done"

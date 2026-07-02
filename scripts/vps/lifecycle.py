@@ -623,6 +623,13 @@ def create_initial(
         raise ValueError(
             f"create_initial: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS_FOR_CREATE)}"
         )
+    # Spark creates specs ONLY in queued: council/architect decisions happen in
+    # Spark Phase 4 before the spec exists, so a spark-born blocked/done spec is
+    # a process violation (e.g. "council_required" pre-implementation gates).
+    if by == "spark" and status != "queued":
+        raise ValueError(
+            f"create_initial: by='spark' may only create status='queued' (got {status!r})"
+        )
     # Normalize priority: lowercase, strip whitespace, validate enum (TECH-200)
     priority = (priority or "p1").strip().lower()
     if priority not in _VALID_PRIORITIES:

@@ -189,10 +189,28 @@ Based on feature scope and clarity:
 - Devil scout suggests simpler alternative
 - Multiple approaches with no clear winner
 
-**COUNCIL** (escalate) — if:
+**COUNCIL** (convene NOW, inside this session) — if:
 - Controversial (Devil scout says "Proceed with caution")
 - Cross-domain impact (affects 3+ domains)
 - Major architectural decision
+
+**COUNCIL execution semantics (MANDATORY):**
+
+Council is a Phase 4 instrument — it runs BEFORE Phase 5 writes anything,
+never after. Protocol:
+
+1. Interactive: present the R0/impact assessment to the user first — they
+   choose: convene `/council` now, decide together (downgrade to HUMAN),
+   or drop the feature (no spec).
+2. Headless: convene `/council` inline immediately.
+3. Input to council: the 2-3 approaches + scout research files.
+4. Incorporate synthesis: `approved`/`needs_changes` → Phase 5;
+   `rejected` → back to Phase 3; `needs_human` in headless → exit WITHOUT
+   creating the spec (`status: blocked, spec_status: not_created`).
+
+⛔ NEVER emit a spec that waits for council. "Council review required" is not
+a valid exit — if council was needed, it already ran in Phase 4. Every created
+spec exits as `queued`.
 
 **ARCHITECT** (escalate) — if:
 - Blueprint gap (domain missing, rule missing)
@@ -303,7 +321,8 @@ research_files:
   - ai/features/research-patterns.md
   - ai/features/research-devil.md
 upstream_signals: {N signals written OR "none"}
-next_step: "Ready for /autopilot" | "User decision needed on approach" | "Council review required" | "Architect review required"
+next_step: "Ready for /autopilot" | "User decision needed on approach" | "Architect review required"
+# "Council review required" is INVALID — council runs INSIDE Phase 4; a created spec is always queued
 ```
 
 ## Rules

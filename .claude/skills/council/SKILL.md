@@ -367,7 +367,9 @@ Task:
 
 ### When decision = needs_human
 
-Council MUST notify user and halt execution:
+Behavior depends on the entry point:
+
+**Autopilot escalation mode (spec exists, in_progress):**
 
 1. Set spec status to `blocked`
 2. Add `## ACTION REQUIRED` section to spec with:
@@ -375,6 +377,12 @@ Council MUST notify user and halt execution:
    - Specific questions or decisions required
 3. Output to user: "COUNCIL BLOCKED — Human decision required. See ACTION REQUIRED section in spec."
 4. Exit autopilot (do not continue to next task)
+
+**Spark Phase 4 mode (spec does NOT exist yet):**
+
+- Interactive Spark: the user is in-session — ask them directly, no status writes
+- Headless Spark: Spark exits WITHOUT creating the spec (`spec_status: not_created`)
+- ⛔ Do NOT touch spec/backlog/lifecycle status — there is nothing to block yet
 
 ## Output Format
 
@@ -405,6 +413,32 @@ research_highlights:
 confidence: high | medium | low
 next_step: autopilot | spark | human
 ```
+
+## Spark Phase 4 Mode (pre-spec decision)
+
+When invoked from Spark Phase 4 DECIDE (R0/COUNCIL routing), the spec does NOT
+exist yet — council decides WHICH approach the spec will encode.
+
+**Input:**
+```yaml
+entry_point: spark_phase4
+approaches: [2-3 candidate approaches from Spark Phase 3 synthesis]
+research_files: [ai/features/research-*.md]
+context: "Why the routing matrix escalated (e.g. P1×R0)"
+```
+
+**Process:** Phase 1-2-3 as usual — experts analyze the approaches + research,
+not a spec file.
+
+**Output differences:**
+- Verdict selects/adjusts an approach; the result feeds directly back into the
+  running Spark session, which then writes the spec (status `queued`)
+- Do NOT set any spec/backlog/lifecycle status — there is no spec yet
+- `needs_human` → see "When decision = needs_human", Spark Phase 4 branch
+
+⛔ Council NEVER gates an already-written spec before implementation. A queued
+spec means decisions were already made. The only valid entry points are Spark
+Phase 4 (pre-spec) and Autopilot escalation (mid-execution).
 
 ## Escalation Mode (from Autopilot)
 

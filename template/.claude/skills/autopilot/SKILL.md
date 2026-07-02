@@ -230,6 +230,14 @@ Before taking a spec from backlog:
 
 1. **Status:** Must be `queued` or `resumed` → skip otherwise
 
+1.5. **Pre-implementation council gates are invalid.** If the spec body says
+   "requires /council before implementation" (or any similar pre-execution
+   gate), that is a Spark process defect — council decisions belong to Spark
+   Phase 4, BEFORE the spec exists. Do NOT passively set `blocked` and wait.
+   Convene council via the standard escalation (`escalation.md` → Council)
+   to resolve the open question in-session, then continue; block only through
+   its normal `needs_human` outcome.
+
 2. **Already-implemented detection (BUG-188):** Before invoking the Plan Agent,
    check whether the spec's `## Allowed Files` already have implementation commits.
 

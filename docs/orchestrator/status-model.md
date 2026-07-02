@@ -82,6 +82,13 @@ _ALLOWED_WRITERS_FOR_CREATE  = {spark} | _ALLOWED_WRITERS                       
 (до 5 раз, retry на стороне spark). Priority нормализуется к lower-case, невалид → `p1` (TECH-200,
 `:626-634`).
 
+**`by="spark"` → только `status="queued"`** (2026-07-02): council/architect-решения происходят в
+Spark Phase 4 ДО существования спеки, поэтому spark-born `blocked` («council_required»
+pre-implementation gate) — процессная ошибка; `create_initial` бросает `ValueError`. Инцидент:
+dowry FTR-1333 — spark написал спеку и заблокировал её «до /council» вместо созыва консилиума
+внутри Phase 4. `status`-override (например `done` для DONE-архива при бутстрапе, ADR-026)
+остаётся доступен только `by="orchestrator"`.
+
 ---
 
 ## 4. Write-once-done (Rule 7) — терминальность `done`

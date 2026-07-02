@@ -117,6 +117,14 @@ When setting status in spec, **verbally confirm**:
 | Spec created but interrupted | `queued` | Orchestrator will pick up on next cycle |
 | Needs discussion/postponed | `queued` | Left for refinement, orchestrator holds until slot available |
 
+⛔ **`blocked` is NOT a valid status for a created spec.** Council/architect
+decisions happen in Phase 4 — BEFORE the spec is written. If a decision is
+still pending, the spec file must not exist yet: exit with `status: blocked,
+spec_status: not_created` (same shape as a linter failure) and let the
+orchestrator surface it to the user. A spec sitting in the backlog "waiting
+for /council" is a process violation — a written spec means all decisions
+are made, and its only status is `queued`.
+
 ---
 
 ## Backlog Format (STRICT)

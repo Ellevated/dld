@@ -300,11 +300,30 @@ R2 = Contained: 1-2 files, single domain, internal, trivially rollbackable
 - Scope unclear after dialogue
 → Present 2-3 approaches, user chooses
 
-### COUNCIL (escalate)
+### COUNCIL (convene NOW, inside this Spark session)
 - Matrix says COUNCIL
 - Cross-domain impact (affects 3+ domains)
 - Major architectural decision
-→ `/council` (5 experts + cross-critique)
+
+Council is a Phase 4 decision instrument — it runs BEFORE the spec is written,
+never after. Protocol:
+
+1. **Interactive mode:** present the R0/impact assessment to the user first.
+   User chooses: (a) convene `/council` now, (b) decide together without
+   council (route downgrades to HUMAN), or (c) drop the feature (no spec).
+2. **Headless mode:** convene `/council` inline immediately (user unavailable).
+3. Input to council: the 2-3 approaches from Phase 3 + scout research files.
+4. Incorporate the synthesis:
+   - `approved` / `needs_changes` → select/adjust approach, proceed to Phase 5
+   - `rejected` → return to Phase 3 with council feedback (or exit without spec)
+   - `needs_human` in headless → EXIT WITHOUT creating the spec file
+     (`status: blocked, spec_status: not_created` — same shape as a linter
+     failure); orchestrator surfaces it to the user.
+
+⛔ **NEVER write the spec first and defer council.** A spec with status
+`blocked`, "council_required", or any other pre-implementation gate MUST NOT
+exist. By the time Phase 5 starts, all decisions are made — every created
+spec exits Spark as `queued` (see completion.md).
 
 ### ARCHITECT (escalate)
 - Blueprint gap (domain missing, rule missing)
@@ -315,6 +334,7 @@ R2 = Contained: 1-2 files, single domain, internal, trivially rollbackable
 DO NOT proceed to Phase 5 until:
 - [ ] Decision route selected (AUTO/HUMAN/COUNCIL/ARCHITECT)
 - [ ] If HUMAN: user has explicitly chosen an approach
+- [ ] If COUNCIL: council has ALREADY run and its decision is incorporated — "council later" is not a state
 - [ ] state.json updated: decide = done, approach = N
 Skipping this gate = VIOLATION. No rationalization accepted.
 Common rationalization to REJECT: "I already know what the user wants"
