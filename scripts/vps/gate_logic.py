@@ -180,10 +180,19 @@ def match_subject(subject: str, spec_id: str) -> bool:
           `fix(FTR-925)!: ...`
           `feat(FTR-925,FTR-926): ...`        # multi-spec scope
           `chore(area, FTR-925): ...`         # whitespace tolerated
-      - Merge commit (branch prefix tolerated, BUG-192):
+      - Merge commit (branch prefix tolerated, BUG-192; colon/branch/quote
+        forms added 2026-07-02 after plpilot TECH-349/BUG-346 false-blocked):
           `merge FTR-925`
           `merge FTR-925: ...`
           `Merge feature/FTR-925: ...`        # branch-prefix form
+          `merge: feature/FTR-925 — ...`      # colon after merge
+          `Merge branch 'fix/FTR-925-slug'`   # git default merge subject
+      - Trailing parenthesized ID at end of subject (2026-07-02, plpilot
+        BUG-338/339/340/346/347 false-blocked — coders put the ID in the
+        tail, not the scope):
+          `fix(security): revoke grants (FTR-925)`
+          `fix: truncate safely (FTR-925)`
+          `feat: x (FTR-925, FTR-926)`        # multi-spec tail
       - Legacy bare prefix:
           `FTR-925: ...`
 
@@ -191,6 +200,7 @@ def match_subject(subject: str, spec_id: str) -> bool:
       - body / footer / trailer mentions
       - `feat(other): ... see FTR-925`        # ID after ':' is not a scope
       - `feat: FTR-925 something`             # no scope, ID inside message
+      - `fix: x (see FTR-925)`                # tail parens must be IDs only
 
     Args:
         subject: First line of a git commit message.
@@ -207,9 +217,23 @@ def match_subject(subject: str, spec_id: str) -> bool:
         scopes = [s.strip() for s in m.group(1).split(",")]
         if any(s.strip().upper() == spec_id.upper() for s in scopes):
             return True
-    # Merge commit: `merge [branch/]SPEC-ID` (start, optionally followed by ':' or space)
-    if re.match(rf"^merge\s+(\S+/)?{re.escape(spec_id)}\b", subject, re.IGNORECASE):
+    # Merge commit: `merge[:] [branch] ['][prefix/]SPEC-ID`
+    if re.match(
+        rf"^merge[:\s]\s*(?:branch\s+)?['\"]?(?:\S+/)?{re.escape(spec_id)}\b",
+        subject,
+        re.IGNORECASE,
+    ):
         return True
+    # Trailing parenthesized ID(s): `... (SPEC-ID)` / `... (SPEC-A, SPEC-B)`.
+    # Every comma-separated element must BE a spec-id-shaped token — free text
+    # like `(see SPEC-ID)` stays rejected (TECH-177 body-mention discipline).
+    m = re.search(r"\(([^()]*)\)\s*$", subject)
+    if m:
+        tail = [s.strip() for s in m.group(1).split(",")]
+        if all(_SPEC_ID_RE.fullmatch(s) for s in tail) and any(
+            s.upper() == spec_id.upper() for s in tail
+        ):
+            return True
     # Legacy bare: `SPEC-ID: <description>`
     if re.match(rf"^{re.escape(spec_id)}:\s", subject):
         return True
@@ -264,6 +288,13 @@ def find_implementation_commit(
         Step 2: Python loop with match_subject(subject, spec_id).
                 Subject-only matching — body/footer mentions are IGNORED.
 
+    Merge-commit pass (2026-07-02, plpilot BUG-338 false-blocked): default
+    history simplification makes a no-ff merge TREESAME to its feature parent,
+    so the path-filtered log NEVER shows the merge commit itself — a
+    `Merge BUG-338: ...` subject could not be seen by Step 2. A second
+    `--first-parent` log computes TREESAME against the first parent only,
+    so merges that bring allowed-file changes into develop DO appear.
+
     NOT bare `--grep SPEC-ID` (would match body/trailer mentions = false positives).
 
     No activity window. No `--all`. No auto-close path. The state of
@@ -282,32 +313,34 @@ def find_implementation_commit(
     """
     if not spec_id or not allowed_files:
         return None
-    cmd = [
-        "git",
-        "-C",
-        project_path,
-        "log",
-        "origin/develop",
-        "--pretty=%H%x00%s",
-        "--",
-        *allowed_files,
-    ]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
-    except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("GATE: git log failed for %s: %s", spec_id, exc)
-        return None
-    if r.returncode != 0:
-        log.warning(
-            "GATE: git log rc=%s stderr=%s",
-            r.returncode,
-            r.stderr.strip()[:200],
-        )
-        return None
-    for line in r.stdout.splitlines():
-        if not line:
-            continue
-        sha, _, subject = line.partition("\x00")
-        if match_subject(subject, spec_id):
-            return sha.strip()
+    for extra_args in ([], ["--first-parent"]):
+        cmd = [
+            "git",
+            "-C",
+            project_path,
+            "log",
+            *extra_args,
+            "origin/develop",
+            "--pretty=%H%x00%s",
+            "--",
+            *allowed_files,
+        ]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("GATE: git log failed for %s: %s", spec_id, exc)
+            return None
+        if r.returncode != 0:
+            log.warning(
+                "GATE: git log rc=%s stderr=%s",
+                r.returncode,
+                r.stderr.strip()[:200],
+            )
+            return None
+        for line in r.stdout.splitlines():
+            if not line:
+                continue
+            sha, _, subject = line.partition("\x00")
+            if match_subject(subject, spec_id):
+                return sha.strip()
     return None

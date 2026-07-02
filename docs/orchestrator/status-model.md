@@ -184,9 +184,18 @@ Fail-closed: ambiguity → `blocked`.
 > `_spec_has_merged_implementation` и в текущем коде **заменены** на origin/develop-gate. ADR-таблица в
 > `.claude/rules/architecture.md` ещё описывает их как актуальные — это дрейф, верь коду.
 
-- **`_subject_implements`** (`:734-774`, TECH-177): засчитывает ТОЛЬКО первую строку (subject), не
+- **`_subject_implements`** (TECH-177): засчитывает ТОЛЬКО первую строку (subject), не
   body/footer. Формы: Conventional scope `feat(FTR-925):` (case-insensitive, multi-scope, `!`);
-  merge `merge [branch/]SPEC-ID`; legacy `SPEC-ID: `.
+  merge `merge[:] [branch] ['][prefix/]SPEC-ID` (покрывает `merge: feature/SPEC-ID — ...` и
+  git-дефолтный `Merge branch 'fix/SPEC-ID-slug'`); trailing `(SPEC-ID)` в конце subject
+  (каждый элемент в скобках обязан быть spec-id-shaped — `(see SPEC-ID)` отвергается);
+  legacy `SPEC-ID: `. Расширено 2026-07-02 после ложных demote plpilot BUG-338/339/340/346/347,
+  TECH-349. Синхронизировано с `gate_logic.match_subject` (L-derived-2).
+- **`_is_done_on_develop` — два прохода `git log`:** обычный path-filtered + `--first-parent`.
+  Дефолтная history simplification прячет no-ff merge из path-filtered лога (merge TREESAME
+  feature-родителю), поэтому subject `Merge SPEC-ID: ...` раньше никогда не доходил до проверки —
+  `--first-parent` считает TREESAME только против первого родителя и merge-коммиты видит
+  (2026-07-02, plpilot BUG-338). Зеркально в `gate_logic.find_implementation_commit`.
 - **`_parse_allowed_files`** (`:529-565`, TECH-167): v1 strict (маркер `<!-- callback-allowlist v1 -->`
   + heading `## Allowed Files`, только канон-буллеты `` - `path.ext` ``) → list (может быть `[]`);
   иначе legacy (heading-варианты + любые backtick-пути); секции нет → `None`.

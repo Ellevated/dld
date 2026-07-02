@@ -131,3 +131,43 @@ def test_ec6_done_on_develop_no_remote(tmp_path):
         ["git", "-C", str(repo), "init", "-q", "-b", "develop"], check=True, capture_output=True
     )
     assert callback._is_done_on_develop(str(repo), "TECH-XXX", ["src/foo.py"]) is False
+
+
+# --- 2026-07-02 false-blocked regression (plpilot BUG-338/339, TECH-349) ------
+# Keep in sync with scripts/vps/tests/test_gate_logic.py (L-derived-2).
+
+
+def test_ec7_trailing_parens_subject(dev_repo):
+    """Trailing (SPEC-ID) subject form counts as implementation."""
+    _commit_to(dev_repo, "src/foo.py", "x=1\n", "fix: revoke grants on RPCs (BUG-339)")
+    _git(dev_repo, "push", "-q", "origin", "develop")
+    _git(dev_repo, "fetch", "-q", "origin", "develop")
+
+    assert callback._is_done_on_develop(str(dev_repo), "BUG-339", ["src/foo.py"]) is True
+
+
+def test_ec8_trailing_parens_free_text_rejected():
+    """`(see SPEC-ID)` cross-reference stays rejected (TECH-177 discipline)."""
+    assert callback._subject_implements("fix: adjust helper (see BUG-339)", "BUG-339") is False
+    assert callback._subject_implements("fix: revert (BUG-339) partial now", "BUG-339") is False
+
+
+def test_ec9_merge_commit_found_via_first_parent(dev_repo):
+    """No-ff merge commit `Merge SPEC-ID: ...` is found even though the
+    path-filtered default log simplifies it away (plpilot BUG-338)."""
+    _git(dev_repo, "checkout", "-q", "-b", "feature/BUG-338")
+    _commit_to(dev_repo, "src/text.py", "y=1\n", "fix: truncation without spec id")
+    _git(dev_repo, "checkout", "-q", "develop")
+    _git(
+        dev_repo,
+        "merge",
+        "--no-ff",
+        "-q",
+        "-m",
+        "Merge BUG-338: HTML-aware TG text truncation",
+        "feature/BUG-338",
+    )
+    _git(dev_repo, "push", "-q", "origin", "develop")
+    _git(dev_repo, "fetch", "-q", "origin", "develop")
+
+    assert callback._is_done_on_develop(str(dev_repo), "BUG-338", ["src/text.py"]) is True

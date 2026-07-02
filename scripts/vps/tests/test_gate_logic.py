@@ -162,6 +162,84 @@ def test_DA4_growth_spec_id_match_subject():
     assert match_subject("feat(GROWTH-042): add growth metric", "GROWTH-042") is True
 
 
+# --- 2026-07-02 false-blocked regression (plpilot BUG-338/339, TECH-349) ----
+
+
+def test_match_subject_trailing_parens_with_scope():
+    """Real plpilot BUG-339 subject: domain scope + trailing (SPEC-ID)."""
+    assert (
+        match_subject(
+            "fix(security): REVOKE public execute on 7 SECURITY DEFINER RPCs (BUG-339)",
+            "BUG-339",
+        )
+        is True
+    )
+
+
+def test_match_subject_trailing_parens_no_scope():
+    """Real plpilot BUG-338 subject: no scope, trailing (SPEC-ID)."""
+    assert (
+        match_subject(
+            "fix: HTML-aware TG text truncation prevents broken tags (BUG-338)",
+            "BUG-338",
+        )
+        is True
+    )
+
+
+def test_match_subject_trailing_parens_multi_spec():
+    """Trailing parens with comma-separated spec ids matches each one."""
+    subj = "fix: shared helper hardening (BUG-339, BUG-340)"
+    assert match_subject(subj, "BUG-339") is True
+    assert match_subject(subj, "BUG-340") is True
+    assert match_subject(subj, "BUG-341") is False
+
+
+def test_match_subject_trailing_parens_free_text_rejected():
+    """`(see SPEC-ID)` is a cross-reference, not a declaration → reject."""
+    assert match_subject("fix: adjust helper (see BUG-339)", "BUG-339") is False
+
+
+def test_match_subject_mid_subject_parens_rejected():
+    """Parenthesized ID NOT at end of subject stays rejected."""
+    assert match_subject("fix: revert (BUG-339) partial change now", "BUG-339") is False
+
+
+def test_match_subject_merge_colon_form():
+    """Real plpilot TECH-349 subject: `merge: feature/SPEC-ID — ...`."""
+    assert (
+        match_subject(
+            "merge: feature/TECH-349 — Edge resilience (CORS fail-fast + timeouts)",
+            "TECH-349",
+        )
+        is True
+    )
+
+
+def test_match_subject_merge_branch_quoted_form():
+    """Git default merge subject: Merge branch 'fix/SPEC-ID-slug'."""
+    assert (
+        match_subject(
+            "Merge branch 'fix/BUG-346-one-time-receipt-phantom' into develop",
+            "BUG-346",
+        )
+        is True
+    )
+
+
+def test_match_subject_merge_branch_wrong_spec_rejected():
+    """Merge of an UNRELATED branch must not match a different spec."""
+    assert (
+        match_subject(
+            "Merge branch 'fix/BUG-346-one-time-receipt-phantom' into develop",
+            "BUG-347",
+        )
+        is False
+    )
+    # Spec id boundary: BUG-346 must not match inside BUG-3468.
+    assert match_subject("Merge branch 'fix/BUG-3468-x'", "BUG-346") is False
+
+
 # ===========================================================================
 # Part 2: _parse_allowed_files_v1 — unit tests (no git)
 # ===========================================================================
@@ -407,4 +485,80 @@ def test_find_implementation_commit_wrong_file_returns_none(git_repo_with_remote
 
     # Allowed list does NOT include unrelated.py
     result = find_implementation_commit(str(repo), "SPEC-A", ["scripts/vps/gate_logic.py"])
+    assert result is None
+
+
+# --- 2026-07-02 merge-commit visibility regression (plpilot BUG-338) --------
+
+
+def _merge_feature_branch(
+    repo: Path,
+    branch: str,
+    filename: str,
+    feature_subject: str,
+    merge_subject: str,
+) -> str:
+    """Create a feature branch with one commit, no-ff merge it into develop.
+
+    Returns the merge commit SHA.
+    """
+    _git(repo, "checkout", "-q", "-b", branch)
+    _add_commit(repo, filename, feature_subject)
+    _git(repo, "checkout", "-q", "develop")
+    _git(repo, "merge", "--no-ff", "-q", "-m", merge_subject, branch)
+    return _git(repo, "rev-parse", "HEAD").strip()
+
+
+def test_merge_commit_subject_found_via_first_parent(git_repo_with_remote):
+    """Regression (plpilot BUG-338): feature commit has NO spec id in subject,
+    only the no-ff merge commit declares it (`Merge SPEC-ID: ...`).
+
+    Default path-filtered `git log` simplifies the merge away (TREESAME to the
+    feature parent) — the `--first-parent` pass must still find it.
+    """
+    repo = git_repo_with_remote
+    merge_sha = _merge_feature_branch(
+        repo,
+        "feature/BUG-338",
+        "src/text-safety.ts",
+        "fix: HTML-aware truncation without spec id anywhere",
+        "Merge BUG-338: HTML-aware TG text truncation",
+    )
+    _push_to_remote(repo)
+
+    result = find_implementation_commit(str(repo), "BUG-338", ["src/text-safety.ts"])
+    assert result == merge_sha
+
+
+def test_merge_branch_default_subject_found(git_repo_with_remote):
+    """Regression (plpilot BUG-346): git default `Merge branch 'fix/SPEC-ID-slug'`
+    merge subject is found even when the feature commit subject has no scope."""
+    repo = git_repo_with_remote
+    merge_sha = _merge_feature_branch(
+        repo,
+        "fix/BUG-346-one-time-receipt-phantom",
+        "src/receipt-service.ts",
+        "fix: one-time receipt phantom recurring",
+        "Merge branch 'fix/BUG-346-one-time-receipt-phantom' into develop",
+    )
+    _push_to_remote(repo)
+
+    result = find_implementation_commit(str(repo), "BUG-346", ["src/receipt-service.ts"])
+    assert result == merge_sha
+
+
+def test_merge_of_unrelated_spec_not_matched(git_repo_with_remote):
+    """Fail-closed: a merge bringing changes into an allowed file but declaring
+    a DIFFERENT spec id must not match."""
+    repo = git_repo_with_remote
+    _merge_feature_branch(
+        repo,
+        "feature/BUG-777",
+        "src/shared.ts",
+        "fix: shared change",
+        "Merge BUG-777: unrelated work touching shared file",
+    )
+    _push_to_remote(repo)
+
+    result = find_implementation_commit(str(repo), "BUG-888", ["src/shared.ts"])
     assert result is None

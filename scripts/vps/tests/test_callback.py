@@ -418,13 +418,24 @@ class TestSubjectImplementsRealWorld:
 class TestSubjectImplementsAntiFalsePositive:
     """TECH-177 invariant: body/trailer mentions DO NOT count.
     MUST stay False after BUG-192 fix.
+
+    2026-07-02 narrowing: a PURE trailing `(SPEC-ID)` at end of subject is now
+    ACCEPTED (plpilot BUG-338/339/340/346/347 + TECH-349 false-blocked with
+    merged work). Free text inside the trailing parens stays rejected.
     """
 
-    def test_trailing_only_rejected(self):
+    def test_trailing_free_text_rejected(self):
+        # `(FTR-1077 Task 3)` is a task reference, not a pure spec-id token.
         assert not callback._subject_implements(
             "feat(billing): SRID pre-withdrawal gate (FTR-1077 Task 3)", "FTR-1077"
         )
-        assert not callback._subject_implements("fix(db): restore constraint (BUG-439)", "BUG-439")
+        assert not callback._subject_implements(
+            "fix(db): restore constraint (see BUG-439)", "BUG-439"
+        )
+
+    def test_trailing_pure_spec_id_accepted(self):
+        # 2026-07-02 semantic change: pure trailing ID = implementation claim.
+        assert callback._subject_implements("fix(db): restore constraint (BUG-439)", "BUG-439")
 
     def test_see_also_rejected(self):
         assert not callback._subject_implements("feat(other): see also FTR-925", "FTR-925")
@@ -449,6 +460,10 @@ class TestMatchSubjectParityWithCallback:
             ("Merge feature/FTR-1076: foo", "FTR-1076"),
             ("Merge autopilot/BUG-1065 into develop", "BUG-1065"),
             ("feat(area, ftr-1076): both", "FTR-1076"),
+            # 2026-07-02 plpilot false-blocked forms:
+            ("fix(security): revoke grants (BUG-339)", "BUG-339"),
+            ("merge: feature/TECH-349 — Edge resilience", "TECH-349"),
+            ("Merge branch 'fix/BUG-346-receipt-phantom' into develop", "BUG-346"),
         ]
         for subject, spec_id in positives:
             assert callback._subject_implements(subject, spec_id), (
@@ -464,7 +479,7 @@ class TestMatchSubjectParityWithCallback:
         negatives = [
             ("feat(other): see FTR-925", "FTR-925"),
             ("Refs: FTR-925", "FTR-925"),
-            ("fix(db): restore (BUG-439)", "BUG-439"),
+            ("fix(db): restore (see BUG-439)", "BUG-439"),
         ]
         for subject, spec_id in negatives:
             assert not callback._subject_implements(subject, spec_id), (
