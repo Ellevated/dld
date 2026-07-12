@@ -1,13 +1,18 @@
 allowed_files_hash: null
 blocked_reason: null
-finished_at: null
+finished_at: '2026-07-12T16:32:59Z'
 kind: tech
 priority: p1
-pueue_id: null
+pueue_id: 945
 spec_id: TECH-207
 started_at: null
-status: queued
-transitions: []
-updated_at: '2026-07-12T15:59:18Z'
-updated_by: operator
-version: 1
+status: done
+transitions:
+- at: '2026-07-12T16:32:59Z'
+  by: callback
+  from: queued
+  pueue_id: 945
+  to: done
+updated_at: '2026-07-12T16:32:59Z'
+updated_by: callback
+version: 2
