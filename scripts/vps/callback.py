@@ -18,6 +18,7 @@ INVARIANT: Always exit 0. Every step in try/except.
 TECH-171: _write_audit / _emit_audit append one JSONL line per verify_status_sync call.
 Audit log path: $CALLBACK_AUDIT_LOG or scripts/vps/callback-audit.jsonl.
 ARCH-186: verify_status_sync writes only to lifecycle.yaml (no markdown edits).
+TECH-207: _step6_dispatch_qa_reflect — merge-confirmed QA dispatch fallback.
 """
 
 import json
@@ -1424,6 +1425,121 @@ def write_event_for_skill(project_path: str, skill: str, status: str, task_label
     )
 
 
+def _step6_dispatch_qa_reflect(
+    skill: str,
+    status: str,
+    task_status: str,
+    project_id: str,
+    task_label: str,
+    preview: str,
+) -> None:
+    """Step 6: Post-autopilot tail — dispatch QA + Reflect.
+
+    TECH-194 Layer E: allowlist gate — only dispatch when completion is confirmed.
+    TECH-207: merge-confirmed fallback — when task_status is missing/displaced
+    but the implementation IS confirmed merged on origin/develop, dispatch anyway.
+
+    Dispatch conditions (any of):
+      1. task_status == "complete" (explicit signal — original path)
+      2. task_status not in ("blocked", "needs_review") AND implementation
+         confirmed merged on origin/develop (merge fallback)
+
+    Skip conditions:
+      - skill != "autopilot" or status != "done"
+      - task_status in ("blocked", "needs_review") — deliberate hold
+      - No merge confirmed and task_status != "complete" — SIGKILL/abort
+    """
+    if skill != "autopilot" or status != "done":
+        return
+
+    # Explicit block signals — never dispatch (TECH-194 Layer E preserved)
+    if task_status in ("blocked", "needs_review"):
+        log.info(
+            "skip QA+reflect dispatch: task_status=%r (explicit block signal)",
+            task_status,
+        )
+        return
+
+    # Resolve state once — reused by both explicit_complete and merge fallback paths.
+    try:
+        state = db.get_project_state(project_id)
+    except Exception as exc:
+        log.warning("skip QA+reflect: get_project_state failed for %s: %s", project_id, exc)
+        return
+    if not state:
+        log.info("skip QA+reflect: no project_state for %s", project_id)
+        return
+    project_path = state.get("path", "")
+    provider = state.get("provider", "claude") or "claude"
+    if not project_path:
+        log.info("skip QA+reflect: empty project_path for %s", project_id)
+        return
+
+    spec_id = resolve_spec_id(task_label, preview, project_path)
+
+    dispatch_via = ""  # tracks which path triggered dispatch
+
+    if task_status == "complete":
+        dispatch_via = "explicit_complete"
+    else:
+        # TECH-207: merge-confirmed fallback — check origin/develop.
+        # Reuses the same gate logic as Step 7 (verify_status_sync).
+        if not spec_id:
+            log.info(
+                "skip QA+reflect merge fallback: no spec_id for %s",
+                task_label,
+            )
+            return
+
+        try:
+            spec_file = next(
+                iter(Path(project_path).glob(f"ai/features/{spec_id}*.md")),
+                None,
+            )
+            allowed = _parse_allowed_files(spec_file) if spec_file else None
+            if not allowed:
+                log.info(
+                    "skip QA+reflect merge fallback: no allowed_files for %s",
+                    spec_id,
+                )
+                return
+
+            _fetch_develop(project_path)
+            if _is_done_on_develop(project_path, spec_id, allowed):
+                dispatch_via = "QA_DISPATCH_MERGE_FALLBACK"
+                log.info(
+                    "QA_DISPATCH_MERGE_FALLBACK: task_status=%r but impl confirmed "
+                    "merged on origin/develop for %s — dispatching QA+Reflect",
+                    task_status,
+                    spec_id,
+                )
+            else:
+                log.info(
+                    "skip QA+reflect dispatch: task_status=%r, no merge confirmed "
+                    "for %s (SIGKILL/abort/incomplete)",
+                    task_status,
+                    spec_id,
+                )
+                return
+        except Exception as exc:
+            log.warning(
+                "QA_DISPATCH_MERGE_FALLBACK: error checking merge for %s: %s",
+                task_label,
+                exc,
+            )
+            return
+
+    # Dispatch QA + Reflect (shared path for both explicit_complete and merge fallback)
+    try:
+        if spec_id:
+            dispatch_qa(project_id, project_path, spec_id, provider)
+        else:
+            log.info("skip QA: no spec_id resolved for %s", task_label)
+        dispatch_reflect(project_id, project_path, task_label, provider)
+    except Exception as exc:
+        log.warning("post-autopilot dispatch failed (%s): %s", dispatch_via, exc)
+
+
 def main() -> None:  # pragma: no cover
     """Main callback entry point. ALWAYS exits 0.
 
@@ -1512,30 +1628,18 @@ def main() -> None:  # pragma: no cover
             log.warning("write_event failed: %s", exc)
 
         # Step 6: Post-autopilot tail — dispatch QA + Reflect
-        # TECH-194 Layer E: allowlist gate. Only dispatch when autopilot explicitly
-        # signals complete. Blocklist (blocked/needs_review) was insufficient —
-        # task_status="" (SIGKILL, missing output) also dispatched incorrectly.
-        if skill == "autopilot" and status == "done":
-            if task_status != "complete":
-                log.info(
-                    "skip QA+reflect dispatch: task_status=%r (expected 'complete')",
-                    task_status,
-                )
-            else:
-                try:
-                    state = db.get_project_state(project_id)
-                    if state:
-                        project_path = state.get("path", "")
-                        provider = state.get("provider", "claude") or "claude"
-                        if project_path:
-                            spec_id = resolve_spec_id(task_label, preview, project_path)
-                            if spec_id:
-                                dispatch_qa(project_id, project_path, spec_id, provider)
-                            else:
-                                log.info("skip QA: no spec_id resolved for %s", task_label)
-                            dispatch_reflect(project_id, project_path, task_label, provider)
-                except Exception as exc:
-                    log.warning("post-autopilot dispatch failed: %s", exc)
+        # Extracted to _step6_dispatch_qa_reflect (TECH-207)
+        try:
+            _step6_dispatch_qa_reflect(
+                skill=skill,
+                status=status,
+                task_status=task_status,
+                project_id=project_id,
+                task_label=task_label,
+                preview=preview,
+            )
+        except Exception as exc:
+            log.warning("step6 dispatch failed: %s", exc)
 
         # Step 7: Verify spec + backlog status sync
         if skill == "autopilot" and status in ("done", "failed"):
