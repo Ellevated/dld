@@ -46,6 +46,8 @@ _ALLOWED_FILE_EXT_RE = re.compile(r"`([^\s`\n]+\.[a-zA-Z][\w-]*)`")
 _ALLOWED_FILES_V1_HEADING_RE = re.compile(r"^##[ \t]+Allowed Files[ \t]*$")
 _ALLOWED_FILES_V1_MARKER_RE = re.compile(r"<!--\s*callback-allowlist\s+v1\b[^>]*-->")
 _ALLOWED_FILES_V1_BULLET_RE = re.compile(r"^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$")
+# TECH-208: numbered-list items (e.g. "1. `path/to/file.py` — reason").
+_ALLOWED_FILES_V1_NUMBERED_RE = re.compile(r"^\d+\.[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$")
 
 # TECH-166 legacy fallback heading variants (case-insensitive):
 #   ## Allowed Files, ## Updated Allowed Files, ## Files Allowed to Modify
@@ -85,10 +87,10 @@ def _parse_allowed_files_v1(spec_text: str) -> list[str] | None:
     if not _ALLOWED_FILES_V1_MARKER_RE.search(section_text):
         return None
 
-    # Strict mode: only canonical bullets count.
+    # Strict mode: canonical dash-bullets AND numbered-list items (TECH-208).
     paths: list[str] = []
     for ln in section:
-        m = _ALLOWED_FILES_V1_BULLET_RE.match(ln)
+        m = _ALLOWED_FILES_V1_BULLET_RE.match(ln) or _ALLOWED_FILES_V1_NUMBERED_RE.match(ln)
         if m:
             paths.append(m.group(1))
     # Empty list with marker present = degrade-closed (explicit empty allowlist).
