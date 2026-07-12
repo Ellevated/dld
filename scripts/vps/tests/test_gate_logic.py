@@ -271,6 +271,42 @@ _V1_SPEC_NO_MARKER = """\
 
 """
 
+# --- TECH-208: numbered-list format regression cases --------------------------
+
+_V1_SPEC_NUMBERED = """\
+## Spec heading
+
+## Allowed Files
+<!-- callback-allowlist v1 -->
+
+1. `scripts/vps/callback.py` — extend regex
+2. `scripts/vps/gate_logic.py` — same extension
+
+## Next Section
+"""
+
+_V1_SPEC_NUMBERED_GAPS = """\
+## Allowed Files
+<!-- callback-allowlist v1 -->
+
+1. `scripts/vps/callback.py` — first file
+5. `scripts/vps/gate_logic.py` — gap in numbering
+10. `scripts/vps/tests/test_gate_logic.py` — bigger number
+
+## Definition of Done
+"""
+
+_V1_SPEC_MIXED_BULLETS = """\
+## Allowed Files
+<!-- callback-allowlist v1 -->
+
+- `scripts/vps/callback.py` — dash bullet
+1. `scripts/vps/gate_logic.py` — numbered item
+- `scripts/vps/tests/test_gate_logic.py` — dash again
+
+## End
+"""
+
 
 def test_parse_allowed_files_v1_happy_path():
     """v1 happy path: marker present + two canonical bullets."""
@@ -291,6 +327,38 @@ def test_parse_allowed_files_v1_no_marker_returns_none():
     """v1 heading present but no marker → caller should fall back to legacy."""
     result = _parse_allowed_files_v1(_V1_SPEC_NO_MARKER)
     assert result is None
+
+
+# --- TECH-208: numbered-list format regression --------------------------------
+
+
+def test_parse_allowed_files_v1_numbered_list():
+    """TECH-208: v1 parser accepts numbered-list items (1. `path`)."""
+    result = _parse_allowed_files_v1(_V1_SPEC_NUMBERED)
+    assert result == [
+        "scripts/vps/callback.py",
+        "scripts/vps/gate_logic.py",
+    ]
+
+
+def test_parse_allowed_files_v1_numbered_gaps():
+    """TECH-208: numbering gaps (1, 5, 10) are tolerated."""
+    result = _parse_allowed_files_v1(_V1_SPEC_NUMBERED_GAPS)
+    assert result == [
+        "scripts/vps/callback.py",
+        "scripts/vps/gate_logic.py",
+        "scripts/vps/tests/test_gate_logic.py",
+    ]
+
+
+def test_parse_allowed_files_v1_mixed_bullets_and_numbered():
+    """TECH-208: mixed dash-bullets and numbered items both parse."""
+    result = _parse_allowed_files_v1(_V1_SPEC_MIXED_BULLETS)
+    assert result == [
+        "scripts/vps/callback.py",
+        "scripts/vps/gate_logic.py",
+        "scripts/vps/tests/test_gate_logic.py",
+    ]
 
 
 # ===========================================================================
@@ -371,6 +439,17 @@ def test_parse_allowed_files_missing_file_returns_none(tmp_path):
     """Non-existent spec file → returns None (OSError handled)."""
     result = parse_allowed_files(tmp_path / "nonexistent.md")
     assert result is None
+
+
+def test_parse_allowed_files_v1_numbered_from_file(tmp_path):
+    """TECH-208: parse_allowed_files reads numbered-list spec and returns paths."""
+    spec = tmp_path / "BUG-355.md"
+    spec.write_text(_V1_SPEC_NUMBERED)
+    result = parse_allowed_files(spec)
+    assert result == [
+        "scripts/vps/callback.py",
+        "scripts/vps/gate_logic.py",
+    ]
 
 
 # ===========================================================================
