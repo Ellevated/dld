@@ -120,8 +120,11 @@ Only after root cause is found → create BUG-XXX spec:
 - [Pattern](https://example.com) — description from Scout
 
 ## Allowed Files
-1. `path/to/file.py` — fix location
-2. `path/to/test.py` — add regression test
+
+<!-- callback-allowlist v1 -->
+
+- `path/to/file.py` — fix location
+- `path/to/test.py` — add regression test
 
 ## Definition of Done
 - [ ] Root cause fixed
