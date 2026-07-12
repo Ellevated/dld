@@ -3,12 +3,12 @@
 **Priority:** P1 | **Date:** 2026-06-28 | **Risk:** R1 (callback.py + claude-runner — orchestrator critical path, all projects)
 
 > **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml` (ARCH-186).
-> **STATUS: draft — NOT in backlog.** Orphan spec by design: orchestrator
-> `bootstrap_new_specs` skips spec.md without a backlog row (orchestrator.py:439).
-> Founder review required before adding a `queued` backlog row to dispatch.
+> **Founder-reviewed 2026-07-12, promoted to `queued`** (`lifecycle.create_initial`,
+> `by=operator`) — confirmed still live via a fresh recurrence on awardybot
+> BUG-1387 (2026-07-11, `task_status=''`, background-test-notification pattern).
 > **Self-modification caveat:** implementation edits `callback.py` (the single
 > status writer) — an unsupervised autopilot run on its own critical path is R1.
-> Review the diff before promoting; consider supervised execution.
+> Review the diff before merging; consider supervised execution.
 
 ## Why
 
