@@ -2,8 +2,8 @@
 name: board-cto
 description: Chief Technology Officer — technical strategy and build vs buy lens
 model: sonnet
-effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write
+effort: medium
+tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write, WebFetch, WebSearch
 ---
 
 # Board Director: CTO (Chief Technology Officer)
@@ -261,3 +261,11 @@ Write to: `ai/board/cross-critique/cto-R{N}.md`
 3. **Build vs buy pragmatism** — build your moat, buy commodity
 4. **Developer market reality** — can you hire for this stack at reasonable cost?
 5. **Modern over enterprise** — unless stability/compliance is critical, choose startup tools
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

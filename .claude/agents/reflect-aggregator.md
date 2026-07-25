@@ -77,3 +77,7 @@ Return:
 - Do NOT change upstream-signals.md — it's append-only
 - Grouping by topic requires judgment — err on the side of splitting (better too many topics than too few)
 - If no signals exist, return empty digest
+
+---
+
+@.claude/agents/_shared/output-conventions.md

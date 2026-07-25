@@ -119,3 +119,7 @@ findings_collected:
 ```
 
 Both the file AND the response summary are required.
+
+---
+
+@.claude/agents/_shared/output-conventions.md

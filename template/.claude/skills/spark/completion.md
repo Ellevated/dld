@@ -296,19 +296,19 @@ Spec is queued. Orchestrator will hand it to autopilot.
 ### If running as subagent (Task tool — no user interaction):
 ⛔ **MUST use Write tool to create spec file BEFORE returning!**
 ⛔ **MUST use Edit tool to add backlog entry BEFORE returning!**
-<HARD-GATE>
+<GATE>
 After Write/Edit, MUST run `## Auto-Commit + Push (MANDATORY)` via Bash tool BEFORE returning.
 Returning without push = spec invisible to orchestrator (reads from remote HEAD on next cycle).
-</HARD-GATE>
+</GATE>
 
 Returning spec_path without creating file = DATA LOSS (subagent context dies).
 
 ### If running interactively (Skill tool):
-<HARD-GATE>
+<GATE>
 After spec is created and backlog updated, ALWAYS commit and push unconditionally.
 Do NOT ask the user about autopilot handoff — orchestrator manages lifecycle.
 The auto-commit block above (`## Auto-Commit + Push (MANDATORY)`) is the only correct ending.
-</HARD-GATE>
+</GATE>
 Write spec file when spec is complete, then run the auto-commit+push block above.
 
 ### Return format:

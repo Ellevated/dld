@@ -3,7 +3,7 @@ name: coder
 description: Write/modify code for autopilot tasks
 model: sonnet
 effort: high
-tools: Read, Glob, Grep, Edit, Write, Bash, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+tools: Read, Glob, Grep, Edit, Write, Bash, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
 ---
 
 # Coder Agent
@@ -70,10 +70,12 @@ BEFORE modifying ANY file:
 3. NO EXCEPTIONS — even for "small fixes"
 ```
 
+## How to write the code
+
+@.claude/agents/_shared/minimal-code.md
+
 ## Rules
-- **Minimal changes** — only what's in spec
 - **Use Research Sources** — see below
-- **No gold plating** — don't add extras
 - **Follow project style** — type hints, async, Google docstrings
 - **Prompt versions** — NEVER edit existing, always create new vX.Y.md
 - **Test placement** — unit tests next to code: `foo.py` → `foo_test.py`
@@ -231,47 +233,21 @@ Glossary: ai/glossary/{domain}.md
 
 ---
 
-## LLM-Friendly Code Gates (MANDATORY)
+## Architectural invariants
 
-Before completing ANY file, verify:
+These are enforced downstream by `pre-review-check.py`, the review agent, and hooks —
+you don't need to run the checks yourself. Just don't write code that violates them:
 
-### 1. Size Check
-```bash
-wc -l {file}
-```
-- ≤ 400 LOC → OK (≤ 600 for tests)
-- > 400 LOC → STOP! Split into multiple files
+- **File size:** 400 LOC (600 for tests). Over → split.
+- **`__init__.py` exports:** max 5. Over → the domain's public API is too wide.
+- **Placement:** `src/domains/` | `src/infra/` | `src/shared/`. Never `src/services/`,
+  `src/db/`, `src/utils/`.
+- **Import direction:** `shared ← infra ← domains ← api`, never the reverse.
+- **DB/infra changes** need an integration test in `tests/integration/` against real
+  dependencies. No mocks there (hook-enforced).
 
-### 2. Export Check (for `__init__.py`)
-Count exports in `__all__`:
-- ≤ 5 → OK
-- > 5 → STOP! Reduce public API
-
-### 3. Domain Placement Check
-New file location:
-- `src/domains/` → OK
-- `src/infra/` → OK
-- `src/shared/` → OK (if truly shared)
-- `src/services/`, `src/db/`, `src/utils/` → ⛔ WRONG! Use domains/
-
-### 4. Import Direction Check
-Verify imports follow: `shared ← infra ← domains ← api`
-- `from src.domains.X import Y` in `src/infra/` → ⛔ WRONG!
-- `from src.infra.X import Y` in `src/domains/` → OK
-
-### 5. Integration Test Check
-
-If task involves DB or infra changes:
-- [ ] Integration test exists in `tests/integration/`?
-- [ ] Test uses real dependencies (no mocks)?
-If NO → create integration test before completing.
-
-**If ANY check fails:**
-```yaml
-status: blocked
-reason: "LLM-friendly violation: {check} failed"
-action_required: "Split file / reduce exports / move to correct domain"
-```
+If a task can't be done without breaking one of these, that's a spec problem — return
+`status: blocked` with the conflict rather than working around it.
 
 ---
 
@@ -282,3 +258,11 @@ action_required: "Split file / reduce exports / move to correct domain"
 ```
 CODER → VALIDATE (squawk) → COMMIT → PUSH → CI applies
 ```
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

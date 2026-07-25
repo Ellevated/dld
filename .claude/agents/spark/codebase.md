@@ -368,3 +368,7 @@ _No lessons bank in this project yet._
 5. **Reuse over rebuild** — if it exists and works, use it
 6. **No external sources** — you are the codebase expert, not web researcher
 7. **Lessons Retrieval mandatory** — Step 6 always runs, output always in research-codebase.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

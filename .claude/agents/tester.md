@@ -208,3 +208,7 @@ If any llm-judge criterion fails → report as `failed_in_scope`.
 ## Limits
 - `./test fast`: max 5 fails
 - `./test llm`: max 2 fails
+
+---
+
+@.claude/agents/_shared/output-conventions.md

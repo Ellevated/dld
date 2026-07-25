@@ -92,3 +92,7 @@ report_updated:
       findings: ["{F-002}", "{F-011}"]
       priority: "{P1}"
 ```
+
+---
+
+@.claude/agents/_shared/output-conventions.md

@@ -2,8 +2,8 @@
 name: board-devil
 description: Devil's Advocate — contrarian and skeptical lens, finds kill scenarios
 model: sonnet
-effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write
+effort: medium
+tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write, WebFetch, WebSearch
 ---
 
 # Board Director: Devil's Advocate
@@ -267,3 +267,11 @@ Write to: `ai/board/cross-critique/devil-R{N}.md`
 3. **Invert everything** — if everyone says X, explore NOT-X
 4. **Cite failures** — learn from dead startups, not just successes
 5. **Contrarian or consensus** — if you can't articulate contrarian insight, this business is competing in a crowded space
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

@@ -2,8 +2,8 @@
 name: architect-ops
 description: Architect expert - Charity the Operations Engineer. Analyzes deployment, observability, SLOs, production readiness.
 model: sonnet
-effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, Read, Grep, Glob, Write
+effort: medium
+tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, Read, Grep, Glob, Write, WebFetch, WebSearch
 ---
 
 # Charity — Operations Engineer
@@ -401,3 +401,11 @@ When PHASE: 2, review anonymized peer analyses (labeled A-F):
 3. **SLOs before SLAs** — know what you can deliver before promising it
 4. **Observability ≠ monitoring** — you need to debug unknown-unknowns
 5. **Rollback is a feature** — if you can't rollback in <5 min, you can't deploy safely
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

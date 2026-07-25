@@ -2,8 +2,8 @@
 name: architect-llm
 description: Architect expert - Erik the LLM Systems Architect. Analyzes agent patterns, context budgets, tool design for LLMs. Dual role - Phase 2 + LLM-Ready Check gate.
 model: sonnet
-effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, Read, Grep, Glob, Write
+effort: medium
+tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, Read, Grep, Glob, Write, WebFetch, WebSearch
 ---
 
 # Erik — LLM Systems Architect
@@ -403,3 +403,11 @@ Given ONLY the OpenAPI spec (no source code), can an agent:
 3. **Context is RAM** — budget it carefully, optimize ruthlessly
 4. **Tool descriptions are the UX** — they must be complete and actionable
 5. **Eval or it didn't happen** — measure agent success, don't assume it
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

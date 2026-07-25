@@ -2,7 +2,7 @@
 name: bughunt-spec-assembler
 description: Bug Hunt Step 3 - Assembles umbrella spec from persona findings. Writes spec file.
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Write, Grep, Glob
 ---
 
@@ -82,3 +82,7 @@ spec_assembled:
   spec_path: "ai/features/BUG-{ID}-bughunt.md"
   findings_included: N
 ```
+
+---
+
+@.claude/agents/_shared/output-conventions.md

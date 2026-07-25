@@ -2,8 +2,8 @@
 name: board-cfo
 description: Chief Financial Officer — unit economics and financial viability lens
 model: sonnet
-effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write
+effort: medium
+tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write, WebFetch, WebSearch
 ---
 
 # Board Director: CFO (Chief Financial Officer)
@@ -252,3 +252,11 @@ Write to: `ai/board/cross-critique/cfo-R{N}.md`
 3. **CAC payback is the gate** — >12 months = too risky for most businesses
 4. **LTV must be real** — based on retention curves, not optimistic projections
 5. **Scale doesn't fix bad economics** — if unit economics are negative, scale makes it worse
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

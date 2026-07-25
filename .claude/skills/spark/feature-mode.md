@@ -141,14 +141,12 @@ Architect/Board assigned this task — read from blueprint, do NOT ask user.
 
 **Output for both modes:** Problem statement captured, ready for scouts.
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 2 until:
 - [ ] state.json initialized with initState()
 - [ ] state.json updated: collect = done
 - [ ] Problem statement clearly captured
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "the feature is obvious, no need for questions"
-</HARD-GATE>
+</GATE>
 
 ---
 
@@ -217,15 +215,13 @@ Glob("{SESSION_DIR}/research-*.md") → must find 4 files
 If < 4: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
 ```
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 3 until:
 - [ ] ALL 4 scout completion notifications received
 - [ ] Glob confirms 4 research files exist in SESSION_DIR
 - [ ] `research-codebase.md` contains a `## Verified References` section (grep `^## Verified References$` → ≥1 hit). Codebase scout in degraded mode is an acceptable exception — note "no codebase research" in state.json.
 - [ ] state.json updated: research = done, files = [list of 4 files]
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "this is simple enough to skip research"
-</HARD-GATE>
+</GATE>
 
 ---
 
@@ -257,14 +253,12 @@ For each approach:
 
 **Output:** 2-3 approaches ready for Phase 4 decision.
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 4 until:
 - [ ] 2-3 approaches documented with pros/cons
 - [ ] Every claim cites a scout research file
 - [ ] state.json updated: synthesize = done
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "there's only one obvious approach"
-</HARD-GATE>
+</GATE>
 
 ---
 
@@ -330,15 +324,13 @@ spec exits Spark as `queued` (see completion.md).
 - Blueprint contradiction (research conflicts with blueprint)
 → Architect updates blueprint → retry from Phase 3
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 5 until:
 - [ ] Decision route selected (AUTO/HUMAN/COUNCIL/ARCHITECT)
 - [ ] If HUMAN: user has explicitly chosen an approach
 - [ ] If COUNCIL: council has ALREADY run and its decision is incorporated — "council later" is not a state
 - [ ] state.json updated: decide = done, approach = N
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "I already know what the user wants"
-</HARD-GATE>
+</GATE>
 
 ---
 
@@ -683,14 +675,12 @@ DEPLOY_URL={URL or "local-only"}
 [Auto-populated by autopilot during execution]
 ```
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 6 until:
 - [ ] Full spec written to ai/features/{TASK_ID}-*.md
 - [ ] All template sections filled (no {placeholders} remain)
 - [ ] state.json updated: write = done
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "I'll fill the remaining sections later"
-</HARD-GATE>
+</GATE>
 ---
 
 ## Phase 5.5: ALLOWLIST LINTER (Pre-Validate Hard Gate)
@@ -754,14 +744,12 @@ remediation: "Re-run /spark and follow the canonical Allowed Files format
 - state.json: `lint = done, allowlist_paths = [<list>]`.
 - Proceed to Phase 6.
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 6 until:
 - [ ] Phase 5.5 linter run on freshly-written spec file
 - [ ] Linter exit = success (no E001..E006)
 - [ ] state.json updated: lint = done, allowlist_paths = [<paths>]
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "the section looks fine to me"
-</HARD-GATE>
+</GATE>
 
 ---
 ## Phase 6: VALIDATE
@@ -876,13 +864,11 @@ of scope для TECH-183).
 
 **If any gate fails →** spec stays in current state, return to Phase 3 (re-synthesize with feedback).
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 7 until:
 - [ ] All 8 validation gates pass
 - [ ] state.json updated: validate = done
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "gates are just a formality, spec looks good"
-</HARD-GATE>
+</GATE>
 
 ---
 
@@ -931,13 +917,11 @@ Append to ai/reflect/upstream-signals.md:
 {What Architect/Board should do}
 ```
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 8 until:
 - [ ] Reflect signals written (if any issues found)
 - [ ] state.json updated: reflect = done
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "nothing to reflect on"
-</HARD-GATE>
+</GATE>
 
 ---
 
@@ -951,20 +935,3 @@ After spec is created and validated → read `completion.md` for:
 
 After completion: state.json updated: completion = done
 
----
-
-## Rationalization Pre-emption Table
-
-When you feel tempted to skip a phase, consult this table:
-
-| LLM thinks | Correct action |
-|---|---|
-| "This is too simple for research" | Research can be short, but must happen. Update state.json. |
-| "I already know how to do this" | Knowledge ≠ research. Scout may find a better pattern. |
-| "Tests can be written later" | TDD: test BEFORE code. No test = no commit. |
-| "This file isn't in Allowed Files, but it's needed" | Add it to the spec. Hook will block otherwise. |
-| "There's only one obvious approach" | Document it anyway. Devil's advocate may disagree. |
-| "The user said 'just do it'" | Ask 2-3 minimum clarifying questions anyway. |
-| "Validation gates are a formality" | Gates catch real issues. Run them honestly. |
-| "Nothing to reflect on" | There's always a process signal. Did auto-decide work? |
-| "No need for Historical Risks — this is a new feature" | ai/lessons/ exists? Run Gate 7. If it passes with 'none', you did the right thing. If you skip, the next kopecks-chain starts here. |

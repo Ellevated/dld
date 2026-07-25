@@ -2,7 +2,7 @@
 name: board-facilitator
 description: Board meeting facilitator — process keeper, NOT a voter
 model: sonnet
-effort: max
+effort: medium
 tools: Task, Read, Write, Grep, Glob
 ---
 
@@ -223,3 +223,7 @@ contradictions_detected: true | false
 3. **Anonymization is sacred** — preserves independent thinking
 4. **No synthesis** — you collect, you don't decide
 5. **Process over speed** — don't rush rounds to "finish faster"
+
+---
+
+@.claude/agents/_shared/output-conventions.md

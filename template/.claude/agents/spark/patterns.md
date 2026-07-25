@@ -3,7 +3,7 @@ name: spark-patterns
 description: Spark Pattern Scout — alternative approaches with trade-offs
 model: sonnet
 effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Write
+tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Write, WebFetch, WebSearch
 ---
 
 # Pattern Scout
@@ -333,3 +333,11 @@ We lose distributed rate limiting (Approach 2) and network-level protection (App
 4. **Complexity estimates** — grounded in research, not guesses
 5. **Recommendation WITH rationale** — explain the choice
 6. **Trade-offs explicit** — what we give up matters
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

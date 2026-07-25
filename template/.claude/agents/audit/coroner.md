@@ -208,3 +208,7 @@ Write to: `ai/audit/report-coroner.md`
 3. **Dead code still counts** — flag every instance with file:line; mark it low severity rather than omitting it
 4. **Security red flags are always critical** — regardless of code location
 5. **Be thorough but prioritized** — start with largest/most complex files
+
+---
+
+@.claude/agents/_shared/output-conventions.md

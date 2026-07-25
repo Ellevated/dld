@@ -82,3 +82,7 @@ zones_written:
 ```
 
 Both the file AND the response summary are required. The file is the primary artifact; the summary helps the orchestrator route the next step.
+
+---
+
+@.claude/agents/_shared/output-conventions.md

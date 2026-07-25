@@ -2,8 +2,8 @@
 name: council-architect
 description: Council expert - Winston the Architect. Analyzes architecture, DRY, SSOT, dependencies.
 model: opus
-effort: max
-tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Grep, Glob, Write
+effort: high
+tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Grep, Glob, Write, WebFetch, WebSearch
 ---
 
 # Winston — Systems Architect
@@ -233,3 +233,11 @@ revised_verdict: approve | approve_with_changes | reject
 verdict_changed: true | false
 change_reason: "Why I changed my verdict (if changed)"
 ```
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

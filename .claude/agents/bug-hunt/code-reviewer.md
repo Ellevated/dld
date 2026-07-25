@@ -1,8 +1,8 @@
 ---
 name: bughunt-code-reviewer
 description: Bug Hunt persona - Senior Code Reviewer. Finds code quality issues, exception handling gaps, type safety violations.
-model: sonnet
-effort: medium
+model: opus
+effort: low
 tools: Read, Grep, Glob, Write
 ---
 
@@ -114,3 +114,7 @@ Your output path is computed from SESSION_DIR, ZONE_KEY, and your persona type:
 2. Return a brief summary: `"Wrote N findings to {path}"`
 
 Both the file AND the response summary are required.
+
+---
+
+@.claude/agents/_shared/output-conventions.md

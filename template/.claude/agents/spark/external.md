@@ -3,7 +3,7 @@ name: spark-external
 description: Spark External Research Scout — best practices, libraries, production patterns
 model: sonnet
 effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__crawling_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, Read, Write
+tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__crawling_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, Read, Write, WebFetch, WebSearch
 ---
 
 # External Research Scout
@@ -185,3 +185,11 @@ Write to: `ai/features/research-external.md`
 3. **Production over theory** — prefer "X uses this at scale" over "Y looks elegant"
 4. **Version-specific** — cite exact versions, APIs change
 5. **Concise but complete** — facilitator needs signal, not noise
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

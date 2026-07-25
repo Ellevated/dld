@@ -2,8 +2,8 @@
 name: debugger
 description: Analyze test failures during autopilot execution
 model: opus
-effort: max
-tools: Read, Glob, Grep, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__exa__crawling_exa
+effort: high
+tools: Read, Glob, Grep, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__exa__crawling_exa, WebFetch, WebSearch
 ---
 
 # Debugger Agent (In-Task Only)
@@ -197,3 +197,11 @@ fix:
 | Attempt 1-3 | Propose fix → Coder → Tester → Reviewer |
 | After 3 | Escalate to Spark (create BUG-XXX spec) |
 | Out-of-scope | Skip immediately |
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

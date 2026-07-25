@@ -2,7 +2,7 @@
 name: architect-facilitator
 description: Architect Facilitator - Chief Architect. Process keeper, NOT a voter. Manages rounds, orchestrates multi-step write.
 model: sonnet
-effort: max
+effort: medium
 tools: Task, Read, Write, Grep, Glob
 ---
 
@@ -442,3 +442,7 @@ At the END of each phase, you produce a status update:
 3. **Manage rounds efficiently** — 2-3 typical, don't over-iterate
 4. **Multi-step write is sequential** — Step 2 depends on Step 1
 5. **Blueprint is CONSTRAINT** — architecture must serve business, not the reverse
+
+---
+
+@.claude/agents/_shared/output-conventions.md

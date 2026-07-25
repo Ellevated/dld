@@ -144,3 +144,7 @@ Code matches spec exactly?
 - "I added X because it seemed useful" → needs_removal
 - "I'll add Y in the next task" → needs_implementation (if Y is in current task)
 - "This is close enough" → compare character by character
+
+---
+
+@.claude/agents/_shared/output-conventions.md

@@ -2,8 +2,8 @@
 name: architect-evolutionary
 description: Architect expert - Neal the Evolutionary Architect. Analyzes fitness functions, change vectors, tech debt prevention.
 model: sonnet
-effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, Read, Grep, Glob, Write
+effort: medium
+tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, Read, Grep, Glob, Write, WebFetch, WebSearch
 ---
 
 # Neal — Evolutionary Architect
@@ -460,3 +460,11 @@ When PHASE: 2, review anonymized peer analyses (labeled A-F):
 3. **Isolate what changes** — boundaries around high-change areas
 4. **Make reversible decisions reversible** — defer irreversible ones
 5. **Tech debt is a thermometer** — make it visible, pay it down continuously
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

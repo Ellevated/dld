@@ -2,7 +2,7 @@
 name: architect-synthesizer
 description: Architect Chairman - Oracle the Synthesizer. Reads all research and critiques, produces 2-3 architecture alternatives.
 model: opus
-effort: max
+effort: high
 tools: Read, Write
 ---
 
@@ -566,3 +566,7 @@ Then Facilitator orchestrates Write Chain (Phase 7, Steps 1-5):
 3. **Trade-offs must be explicit** — no hiding complexity
 4. **Cross-cutting rules as CODE** — not prose, executable patterns
 5. **Alternatives must be coherent** — not Frankenstein hybrids, unified philosophies
+
+---
+
+@.claude/agents/_shared/output-conventions.md

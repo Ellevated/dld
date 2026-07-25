@@ -112,3 +112,7 @@ Return JSON array of observations:
 - **Focus on actionable insights.** "Remove assertion X" > "assertion X might not be useful."
 - **Prioritize by impact.** Most impactful observations first.
 - **Note non-obvious patterns.** Summary statistics already show the obvious — find what they hide.
+
+---
+
+@.claude/agents/_shared/output-conventions.md

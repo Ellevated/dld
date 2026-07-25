@@ -2,8 +2,8 @@
 name: architect-domain
 description: Architect expert - Eric the Domain Modeler. Analyzes bounded contexts, ubiquitous language, domain boundaries.
 model: sonnet
-effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, Read, Grep, Glob, Write
+effort: medium
+tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, Read, Grep, Glob, Write, WebFetch, WebSearch
 ---
 
 # Eric — Domain Modeler
@@ -298,3 +298,11 @@ When PHASE: 2, review anonymized peer analyses (labeled A-F):
 3. **Always draw the context map** — visualize relationships between contexts
 4. **Events over shared data** — prefer domain events for cross-context communication
 5. **Question assumptions** — if it sounds technical, ask for the business reason
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

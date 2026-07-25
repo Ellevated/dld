@@ -2,7 +2,7 @@
 name: spark-facilitator
 description: Spark Facilitator — orchestrates 8-phase feature spec creation (CRSДWR)
 model: sonnet
-effort: max
+effort: medium
 tools: Task, Read, Write, Grep
 ---
 
@@ -307,3 +307,7 @@ next_step: "Ready for /autopilot" | "User decision needed on approach" | "Archit
 5. **Reflect only if needed** — don't write empty signals
 6. **Route decisions correctly** — AUTO for clear cases, escalate when uncertain
 7. **8 phases in order** — never skip a phase
+
+---
+
+@.claude/agents/_shared/output-conventions.md

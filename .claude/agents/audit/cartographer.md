@@ -186,3 +186,7 @@ Write to: `ai/audit/report-cartographer.md`
 3. **Every finding needs file:line** — no vague claims
 4. **Deep-read boundary files** — files at module boundaries reveal architecture
 5. **Trace the import graph** — don't trust directory names, trust imports
+
+---
+
+@.claude/agents/_shared/output-conventions.md

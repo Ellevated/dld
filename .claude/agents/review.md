@@ -1,8 +1,8 @@
 ---
 name: review
 description: Code Quality Reviewer (Stage 2) - prevents tech debt and duplication
-model: sonnet
-effort: xhigh
+model: opus
+effort: low
 tools: Read, Glob, Grep, Bash
 ---
 
@@ -108,9 +108,16 @@ ls scripts/
 - Cross-domain imports in wrong direction
 
 ### 3. Simplicity
+
+The coder works from `_shared/minimal-code.md` — the lazy-senior ladder. Review against
+the same bar: was there a rung it should have stopped at?
+
 **Red flags:**
 - Class when function suffices
 - New module for 20 lines
+- Hand-rolled logic the stdlib or an installed dependency already covers
+- Abstraction, config knob, or error path nobody asked for
+- Symptom-patched bug fix — the shared function still broken for its other callers
 
 ### 3.5. Anti-Patterns (from architecture.md)
 
@@ -266,3 +273,7 @@ recommended_action: approve | refactor_then_commit | discuss_with_human
 - **Specific actions** — Not "bad code", but "merge X with Y because Z"
 - **Don't block without reason** — If code is clean → approved with full `checks_performed` list
 - **When in doubt → `needs_discussion`** — never approve to keep the pipeline moving
+
+---
+
+@.claude/agents/_shared/output-conventions.md

@@ -1,132 +1,164 @@
-# Model Capabilities (Claude Opus 4.8)
+# Model Capabilities (Claude Opus 5 / Sonnet 5)
 
 Reference for agents about current model capabilities.
-Last updated: 2026-06-19
+Last updated: 2026-07-25
 
 ---
 
-## Active Model: Claude Opus 4.8
+## Active Models
 
-**Model ID:** `claude-opus-4-8`
-**Pricing:** $5/$25 per million tokens (input/output) — same tier as 4.7 (verify against current Anthropic pricing if billing-critical)
+| Role | Model ID | Pricing (in/out per Mtok) |
+|------|----------|---------------------------|
+| Main loop, deep reasoning, review | `claude-opus-5` | $5 / $25 |
+| Implementation, research, orchestration | `claude-sonnet-5` | $3 / $15 |
+| Formatting, collection, listing | `claude-haiku-4-5-20251001` | $1 / $5 |
 
-> **2026-06-03:** VPS pipeline switched 4.7 → 4.8. claude-runner main loop pinned
-> explicitly via `MODEL = AUTOPILOT_MODEL` env (default `claude-opus-4-8`) at
-> `scripts/vps/claude-runner.py:70` — no longer relying on the settings `"opus"`
-> alias. Availability verified headless (OAuth) before switch. Subagents still
-> resolve their model from agent frontmatter (`opus`/`sonnet`/`haiku`); the
-> `opus` alias resolves to the latest Opus the CLI build supports.
+**Claude Opus 5** — released 2026-07-24. Step-change over Opus 4.8, not incremental:
+frontier intelligence at half the cost of Fable 5, same price as Opus 4.8.
 
-**Previous:** Opus 4.7 (`claude-opus-4-7`, released April 16 2026) — superseded.
+**Previous:** Opus 4.8 (`claude-opus-4-8`) — superseded, still available for rollback.
+
+> **2026-07-25:** VPS pipeline switched 4.8 → 5. `scripts/vps/claude-runner.py`
+> pins `MODEL = AUTOPILOT_MODEL` env (default `claude-opus-5`). Rollback without
+> code change: `AUTOPILOT_MODEL=claude-opus-4-8`.
 
 ---
 
 ## Key Capabilities
 
-| Feature | Value | Notes |
-|---------|-------|-------|
-| Context window | 200K standard, 1M beta | Beta: $10/$37.50 for >200K |
-| Max output tokens | 128K | Doubled from 64K in Opus 4.5 |
-| Adaptive thinking | Default | Model decides when/how much to think |
-| Effort levels | low / medium / high / xhigh / max | Controls thinking depth |
-| Fast mode | 2.5x faster output | Research preview, `/fast` toggle |
-| Prompt caching | Automatic | 5-min default; set `ENABLE_PROMPT_CACHING_1H=1` for 1h TTL |
+| Feature | Opus 5 | Sonnet 5 |
+|---------|--------|----------|
+| Context window | **1M (default AND maximum)** — no smaller variant | 200K |
+| Max output tokens | 128K | 64K |
+| Thinking | **On by default** (adaptive) | **On by default** (adaptive) |
+| Effort levels | low / medium / high / **xhigh** / max | low / medium / high / **xhigh** / max |
+| Default effort | `high` | `high` |
+| Prompt cache minimum | **512 tokens** (was 1024) | 1024 tokens |
+| Fast mode | Yes, API only — $10/$50 per Mtok | — |
+
+**Long context:** Opus 5 keeps instruction following, tool calling and reasoning
+consistent across the whole 1M window. No "front-load the important stuff" tricks needed.
 
 ---
 
 ## Effort Routing Strategy
 
-Agents should operate at different effort levels based on task complexity:
+Anthropic's guidance for Opus 5: *"Start with `high`, the default, and adjust based on
+your evals: use `low` and `medium` liberally as your primary control for token cost and
+response time wherever quality holds, step up to `xhigh` for demanding coding and agentic
+work. If you carried effort settings over from an earlier model, run a fresh effort sweep."*
 
-| Agent Role | Model | Recommended Effort | Rationale |
-|------------|-------|-------------------|-----------|
-| planner | opus | high | Deep analysis, drift detection. Kept at high (not xhigh) to stay within 90-min TIMEOUT_SECONDS budget (BUG-1101). |
-| council experts | opus | max | Expert-level architectural decisions, adversarial |
-| debugger | opus | high | Root cause analysis requires deep thinking |
-| review (Code Quality Gate) | sonnet | xhigh | Critical commit gate (TECH-201 owns review.md). 12x cheaper on Max compute. |
+Their level table names `low` as the level for **subagents** specifically.
+
+| Agent Role | Model | Effort | Rationale |
+|------------|-------|--------|-----------|
+| autopilot main loop (claude-runner) | opus | xhigh | Long-horizon agentic coding — the one place xhigh earns its cost |
+| planner | opus | high | Deep analysis. Held at high (not xhigh) for the 90-min TIMEOUT_SECONDS budget (BUG-1101) |
+| review (Code Quality Gate) | **opus** | **low** | Opus 5 finds real bugs at high rate per pass with few false positives, **and accuracy holds at lower effort**. Direct Anthropic recommendation — replaces sonnet/xhigh (ADR-029) |
+| debugger | opus | high | Root cause analysis. Down from max — max causes overthinking on structured tasks |
+| council experts | opus | high | Down from max. Anthropic: reserve max for "genuinely frontier problems" |
+| triz toc-analyst, triz-analyst | opus | high | Down from max, same rationale |
+| architect/synthesizer | opus | high | Down from max |
 | solution-architect (bughunt) | opus | high | Fix design needs careful reasoning |
-| triz toc-analyst, triz-analyst | opus | max | System-level contradiction/constraint resolution |
-| coder | sonnet | high | Implementation coding (Sonnet 4.6 = 80.8% SWE-bench, 5x cheaper) |
-| scout | sonnet | high | Research quality matters, but knowledge tasks favor Sonnet |
-| tester | sonnet | medium | Execution-focused, smart-testing logic |
-| spec-reviewer | sonnet | medium | Checklist verification, not creative |
-| eval-judge | sonnet | high | Rubric-based LLM output evaluation |
-| bughunt personas (6) | sonnet | medium | Read + describe from specialized perspectives |
-| bughunt spec-assembler | sonnet | high | Structured assembly with ID protocol |
-| bughunt validator | sonnet | high | Triage requires good judgment |
-| audit/synthesizer | sonnet | xhigh | Merges 6 persona reports — needs deep synthesis (changed 2026-04-24) |
-| synthesizers (board, triz) | sonnet | high | Merge/format structured output — Opus overkill (changed 2026-04-24) |
-| council-synthesizer, facilitators (architect/board/spark) | sonnet | max | Process keeper / orchestration (synced to frontmatter 2026-06-19) |
-| documenter | haiku | low | Structured release notes, shaped by CHANGELOG template (changed 2026-04-24) |
-| bughunt scope-decomposer | haiku | low | File listing and zone grouping (changed 2026-04-24) |
-| bughunt findings-collector | haiku | low | Normalization, no reasoning (changed 2026-04-24) |
-| bughunt report-updater | haiku | low | Structured update, clear patterns (changed 2026-04-24) |
-| triz data-collector | sonnet | medium | Pure data extraction (shell + aggregation) |
-| ~~diary-recorder~~ | haiku | low | DEPRECATED: inline in task-loop Step 6.5 (ADR-007). If used: haiku. |
+| coder | sonnet | high | Sonnet 5 is strong on coding. xhigh only for multi-file refactors |
+| scout | sonnet | high | Research quality matters; tool use rises measurably at high/xhigh |
+| audit/synthesizer | sonnet | high | Down from xhigh — merge task, not frontier reasoning |
+| tester | sonnet | medium | Execution-focused |
+| spec-reviewer | sonnet | medium | Checklist verification |
+| eval-judge | sonnet | high | Rubric-based evaluation |
+| bughunt personas (6) | sonnet | medium | Read + describe from a fixed perspective |
+| bughunt spec-assembler, validator | sonnet | medium | Down from high — structured assembly/triage |
+| board directors, architect personas | sonnet | medium | Down from high — research + structured report |
+| synthesizers (board, triz) | sonnet | medium | Merge/format |
+| facilitators (architect/board/spark), council-synthesizer | sonnet | **medium** | Down from max. Process keeping is not a reasoning task — max here was pure waste |
+| triz data-collector | sonnet | medium | Shell + aggregation |
+| documenter, bughunt scope-decomposer / findings-collector / report-updater | haiku | low | Format-heavy, clear patterns |
 
-> **Opus 4.8 effort (TECH-203, 2026-06-19):** Default effort on all surfaces is
-> `high`. CLI/frontmatter levels: `low | medium | high | xhigh | max`. **Agent SDK
-> `ClaudeAgentOptions.effort` enum: `low | medium | high | max` (no xhigh)** — the
-> claude-runner main loop pins `high` via `AUTOPILOT_EFFORT` env. Subagents resolve
-> effort from their own frontmatter (which CAN use xhigh). Thinking is
-> adaptive-only; depth is controlled by effort, not the old "thinking budget" format.
+**Rule:** effort is a *behavioral signal*, not a token budget. At low effort Claude still
+thinks on genuinely hard problems — it just thinks less on easy ones.
 
-**2026-04-24 rationale:** Opus 4.7 on structured merge/format tasks (synthesizers)
-showed overthinking + cost without quality gain. Sonnet 4.6 benchmarks tighter
-on knowledge/merge tasks and costs 5x less. Haiku 4.5 handles format-heavy
-subagents (scope decomposition, findings collection, doc updates) at 95%
-quality of Sonnet at 3x lower cost. See ADR-019.
-
-**2026-06-19 sync (TECH-203):** Table realigned to frontmatter SSOT. Key changes:
-planner xhigh→high, council experts xhigh→max, coder medium→high, triz analysts
-high→max, council-synthesizer/facilitators medium→max. See ADR-028.
+**Caching note:** changing effort mid-conversation invalidates the prompt cache prefix.
+Pick a level per workload and hold it constant within a session.
 
 ---
 
-## Breaking Changes from Opus 4.7
+## Behavior Changes — What To Remove From Prompts
+
+Opus 5 changed enough that legacy scaffolding now actively costs quality. Anthropic
+removed **over 80% of Claude Code's own system prompt** for Opus 5 / Fable 5 with no
+measurable loss on their coding evals.
+
+| Legacy pattern | Why it's now harmful | Do instead |
+|---|---|---|
+| "include a final verification step", "use a subagent to verify" | **Causes over-verification.** Opus 5 verifies its own work unprompted. Removing these cuts tokens with no quality loss | Delete. Trust the model; keep only deterministic gates (hooks, CI) |
+| "double-check your answer", "re-verify before responding" | Compounds with built-in self-correction — pure cost | Delete |
+| "only report high-severity issues", "be conservative", "don't nitpick" | Opus 5/Sonnet 5 follow this **literally** → recall drops. Looks like a capability regression, is a harness bug | "Report everything with confidence + severity; a separate pass filters" |
+| Exhaustive rule repositories, repeated rules across system prompt + tool defs | Conflicting/duplicated instructions degrade output | Progressive disclosure — put detail in skills loaded on demand |
+| Rigid prohibitions ("NEVER write multi-paragraph docstrings") | Over-constrains judgment | Guidance: "write code that reads like the surrounding code — match its comment density, naming, idiom" |
+| Tool usage examples in the prompt | Redundant | Better tool *design*: expressive params, clear enums, instructions in the tool description |
+| "After every N tool calls, summarize progress" | Sonnet 5 already gives good interim updates | Delete |
+
+### New behaviors that need *adding* guidance
+
+| Behavior | Mitigation |
+|---|---|
+| Responses and **written files run longer** | "Match the length of written documents to what the task needs: cover the substance, do not pad with filler sections, redundant summaries, or boilerplate." |
+| Narrates agentic work more | Describe the cadence you want. Positive examples beat prohibitions |
+| **Delegates to subagents more readily** | Explicit delegation rule or hard cap (see below) |
+| Can expand task scope on its own | "Deliver what was asked, at the scope intended… stop short of actions clearly beyond what was asked" |
+| Narrates its own corrections more | "Only correct an earlier statement when the error changes the user's code, conclusions, or decisions" |
+
+### Subagent damping (Opus 5 delegates eagerly)
+
+```text
+Delegate to a subagent only for large tasks that are genuinely independent and
+parallelizable, such as a wide multi-file investigation. Do not delegate work you can
+finish yourself in a handful of tool calls, and do not use subagents to verify or
+double-check your own work. If one subagent can complete the task, use one rather than
+several, and keep spawn counts low.
+```
+
+---
+
+## Breaking Changes
+
+### Opus 4.8 → Opus 5
 
 | What | Impact | Action |
 |------|--------|--------|
-| None known affecting DLD | claude-runner uses default `query()` (no `thinking`/`temperature`/`top_p` overrides, no prefilling) | Switch is drop-in; headless availability verified 2026-06-03 before pinning |
+| Thinking **on by default** | `max_tokens` is a hard limit on thinking + text combined | Revisit `max_tokens` on any workload that ran thinking-off |
+| `thinking: {"type":"disabled"}` **rejected at effort `xhigh`/`max`** → HTTP 400 | Breaking. Enforced per request | Either keep thinking disabled and drop effort to `high` or below, or drop the `thinking` field |
+| Thinking-disabled artifacts | Model may emit a tool call as *text* (never runs, poisons history) or leak internal XML tags | Keep thinking **enabled** and control cost with low effort instead. Never add "do not think" rules — they increase tag leakage |
 
-> If a 4.7→4.8 incompatibility surfaces, set `AUTOPILOT_MODEL=claude-opus-4-7` on the
-> runner to roll back instantly (no code change).
-
-## Breaking Changes from Opus 4.6
-
-| What | Impact | Action |
-|------|--------|--------|
-| `thinking` parameter changed | Incompatible format vs 4.6 | Not used by DLD claude-runner — safe |
-| `temperature` / `top_p` behavior tuned | Drift on deterministic prompts | Not used by DLD claude-runner — safe |
-
-## Breaking Changes from Opus 4.5
+### Sonnet 4.6 → Sonnet 5
 
 | What | Impact | Action |
 |------|--------|--------|
-| Prefilling removed | `400` error on assistant prefills | Use structured outputs or system prompts |
-| `output_format` deprecated | Will stop working | Use `output_config.format` instead |
-| `interleaved-thinking` header | No longer needed | Remove beta header |
+| **New tokenizer: ~30% more tokens for the same text** | `max_tokens` tuned for 4.6 will truncate equivalent output | Raise `max_tokens`. Also re-check any token-based budgets and LOC heuristics |
+| `temperature` / `top_p` / `top_k` non-default → **400 error** | Breaking, new for Sonnet-class | Remove them; steer tone via system prompt |
+| Manual extended thinking (`budget_tokens`) removed → 400 | Breaking | Use adaptive thinking + effort |
+| Adaptive thinking on by default | Same `max_tokens` concern as Opus 5 | Revisit budgets |
+| More literal instruction following | Won't generalize an instruction across items | State scope explicitly: "apply to every section, not just the first" |
+
+**Cross-model effort mapping when migrating:** Sonnet 5 @ medium ≈ Sonnet 4.6 @ high.
+Sonnet 5 @ high ≈ Sonnet 4.6 @ max. Benchmark by observed thinking length, not effort name.
 
 ---
 
 ## What Agents Should Know
 
-1. **Adaptive thinking is automatic** — no need to request "think harder"
-2. **128K output** — can generate comprehensive plans in single pass
-3. **1M context (beta)** — large codebases can fit entirely in context
-4. **Context compaction** — server-side, enables infinite conversations
-5. **Agent Teams** — research preview, direct agent-to-agent messaging
-6. **Prompt caching is automatic** — set `ENABLE_PROMPT_CACHING_1H=1` on the runner to extend TTL to 1 hour (useful for long council/bughunt sessions)
+1. **Thinking is on and adaptive** — never ask the model to "think harder" or "think step by step"
+2. **Effort is the depth control**, not prompt wording
+3. **1M context on Opus 5** as default — large codebases fit entirely
+4. **Self-verification is built in** — do not add verification steps
+5. **Code review is a strength** — high recall per pass, holds at low effort
+6. **Prompt caching automatic**; 512-token minimum on Opus 5. `ENABLE_PROMPT_CACHING_1H=1` extends TTL to 1h
+7. **Knowledge cutoff ~May 2026** — search only for events after that, exact versions/prices, or genuine uncertainty
 
 ---
 
 ## Model Routing (SSOT in agent frontmatter)
 
-| Model | Use For | Cost |
-|-------|---------|------|
-| opus | Complex reasoning, planning, review, council | $5/$25 |
-| sonnet | Standard implementation, research, testing, orchestration | $3/$15 |
-| haiku | Quick checks, simple formatting | $1/$5 |
-
-**Rule:** Model is defined ONCE in agent frontmatter `model:` field.
-Never hardcode model in skill dispatch — use `subagent_type` only.
+**Rule:** model is defined ONCE in agent frontmatter `model:`.
+Never hardcode a model in skill dispatch — use `subagent_type` only.
+Frontmatter aliases (`opus`/`sonnet`/`haiku`) resolve to the latest build the CLI supports.

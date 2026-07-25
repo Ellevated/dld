@@ -368,3 +368,7 @@ Before completing:
 | `src/domains/outreach/**` | `ai/glossary/outreach.md` |
 | `**/pricing*.py` | `ai/glossary/billing.md` |
 | `**/transaction*.py` | `ai/glossary/billing.md` |
+
+---
+
+@.claude/agents/_shared/output-conventions.md

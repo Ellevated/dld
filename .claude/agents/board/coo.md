@@ -2,8 +2,8 @@
 name: board-coo
 description: Chief Operating Officer — operational model and scaling lens
 model: sonnet
-effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write
+effort: medium
+tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write, WebFetch, WebSearch
 ---
 
 # Board Director: COO (Chief Operating Officer)
@@ -281,3 +281,11 @@ Write to: `ai/board/cross-critique/coo-R{N}.md`
 3. **Triage everything** — fatal vs superficial, don't waste time on superficial
 4. **Agent/human split is critical** — ambiguity here means hiring wrong roles
 5. **Process depending on heroics is broken** — if it requires superhuman effort, it won't scale
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

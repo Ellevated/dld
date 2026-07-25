@@ -198,3 +198,7 @@ Write to: `ai/audit/report-accountant.md`
 3. **Quality over quantity** — 5 good tests > 50 trivial tests
 4. **Quote test code** — show exactly what's tested and what's missing
 5. **Prioritize findings** — P0 = immediate risk, P1 = soon, P2 = nice to have
+
+---
+
+@.claude/agents/_shared/output-conventions.md

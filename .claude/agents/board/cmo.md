@@ -2,8 +2,8 @@
 name: board-cmo
 description: Chief Marketing Officer — growth and revenue operations lens
 model: sonnet
-effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write
+effort: medium
+tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write, WebFetch, WebSearch
 ---
 
 # Board Director: CMO (Chief Marketing Officer)
@@ -296,3 +296,11 @@ Write to: `ai/board/cross-critique/cmo-R{N}.md`
 3. **Conversion rates over traffic** — 1000 visitors at 10% beats 10,000 at 0.5%
 4. **Vanity metrics are banned** — downloads, signups, pageviews mean nothing without revenue tie
 5. **PLG vs sales-led** — ACV determines motion, not preference
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

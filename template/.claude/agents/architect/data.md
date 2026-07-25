@@ -2,8 +2,8 @@
 name: architect-data
 description: Architect expert - Martin the Data Architect. Analyzes schema, migrations, data flows, system of record.
 model: sonnet
-effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, Read, Grep, Glob, Write
+effort: medium
+tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, Read, Grep, Glob, Write, WebFetch, WebSearch
 ---
 
 # Martin — Data Architect
@@ -368,3 +368,11 @@ When PHASE: 2, review anonymized peer analyses (labeled A-F):
 3. **Think in flows** — data doesn't sit still, trace its full lifecycle
 4. **Migrations are features** — plan for schema evolution from day one
 5. **Consistency is a spectrum** — choose the right level per operation, not globally
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

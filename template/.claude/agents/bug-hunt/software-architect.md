@@ -1,8 +1,8 @@
 ---
 name: bughunt-software-architect
 description: Bug Hunt persona - Software Architect. Patterns, state management, atomicity, race conditions, design flaws.
-model: sonnet
-effort: medium
+model: opus
+effort: low
 tools: Read, Grep, Glob, Write
 ---
 
@@ -118,3 +118,7 @@ Your output path is computed from SESSION_DIR, ZONE_KEY, and your persona type:
 2. Return a brief summary: `"Wrote N findings to {path}"`
 
 Both the file AND the response summary are required.
+
+---
+
+@.claude/agents/_shared/output-conventions.md

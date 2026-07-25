@@ -290,3 +290,7 @@ Facilitator maps these to EC-IDs in the spec's `## Eval Criteria` section.
 4. **Risk-based testing** — derive test cases from edge case analysis
 5. **Questions surface unknowns** — flag unresolved issues
 6. **No web search** — you analyze what's proposed, not what's on Google
+
+---
+
+@.claude/agents/_shared/output-conventions.md

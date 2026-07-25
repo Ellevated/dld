@@ -1,31 +1,20 @@
 # Task Loop — PHASE 2 Execution
 
-SSOT for task execution flow. For EACH task from Implementation Plan.
-
-## Flow Overview
+SSOT for task execution. Runs once per task from the Implementation Plan.
 
 ```
 CODER → TESTER → PRE-CHECK → SPEC REVIEWER → CODE QUALITY → COMMIT → DIARY → LOCAL VERIFY → NEXT
 ```
 
----
+## State tracking
 
-## State Tracking (Enforcement as Code)
+Write `autopilot-state.json` (worktree root) after each step — helpers in
+`.claude/scripts/autopilot-state.mjs`. Hooks read this file for the plan-before-code
+gate, so a stale state file breaks the gate. Initialize with `initState()`, then
+`setPlan()` once the planner returns the task list.
 
-After EACH step, update the autopilot state file:
-
-```
-Write tool → autopilot-state.json (in worktree root)
-```
-
-**Format:** See `.claude/scripts/autopilot-state.mjs` for utilities.
-
-**Before starting task loop:**
-1. Initialize autopilot-state.json with `initState()`
-2. After planner creates plan, call `setPlan()` with task list
-3. Each step result updates the current task entry
-
-**This is NOT optional.** Hooks read autopilot-state.json for plan-before-code gate.
+Per step, record: `coder` (files_changed), `tester` (`pass` | `fail_out_of_scope`),
+`reviewer` (`approved`), `status` + `commit` hash, `diary`, `verify`.
 
 ---
 
@@ -39,26 +28,11 @@ Task tool:
     ...
 ```
 
-**Output:** `files_changed: [list of modified files]`
-
-**Next:** Step 2 (TESTER)
-
-<HARD-GATE>
-DO NOT proceed to Step 2 until:
-- [ ] autopilot-state.json updated: task.coder = "done"
-- [ ] files_changed list captured
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "coder output is obvious, no need to track"
-</HARD-GATE>
+Returns `files_changed`.
 
 ---
 
 ## Step 2: TESTER
-
-**Command:** Use test-wrapper for LLM-optimized output:
-```bash
-node .claude/scripts/test-wrapper.mjs ./test fast
-```
 
 ```yaml
 Task tool:
@@ -69,119 +43,55 @@ Task tool:
     test_command: "node .claude/scripts/test-wrapper.mjs ./test fast"
 ```
 
-**Decision Tree:**
 ```
 TESTER result?
-├─ PASSED → Step 3 (PRE-CHECK)
+├─ PASSED → Step 3
 ├─ FAILED (in-scope)
 │   └─ debug_attempts < 3?
-│       ├─ YES → [Debugger] → [Coder fix] → re-test (Step 2)
-│       └─ NO → ESCALATE (see escalation.md)
-└─ FAILED (out-of-scope)
-    └─ Log "out-of-scope failure: {test}" → Step 3 (PRE-CHECK)
+│       ├─ YES → [Debugger] → [Coder fix] → re-test
+│       └─ NO  → ESCALATE (escalation.md)
+└─ FAILED (out-of-scope) → log, continue to Step 3
 ```
 
-**In-scope:** Test file path contains any of `files_changed` directories.
+**In-scope:** test file path contains any of the `files_changed` directories.
 
-<HARD-GATE>
-DO NOT proceed to Step 3 until:
-- [ ] autopilot-state.json updated: task.tester = "pass" or "fail_out_of_scope"
-- [ ] If failed in-scope: debug loop completed or escalated
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "tests are simple, I'll write them later"
-</HARD-GATE>
+### Step 2a: Integration test check (conditional)
 
----
-
-## Step 2a: INTEGRATION TEST CHECK (conditional)
-
-**Trigger:** files_changed includes `src/infra/db/`, `src/infra/external/`, or `src/domains/*/repository*`
+Fires when `files_changed` touches `src/infra/db/`, `src/infra/external/`, or
+`src/domains/*/repository*`:
 
 ```
-Integration test exists in tests/integration/ for changed module?
+Integration test in tests/integration/ for the changed module?
 ├── YES, no mocks → continue
 ├── YES, has mocks → CODER removes mocks → re-test
-└── NO → CODER creates integration test → TESTER verifies → continue
+└── NO             → CODER creates it → TESTER verifies → continue
 ```
 
-**Skip if:** No DB/infra files in files_changed.
+### Step 2.5: Regression capture (conditional)
 
----
+Fires when `debug_attempts > 0 AND tester == "pass"` — a real bug was found and fixed.
 
-## Step 2.5: REGRESSION CAPTURE (conditional)
+1. Take the `regression` field from the debugger's last fix output (missing → skip silently)
+2. Dispatch coder: create `{regression.test_file}` with `{regression.test_code}`, touch nothing else
+3. Verify: `pytest {test_file}::{test_name} -v` (or stack equivalent)
 
-**Trigger:** `debug_attempts > 0 AND tester == "pass"`
-
-When debug loop succeeded (bug was found and fixed):
-
-1. Extract `regression` field from debugger's last fix output
-2. Dispatch coder to create regression test file:
-   ```yaml
-   Task tool:
-     subagent_type: "coder"
-     prompt: |
-       Create regression test from debugger output.
-       File: {regression.test_file}
-       Test: {regression.test_code}
-       Do NOT modify any other file.
-   ```
-3. Quick verify: `pytest {test_file}::{test_name} -v` (or equivalent)
-
-**Rules:**
-- ONLY fires after successful debug loop (debug_attempts > 0)
-- Does NOT go through full review cycle (test-only, minimal change)
-- File goes to `tests/regression/` (immutable after creation)
-- If regression field is missing from debugger output → skip (no error)
-
-**After:** Continue to Step 3 (PRE-REVIEW CHECK)
+Test-only change — skips the review cycle. Lands in `tests/regression/` (immutable once created).
 
 ---
 
 ## Step 3: PRE-REVIEW CHECK
 
-Deterministic checks BEFORE AI review (saves tokens on obvious issues).
+Deterministic checks before AI review — cheaper to catch the obvious here.
 
-### Step 3a: Code Quality Pre-Check
+**3a — Code quality** (if `scripts/pre-review-check.py` exists):
+`python scripts/pre-review-check.py {files_changed}`
+Catches `# TODO`/`# FIXME`, bare `except:` without re-raise, files over 400 LOC (600 for tests).
 
-**If `scripts/pre-review-check.py` exists** → run it:
+**3b — Blueprint compliance** (if `ai/blueprint/system-blueprint/` exists):
+`node .claude/scripts/validate-blueprint-compliance.mjs ai/features/{TASK_ID}*.md ai/blueprint/system-blueprint`
+Catches type violations (float for money), import direction, domain placement, missing Blueprint Reference.
 
-```bash
-python scripts/pre-review-check.py {files_changed}
-```
-
-**What PRE-CHECK catches:**
-- `# TODO` or `# FIXME` in code
-- Bare `except:` or `except Exception:` without re-raise
-- Files > 400 LOC (code) or > 600 LOC (tests)
-
-**If not found** → skip to Step 3b
-
-### Step 3b: Blueprint Compliance (v2, NEW)
-
-**If `ai/blueprint/system-blueprint/` exists** → check:
-
-```bash
-node .claude/scripts/validate-blueprint-compliance.mjs ai/features/{TASK_ID}*.md ai/blueprint/system-blueprint
-```
-
-**What BLUEPRINT CHECK catches:**
-- Types not matching cross-cutting.md (e.g., float for money)
-- Import direction violations
-- Domain placement outside domain-map.md
-- Missing Blueprint Reference in spec
-
-**If blueprint doesn't exist** → skip (backwards compatible with legacy projects)
-
-### Pre-Check Decision Tree
-```
-Step 3a result?
-├─ PASS (or skipped) → Step 3b
-└─ FAIL → CODER fixes → re-run Step 3a
-
-Step 3b result?
-├─ PASS (or skipped) → Step 4 (SPEC REVIEWER)
-└─ FAIL → CODER fixes → re-run Step 3b
-```
+Either failing → CODER fixes → re-run that check. Either absent → skip it.
 
 ---
 
@@ -196,16 +106,11 @@ Task tool:
     files_changed: [...]
 ```
 
-**Decision Tree:**
 ```
-Spec Reviewer status?
-├─ approved → Step 5 (CODE QUALITY)
-├─ needs_implementation
-│   └─ CODER adds missing → re-review (Step 4)
-│   └─ spec_review_loop < 2? YES: retry | NO: ESCALATE
-└─ needs_removal
-    └─ CODER removes extras → re-review (Step 4)
-    └─ spec_review_loop < 2? YES: retry | NO: ESCALATE
+├─ approved             → Step 5
+├─ needs_implementation → CODER adds missing → re-review
+└─ needs_removal        → CODER removes extras → re-review
+                          spec_review_loop < 2? retry : ESCALATE
 ```
 
 ---
@@ -220,111 +125,47 @@ Task tool:
     FILES CHANGED: {list}
 ```
 
-**Decision Tree:**
 ```
-Code Quality status?
-├─ approved → Step 6 (COMMIT)  ← CRITICAL!
-├─ needs_refactor
-│   └─ refactor_loop < 2?
-│       ├─ YES → CODER fixes → re-test (Step 2) → re-review (Step 5)
-│       └─ NO → ESCALATE to Council
-└─ needs_discussion
-    └─ STOP → Ask human (status: blocked)
+├─ approved        → Step 6 (COMMIT — approved means proceed, not stop)
+├─ needs_refactor  → refactor_loop < 2? CODER fixes → re-test → re-review : ESCALATE to Council
+└─ needs_discussion → STOP, ask human (status: blocked)
 ```
-
-**CRITICAL:** `approved` means proceed to COMMIT. Do NOT stop here!
-
-<HARD-GATE>
-DO NOT proceed to Step 6 until:
-- [ ] autopilot-state.json updated: task.reviewer = "approved"
-- [ ] All review loops resolved (spec reviewer + code quality)
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "the code is clean, review is a formality"
-</HARD-GATE>
 
 ---
 
 ## Step 6: COMMIT
 
-**All reviews passed. Commit the changes.**
-
 ```bash
 git add {files_changed}
-git commit -m "{type}({scope}): {description}"
+git commit -m "{type}({SPEC_ID}): {description}"
 ```
 
-**Commit message format:**
-- `feat(autopilot): add task-loop decision trees`
-- `fix(review): add TODO/FIXME check`
-- `docs(diary): create escaped-defects template`
+Subject format matters — the callback gate matches the subject line only. See
+`.claude/agents/coder.md` § Commit Format for the exact contract.
 
-**If commit fails:**
-1. Check error message (pre-commit hook? disk space? locked repo?)
-2. Fix the issue if possible
-3. Retry commit ONCE
-4. If still fails → set spec status to `blocked`, add "ACTION REQUIRED: commit failure" to spec, STOP
+If the commit fails: read the error (pre-commit hook? disk? lock?), fix if you can, retry
+once. Still failing → set spec status to `blocked`, add "ACTION REQUIRED: commit failure"
+to the spec, stop. **Never increment the task counter on a failed commit.**
 
-**NEVER increment task counter if commit failed.**
-
-**After commit:**
-1. Log to Autopilot Log in spec file
-2. Update autopilot-state.json: task.status = "done", task.commit = "{hash}"
-3. Continue to Step 7 (LOCAL VERIFY)
-
-<HARD-GATE>
-DO NOT proceed to Step 7 until:
-- [ ] Commit successful (verified by git)
-- [ ] autopilot-state.json updated: task.status = "done", task.commit = hash
-- [ ] Autopilot Log in spec file updated
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "I'll batch commits for efficiency"
-</HARD-GATE>
+After commit: log to the Autopilot Log in the spec, record `status: done` + commit hash in state.
 
 ---
 
-## Step 6.5: DIARY RECORD (inline — no subagent)
+## Step 6.5: DIARY RECORD (inline, no subagent)
 
-Record task outcome directly. Per ADR-007: caller writes, not subagent.
-
-**Always runs.** Every task gets an index row — successes AND problems.
-
-### Index Row Format
-
-```
-| {date} | {TASK_ID} | {type} | {summary} | {debug_N} | {files_N} | pending |
-```
-
-**Types:** success, problem, escalation, regression
-
-### Decision Tree
-
-```
-debug_attempts == 0?
-├── YES → index row (success) with files_count
-├── NO  → index row (problem) + detail file
-│
-Escalation happened?
-├── YES → additional index row (escalation)
-│
-Regression test created (Step 2.5)?
-└── YES → additional index row (regression)
-```
-
-### Success (first-pass)
+Every task gets an index row — successes and problems both. Per ADR-007 the caller writes.
 
 Append to `ai/diary/index.md`:
+
 ```
-| {YYYY-MM-DD} | {TASK_ID} | success | Task {N}/{M}: {title} | 0 | {files_count} | pending |
+| {YYYY-MM-DD} | {TASK_ID} | {type} | {summary} | {debug_N} | {files_N} | pending |
 ```
 
-### Problem (debug retry)
+Types: `success` (debug_attempts == 0), `problem` (debug_attempts > 0), plus extra rows for
+`escalation` and `regression` when those happened.
 
-**1.** Append to `ai/diary/index.md`:
-```
-| {YYYY-MM-DD} | {TASK_ID} | problem | debug ×{N}: {brief_error} | {debug_attempts} | {files_count} | pending |
-```
+For `problem`, also write `ai/diary/{YYYY-MM-DD}-{TASK_ID}-task{N}-problem.md`:
 
-**2.** Create `ai/diary/{YYYY-MM-DD}-{TASK_ID}-task{N}-problem.md`:
 ```markdown
 # {TASK_ID} Task {N}/{M} — {YYYY-MM-DD}
 
@@ -341,36 +182,17 @@ Append to `ai/diary/index.md`:
 {code_bug | spec_gap | environment | architecture}
 ```
 
-### Escalation (additional row)
+Keep entries factual and brief — what happened, not what it means. `/reflect` does the analysis.
 
-If escalation happened during this task (see escalation.md):
-```
-| {YYYY-MM-DD} | {TASK_ID} | escalation | {type}: {brief reason} | — | — | pending |
-```
+### Lesson extraction (fires only when debug_attempts > 0)
 
-### Regression Captured (additional row)
+Inline, best-effort — never block the commit if it fails.
 
-If Step 2.5 created a regression test:
-```
-| {YYYY-MM-DD} | {TASK_ID} | regression | {test_name} from debug fix | — | — | pending |
-```
+1. **Domain** from `files_changed`: first `src/domains/<X>/` segment. None → skip silently.
+2. **root_cause_class** from diary category + error keywords:
 
-### Lesson Extraction (conditional — fires only when debug_attempts > 0)
-
-**Trigger:** `debug_attempts > 0` (something broke and was fixed)
-
-Inline extraction — no subagent (ADR-007). Best-effort: never block commit if extraction fails.
-
-**Steps:**
-
-1. **Derive domain** from `files_changed` paths:
-   - Pattern: first `src/domains/<X>/` segment → `<X>`
-   - If no domain segment found → skip silently
-
-2. **Map category → root_cause_class** (from diary category + error keywords):
-
-   | Diary category + keywords in error/resolution | root_cause_class |
-   |------------------------------------------------|-----------------|
+   | Category + keywords | root_cause_class |
+   |---|---|
    | code_bug + money\|kopeck\|rub\|float | money-precision |
    | code_bug + lock\|race\|concurrent | race-condition |
    | code_bug + transaction\|atomic\|partial | atomicity |
@@ -379,172 +201,78 @@ Inline extraction — no subagent (ADR-007). Best-effort: never block commit if 
    | code_bug + migration\|schema\|column | migration-drift |
    | architecture + import\|layer\|circular | cross-layer-import |
    | spec_gap + ssot\|duplicate\|sync | ssot-violation |
-   | Default (no match) | use diary category as-is |
+   | no match | diary category as-is |
 
-3. **Extract prevention_rule** — 1 sentence from Resolution in diary detail file. Fallback: standard rule for root_cause_class.
+3. **prevention_rule** — one sentence from the Resolution line.
+4. **severity** — critical (P0 spec) / high (P1) / medium (P2).
+5. **Next L-ID:** `ls ai/lessons/{domain}/ | grep -oE "L-[0-9]+" | sort -t- -k2 -n | tail -1`, +1, zero-pad to 3.
+6. **Write** `ai/lessons/{domain}/L-{NNN}.md`:
 
-4. **Assign severity**: critical if P0 spec, high if P1, medium if P2.
+```markdown
+---
+id: L-{NNN}
+domain: {domain}
+root_cause_class: {class}
+severity: {severity}
+created: {YYYY-MM-DD}
+occurrence_count: 1
+related: [{TASK_ID}]
+---
 
-5. **Determine next L-ID** (bash):
-   ```bash
-   ls ai/lessons/{domain}/ 2>/dev/null | grep -oE "L-[0-9]+" | sort -t- -k2 -n | tail -1
-   # Increment by 1, zero-pad to 3 digits → L-NNN
-   ```
+# {root_cause_class}: {brief title}
 
-6. **Write** `ai/lessons/{domain}/L-{NNN}.md` (create dir if missing):
-   ```markdown
-   ---
-   id: L-{NNN}
-   domain: {domain}
-   root_cause_class: {class}
-   severity: {severity}
-   created: {YYYY-MM-DD}
-   occurrence_count: 1
-   related: [{TASK_ID}]
-   ---
+## Prevention Rule
+{one sentence}
 
-   # {root_cause_class}: {brief title from error}
+## Context
+{error, 1-2 sentences}
 
-   ## Prevention Rule
-   {prevention_rule — 1 sentence}
+## Keywords
+{comma-separated terms}
+```
 
-   ## Context
-   {last_error_message, 1-2 sentences}
+7. **Append** to `ai/lessons/index.jsonl`:
 
-   ## Keywords
-   {comma-separated terms from error}
-   ```
+```json
+{"id":"L-NNN","domain":"...","root_cause_class":"...","prevention_rule":"...","keywords":[...],"severity":"...","related":["TASK_ID"],"created":"YYYY-MM-DD","occurrence_count":1}
+```
 
-7. **Append to `ai/lessons/index.jsonl`**:
-   ```json
-   {"id":"L-NNN","domain":"...","root_cause_class":"...","prevention_rule":"...","keywords":[...],"severity":"...","related":["TASK_ID"],"created":"YYYY-MM-DD","occurrence_count":1}
-   ```
-
-**Rules:**
-- Only fires when `debug_attempts > 0` — no lesson for first-pass successes
-- Never block commit — if extraction fails, log and proceed
-- Deduplicate: if `index.jsonl` already contains same `TASK_ID` → skip
-- Do NOT create lesson for out-of-scope test failures
-
-### Rules
-
-- **Factual** — what happened, not interpretation
-- **Minimal** — brief description, not essay
-- **Always index** — every task gets index row, even successes
-- **No fix** — just record, /reflect analyzes later
-- **Category required** for problems — helps /reflect detect patterns
-
-<HARD-GATE>
-DO NOT proceed to Step 7 until:
-- [ ] Index row added to ai/diary/index.md
-- [ ] If debug_attempts > 0: detail file created with Category
-- [ ] If debug_attempts > 0: lesson extraction attempted (success or skipped with reason)
-- [ ] autopilot-state.json updated: task.diary = "recorded"
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "diary is optional, I'll do it later"
-</HARD-GATE>
+Skip if `index.jsonl` already has this TASK_ID. No lessons for out-of-scope test failures.
 
 ---
 
 ## Step 7: LOCAL VERIFY (conditional)
 
-**Trigger:** Spec has `## Acceptance Verification` section with AV-* checks.
-**Skip if:** No AV section in spec, or section contains "N/A".
+Fires when the spec has an `## Acceptance Verification` section with AV-* checks.
+Absent or "N/A" → skip.
 
-### 7a: Smoke Checks
-Run commands from spec's Smoke Checks table (AV-S* rows).
-```
-Result?
-├─ ALL PASS → Step 7b
-├─ FAIL, retry < 2 → wait 5s, retry
-├─ FAIL, retry >= 2 → WARN in Autopilot Log, continue
-```
+**7a Smoke** (AV-S* rows) → **7b Functional** (AV-F* rows). Each retries twice; smoke
+failure warns and continues, functional failure sends CODER to fix, re-commit, retry.
+Stop any processes the checks started.
 
-### 7b: Functional Checks
-Run commands from spec's Functional Checks table (AV-F* rows).
-```
-Result?
-├─ ALL PASS → update state, NEXT TASK
-├─ FAIL, retry < 2 → CODER fix → re-commit → retry
-├─ FAIL, retry >= 2 → WARN in Autopilot Log, continue
-```
+**Non-blocking by design** — verification failures produce warnings in the Autopilot Log,
+never block task progression.
 
-### Cleanup
-Stop any processes started during smoke/functional checks.
-
-**NON-BLOCKING** — verification failures produce warnings only, never block task progression.
-
-**After LOCAL VERIFY:**
-1. Update autopilot-state.json: task.verify = "pass" | "warn" | "skip"
-2. Log result to Autopilot Log in spec file
-3. Increment task counter: `current_task += 1`
-4. Continue to NEXT TASK (back to Step 1)
-
-<HARD-GATE>
-- [ ] autopilot-state.json: task.verify = "pass" | "warn" | "skip"
-- [ ] If warn: details logged to Autopilot Log
-</HARD-GATE>
+Then: `current_task += 1` → back to Step 1. When `current_task > total_tasks` → PHASE 3 (`finishing.md`).
 
 ---
 
-## After ALL Tasks
+## Loop counters
 
-When `current_task > total_tasks`:
-
-```
-→ PHASE 3 (finishing.md)
-```
-
----
-
-## Loop Counters
-
-| Counter | Limit | On Limit |
-|---------|-------|----------|
+| Counter | Limit | On limit |
+|---|---|---|
 | `debug_attempts` | 3 | Escalate (escalation.md) |
 | `spec_review_loop` | 2 | Escalate to Council |
 | `refactor_loop` | 2 | Escalate to Council |
-| `verify_smoke_retry` | 2 | Warn (don't block) |
-| `verify_func_retry` | 2 | Warn → Coder fix, then warn |
+| `verify_smoke_retry` | 2 | Warn, don't block |
+| `verify_func_retry` | 2 | Coder fix, then warn |
 
-Reset counters at start of each task.
-
----
-
-## Rationalization Pre-emption Table
-
-When you feel tempted to skip a step, consult this table:
-
-| LLM thinks | Correct action |
-|---|---|
-| "Tests are simple, I'll write them later" | TDD: test BEFORE code. No test = no commit. |
-| "The code is clean, review is a formality" | Review catches real issues. Run it honestly. |
-| "I'll batch commits for efficiency" | One task = one commit. Atomic commits only. |
-| "This coder output is obvious" | Track it in state.json anyway. Hooks depend on it. |
-| "Pre-check will pass, I can skip it" | Run deterministic checks. They catch TODOs and LOC violations. |
-| "I'll update state.json at the end" | Update AFTER EACH STEP. State must be current. |
+Reset at the start of each task.
 
 ---
 
-## Quick Reference
+## Status writes — forbidden here
 
-```
-Task N:
-  CODER → files → update state
-  TESTER → pass? → update state
-    └─ fail in-scope? debug (max 3)
-    └─ fail out-scope? skip, continue
-  PRE-CHECK → pass?
-    └─ fail? coder fix, retry
-  SPEC REVIEWER → approved?
-    └─ needs_*? coder fix, retry (max 2)
-  CODE QUALITY → approved? → update state
-    └─ needs_refactor? coder fix, retry (max 2)
-  COMMIT → log → update state
-  DIARY → index row + detail (if problem) → update state
-  LOCAL VERIFY → pass/warn/skip → update state → NEXT TASK
-```
-
-## Status Writes — Forbidden in task-loop
-
-Autopilot never edits `**Status:**` in spec file or `ai/backlog.md` status column. Final task closure emits `task_status` in result_preview JSON; callback writes status. See `finishing.md` "Status Writes — Callback Only".
+Autopilot never edits `**Status:**` in the spec or the status column in `ai/backlog.md`.
+Final task closure emits `task_status` in the result_preview JSON; callback writes status.
+See `finishing.md` § "Status Writes — Callback Only".

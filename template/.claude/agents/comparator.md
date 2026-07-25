@@ -72,3 +72,7 @@ Return structured JSON:
 - **No ties unless truly identical.** Look for subtle quality differences.
 - **Content > structure.** If one output achieves the goal better but is less organized, it wins.
 - **Expectations are secondary.** A well-written output that misses one expectation can still win over a poorly-written one that checks all boxes.
+
+---
+
+@.claude/agents/_shared/output-conventions.md

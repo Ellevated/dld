@@ -139,3 +139,7 @@ modules_analyzed: N
 top_churn_module: "src/domains/X"
 co_change_clusters: N
 ```
+
+---
+
+@.claude/agents/_shared/output-conventions.md

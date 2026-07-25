@@ -72,3 +72,7 @@ These formats are used by autopilot inline writes and by `/reflect` for reading.
 - **Readable** — problems in plain language for human review
 - **No fix** — just record, don't try to solve
 - **Always index** — every entry must have index row
+
+---
+
+@.claude/agents/_shared/output-conventions.md
