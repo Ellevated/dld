@@ -934,4 +934,3 @@ After spec is created and validated → read `completion.md` for:
 - Handoff to autopilot
 
 After completion: state.json updated: completion = done
-
