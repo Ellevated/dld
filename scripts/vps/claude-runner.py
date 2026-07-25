@@ -224,7 +224,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     # Agent SDK options
     options = ClaudeAgentOptions(
         cwd=str(project_path),
-        model=MODEL,  # pin main loop to Opus 4.8 (env: AUTOPILOT_MODEL)
+        model=MODEL,  # pin main loop to Opus 5 (env: AUTOPILOT_MODEL)
         effort=AUTOPILOT_EFFORT,  # pin effort (default high); see ADR-028
         cli_path=CLI_PATH,  # use system CLI, not stale bundled (else model pin drifts)
         setting_sources=["user", "project"],  # Loads CLAUDE.md + .claude/skills/

@@ -25,13 +25,29 @@ Git worktree isolation for safe parallel development.
        echo "SWEEP SKIP: $wt has uncommitted changes"
        continue
      fi
-     # Only remove if branch is merged to develop
-     if git branch --merged develop | grep -q "$wt_branch"; then
+     # Remove when the work is safe, by either test:
+     #   (a) branch merged into develop — the classic case
+     #   (b) every commit is reachable from some remote — covers harness-created
+     #       worktrees (worktree-agent-*, worktree-BUG-*). Their work reaches
+     #       develop through a feature branch, so the worktree branch itself is
+     #       NEVER "--merged develop" and (a) alone leaks them forever.
+     #       Measured 2026-07-25: 3.4 GB local + 3 GB on VPS accumulated this way.
+     merged=""
+     git branch --merged develop | grep -q "$wt_branch" && merged=yes
+     pushed=""
+     [[ -z "$(git -C "$wt" log --oneline HEAD --not --remotes 2>/dev/null)" ]] && pushed=yes
+     if [[ -n "$merged" || -n "$pushed" ]]; then
        rm -f "$wt/.claude" 2>/dev/null  # remove symlink first
        git worktree remove "$wt" --force 2>/dev/null || true
        git branch -d "$wt_branch" 2>/dev/null || true
-       echo "SWEEP: removed orphan worktree $wt (branch $wt_branch)"
+       echo "SWEEP: removed orphan worktree $wt (branch $wt_branch, merged=${merged:-no} pushed=${pushed:-no})"
      fi
+   done
+
+   # 0a-bis. Empty leftover dirs under both worktree roots. `git worktree remove`
+   # leaves the parent behind, and a crashed run can leave a dir git never knew about.
+   for root in .worktrees .claude/worktrees; do
+     [[ -d "$root" ]] && find "$root" -mindepth 1 -maxdepth 1 -type d -empty -delete 2>/dev/null
    done
 
    # 0b. Prune merged local branches without worktrees
