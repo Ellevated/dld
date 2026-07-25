@@ -70,10 +70,13 @@ TIMEOUT_SECONDS = 5400  # 90 min hard limit (R1 specs with 8+ tasks need >60m)
 # Main autopilot loop model. Explicit (not settings-alias "opus") so the SDK is
 # pinned deterministically. Override per-task via AUTOPILOT_MODEL env. Subagents
 # resolve their own model from agent frontmatter. See rules/model-capabilities.md.
-MODEL = os.environ.get("AUTOPILOT_MODEL", "claude-opus-4-8")
+MODEL = os.environ.get("AUTOPILOT_MODEL", "claude-opus-5")
 # Main loop effort level.  SDK enum: low|medium|high|max (the "extra-high" level
 # accepted by CLI/frontmatter is NOT part of the SDK enum and would be rejected
 # by ClaudeAgentOptions).  Subagents resolve effort from frontmatter.  ADR-028.
+# Opus 5: thinking is ON by default and CANNOT be disabled at effort xhigh/max
+# (HTTP 400).  We never pass `thinking`, so any effort here is safe — but do not
+# add a thinking-disable option without capping effort at high.  ADR-029.
 AUTOPILOT_EFFORT = os.environ.get("AUTOPILOT_EFFORT", "high")
 _VALID_EFFORT = {"low", "medium", "high", "max"}
 if AUTOPILOT_EFFORT not in _VALID_EFFORT:
