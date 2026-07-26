@@ -1,0 +1,7 @@
+{
+  "agent": "review",
+  "agent_path": ".claude/agents/review.md",
+  "subagent_type": "review",
+  "description": "Code Quality Reviewer — defect recall vs false-positive discipline",
+  "threshold": 0.7
+}
