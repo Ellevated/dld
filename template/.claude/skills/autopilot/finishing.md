@@ -226,7 +226,7 @@ Add to feature file:
 - Deploy: applied | skipped (no migrations)
 - Documenter: completed | skipped (no docs needed)
 - Spec Reviewer: approved | needs_implementation | needs_removal
-- Code Quality Reviewer: approved | needs_refactor
+- Code Quality Reviewer: approved | needs_refactor ({N} blocking, {M} advisory)
 - Exa Verify: no issues | WARNING: {description}
 - Local Verify: pass | warn: {details} | skip (no AV)
 - Post-Deploy Verify: pass | warn: {details} | skip (no URL)

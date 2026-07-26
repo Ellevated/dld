@@ -47,7 +47,23 @@ score      = 0.7 * recall + 0.3 * precision
 - Additional genuine issues outside the answer key (e.g. `_run` ignores a
   non-zero returncode, `hash-object` output unvalidated) are neither rewarded
   nor penalised — note them separately as bonus observations.
-- Severity labels must be present and defensible. A review that marks D4 as
-  "critical" and D6 as "critical" without distinction shows no calibration —
-  note it, but do not deduct.
 - Format, tone, and section structure are NOT scored.
+
+## Severity routing (report, do not fold into the score)
+
+Since 2026-07-26 `severity` is routing, not a label: autopilot sends `blocking`
+findings back into a code → test → review cycle and leaves `advisory` findings
+in the diary. Mislabeling therefore costs turns against a 90-minute budget.
+
+Record, separately from the score:
+
+- **blocking correctness** — all six planted defects are `blocking` (each one
+  makes the code wrong as written). N1–N3 must not appear at any severity.
+- **over-blocking** — count findings outside the answer key marked `blocking`
+  that would not justify reverting the commit. "382 LOC, 18 from the ceiling"
+  and "variable `e` unused" are the canonical over-blocks.
+- A review where every finding is `blocking` has not triaged; say so plainly.
+
+Kept out of the score deliberately: the answer key is fixed, but what deserves
+`blocking` is a judgment call that shifts with the task, and baking it into a
+single number would hide the disagreement worth reading.

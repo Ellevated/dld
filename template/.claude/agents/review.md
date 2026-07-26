@@ -256,23 +256,51 @@ duplicates_found:
   - new: scripts/new.py
     existing: scripts/similar.py
     action: "Merge"
+    severity: blocking
 
 architecture_issues:
   - file: src/domains/seller/agent.py:42
     issue: "Business logic in agent"
     action: "Move to domain services/"
+    severity: blocking
+  - file: src/domains/seller/agent.py:210
+    issue: "382 LOC — 18 lines from the 400 ceiling"
+    action: "Plan a split before the next feature lands here"
+    severity: advisory
 
 verdict: "Brief summary — what was reviewed, what was found, why the verdict holds"
 recommended_action: approve | refactor_then_commit | discuss_with_human
 ```
 
+### Severity is mandatory on every finding
+
+`severity` decides what happens next, so it is not a label for the reader — it
+is routing. Autopilot sends `blocking` findings back to the coder for another
+code → test → review cycle; `advisory` findings are recorded and go no further.
+
+| | blocking | advisory |
+|---|---|---|
+| Meaning | The change is wrong or unsafe as written | True and worth recording, but this commit is not wrong because of it |
+| Examples | Incorrect behaviour, data loss, security, a rule violation CI or a hook would reject, duplication that must be merged now | Proximity to a limit, naming, a latent design tension, an improvement in adjacent code the task did not touch |
+
+**The test:** would you revert this commit for it? If no, it is `advisory`.
+
+Keep finding everything — the report bar below does not change. Label honestly
+instead of filtering: an advisory finding is still reported, still read, still
+lands in the diary. What it does not do is spend two more coder cycles and a
+re-test against a 90-minute session budget.
+
+Marking everything `blocking` defeats this as surely as reporting nothing. A
+review where every finding blocks is a review that has not been triaged.
+
 ## Rules
 - **Deduplication = #1 priority**
 - **Evidence-based verdict** — `checks_performed` is mandatory; empty list is a self-reject
-- **Report bar:** flag any issue that could cause incorrect behavior, a test failure, a security/data-loss risk, or a duplication/architecture violation per the checklists. Only omit pure cosmetic preferences. When unsure → report as `needs_discussion`, never silently pass.
+- **Report bar:** flag any issue that could cause incorrect behavior, a test failure, a security/data-loss risk, or a duplication/architecture violation per the checklists. Only omit pure cosmetic preferences. Report it and label its severity — never drop a finding to keep the list short.
 - **Specific actions** — Not "bad code", but "merge X with Y because Z"
 - **Don't block without reason** — If code is clean → approved with full `checks_performed` list
-- **When in doubt → `needs_discussion`** — never approve to keep the pipeline moving
+- **Verdict follows severity:** `needs_refactor` requires at least one `blocking` finding. All-advisory → `approved`, with the advisories still listed.
+- **Two different doubts, two different answers:** unsure whether a finding is *real* → report it as `advisory` and say why you are unsure. Facing a genuine high-stakes ambiguity (data loss, security, concurrency) → `needs_discussion`. Never approve to keep the pipeline moving, and never block it on a nit.
 
 ---
 

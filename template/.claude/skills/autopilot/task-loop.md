@@ -127,9 +127,16 @@ Task tool:
 
 ```
 ├─ approved        → Step 6 (COMMIT — approved means proceed, not stop)
-├─ needs_refactor  → refactor_loop < 2? CODER fixes → re-test → re-review : ESCALATE to Council
+├─ needs_refactor  → refactor_loop < 2? CODER fixes BLOCKING findings → re-test → re-review : ESCALATE to Council
 └─ needs_discussion → STOP, ask human (status: blocked)
 ```
+
+**Only `severity: blocking` findings enter the refactor loop.** Advisory
+findings are appended to the diary and left there — they do not justify a
+second code → test → review cycle, and acting on them pulls the coder into
+files the task never owned. A review that returns only advisories is
+`approved`; if it returns `needs_refactor` with no blocking finding, treat that
+as a malformed review and re-dispatch it once rather than refactoring.
 
 ---
 
@@ -162,7 +169,23 @@ Append to `ai/diary/index.md`:
 ```
 
 Types: `success` (debug_attempts == 0), `problem` (debug_attempts > 0), plus extra rows for
-`escalation` and `regression` when those happened.
+`escalation`, `regression` and `advisory` when those happened.
+
+`advisory` fires when Step 5 returned findings with `severity: advisory`. This is
+where they come to rest — they were deliberately kept out of the refactor loop,
+so the diary is the only record that they were ever seen. Write
+`ai/diary/{YYYY-MM-DD}-{TASK_ID}-task{N}-advisory.md`:
+
+```markdown
+# {TASK_ID} Task {N}/{M} — advisory findings
+
+| File:line | Finding | Suggested action |
+|-----------|---------|------------------|
+| {file}:{line} | {issue} | {action} |
+```
+
+One line per finding, verbatim from the reviewer. No commentary — `/reflect`
+decides whether a recurring advisory deserves a spec.
 
 For `problem`, also write `ai/diary/{YYYY-MM-DD}-{TASK_ID}-task{N}-problem.md`:
 

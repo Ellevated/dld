@@ -159,11 +159,16 @@ TESTER fails:
 ```
 CODE QUALITY REVIEWER returns needs_refactor:
 ├── refactor_count < 2?
-│   └── YES → CODER fix → TESTER → REVIEWER
+│   └── YES → CODER fix (blocking findings only) → TESTER → REVIEWER
 │
 └── refactor_count >= 2?
     └── → Council escalation
 ```
+
+`needs_refactor` is defined by at least one `severity: blocking` finding.
+Advisory findings never open this loop and are never carried into it — they go
+to the diary (task-loop Step 6.5). Escalating to Council over advisories is how
+a naming nit turns itself into a spec.
 
 ## Diary Recording (Inline — ADR-007)
 
