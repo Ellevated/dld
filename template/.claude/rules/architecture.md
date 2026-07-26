@@ -1,3 +1,10 @@
+---
+paths:
+  - "src/**"
+  - "tests/**"
+  - "db/**"
+---
+
 # Architecture
 
 Architectural decisions and patterns for the project.

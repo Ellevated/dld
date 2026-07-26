@@ -1,3 +1,9 @@
+---
+paths:
+  - ".claude/**"
+  - "template/**"
+---
+
 # Template Sync Rule
 
 ## Two Copies of .claude/

@@ -93,6 +93,27 @@ See `ai/ARCHITECTURE.md` after bootstrap.
 
 > **Note:** `.claude/contexts/` and `.claude/rules/` domain files are created during `/bootstrap` when you define your project's domains. They don't exist in the template out of the box.
 
+### Rules loading — `paths:` is mandatory
+
+A `.claude/rules/*.md` file **with** a YAML `paths:` header loads only when the session touches
+files matching those globs. **Without** the header it loads into **every** session, forever.
+
+```yaml
+---
+paths:
+  - "src/**"
+  - "tests/**"
+---
+```
+
+Only `localization.md` is exempt — skill triggers must be reachable in any session.
+
+**Writing a new rule:** give it `paths:`. If it is triggered by *intent* rather than by editing a
+file ("разбери выплаты", "сделай страницу"), the answer is still `paths:` — plus a short pointer in
+CLAUDE.md that tells the session to open the file. A permanently loaded rule buys discoverability
+at the price of every unrelated session; measured 2026-07-26 in a real project, four unmarked files
+cost **37k tokens per session** for 25 days before anyone noticed.
+
 ---
 
 ## Project Context System (v3.9)

@@ -1,3 +1,9 @@
+---
+paths:
+  - ".claude/agents/**"
+  - ".claude/skills/**"
+---
+
 # Model Capabilities (Claude Opus 5 / Sonnet 5)
 
 Reference for agents about current model capabilities.

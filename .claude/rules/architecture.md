@@ -1,3 +1,11 @@
+---
+paths:
+  - "packages/**"
+  - "scripts/**"
+  - "tests/**"
+  - "test/**"
+---
+
 # Architecture
 
 Architectural decisions and patterns for the project.

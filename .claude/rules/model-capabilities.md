@@ -1,3 +1,13 @@
+---
+paths:
+  - ".claude/agents/**"
+  - ".claude/skills/**"
+  - "template/.claude/agents/**"
+  - "template/.claude/skills/**"
+  - "scripts/vps/claude-runner.py"
+  - "scripts/vps/run-agent.sh"
+---
+
 # Model Capabilities (Claude Opus 5 / Sonnet 5)
 
 Reference for agents about current model capabilities.
