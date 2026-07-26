@@ -133,16 +133,37 @@ def _run(
     input_text: Optional[str] = None,
     timeout: int = 30,
 ) -> subprocess.CompletedProcess:
-    return subprocess.run(
+    """Run git with byte-level I/O and explicit UTF-8. Never `text=True`.
+
+    `text=True` breaks this module on Windows in two separate ways:
+
+    1. stdin is wrapped in a TextIOWrapper with universal newlines, so every "\\n"
+       becomes "\\r\\n". The lifecycle yaml is fed to `git hash-object --stdin`, so
+       the blob lands in git with CRLF despite `.gitattributes` (*.yaml eol=lf).
+       `ai/lifecycle/` is then permanently dirty, and `assert_clean_lifecycle_tree`
+       aborts orchestrator startup — for every project, not just the affected one.
+    2. stdout is decoded with the locale encoding (cp1251 on a Russian Windows),
+       so any Cyrillic spec title raises UnicodeDecodeError and `render_backlog`
+       silently skips the yaml as malformed.
+
+    Output keeps the newline normalization `text=True` used to provide, so the
+    ~40 existing call sites are unaffected.
+    """
+    raw_input = input_text.encode("utf-8") if input_text is not None else None
+    p = subprocess.run(
         cmd,
         cwd=cwd,
         env=env,
-        input=input_text,
+        input=raw_input,
         capture_output=True,
-        text=True,
         check=False,
         timeout=timeout,
     )
+
+    def _decode(b: bytes) -> str:
+        return b.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+
+    return subprocess.CompletedProcess(p.args, p.returncode, _decode(p.stdout), _decode(p.stderr))
 
 
 def _current_branch(repo_dir: str) -> str:
