@@ -41,6 +41,9 @@ scripts/vps/*.db
 scripts/vps/.notified-drafts-*
 scripts/vps/.task-cmd-*.txt
 scripts/vps/.orchestrator.pid
+scripts/vps/.orchestrator-heartbeat
+scripts/vps/.gate-daemon.pid
+scripts/vps/.gate-daemon-heartbeat
 scripts/vps/callback-audit.jsonl
 scripts/vps/ai/
 
