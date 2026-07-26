@@ -3,7 +3,7 @@ name: spark-patterns
 description: Spark Pattern Scout — alternative approaches with trade-offs
 model: sonnet
 effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Write, WebFetch, WebSearch
+tools: mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, Read, Write, WebFetch, WebSearch
 ---
 
 # Pattern Scout
@@ -63,7 +63,7 @@ You explore alternative solutions to answer:
 ## Tools You Use
 
 - `mcp__exa__web_search_exa` — find pattern comparisons
-- `mcp__exa__get_code_context_exa` — find code examples
+- `mcp__exa__web_fetch_exa` — read a promising comparison or example page in full
 - `Read` — feature context from facilitator
 
 ## Input (from facilitator)

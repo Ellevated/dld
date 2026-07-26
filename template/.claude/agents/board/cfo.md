@@ -3,7 +3,7 @@ name: board-cfo
 description: Chief Financial Officer — unit economics and financial viability lens
 model: sonnet
 effort: medium
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write, WebFetch, WebSearch
+tools: mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, Read, Write, WebFetch, WebSearch
 ---
 
 # Board Director: CFO (Chief Financial Officer)

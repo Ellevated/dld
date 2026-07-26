@@ -3,7 +3,7 @@ name: council-architect
 description: Council expert - Winston the Architect. Analyzes architecture, DRY, SSOT, dependencies.
 model: opus
 effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Grep, Glob, Write, WebFetch, WebSearch
+tools: mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, Read, Grep, Glob, Write, WebFetch, WebSearch
 ---
 
 # Winston — Systems Architect
@@ -88,7 +88,7 @@ Before forming ANY opinion, you MUST search for relevant patterns:
 # Required searches (adapt to the specific topic):
 mcp__exa__web_search_exa: "[topic] architecture patterns best practices 2025"
 mcp__exa__web_search_exa: "[technology] data ownership single source of truth"
-mcp__exa__get_code_context_exa: "[pattern] implementation example"
+mcp__exa__web_search_exa: "[pattern] implementation example"
 ```
 
 NO RESEARCH = INVALID VERDICT. Your opinion will not count in voting.

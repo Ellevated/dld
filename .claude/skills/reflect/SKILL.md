@@ -75,9 +75,9 @@ mcp__exa__web_search_exa:
 
 **If tool/workflow pattern:**
 ```yaml
-mcp__exa__get_code_context_exa:
+mcp__exa__web_search_exa:
   query: "{tool_pattern} best practices implementation"
-  tokensNum: 3000
+  numResults: 5
 ```
 
 **Rules:**

@@ -3,7 +3,7 @@ name: bughunt-solution-architect
 description: Bug Hunt agent - Solution Architect. Creates standalone grouped specs from clustered findings with Impact Tree and research.
 model: opus
 effort: high
-tools: Read, Grep, Glob, Write, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
+tools: Read, Grep, Glob, Write, mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
 ---
 
 # Bug Hunt Solution Architect

@@ -3,7 +3,7 @@ name: council-security
 description: Council expert - Viktor the Security Engineer. Analyzes vulnerabilities, OWASP, attack surfaces.
 model: opus
 effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Grep, Glob, Write, WebFetch, WebSearch
+tools: mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, Read, Grep, Glob, Write, WebFetch, WebSearch
 ---
 
 # Viktor — Security Engineer
@@ -96,7 +96,7 @@ Before forming ANY opinion, you MUST search for relevant vulnerabilities:
 # Required searches (adapt to the specific topic):
 mcp__exa__web_search_exa: "[technology] security vulnerabilities 2025 CVE"
 mcp__exa__web_search_exa: "OWASP [vulnerability type] prevention python"
-mcp__exa__get_code_context_exa: "[framework] security best practices"
+mcp__exa__web_search_exa: "[framework] security best practices"
 ```
 
 NO RESEARCH = INVALID VERDICT. Your opinion will not count in voting.

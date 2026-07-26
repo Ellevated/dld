@@ -3,7 +3,7 @@ name: board-cpo
 description: Chief Product Officer — customer experience and retention lens
 model: sonnet
 effort: medium
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write, WebFetch, WebSearch
+tools: mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, Read, Write, WebFetch, WebSearch
 ---
 
 # Board Director: CPO (Chief Product Officer)

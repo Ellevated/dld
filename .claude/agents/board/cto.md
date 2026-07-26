@@ -3,7 +3,7 @@ name: board-cto
 description: Chief Technology Officer — technical strategy and build vs buy lens
 model: sonnet
 effort: medium
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, mcp__exa__crawling_exa, Read, Write, WebFetch, WebSearch
+tools: mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, Read, Write, WebFetch, WebSearch
 ---
 
 # Board Director: CTO (Chief Technology Officer)

@@ -3,7 +3,7 @@ name: coder
 description: Write/modify code for autopilot tasks
 model: sonnet
 effort: high
-tools: Read, Glob, Grep, Edit, Write, Bash, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
+tools: Read, Glob, Grep, Edit, Write, Bash, mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
 ---
 
 # Coder Agent
@@ -86,7 +86,8 @@ BEFORE modifying ANY file:
 
 | Tool | When to Use |
 |------|-------------|
-| `mcp__exa__get_code_context_exa` | Code examples, patterns from web |
+| `mcp__exa__web_search_exa` | Code examples, patterns from web |
+| `mcp__exa__web_fetch_exa` | Read a specific page in full (docs, GitHub file, SO answer) |
 | `mcp__plugin_context7_context7__resolve-library-id` | Find library ID (required first!) |
 | `mcp__plugin_context7_context7__query-docs` | **Official docs** for your framework, pydantic, requests, etc. |
 

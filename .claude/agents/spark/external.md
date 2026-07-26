@@ -3,7 +3,7 @@ name: spark-external
 description: Spark External Research Scout — best practices, libraries, production patterns
 model: sonnet
 effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__crawling_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, Read, Write, WebFetch, WebSearch
+tools: mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, Read, Write, WebFetch, WebSearch
 ---
 
 # External Research Scout
@@ -42,7 +42,7 @@ You explore the external world (web, docs, GitHub, Stack Overflow) to answer:
 ## Tools You Use
 
 - `mcp__exa__web_search_exa` — find articles, blog posts, comparisons
-- `mcp__exa__get_code_context_exa` — find code examples and implementations
+- `mcp__exa__web_fetch_exa` — read the strongest hits in full when snippets are too thin
 - `mcp__plugin_context7_context7__resolve-library-id` — find library ID first
 - `mcp__plugin_context7_context7__query-docs` — official docs for APIs
 - `Read` — read feature context from facilitator

@@ -31,7 +31,7 @@ or genuinely thin results.
 
 - Jina renders JavaScript, but heavy SPAs sometimes return a truncated page. Suspiciously
   short content from a page that should be long is an extraction failure, not an empty
-  page — retry via Exa `crawling_exa` or move on.
+  page — retry via `mcp__exa__web_fetch_exa` or move on.
 - MCP tool responses are capped at 25k tokens in Claude Code. Ask for narrower content
   rather than fighting the cap.
 - Report which rung produced your answer, so quota problems surface instead of silently

@@ -3,7 +3,7 @@ name: planner
 description: Detailed implementation planning — validates spec against current codebase
 model: opus
 effort: high
-tools: Read, Glob, Grep, Edit, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__exa__crawling_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
+tools: Read, Glob, Grep, Edit, mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
 ---
 
 # Plan Agent — Detailed Implementation Planning
@@ -209,16 +209,16 @@ Verify that spec's proposed solution is still the best approach. Exa finds solut
 
 **Step 1:** If spec has `## Research Sources` — crawl them:
 ```yaml
-mcp__exa__crawling_exa:
-  url: <URL from spec's Research Sources>
+mcp__exa__web_fetch_exa:
+  urls: [<URL from spec's Research Sources>]
   maxCharacters: 8000
 ```
 
 **Step 2:** Verify proposed solution against current best practices:
 ```yaml
-mcp__exa__get_code_context_exa:
+mcp__exa__web_search_exa:
   query: "{what_spec_proposes} {tech_stack} best approach 2024 2025"
-  tokensNum: 5000
+  numResults: 5
 ```
 
 **Step 3:** If libraries involved — check official docs for API changes:

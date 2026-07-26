@@ -35,11 +35,18 @@
 
 ## Quick Start
 
-1. **Configure MCP servers** (recommended):
+1. **Configure research providers** (recommended):
    ```bash
-   claude mcp add context7 -- npx -y @context7/mcp-server
-   claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
+   claude plugin install context7@claude-plugins-official --scope user
+   claude mcp add --transport http exa "https://mcp.exa.ai/mcp"
    ```
+
+   `--scope user` matters: a plugin installed at project scope is bound to the directory
+   it was installed from and is silently invisible everywhere else.
+
+   Exa serves `web_search_exa` + `web_fetch_exa` by default — no `?tools=` needed. Older
+   names (`get_code_context_exa`, `crawling_exa`, `deep_researcher_*`,
+   `company_research_exa`, `deep_search_exa`) were consolidated away upstream.
 
    > **Alternative:** Copy `.mcp.json.example` to `~/.claude/.mcp.json` for pre-configured MCP setup.
 
@@ -48,12 +55,16 @@
 4. Create domains structure
 5. Run `/spark` for first feature
 
-> MCP enables `/scout` research with Exa (web search, deep research) and Context7 (library docs).
->
-> **Tiers:**
-> - **Standard** (default): Context7 + Exa — research and docs lookup
-> - **Power**: Adds Sequential Thinking — unlocks `/council` and `/autopilot`
-> For Power tier: `./scripts/setup-mcp.sh --tier 3`
+### Verifying the research stack
+
+Agents degrade *silently* when a provider is missing — they just search worse. Check it
+directly rather than trusting that setup once succeeded:
+
+```bash
+python scripts/check-research-stack.py
+```
+
+Run it after any MCP/plugin change, and when research quality feels off.
 
 ---
 

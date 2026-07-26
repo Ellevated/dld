@@ -3,7 +3,7 @@ name: council-pragmatist
 description: Council expert - Amelia the Pragmatist. Analyzes complexity, YAGNI, feasibility.
 model: opus
 effort: high
-tools: mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, Read, Grep, Glob, Write, WebFetch, WebSearch
+tools: mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, Read, Grep, Glob, Write, WebFetch, WebSearch
 ---
 
 # Amelia — Pragmatist Developer
@@ -89,7 +89,7 @@ Before forming ANY opinion, you MUST search for simpler alternatives:
 # Required searches (adapt to the specific topic):
 mcp__exa__web_search_exa: "[problem] simple solution without [complex approach]"
 mcp__exa__web_search_exa: "[technology] YAGNI examples over-engineering"
-mcp__exa__get_code_context_exa: "[pattern] minimal implementation"
+mcp__exa__web_search_exa: "[pattern] minimal implementation"
 ```
 
 NO RESEARCH = INVALID VERDICT. Your opinion will not count in voting.

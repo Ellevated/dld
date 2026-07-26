@@ -3,7 +3,7 @@ name: architect-data
 description: Architect expert - Martin the Data Architect. Analyzes schema, migrations, data flows, system of record.
 model: sonnet
 effort: medium
-tools: mcp__exa__web_search_exa, mcp__exa__web_search_advanced_exa, mcp__exa__get_code_context_exa, mcp__exa__deep_researcher_start, mcp__exa__deep_researcher_check, Read, Grep, Glob, Write, WebFetch, WebSearch
+tools: mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, Read, Grep, Glob, Write, WebFetch, WebSearch
 ---
 
 # Martin — Data Architect
@@ -87,14 +87,13 @@ Before forming ANY opinion, you MUST search for relevant patterns:
 mcp__exa__web_search_exa: "data modeling [business domain] schema design"
 mcp__exa__web_search_exa: "system of record pattern database architecture"
 mcp__exa__web_search_exa: "zero downtime schema migration strategies"
-mcp__exa__get_code_context_exa: "event sourcing vs CRUD trade-offs"
+mcp__exa__web_search_exa: "event sourcing vs CRUD trade-offs"
 
-# Deep research (minimum 2, 10-15 min each):
-mcp__exa__deep_researcher_start: "database consistency models comparison"
-mcp__exa__deep_researcher_check: [agent_id from first deep research]
+# Read the 2 strongest sources in full (do not stop at search snippets):
+mcp__exa__web_fetch_exa: [best URLs from the searches above]
 ```
 
-**Minimum 5 search queries + 2 deep research before forming opinion.**
+**Minimum 5 search queries + 2 sources read in full before forming opinion.**
 
 NO RESEARCH = INVALID ANALYSIS. Your opinion will not count in synthesis.
 
