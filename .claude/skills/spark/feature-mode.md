@@ -324,11 +324,44 @@ spec exits Spark as `queued` (see completion.md).
 - Blueprint contradiction (research conflicts with blueprint)
 → Architect updates blueprint → retry from Phase 3
 
+### Session Budget (size the spec before writing it)
+
+One spec = one autopilot session, and that session is hard-capped:
+`MAX_TURNS = 120`, `TIMEOUT_SECONDS = 5400` (90 minutes) in
+`scripts/vps/claude-runner.py`. The timeout is deliberately NOT raised — a spec
+that doesn't fit the budget is a scoping problem, not a timeout problem.
+
+A session that overruns produces nothing. It is killed mid-work, callback marks
+it `blocked`, and the branch is discarded. FTR-0081 (2026-07-26) spent a full 90
+minutes and merged zero lines.
+
+Decide the shape here, while the spec is still an outline:
+
+| Fits one session | Split into epic + children |
+|---|---|
+| ≤ 5 implementation tasks | > 8 tasks |
+| ≤ 10 entries in Allowed Files | > 15 files |
+| One domain (plus its tests) | Touches 3+ domains |
+| Feature only | Migration AND the feature that consumes it |
+
+Between the columns (6–8 tasks, 11–15 files): a single spec is allowed, but state
+in one line why it is indivisible.
+
+**Splitting is not deferral.** Claim one `ARCH-*` id for the epic and one id per
+child — each through `lifecycle.create_initial`, same as any spec — write every
+child spec in this session, and have the epic list them. Each child must be
+independently shippable: if child 2 is useless without child 1, that is one spec,
+not two.
+
+Judge by tasks and files, not by prose length. A 400-line spec with 3 tasks is
+fine; a 60-line spec that quietly rewrites nine files is not.
+
 <GATE>
 DO NOT proceed to Phase 5 until:
 - [ ] Decision route selected (AUTO/HUMAN/COUNCIL/ARCHITECT)
 - [ ] If HUMAN: user has explicitly chosen an approach
 - [ ] If COUNCIL: council has ALREADY run and its decision is incorporated — "council later" is not a state
+- [ ] Session Budget applied: single spec, or the epic + child split decided and ids claimed
 - [ ] state.json updated: decide = done, approach = N
 </GATE>
 
@@ -765,28 +798,29 @@ Before marking spec `queued`, run 8 structural validation gates.
 □ DoD is measurable?
 ```
 
-### Gate 1b: Spec Size (SOFT — warning only, never blocks)
+### Gate 1b: Spec Size (hard ceiling, soft band beneath it)
 ```
-□ Implementation Plan has ≤ 5 tasks?     (warn if >5)
-□ Allowed Files list ≤ 10 entries?       (warn if >10)
-□ Estimated effort ≤ 1 autopilot session (~$15, ~50 turns)? (warn if more)
+□ ≤ 5 tasks AND ≤ 10 Allowed Files      → pass
+□ 6-8 tasks OR 11-15 Allowed Files      → pass, with a written justification
+□ > 8 tasks OR > 15 Allowed Files       → BLOCK: split (Phase 4 Session Budget)
 ```
 
-**Why it matters:** Autopilot runs with `max_turns=60`. Oversized specs burn
-$20+ per run with high failure rate (BUG-327 post-mortem: 117 turns, $50, FAIL).
-Smaller specs = higher success rate and cheaper.
+**Why this one blocks.** Autopilot is capped at `MAX_TURNS = 120` /
+`TIMEOUT_SECONDS = 5400` (90 min), and the timeout is deliberately fixed. An
+oversized spec doesn't degrade gracefully — it is killed mid-run, marked
+`blocked`, and merges nothing. BUG-327: 117 turns, $50, FAIL. FTR-0081: 90
+minutes, blocked, zero lines merged. This gate used to end with "proceed
+anyway", which is precisely why oversized specs kept shipping.
 
-**If any check fails:**
-- Add a ⚠️ WARNING section at the top of the spec:
-  ```
-  ⚠️ **Size warning:** {N} tasks / {M} allowed files / est. ${X}.
-  Consider splitting into: {concrete suggestion — e.g., "ARCH-XXX epic + 3 child specs"}.
-  ```
-- Proceed to `queued` anyway — user may know the spec is indivisible.
-- Prefer splitting when possible: parent epic (ARCH-*) + 2-3 child specs
-  (FTR/TECH), each independently shippable, epic tracks child completion.
+**On BLOCK, do not exit without specs.** Return to Phase 4 Session Budget and
+split: one `ARCH-*` epic plus 2-4 independently shippable children, all written
+in this session, all `queued`. Splitting yields more specs, never fewer — an
+empty exit here is a worse outcome than an oversized spec.
 
-**Do NOT block the spec** — warning is informational. The user decides.
+**In the 6-8 / 11-15 band**, add one line under the spec title:
+`**Size:** N tasks / M files — indivisible because {reason}.`
+A justification that could be pasted onto any spec ("the tasks are related")
+means it is divisible; split instead.
 
 ### Gate 2: Eval Criteria Gate
 ```
