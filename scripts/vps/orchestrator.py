@@ -831,12 +831,30 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
 
     features_dir = Path(project_dir) / "ai" / "features"
     spec_files = list(features_dir.glob(f"{spec_id}*"))
-    if spec_files:
-        m = re.search(
-            r"^provider:\s+(\w+)", spec_files[0].read_text(errors="replace"), re.MULTILINE
+
+    # SPEC-READINESS GATE (2026-07-26). Spec-first ID CAS (ARCH-196/ADR-027) has
+    # spark claim the ID through create_initial() — which writes status=queued and
+    # pushes — minutes before the spec body itself is written and committed. This
+    # orchestrator polls every ~60s, so an interactive spark run reliably loses the
+    # race: we dispatch, the session finds no spec, and callback blocks it with
+    # missing_allowed_files. Observed on awardybot BUG-1410 (pueue 995, dead in 18s).
+    #
+    # A queued lifecycle row with no spec body on disk is never dispatchable, so
+    # skip the cycle instead of burning a slot and a session. The row is left at
+    # queued: once spark commits the body, the next cycle picks it up normally.
+    # A row that stays here forever is an orphan, not a race — lifecycle_audit.py
+    # reports that case.
+    if not spec_files:
+        log.info(
+            "skip dispatch: %s queued but no spec body in ai/features/ yet "
+            "(spec-first ID claim not finished; orphan if it persists)",
+            spec_id,
         )
-        if m and db.get_available_slots(m.group(1)) >= 0:
-            provider = m.group(1)
+        return False
+
+    m = re.search(r"^provider:\s+(\w+)", spec_files[0].read_text(errors="replace"), re.MULTILINE)
+    if m and db.get_available_slots(m.group(1)) >= 0:
+        provider = m.group(1)
 
     if db.get_available_slots(provider) < 1:
         log.info("no slots for %s provider=%s", project_id, provider)
@@ -852,7 +870,7 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
     # BUG-199: pin spec path for the pre-edit hook's Allowed Files enforcement.
     # Without this, inferSpecFromBranch() returns null on develop after merge-back,
     # and the hook degrades open — allowing out-of-scope edits.
-    spec_path = str(spec_files[0]) if spec_files else ""
+    spec_path = str(spec_files[0])
     pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": spec_path}
     # BUG-205: authoritative TOCTOU re-check.  The list_by_status() snapshot
     # (top of scan_queued) can go stale before we actually dispatch: callback
@@ -882,7 +900,7 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
     # (orchestrator is in _ALLOWED_WRITERS) and skip the session. Fail-closed:
     # only reconcile on a positive allowlist AND a positive commit match;
     # otherwise dispatch as normal (no worse than before this gate existed).
-    allowed_files = gate_logic.parse_allowed_files(spec_files[0]) if spec_files else None
+    allowed_files = gate_logic.parse_allowed_files(spec_files[0])
     if allowed_files:
         gate_logic.fetch_develop(project_dir)
         impl_sha = gate_logic.find_implementation_commit(project_dir, spec_id, allowed_files)

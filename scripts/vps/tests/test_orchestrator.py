@@ -992,6 +992,194 @@ class TestReconciliationGate:
         mock_find.assert_not_called()
 
 
+# --- Spec-readiness gate: queued lifecycle row without a spec body ---
+
+
+class TestSpecReadinessGate:
+    """A queued row whose spec body is not on disk yet must not be dispatched.
+
+    Spec-first ID CAS (ARCH-196/ADR-027) has spark claim its ID by calling
+    create_initial(), which writes status=queued and pushes — minutes before the
+    spec body is written and committed. The orchestrator polls every ~60s, so an
+    interactive spark run reliably loses that race. Pre-gate, we dispatched into
+    the gap: the session found no spec, callback blocked it with
+    missing_allowed_files, and a slot plus a paid session were spent producing a
+    blocked spec. Seen on awardybot BUG-1410 (pueue 995, dead in 18 seconds).
+
+    The row is deliberately left at queued rather than demoted — the next cycle
+    picks it up once the body lands. A row that never gets a body is an orphan,
+    which lifecycle_audit.py reports separately.
+    """
+
+    def test_missing_spec_body_blocks_dispatch(self, tmp_path, seed_project):
+        """ai/features/ has no file for the spec id → no session, no slot, no write."""
+        spec_id = "FTR-READY1"
+        (tmp_path / "ai" / "features").mkdir(parents=True)
+        mock_add = MagicMock(return_value=42)
+
+        with (
+            patch.object(
+                orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+            ),
+            patch("orchestrator._unmet_dependencies", return_value=[]),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "queued", "spec_id": spec_id},
+            ),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator._pueue_add", mock_add),
+            patch("orchestrator.SCRIPT_DIR", tmp_path),
+            patch("orchestrator.db.get_available_slots", return_value=1) as mock_slots,
+            patch("orchestrator.db.try_acquire_slot") as mock_acquire,
+            patch.object(orchestrator.lifecycle, "write_lifecycle") as mock_write,
+        ):
+            result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is False
+        mock_add.assert_not_called()
+        mock_acquire.assert_not_called()
+        # The gate sits above the slot check, so a race must not consume capacity.
+        mock_slots.assert_not_called()
+        # Left at queued deliberately — the next cycle picks it up.
+        mock_write.assert_not_called()
+
+    def test_absent_features_dir_blocks_dispatch(self, tmp_path, seed_project):
+        """A project with no ai/features/ at all must not crash the cycle."""
+        spec_id = "FTR-READY2"
+        mock_add = MagicMock(return_value=42)
+
+        with (
+            patch.object(
+                orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+            ),
+            patch("orchestrator._unmet_dependencies", return_value=[]),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "queued", "spec_id": spec_id},
+            ),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator._pueue_add", mock_add),
+            patch("orchestrator.SCRIPT_DIR", tmp_path),
+            patch("orchestrator.db.get_available_slots", return_value=1),
+            patch.object(orchestrator.lifecycle, "write_lifecycle") as mock_write,
+        ):
+            result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is False
+        mock_add.assert_not_called()
+        mock_write.assert_not_called()
+
+    def test_gate_runs_before_reconciliation(self, tmp_path, seed_project):
+        """No body means no allowlist to parse — the reconcile gate must not be reached.
+
+        Guards the ordering: parse_allowed_files() indexes spec_files[0], so
+        reaching it with an empty list would raise IndexError, not skip.
+        """
+        spec_id = "FTR-READY3"
+        (tmp_path / "ai" / "features").mkdir(parents=True)
+
+        with (
+            patch.object(
+                orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+            ),
+            patch("orchestrator._unmet_dependencies", return_value=[]),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "queued", "spec_id": spec_id},
+            ),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator._pueue_add", MagicMock(return_value=42)),
+            patch("orchestrator.SCRIPT_DIR", tmp_path),
+            patch("orchestrator.db.get_available_slots", return_value=1),
+            patch.object(orchestrator.gate_logic, "parse_allowed_files") as mock_parse,
+            patch.object(orchestrator.gate_logic, "fetch_develop") as mock_fetch,
+        ):
+            result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is False
+        mock_parse.assert_not_called()
+        mock_fetch.assert_not_called()
+
+    def test_present_spec_body_dispatches(self, tmp_path, seed_project):
+        """The gate is transparent once the body lands — the same row now dispatches."""
+        spec_id = "FTR-READY4"
+        features = tmp_path / "ai" / "features"
+        features.mkdir(parents=True)
+        (features / f"{spec_id}-console-scaffold.md").write_text("# Spec\n")
+        mock_add = MagicMock(return_value=42)
+
+        with (
+            patch.object(
+                orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+            ),
+            patch("orchestrator._unmet_dependencies", return_value=[]),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "queued", "spec_id": spec_id},
+            ),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator._pueue_add", mock_add),
+            patch("orchestrator.SCRIPT_DIR", tmp_path),
+            patch("orchestrator.db.get_available_slots", return_value=1),
+            patch("orchestrator.db.try_acquire_slot"),
+            patch("orchestrator.db.log_task"),
+            patch("orchestrator.db.update_project_phase"),
+            patch.object(orchestrator.gate_logic, "parse_allowed_files", return_value=None),
+            patch.object(orchestrator.lifecycle, "write_lifecycle") as mock_write,
+        ):
+            result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is True
+        mock_add.assert_called_once()
+        mock_write.assert_not_called()
+
+    def test_body_matched_by_prefix_not_exact_name(self, tmp_path, seed_project):
+        """Spec files carry a date+slug suffix; the glob must still find them."""
+        spec_id = "FTR-0081"
+        features = tmp_path / "ai" / "features"
+        features.mkdir(parents=True)
+        (features / f"{spec_id}-2026-07-26-console-scaffold.md").write_text("# Spec\n")
+        mock_add = MagicMock(return_value=42)
+
+        with (
+            patch.object(
+                orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+            ),
+            patch("orchestrator._unmet_dependencies", return_value=[]),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "queued", "spec_id": spec_id},
+            ),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator._pueue_add", mock_add),
+            patch("orchestrator.SCRIPT_DIR", tmp_path),
+            patch("orchestrator.db.get_available_slots", return_value=1),
+            patch("orchestrator.db.try_acquire_slot"),
+            patch("orchestrator.db.log_task"),
+            patch("orchestrator.db.update_project_phase"),
+            patch.object(orchestrator.gate_logic, "parse_allowed_files", return_value=None),
+        ):
+            result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is True
+        mock_add.assert_called_once()
+
+
 # --- Cycle pacing: honest 5-min period (_next_sleep) ---
 
 
