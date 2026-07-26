@@ -1,3 +1,7 @@
+---
+always_on: true   # skill triggers must be reachable in any session
+---
+
 # Native Language Skill Triggers
 
 When user triggers a skill in native language, invoke the corresponding slash command.

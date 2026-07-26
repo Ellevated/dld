@@ -120,6 +120,19 @@ CLAUDE.md that tells the session to open the file. A permanently loaded rule buy
 at the price of every unrelated session; measured 2026-07-26 in AwardyBot, four unmarked files cost
 **37k tokens per session** for 25 days.
 
+A file that genuinely must always load declares `always_on: true` instead, so the intent lives in
+the file rather than in someone's memory. `localization.md` is the only one.
+
+**Check it, don't assume it** — this cost nine projects ~87k tokens/session and was found by
+accident, not by looking:
+
+```bash
+python scripts/check-rules-loading.py .
+```
+
+Exits non-zero on any rule that is neither scoped nor declared. Run it after adding a rule, and
+in any repo bootstrapped from this template before trusting its context budget.
+
 ---
 
 ## Project Context System (v3.7)
