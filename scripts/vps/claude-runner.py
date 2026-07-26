@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -83,31 +84,84 @@ if AUTOPILOT_EFFORT not in _VALID_EFFORT:
     AUTOPILOT_EFFORT = "high"  # fail-safe: unknown value → default
 
 
-def _resolve_cli_path() -> str | None:
-    """Prefer the system Claude Code CLI over the SDK's bundled copy.
+# A CLI older than this does not know the Opus 5 / Sonnet 5 model IDs and will
+# silently run its own era's default model instead of the one we pin. 2.1.190 is
+# the floor we have verified resolves `claude-opus-5` correctly.
+_MIN_CLI_VERSION = (2, 1, 190)
 
-    The bundled CLI in claude_agent_sdk/_bundled/ lags the daily-updated system
-    CLI; an old bundled build silently resolves the "opus" alias / `model=` to a
-    stale Opus (e.g. 4.7 instead of the pinned 4.8). Passing cli_path forces the
-    SDK to use the system install, eliminating recurring version drift.
+# Distro-style install location, probed last. Named so tests can point it
+# somewhere hermetic instead of at whatever the host happens to have.
+_SYSTEM_CLI_FALLBACK = "/usr/local/bin/claude"
 
-    Resolution order: CLAUDE_CLI_PATH env -> `claude` on PATH -> the installer's
-    stable launcher (~/.local/bin/claude, a symlink the installer repoints to the
-    current version on every update). Returns None if none exist, letting the SDK
-    fall back to its bundled CLI rather than crash.
+
+def _cli_version(path: str) -> tuple[int, int, int] | None:
+    """Ask a CLI binary which version it is. None if it won't answer."""
+    try:
+        p = subprocess.run(
+            [path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", p.stdout or "")
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+
+def _resolve_cli_path() -> tuple[str | None, tuple[int, int, int] | None]:
+    """Pick the NEWEST Claude Code CLI on the box, not the first one on PATH.
+
+    Ordering by PATH is what broke this for four months (found 2026-07-26). Under
+    pueue the daemon inherits systemd's PATH — `/usr/local/sbin:/usr/local/bin:…`
+    with no `~/.local/bin` at all — so `shutil.which("claude")` returned a
+    root-owned 2.1.72 binary frozen since March, while the installer's
+    self-updating launcher at ~/.local/bin/claude sat at 2.1.220 unused. 2.1.72
+    predates Opus 5, so `model="claude-opus-5"` silently ran claude-opus-4-6:
+    a 200K window instead of 1M, autocompact every ~155K, 34 compactions in one
+    90-minute run, and a timeout with nothing merged.
+
+    Version comparison is the only ordering that self-heals — whichever install
+    the operator keeps current wins, no matter how PATH is arranged. An explicit
+    CLAUDE_CLI_PATH still overrides everything. Candidates that refuse to report
+    a version are kept only as a last-resort fallback, and returning (None, None)
+    lets the SDK use its bundled CLI rather than crash.
     """
+    pinned = os.environ.get("CLAUDE_CLI_PATH")
+    if pinned and Path(pinned).exists():
+        return pinned, _cli_version(pinned)
+
     candidates = [
-        os.environ.get("CLAUDE_CLI_PATH"),
         shutil.which("claude"),
         str(Path.home() / ".local" / "bin" / "claude"),
+        _SYSTEM_CLI_FALLBACK,
     ]
+    seen: set[str] = set()
+    best: tuple[str, tuple[int, int, int]] | None = None
+    unversioned: str | None = None
+
     for candidate in candidates:
-        if candidate and Path(candidate).exists():
-            return candidate
-    return None
+        if not candidate:
+            continue
+        real = str(Path(candidate).resolve()) if Path(candidate).exists() else ""
+        if not real or real in seen:
+            continue
+        seen.add(real)
+        version = _cli_version(candidate)
+        if version is None:
+            unversioned = unversioned or candidate
+        elif best is None or version > best[1]:
+            best = (candidate, version)
+
+    if best:
+        return best
+    return unversioned, None
 
 
-CLI_PATH = _resolve_cli_path()
+CLI_PATH, CLI_VERSION = _resolve_cli_path()
 
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -206,12 +260,29 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         prompt = f"/{skill} {task}"
 
     logger.info(
-        "project=%s skill=%s prompt=%s cwd=%s",
+        "project=%s skill=%s prompt=%s cwd=%s cli=%s v=%s model=%s effort=%s",
         project_name,
         skill,
         prompt,
         project_path,
+        CLI_PATH,
+        ".".join(map(str, CLI_VERSION)) if CLI_VERSION else "unknown",
+        MODEL,
+        AUTOPILOT_EFFORT,
     )
+    # A CLI that predates the pinned model does not error — it quietly runs its
+    # own default instead, and the only visible symptom is a shrunken context
+    # window and a compaction storm. Say so out loud.
+    if CLI_VERSION is not None and CLI_VERSION < _MIN_CLI_VERSION:
+        logger.warning(
+            "CLI %s at %s is older than %s and may not know %s — it will run its "
+            "own default model with that model's (smaller) context window. "
+            "Point CLAUDE_CLI_PATH at a current install.",
+            ".".join(map(str, CLI_VERSION)),
+            CLI_PATH,
+            ".".join(map(str, _MIN_CLI_VERSION)),
+            MODEL,
+        )
 
     # Layer 2: capture subprocess CLI stderr via SDK callback (BUG-188)
     stderr_lines: list[str] = []
@@ -424,6 +495,13 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         "prompt": prompt,
         "turns": turns,
         "cost_usd": round(cost_usd, 4),
+        # Drift telemetry: which binary actually ran, and what we asked it for.
+        # A run whose model_usage disagrees with `model` means the CLI ignored
+        # the pin (see _resolve_cli_path).
+        "cli_path": CLI_PATH,
+        "cli_version": ".".join(map(str, CLI_VERSION)) if CLI_VERSION else "",
+        "model": MODEL,
+        "effort": AUTOPILOT_EFFORT,
         "input_tokens": usage_metrics["input_tokens"],
         "output_tokens": usage_metrics["output_tokens"],
         "cache_creation_input_tokens": usage_metrics["cache_creation_input_tokens"],
