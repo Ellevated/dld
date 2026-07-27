@@ -301,3 +301,71 @@ does not exist in the project → Gate 7 auto-passes». Директория с�
 Architect: либо засеять банк уроков (`/seed-lessons` существует как триггер в
 `localization.md`), либо снять секцию из шаблона спеки. Пустая обязательная секция учит
 её игнорировать.
+
+---
+
+### SIGNAL-2026-07-28-0130
+- **Source:** autopilot (TECH-212)
+- **Target:** spark
+- **Type:** gap
+- **Message:** Секция `## Design` спеки содержала нерабочий код, который был бы скопирован
+  дословно, если бы планировщик не перепроверил. `get_db` — это `@contextmanager`, поэтому
+  предложенный спекой делегат `db_decisions.record_decision(get_db(), ...)` передал бы в лист
+  `_GeneratorContextManager` вместо `Connection`, и ни одна запись никогда бы не закоммитилась.
+  Правильная форма — `with get_db(immediate=...) as conn:`. Spark пишет примеры кода в Design,
+  не исполняя их; для рефакторингов с транзакциями это дорогая ошибка (тихая потеря записи).
+- **Evidence:** `ai/features/TECH-212-2026-07-27-split-db-module.md:187-193` (исходный снippet)
+  vs `scripts/vps/db.py:52` (`@contextmanager def get_db`)
+
+### SIGNAL-2026-07-28-0131
+- **Source:** autopilot (TECH-212)
+- **Target:** spark
+- **Type:** gap
+- **Message:** Спека не заметила, что `immediate=True` (BEGIN IMMEDIATE) — часть контракта
+  трёх выносимых функций (`clear_decisions`, `save_finding`, `update_finding_status`).
+  Дословный перенос без этого флага дал бы race-condition, который не поймал бы ни один тест.
+  Impact Tree в Spark смотрит на имена и импорты, но не на семантику транзакций.
+- **Evidence:** `git show HEAD~4:scripts/vps/db.py:142,163,343,374` — четыре `get_db(immediate=True)`
+
+### SIGNAL-2026-07-28-0132
+- **Source:** autopilot (TECH-212)
+- **Target:** spark
+- **Type:** contradiction
+- **Message:** Собственный критерий спеки EC-7 (`grep 'f"SELECT'` → 0 попаданий) противоречил
+  её же плану «дословного переноса»: `get_projects_for_night_scan` строит
+  `f"SELECT ... IN ({placeholders})"`. Дословный перенос провалил бы приёмку спеки.
+  Eval Criteria пишутся отдельно от Design и не проверяются на совместимость с ним.
+- **Evidence:** спека EC-7 (строка ~269) vs `git show HEAD~4:scripts/vps/db.py:527`
+
+### SIGNAL-2026-07-28-0133
+- **Source:** autopilot (TECH-212)
+- **Target:** spark
+- **Type:** gap
+- **Message:** Оценка «делегат стоит одну строку» ошиблась в ~5 раз: 12 рукописных `def`-делегатов
+  стоили бы 60-72 строки и вывели бы `db.py` на 395-407 при лимите 400 — то есть спека,
+  выполненная буквально, могла не достичь собственной цели. Спасла замена на `_delegate`-фабрику
+  (~30 строк, итог 373). LOC-бюджет раскола стоит считать, а не оценивать на глаз.
+- **Evidence:** `ai/features/TECH-212-...md:154` («делегат — одна строка») vs `scripts/vps/db.py:373`
+
+### SIGNAL-2026-07-28-0134
+- **Source:** autopilot (TECH-212)
+- **Target:** architect
+- **Type:** missing_rule
+- **Message:** Exa MCP исчерпал кредиты — `web_search_exa` возвращает HTTP 402. Это деградирует
+  research-стек ВСЕХ агентов на этой VDS (planner, scout, spark-research, bughunt solution-architect),
+  причём молча: агент просто ищет хуже и продолжает. `scripts/check-research-stack.py` существует,
+  но ничто не зовёт его периодически. Ни один автопилот-прогон не сообщит об этом сам, если
+  не спросить агента напрямую.
+- **Evidence:** planner TECH-212 → `web_search_exa` HTTP 402; `CLAUDE.md` § «Verifying the research stack»
+
+### SIGNAL-2026-07-28-0135
+- **Source:** autopilot (TECH-212)
+- **Target:** architect
+- **Type:** gap
+- **Message:** `ruff format --check .` красный на `develop` для 17 файлов, при этом CI-джоб
+  `python-lint` делает ровно `ruff format --check .`. Значит CI-гейт форматирования либо уже
+  красный, либо его никто не смотрит. Локально `ruff` вообще не установлен ни в venv, ни на PATH
+  проекта (нашёлся только в `~/.local/bin`), поэтому ни один агент не проверит формат, если ему
+  явно не подсказать путь. CI-parity гейт TECH-206 покрывает тесты, но не линтер.
+- **Evidence:** `ruff format --check .` на develop → «17 files would be reformatted»;
+  `.github/workflows/ci.yml` job `python-lint`
