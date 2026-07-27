@@ -4,10 +4,23 @@ SSOT for task execution. Runs once per task from the Implementation Plan.
 
 ```
 CODER → TESTER → PRE-CHECK → SPEC CHECK → CODE QUALITY → COMMIT → DIARY → LOCAL VERIFY → NEXT
-                              (you)
 ```
 
-## Who gets a subagent, and why
+## Who runs each step
+
+Three steps dispatch a subagent; the rest you run yourself. "Yourself" means the
+autopilot loop reading this file, in its own context, with no Task tool call.
+
+| Step | Runs where |
+|---|---|
+| 1. Coder | subagent `coder` |
+| 2. Tester | subagent `tester` (`debugger` on failure) |
+| 3. Pre-check | you — shell commands |
+| 4. Spec compliance | you |
+| 5. Code quality | subagent `review` |
+| 6. Commit / 6.5 Diary / 7 Local verify | you |
+
+## Why those three, and not the others
 
 A subagent starts cold. Before it can act it rebuilds the task context you are
 already holding — the spec, the plan, the diff — and that rebuild is billed as
@@ -17,13 +30,17 @@ cost $20 built 1.3M tokens of context doing it.
 
 So the test is whether a step needs **something you do not have**:
 
-| Step | Subagent? | Why |
-|---|---|---|
-| Coder | **yes** | Writes on a cheaper model while you orchestrate — a real division of labour |
-| Tester | **yes** | Carries the test-selection tables, the immutable-test rules and eval-judge dispatch. Knowledge you do not hold, and should not inline into every task |
-| Debugger | **on failure** | Reasoning about a failure is the part that needs a model |
-| Spec compliance | **no** | You are holding the spec and the diff. A fresh agent would re-read both to reach the position you are already in |
-| Code quality | **yes** | The one place independence is load-bearing: an agent that did not write the code sees duplication and debt the author is blind to |
+- **Coder** writes on a cheaper model while you orchestrate — a real division of
+  labour, not ceremony.
+- **Tester** carries the test-selection tables, the immutable-test rules and
+  eval-judge dispatch. Knowledge you do not hold, and should not be inlined into
+  every task.
+- **Debugger** is dispatched only on a failure, because reasoning about the
+  failure is the part that needs a model.
+- **Code quality** is the one place independence is load-bearing: an agent that
+  did not write the code sees duplication and debt the author is blind to.
+- **Spec compliance** needs neither. You are holding the spec and the diff, so a
+  fresh agent would only re-read both to reach the position you are already in.
 
 The cut is specific, not a policy of "fewer agents". Anthropic's guidance for
 this model generation is explicit that a separate subagent asked to verify work
