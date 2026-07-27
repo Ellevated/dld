@@ -1,13 +1,18 @@
 allowed_files_hash: null
-blocked_reason: null
+blocked_reason: autopilot_signaled_blocked
 finished_at: null
 kind: tech
 priority: p1
-pueue_id: null
+pueue_id: 1022
 spec_id: TECH-210
 started_at: null
-status: queued
-transitions: []
-updated_at: '2026-07-27T17:39:13Z'
-updated_by: spark
-version: 1
+status: blocked
+transitions:
+- at: '2026-07-27T19:52:57Z'
+  by: callback
+  from: queued
+  pueue_id: 1022
+  to: blocked
+updated_at: '2026-07-27T19:52:57Z'
+updated_by: callback
+version: 2
