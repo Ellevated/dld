@@ -10,3 +10,7 @@
 ## Types: success, problem, escalation, regression, escaped_defect
 ## Statuses: pending, done
 ## Columns: Debug = debug_attempts count, Files = files_changed count
+| 2026-07-27 | TECH-211 | success | Характеризационные тесты lifecycle_audit (22) до раскола | 0 | 1 | pending |
+| 2026-07-27 | TECH-211 | success | Раскол heartbeat_reaper.py 459->255 + 2 sibling-модуля | 0 | 4 | pending |
+| 2026-07-27 | TECH-211 | success | Раскол lifecycle_audit.py 525->254 + audit_probe/audit_categories | 0 | 3 | pending |
+| 2026-07-27 | TECH-211 | advisory | dependencies.md вне Allowed Files — карта зависимостей не описывает 4 новых модуля | 0 | 0 | pending |
