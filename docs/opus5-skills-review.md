@@ -72,6 +72,35 @@ Each subagent spawn primes a new cache prefix, and each compaction invalidates i
 5-task spec is 20+ spawns. The cost is not what the prompts say — it is **how many times
 we re-prime a model that no longer needs re-priming**.
 
+### Correction, same day: the "thrashing" framing was an artefact
+
+Both numbers above are main-loop-scope fields being read as if they described the
+session. Recomputed session-wide (`_session_totals`, commit d414895) across 34 runs
+that carry a model breakdown:
+
+| cost | session cache_creation | session hit rate |
+|---|---|---|
+| $0.34 | 25,408 | 0.91 |
+| $2.22 | 87,816 | 0.96 |
+| $22.57 | 709,690 | 0.97 |
+| $26.19 | 1,256,266 | 0.97 |
+| **$58.57** | **6,496,128** | **0.72** |
+
+The $58 run is **0.72**, not 0.50, and every run — cheap or ruinous — sits at 0.87–0.98.
+There is no thrashing mode. Cost tracks **cache_creation volume** almost linearly, and
+hit rate says nothing. The mechanism is not poor reuse; it is **how many distinct agent
+contexts get built at all**. Same conclusion, honest reason.
+
+### And the drift was everywhere
+
+Of 34 runs with a model breakdown, **27 ran subagents on `claude-opus-4-6`** — including
+runs whose main loop was correctly pinned to 4-8, i.e. subagents two generations behind
+a pin that read as correct. Only **7 runs, all after the 2026-07-26 CLI fix, are
+genuinely Opus 5**.
+
+That is the real baseline problem: almost all historical telemetry describes a different
+model generation. Step 1 measures against those 7 runs, not against the 40.
+
 ## What now works against us
 
 Revised after Step 0. Two items removed, one sharpened.
@@ -95,10 +124,29 @@ Ordered by where money burns, not by what is easiest.
 - [x] **0. Inventory** — done 2026-07-27. Killed two of the four suspicions and
       located the cost precisely (see Step 0 result above). The prompts are not the
       problem; the spawn architecture is.
-- [ ] **1. Autopilot** — does context isolation still earn its cost at 1M? The target
-      metric is now specific: cache_creation per spec and cache hit rate, against the
-      0.91–0.96 / 67–125k baseline of healthy runs. Hypothesis: one long-lived agent
-      instead of six. This is where the money burns.
+- [ ] **1. Autopilot** — does context isolation still earn its cost at 1M?
+      - [x] Telemetry made trustworthy first (d414895): session scope published
+            alongside main-loop scope, subagent model drift detected. Both corrections
+            above came out of it.
+      - [ ] Loop change. Metric: **session cache_creation per completed spec**, against
+            the clean Opus 5 baseline below. Hit rate is not the metric — it stays high
+            regardless.
+
+### Clean Opus 5 baseline (7 runs, 2026-07-26..27)
+
+| project | exit | cost | session cache_creation |
+|---|---|---|---|
+| dowry-mc | 0 | $0.69 | 33,508 |
+| dowry | 0 | $0.77 | 20,949 |
+| dowry | 0 | $1.14 | 57,213 |
+| dowry | 0 | $2.35 | 89,402 |
+| dowry | 0 | $4.46 | 117,202 |
+| dowry | 0 | $13.04 | 715,761 |
+| dowry | 0 | $20.13 | 1,304,315 |
+
+Anything Step 1 does is judged against these. Small specs are already cheap; the
+question is the top of that table, where one bug fix costs $20 and builds 1.3M tokens
+of context.
 - [ ] **2. Spark** — four scouts down to however many are actually needed. The Gate 1b
       spec-size limiter added 2026-07-26 is a bandage over specs bloated by the
       multi-agent design itself.
