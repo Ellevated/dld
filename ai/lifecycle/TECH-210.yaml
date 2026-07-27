@@ -1,18 +1,24 @@
 allowed_files_hash: null
-blocked_reason: autopilot_signaled_blocked
+blocked_reason: блокер снят — владелец выбрал resolution 1 (алиас на парсер), спека
+  обновлена в 052f01f
 finished_at: null
 kind: tech
 priority: p1
 pueue_id: 1022
 spec_id: TECH-210
 started_at: null
-status: blocked
+status: queued
 transitions:
 - at: '2026-07-27T19:52:57Z'
   by: callback
   from: queued
   pueue_id: 1022
   to: blocked
-updated_at: '2026-07-27T19:52:57Z'
-updated_by: callback
-version: 2
+- at: '2026-07-27T21:06:14Z'
+  by: operator
+  from: blocked
+  pueue_id: null
+  to: queued
+updated_at: '2026-07-27T21:06:14Z'
+updated_by: operator
+version: 3
