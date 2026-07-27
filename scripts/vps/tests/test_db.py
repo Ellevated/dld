@@ -211,3 +211,203 @@ class TestProjectState:
 
 
 # --- Note: callback CLI removed in ARCH-161 (moved to standalone callback.py) ---
+
+
+# --- TECH-212: CLI contract (night-reviewer.sh calls these 7 times) ---
+
+import json
+import os
+import subprocess
+
+DB_PY = str(Path(__file__).resolve().parent.parent / "db.py")
+
+
+def _cli(*args):
+    """Run `python3 db.py <args>`.
+
+    DB_PATH is inherited from the isolated_db fixture: monkeypatch.setenv
+    writes into os.environ, and subprocess.run() with no explicit `env=`
+    inherits the current process's environment, so the child process picks
+    up the same isolated DB file.
+    """
+    return subprocess.run(
+        [sys.executable, DB_PY, *args],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=os.environ.copy(),
+    )
+
+
+class TestCliContract:
+    def test_no_args_prints_usage_to_stderr_exit_1(self, isolated_db):
+        r = _cli()
+        assert r.returncode == 1
+        assert r.stdout == ""
+        assert r.stderr == (
+            "Usage: python3 db.py <seed|save-finding|get-new-findings"
+            "|update-finding-status|update-phase> [args...]\n"
+        )
+
+    def test_unknown_command_prints_usage_exit_1(self, isolated_db):
+        r = _cli("nope")
+        assert r.returncode == 1
+        assert "Usage: python3 db.py <seed|save-finding|get-new-findings" in r.stderr
+
+    def test_update_phase_output_and_effect(self, seed_project):
+        r = _cli("update-phase", "testproject", "night_reviewing")
+        assert r.returncode == 0
+        assert r.stdout == "phase: testproject -> night_reviewing\n"
+        assert db.get_project_state("testproject")["phase"] == "night_reviewing"
+
+    def test_update_phase_wrong_argc(self, isolated_db):
+        r = _cli("update-phase", "onlyone")
+        assert r.returncode == 1
+        assert r.stderr == "Usage: python3 db.py update-phase <project_id> <phase>\n"
+
+    def test_save_finding_prints_row_id_then_duplicate(self, seed_project):
+        first = _cli(
+            "save-finding",
+            "testproject",
+            "fp1",
+            "high",
+            "medium",
+            "src/a.py",
+            "10-12",
+            "summary text",
+            "suggestion text",
+        )
+        assert first.returncode == 0
+        assert first.stdout.strip().isdigit()
+
+        again = _cli(
+            "save-finding",
+            "testproject",
+            "fp1",
+            "high",
+            "medium",
+            "src/a.py",
+            "10-12",
+            "summary text",
+            "suggestion text",
+        )
+        assert again.returncode == 0
+        assert again.stdout == "duplicate\n"
+
+    def test_save_finding_wrong_argc(self, isolated_db):
+        r = _cli("save-finding", "testproject")
+        assert r.returncode == 1
+        assert r.stderr == (
+            "Usage: python3 db.py save-finding <project_id> <fingerprint> <severity>"
+            " <confidence> <file_path> <line_range> <summary> <suggestion>\n"
+        )
+
+    def test_get_new_findings_emits_parseable_json(self, seed_project):
+        """Pins night-reviewer.sh:205-211 — jq reads exactly these 7 keys per row
+        (`.id`, `.severity`, `.confidence`, `.file_path`, `.line_range`, `.summary`,
+        `.suggestion`), each via `jq -r '.x // ""'`. A dropped/renamed column would
+        degrade silently to an empty string with no test failure otherwise.
+        """
+        _cli(
+            "save-finding",
+            "testproject",
+            "fp2",
+            "low",
+            "high",
+            "src/b.py",
+            "1",
+            "sum2",
+            "sug2",
+        )
+        r = _cli("get-new-findings", "testproject")
+        assert r.returncode == 0
+        rows = json.loads(r.stdout)
+        assert len(rows) == 1
+        row = rows[0]
+        assert {
+            "id",
+            "severity",
+            "confidence",
+            "file_path",
+            "line_range",
+            "summary",
+            "suggestion",
+        } <= row.keys()
+        assert row["fingerprint"] == "fp2"
+        assert row["status"] == "new"
+        # Values round-trip from the save-finding positional args (CLI contract):
+        # project_id fingerprint severity confidence file_path line_range summary suggestion
+        assert row["severity"] == "low"
+        assert row["confidence"] == "high"
+        assert row["file_path"] == "src/b.py"
+        assert row["line_range"] == "1"
+        assert row["summary"] == "sum2"
+        assert row["suggestion"] == "sug2"
+
+    def test_get_new_findings_empty_is_bare_json_array(self, seed_project):
+        r = _cli("get-new-findings", "testproject")
+        assert r.returncode == 0
+        assert r.stdout == "[]\n"  # night-reviewer.sh:190 compares against "[]"
+
+    def test_update_finding_status_output(self, seed_project):
+        created = _cli(
+            "save-finding",
+            "testproject",
+            "fp3",
+            "low",
+            "low",
+            "src/c.py",
+            "3",
+            "sum3",
+            "sug3",
+        )
+        fid = created.stdout.strip()
+        r = _cli("update-finding-status", fid, "reviewed")
+        assert r.returncode == 0
+        assert r.stdout == f"updated finding {fid} -> reviewed\n"
+        assert _cli("get-new-findings", "testproject").stdout == "[]\n"
+
+    def test_update_finding_status_wrong_argc(self, isolated_db):
+        r = _cli("update-finding-status", "1")
+        assert r.returncode == 1
+        assert r.stderr == "Usage: python3 db.py update-finding-status <finding_id> <status>\n"
+
+    def test_seed_reads_json_file_and_reports_count(self, isolated_db, tmp_path):
+        payload = tmp_path / "projects.json"
+        payload.write_text(
+            json.dumps([{"project_id": "p9", "path": "/p9", "provider": "claude"}]),
+            encoding="utf-8",
+        )
+        r = _cli("seed", str(payload))
+        assert r.returncode == 0
+        assert r.stdout == "seeded 1 projects\n"
+        assert db.get_project_state("p9")["path"] == "/p9"
+
+    def test_seed_wrong_argc(self, isolated_db):
+        r = _cli("seed")
+        assert r.returncode == 1
+        assert r.stderr == "Usage: python3 db.py seed <path/to/projects.json>\n"
+
+
+class TestNightReviewerInlineLookup:
+    """Pins night-reviewer.sh:89-95's inline `python3 -c` project lookup — the
+    8th call site into db.py that the CLI-only TestCliContract suite misses.
+    On failure it logs "project not found or no path" and returns with no
+    non-zero exit anywhere, so the night review is skipped silently.
+    """
+
+    def test_get_project_state_path_lookup(self, seed_project):
+        r = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                f"import sys; sys.path.insert(0, {VPS_DIR!r}); import db; "
+                "print(db.get_project_state('testproject')['path'])",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=os.environ.copy(),
+        )
+        assert r.returncode == 0
+        assert r.stdout.strip() == "/tmp/test-project"
