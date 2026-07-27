@@ -42,39 +42,19 @@ fi
 # ── --phase4-hooks: idempotent per-project pre-commit hook install (ARCH-193) ─
 if [[ "${1:-}" == "--phase4-hooks" ]]; then
     echo "=== Phase 4 Hooks Setup ==="
-    PROJECTS_FILE="${SCRIPT_DIR}/projects.json"
-
-    if ! command -v jq &>/dev/null; then
-        warn "jq not found — cannot install hooks (install: apt install jq)"
+    # Delegates to install-lifecycle-guard.sh — there is exactly one hook
+    # installer, so a full setup run cannot undo what the installer did.
+    #
+    # This block used to point core.hooksPath at each repo's own .git-hooks/,
+    # which silently skipped every project that did not carry the wrapper and
+    # the guard as checked-in files. Six of ten did not, and the audit on
+    # 2026-07-27 found the ADR-025 guard running in exactly one repo.
+    GUARD_INSTALLER="${SCRIPT_DIR}/install-lifecycle-guard.sh"
+    if [[ ! -f "$GUARD_INSTALLER" ]]; then
+        warn "install-lifecycle-guard.sh not found at ${GUARD_INSTALLER} — hooks NOT installed"
         exit 0
     fi
-
-    if [[ ! -f "$PROJECTS_FILE" ]]; then
-        warn "projects.json not found at ${PROJECTS_FILE} — skipping hook install"
-        exit 0
-    fi
-
-    # Iterate via jq → null-separated (handles paths with spaces).
-    while IFS= read -r -d '' proj_path; do
-        if [[ ! -d "${proj_path}/.git" ]]; then
-            warn "skip: ${proj_path} has no .git/"
-            continue
-        fi
-        if [[ ! -f "${proj_path}/.git-hooks/pre-commit" ]]; then
-            warn "skip: ${proj_path} has no .git-hooks/pre-commit (expected checked-in wrapper)"
-            continue
-        fi
-        if [[ ! -f "${proj_path}/.claude/hooks/pre-commit-lifecycle-guard.mjs" ]]; then
-            warn "skip: ${proj_path} has no .claude/hooks/pre-commit-lifecycle-guard.mjs"
-            continue
-        fi
-        # Idempotent: set absolute hooksPath + chmod
-        # TECH-194 C1: absolute path ensures hook resolves from any worktree
-        git -C "${proj_path}" config core.hooksPath "${proj_path}/.git-hooks"
-        chmod +x "${proj_path}/.git-hooks/pre-commit"
-        chmod +x "${proj_path}/.claude/hooks/pre-commit-lifecycle-guard.mjs"
-        ok "installed hook: ${proj_path} (core.hooksPath=${proj_path}/.git-hooks)"
-    done < <(jq -r '.[].path' "$PROJECTS_FILE" | tr '\n' '\0')
+    bash "$GUARD_INSTALLER" || warn "guard install reported an error — check output above"
 
     echo "=== Phase 4 Hooks Setup complete ==="
     exit 0

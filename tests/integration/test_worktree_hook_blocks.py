@@ -4,7 +4,7 @@ Tests Layer C fixes:
   C1: hook rejects direct ai/lifecycle/ commit from a worktree
   C2: hook does not fail-open when worktree branch lacks .claude/hooks/
   C3: LIFECYCLE_WRITE_AUTHORIZED=1 allows commit (bypass path)
-  C4: install-hooks-all-worktrees.sh converts relative hooksPath to absolute
+  C4: install-lifecycle-guard.sh leaves the guard actually blocking commits
 
 No mocks per ADR-013. Uses real git repos, real bash, real node.
 Skips gracefully when node or bash is missing.
@@ -24,7 +24,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GIT_HOOKS_DIR = PROJECT_ROOT / ".git-hooks"
 GUARD_MJS = PROJECT_ROOT / ".claude" / "hooks" / "pre-commit-lifecycle-guard.mjs"
-INSTALL_HELPER = PROJECT_ROOT / "scripts" / "vps" / "install-hooks-all-worktrees.sh"
+INSTALL_HELPER = PROJECT_ROOT / "scripts" / "vps" / "install-lifecycle-guard.sh"
 EVENT_WRITER = PROJECT_ROOT / "scripts" / "vps" / "event_writer.py"
 
 
@@ -37,11 +37,33 @@ def _has_node() -> bool:
     return shutil.which("node") is not None
 
 
+def _bash() -> str | None:
+    """Path to a bash that actually runs, or None.
+
+    `shutil.which("bash")` is not enough on Windows: it finds the WSL relay stub,
+    which resolves fine and then fails at exec time with
+    "execvpe(/bin/bash) failed". Probe it instead of trusting the lookup.
+    """
+    exe = shutil.which("bash")
+    if not exe:
+        return None
+    try:
+        r = subprocess.run([exe, "-c", "exit 0"], capture_output=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return exe if r.returncode == 0 else None
+
+
+BASH = _bash()
+
+
 def _has_bash() -> bool:
-    return shutil.which("bash") is not None
+    return BASH is not None
 
 
-def _git(repo: Path, *args: str, check: bool = True, env: dict | None = None) -> subprocess.CompletedProcess:
+def _git(
+    repo: Path, *args: str, check: bool = True, env: dict | None = None
+) -> subprocess.CompletedProcess:
     full_env = {**os.environ, **(env or {})}
     return subprocess.run(
         ["git", "-C", str(repo), *args],
@@ -223,49 +245,67 @@ def test_guard_runs_when_worktree_branch_lacks_claude_hooks(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Test 4: install-hooks-all-worktrees.sh converts relative to absolute (C1 migration)
+# Test 4: install-lifecycle-guard.sh leaves the guard actually running (C1)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(not _has_bash(), reason="bash not available")
-def test_install_helper_converts_relative_to_absolute(tmp_path):
-    """C1: install-hooks-all-worktrees.sh re-sets hooksPath to absolute value."""
+@pytest.mark.skipif(not _has_bash() or not _has_node(), reason="bash and node required")
+def test_installer_leaves_guard_active_from_relative_legacy_state(tmp_path):
+    """C1: after the installer, a relative legacy hooksPath still blocks lifecycle commits.
+
+    The predecessor (install-hooks-all-worktrees.sh) only asserted that the
+    config value became absolute, which is a proxy. It could pass in a repo where
+    the wrapper was missing and nothing ran at all — six of ten projects were in
+    exactly that state. Assert the behaviour instead: the commit is refused.
+    """
     if not INSTALL_HELPER.exists():
-        pytest.skip(f"install-hooks-all-worktrees.sh not found at {INSTALL_HELPER}")
+        pytest.skip(f"install-lifecycle-guard.sh not found at {INSTALL_HELPER}")
 
     repo = _init_repo(tmp_path)
 
-    # Pre-set relative hooksPath (simulates legacy setup)
+    # Legacy state: relative path, dead inside worktrees.
     _git(repo, "config", "core.hooksPath", ".git-hooks")
-    current = _git(repo, "config", "core.hooksPath").stdout.strip()
-    assert current == ".git-hooks", f"Pre-condition: expected relative path, got {current!r}"
+    assert _git(repo, "config", "core.hooksPath").stdout.strip() == ".git-hooks"
 
-    # Create a minimal projects.json pointing at our temp repo
+    # Forward slashes: the installer runs under bash, which cannot resolve a
+    # Windows path with backslashes and would silently report "not a git repo".
     projects_json = tmp_path / "test-projects.json"
-    projects_json.write_text(json.dumps([{"id": "test", "path": str(repo)}]))
+    projects_json.write_text(
+        json.dumps([{"id": "test", "path": repo.as_posix()}]), encoding="utf-8"
+    )
+    shared_hooks = tmp_path / "shared-hooks"
 
-    # Run the migration helper
     result = subprocess.run(
-        ["bash", str(INSTALL_HELPER), str(projects_json)],
+        [BASH, str(INSTALL_HELPER)],
         capture_output=True,
         text=True,
         check=False,
-        env={**os.environ},
+        env={
+            **os.environ,
+            "PROJECTS_JSON": projects_json.as_posix(),
+            "DLD_HOOKS_DIR": shared_hooks.as_posix(),
+        },
     )
-
     assert result.returncode == 0, (
-        f"install-hooks-all-worktrees.sh failed.\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        f"install-lifecycle-guard.sh failed.\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
+    assert "[SKIP]" not in result.stdout, f"installer skipped the repo:\n{result.stdout}"
 
-    # Verify hooksPath is now absolute
-    new_hooks_path = _git(repo, "config", "core.hooksPath").stdout.strip()
-    assert new_hooks_path.startswith("/"), (
-        f"Expected absolute hooksPath after migration, got: {new_hooks_path!r}\n"
-        f"Script output:\n{result.stdout}"
+    hooks_path = _git(repo, "config", "core.hooksPath").stdout.strip()
+    assert hooks_path == shared_hooks.as_posix(), f"expected shared hooks dir, got {hooks_path!r}"
+    assert os.access(shared_hooks / "pre-commit", os.X_OK), "wrapper must be executable"
+
+    # The point of all of it: the commit is refused.
+    _stage_lifecycle_yaml(repo)
+    proc = _commit(repo, "sneak lifecycle in", check=False)
+    assert proc.returncode != 0, (
+        f"lifecycle commit must be blocked after install.\nstdout: {proc.stdout}\n{proc.stderr}"
     )
-    assert new_hooks_path == str(repo / ".git-hooks"), (
-        f"Expected hooksPath={repo / '.git-hooks'}, got {new_hooks_path!r}"
-    )
-    assert "[FIX]" in result.stdout, (
-        f"Expected [FIX] marker in output (indicating migration happened).\n{result.stdout}"
-    )
+    assert "lifecycle-guard" in (proc.stderr + proc.stdout)
+
+    # And an ordinary commit is not.
+    (repo / "src.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "reset", "-q", "HEAD", "--", "ai/lifecycle")
+    (repo / "ai" / "lifecycle" / "TEST-001.yaml").unlink()
+    _git(repo, "add", "src.py")
+    assert _commit(repo, "feat: ordinary change", check=False).returncode == 0

@@ -569,45 +569,18 @@ One-shot operator helper to recover from dirty `ai/lifecycle/` state in a projec
 
 ---
 
-## scripts/vps/install-hooks-all-worktrees.sh (TECH-194 Layer C migration)
-
-**Path:** `scripts/vps/install-hooks-all-worktrees.sh`
-
-Migration helper that converts relative `core.hooksPath = .git-hooks` (broken in
-worktrees — resolves relative to `.git/worktrees/<name>/` instead of repo root)
-to absolute paths per project. Idempotent.
-
-### Uses (→)
-
-| What | Where | Function |
-|------|-------|----------|
-| git CLI | PATH | `git -C <path> config core.hooksPath <absolute>` |
-| jq | PATH | parse projects.json `.[].path` |
-| projects.json | $PROJECTS_JSON or scripts/vps/projects.json | iterate project paths |
-
-### Used by (←)
-
-| Who | File:line | Function |
-|-----|-----------|----------|
-| operator | manual | one-shot Layer C migration on existing VPS deployments |
-| setup-vps.sh | new VPS setup (--phase4-hooks) | covers new projects natively; this helper covers backfill |
-
-### When changing API, check
-
-- [ ] setup-vps.sh --phase4-hooks (must produce identical absolute hooksPath value)
-- [ ] .git-hooks/pre-commit (GIT_COMMON_DIR resolution depends on absolute hooksPath)
-
----
-
 ## scripts/vps/install-lifecycle-guard.sh (2026-07-27)
 
 **Path:** `scripts/vps/install-lifecycle-guard.sh`
 
-Makes the ADR-025 guard actually run everywhere. `install-hooks-all-worktrees.sh`
-only rewrites `core.hooksPath` and skips any repo without a checked-in `.git-hooks/`
-— six of the ten orchestrated repos. This installs one shared wrapper outside the
-repos, resolves the guard from the repo first and DLD's copy second, and chains to
-the repo's own pre-commit when that hook is executable.
+**The only hook installer.** Supersedes `install-hooks-all-worktrees.sh` (deleted
+2026-07-27), which only rewrote `core.hooksPath` and skipped any repo without a
+checked-in `.git-hooks/` — six of the ten orchestrated repos. `setup-vps.sh
+--phase4-hooks` now delegates here, so a full setup run cannot undo the install.
+
+Installs one shared wrapper outside the repos, resolves the guard from the repo
+first and DLD's copy second, and chains to the repo's own pre-commit when that
+hook is executable.
 
 Idempotent. `--dry-run` shows the plan; `--verify` reports effective state only.
 
@@ -624,11 +597,13 @@ Idempotent. `--dry-run` shows the plan; `--verify` reports effective state only.
 | Who | File:line | Function |
 |-----|-----------|----------|
 | operator | manual | fleet-wide guard install / re-verify |
+| setup-vps.sh | `--phase4-hooks` | delegates entirely — no second installation path exists |
 
 ### When changing API, check
 
 - [ ] `.claude/hooks/pre-commit-lifecycle-guard.mjs` (moving it invalidates the baked path — re-run the installer)
-- [ ] setup-vps.sh --phase4-hooks (would overwrite `core.hooksPath` back to a per-repo path)
+- [ ] setup-vps.sh --phase4-hooks (delegates here; keep it a delegation, not a copy)
+- [ ] tests/integration/test_worktree_hook_blocks.py (C4 asserts the guard blocks, not that a config value looks right)
 - [ ] salvage.py (its plumbing snapshot bypasses this guard by construction — the `ai/lifecycle` exclusion lives there)
 
 ---

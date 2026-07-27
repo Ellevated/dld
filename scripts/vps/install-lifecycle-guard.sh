@@ -144,6 +144,7 @@ if [[ "$MODE" != "verify" ]]; then
     fi
 
     while IFS= read -r proj; do
+        proj="${proj%$'\r'}"  # jq on Windows emits CRLF; the CR breaks every path test
         [[ -z "$proj" ]] && continue
         name=$(basename "$proj")
         if [[ ! -d "${proj}/.git" && ! -f "${proj}/.git" ]]; then
@@ -171,6 +172,7 @@ fi
 echo
 printf "%-14s %-8s %-8s %s\n" PROJECT GUARD CHAINED "effective pre-commit"
 while IFS= read -r proj; do
+    proj="${proj%$'\r'}"  # jq on Windows emits CRLF; the CR breaks every path test
     [[ -z "$proj" ]] && continue
     name=$(basename "$proj")
     hook=$(effective_hook "$proj")

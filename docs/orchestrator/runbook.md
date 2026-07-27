@@ -184,8 +184,8 @@ git -C /home/dld/projects/<proj> log origin/develop..develop --oneline    # чт
 ```bash
 # 1. projects.json
 #    {"project_id":"myproj","path":"/home/dld/projects/myproj","provider":"claude","auto_approve_timeout":30}
-# 2. В проекте должен быть ai/backlog.md и .git-hooks настроены (absolute hooksPath, TECH-194):
-bash scripts/vps/install-hooks-all-worktrees.sh
+# 2. В проекте должен быть ai/backlog.md. Хуки — один установщик на весь флот:
+bash scripts/vps/install-lifecycle-guard.sh          # или --verify, чтобы только посмотреть
 # 3. Оркестратор auto-обнаружит при следующем цикле (mtime projects.json). Форсировать:
 touch scripts/vps/.run-now-myproj
 # 4. Verify
