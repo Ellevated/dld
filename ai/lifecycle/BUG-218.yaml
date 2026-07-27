@@ -1,0 +1,13 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: null
+kind: bug
+priority: p1
+pueue_id: null
+spec_id: BUG-218
+started_at: null
+status: queued
+transitions: []
+updated_at: '2026-07-27T22:13:03Z'
+updated_by: spark
+version: 1
