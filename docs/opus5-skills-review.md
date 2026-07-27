@@ -178,7 +178,9 @@ of context.
       removed. See "Step 2 result" below.
 - [ ] **3. Council / architect / board** — keep the diversity, it is judgment rather
       than research. Cut only the scaffolding.
-- [ ] **4. Fable 5** placement + a fresh effort sweep.
+- [x] **4. Fable 5 + effort sweep** — done 2026-07-27. See "Step 4 result" below. The
+      routing table turned out to contain three wrong facts, and the sweep found a
+      refusal contract nobody had noticed.
 
 ### Step 2 result — Spark, 2026-07-27
 
@@ -222,6 +224,82 @@ so what an example adds is *calibration*, not format — and calibration is exac
 cannot be judged by eye. `devil` has a golden dataset; that cut should be measured
 against it, not made by feel. The merged scout carries no example block: keeping either
 of the two converged examples would have re-created the duplication being removed.
+
+### Step 4 result — models and effort, 2026-07-27
+
+Everything below was verified against `platform.claude.com` rather than recalled. That
+mattered: the routing table this framework routes by contained three factual errors.
+
+**Sonnet 5 has a 1M context window and 128K max output**, not 200K/64K as the table
+said. This is not a typo — it undercuts the review's own framing. "Fan out because one
+agent cannot hold the codebase" was being applied to `coder`, `scout`, the spark scouts
+and all six audit personas on the strength of a number that was wrong. Sonnet has had
+the same 1M window as Opus 5 the whole time.
+
+**Sonnet 5 is on introductory pricing** — $2/$10 through 2026-08-31, then $3/$15. Every
+sonnet-vs-opus comparison in this repo has been using a figure 33% too high.
+
+**Sonnet 5's knowledge cutoff is Jan 2026**, four months behind Opus 5's May 2026. The
+rules file told every agent to search only for events after ~May 2026; on a sonnet agent
+that under-searches a third of a year.
+
+The one claim that held: Opus 5 really is half Fable 5's price on both axes, and
+identical to Opus 4.8.
+
+**Fable 5: not routed, and the table now says why.** 2× Opus 5 against an architecture
+whose cost is the number of contexts built; a knowledge cutoff *older* than Opus 5's; and
+turns long enough that Anthropic's migration guidance is to raise client timeouts first,
+against a `TIMEOUT_SECONDS` that already forced `planner` down from xhigh. The decision
+is recorded rather than left as an omission, because an omission reads as "not yet
+looked at" and gets re-litigated. The one experiment worth running is named there too:
+`AUTOPILOT_MODEL=claude-fable-5` on a single large spec — the lever exists without a code
+change, and first-shot correctness attacks debugger retry cycles, which is where the
+expensive runs in the baseline above actually go.
+
+**The finding that was not on the agenda: refusals.** Opus 5 — not only Fable 5 — carries
+safety classifiers that decline requests with `stop_reason: "refusal"` inside a **200 OK**.
+One category is `cyber`, and Anthropic's own note on it reads "Benign cybersecurity work
+can also trigger this category". Two agents run on opus and are prompted for precisely
+that: `council-security` and `bughunt-security-auditor`. Nothing in `scripts/` or
+`.claude/` matches `stop_reason`, `refusal`, or `fallbacks` — so a declined security
+review returns 200 and flows onward as though it were the report. An empty security
+review reads exactly like a clean one. Documented as an open gap; wiring up
+`fallbacks: "default"` is a separate piece of work.
+
+**Two routing disagreements**, both resolved in favour of the frontmatter, which is SSOT:
+
+| | Frontmatter | Table said |
+|---|---|---|
+| bughunt personas ×6 | opus / low | sonnet / medium |
+| autopilot main loop | `high` (`xhigh` is not in the SDK enum, so it silently falls back) | xhigh, "the one place xhigh earns its cost" |
+
+The second is the sharper one: the table described a configuration that cannot exist.
+The first meant the table still carried the rationale for an abandoned setting — while
+opus/low is the *only* effort choice in this repo that was measured into (0.883 vs 0.767,
+ADR-029).
+
+**Newly documented, previously absent from the table:** six audit personas (7 dispatches
+per deep run), the three spark scouts, and `analyzer`/`comparator` — which have no
+`effort:` at all and inherit `high` by omission. An unstated effort is not a decision.
+
+**`effort: low` on haiku has never done anything.** Haiku 4.5 is not in Anthropic's list
+of effort-supporting models. ADR-019's cost saving came entirely from the sonnet→haiku
+swap.
+
+**Effort changes deliberately not applied.** Candidates exist — `audit-coroner` and
+`audit-accountant` are defect-finders configured differently from the bughunt personas
+doing the same job; four audit personas do mapping rather than judgment; `spark-devil` is
+not tool-heavy and holds `high` on a rationale borrowed from `scout`. None were changed,
+because the ADR-029 result is the entire argument for *not* reasoning about effort: it
+found the intuitive answer backwards. `spark-devil` and `eval-judge` both have golden
+datasets already; those two sweeps come first, and `eval-judge` carries a caveat that
+outranks its saving — it is the measuring instrument, and moving it invalidates every
+recorded score.
+
+**Three dead agents found**, same profile as `spark-facilitator`: `documenter`,
+`reflect-aggregator`, `diary-recorder` — zero dispatch sites between them. `documenter`
+is the live question, since three docs describe it as a pipeline stage that does not run.
+Left for a separate decision rather than folded in here.
 
 ## How it stays honest
 
