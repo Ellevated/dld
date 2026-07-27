@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -62,6 +63,13 @@ try:
     import db as _orch_db
 except ImportError:
     _orch_db = None
+
+# Work preservation on abnormal exit. Optional import for the same reason as db:
+# the runner must still start on a box without the full VPS module set.
+try:
+    import salvage as _salvage
+except ImportError:
+    _salvage = None
 
 # ---------------------------------------------------------------------------
 # Config
@@ -236,6 +244,38 @@ def _extract_task_status(result_text: str) -> str:
         return ""
     m = _TASK_STATUS_RE.search(result_text)
     return m.group(1) if m else ""
+
+
+_EXIT_REASONS = {
+    124: "timeout",
+    2: "cli_connection_error",
+    3: "cli_process_error",
+    143: "sigterm",
+}
+
+
+def _salvage_if_needed(project_path, exit_code: int) -> dict | None:
+    """Push what the run managed to build, if it died before it could.
+
+    Autopilot pushes once, at the end of PHASE 3. Any abnormal exit therefore
+    strands finished task commits on a local worktree branch that nothing else
+    will ever look at. Runs only on failure, so the one-push-per-spec rule that
+    keeps CI cheap (TECH-085) is unaffected.
+    """
+    if exit_code == 0 or _salvage is None:
+        return None
+    spec_id = _salvage.spec_id_from_path(os.environ.get("CLAUDE_CURRENT_SPEC_PATH", ""))
+    if not spec_id:
+        # Without a spec ID there is no way to tell which worktree belongs to
+        # this run, and guessing would push another slot's branch.
+        return {"attempted": False, "error": "no_spec_id"}
+    try:
+        return _salvage.salvage_run(
+            str(project_path), spec_id, _EXIT_REASONS.get(exit_code, f"exit {exit_code}")
+        )
+    except Exception as e:  # ADR-004: never turn a failed run into a crashed runner
+        logger.warning("salvage failed: %s", e)
+        return {"attempted": True, "error": str(e)[:300], "pushed": False}
 
 
 # ---------------------------------------------------------------------------
@@ -480,6 +520,15 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
             exit_code = 1
             result_text = err_str
 
+    # A run that dies before ResultMessage reports turns=0 and cost=0.0, because
+    # both come from that message. That is how a 575-turn, 90-minute timeout came
+    # to be logged as "$0.00, 0 turns" — the most expensive runs were the ones
+    # reporting nothing. The cost genuinely isn't available, but the turn count is.
+    if not turns:
+        turns = turn_count
+
+    salvage_info = _salvage_if_needed(project_path, exit_code)
+
     # Cache hit rate: fraction of total input that came from cache read.
     # Denominator = direct input + cache creation + cache read (total paid input-ish).
     cache_read = usage_metrics["cache_read_input_tokens"]
@@ -511,6 +560,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         "cache_hit_rate": cache_hit_rate,
         "model_usage": model_usage,
         "task_status": _extract_task_status(result_text),
+        "salvage": salvage_info,
         "result_preview": result_text[:1000] if result_text else "",
     }
     log_file.write_text(json.dumps(log_data, ensure_ascii=False, indent=2))
@@ -544,6 +594,24 @@ def main():
     # Prevent nested session detection
     for var in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"):
         os.environ.pop(var, None)
+
+    # `pueue kill` (heartbeat_reaper.py reaping a wedged session) arrives as
+    # SIGTERM, which would otherwise end the process with the worktree's work
+    # still unpushed — the same loss as a timeout, by a different route.
+    # Salvage shells out to git from the handler: not async-signal-safe in
+    # principle, but the process is ending either way and the alternative is
+    # losing the run's output entirely.
+    if hasattr(signal, "SIGTERM"):
+
+        def _on_sigterm(_signum, _frame):
+            logger.error("SIGTERM received — salvaging worktree before exit")
+            try:
+                logger.info("salvage: %s", _salvage_if_needed(Path(project_dir), 143))
+            except Exception as e:
+                logger.warning("salvage on SIGTERM failed: %s", e)
+            os._exit(143)
+
+        signal.signal(signal.SIGTERM, _on_sigterm)
 
     # Timeout is inside run_task (asyncio.timeout context). No wait_for here.
     result = asyncio.run(run_task(project_dir, task, skill))

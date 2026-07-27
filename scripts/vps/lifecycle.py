@@ -166,6 +166,12 @@ def _run(
     return subprocess.CompletedProcess(p.args, p.returncode, _decode(p.stdout), _decode(p.stderr))
 
 
+# Public alias. Other VPS modules that shell out to git must not re-derive the
+# byte-level I/O rules above — re-deriving them is how the CRLF/cp1251 bug got
+# written twice. Import this, not `_run`.
+run_git = _run
+
+
 def _current_branch(repo_dir: str) -> str:
     r = _run(["git", "symbolic-ref", "--short", "HEAD"], cwd=repo_dir)
     if r.returncode == 0:
