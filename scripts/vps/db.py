@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 import db_decisions
+import db_findings
 
 DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent / "orchestrator.db"))
 _UNSET = object()
@@ -329,96 +330,6 @@ def seed_projects_from_json(projects: list[dict]) -> None:
             )
 
 
-def save_finding(
-    project_id: str,
-    fingerprint: str,
-    severity: str,
-    confidence: str,
-    file_path: Optional[str],
-    line_range: Optional[str],
-    summary: str,
-    suggestion: Optional[str],
-) -> Optional[int]:
-    """Insert finding; returns new row id or None if fingerprint already exists."""
-    with get_db(immediate=True) as conn:
-        cursor = conn.execute(
-            "INSERT OR IGNORE INTO night_findings "
-            "(project_id, fingerprint, severity, confidence, file_path, line_range, summary, suggestion) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                project_id,
-                fingerprint,
-                severity,
-                confidence,
-                file_path,
-                line_range,
-                summary,
-                suggestion,
-            ),
-        )
-        return cursor.lastrowid if cursor.rowcount else None
-
-
-def get_new_findings(project_id: str) -> list[dict]:
-    """Return findings with status='new' for a project."""
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM night_findings WHERE project_id = ? AND status = 'new' ORDER BY id",
-            (project_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
-
-
-def update_finding_status(finding_id: int, status: str) -> None:
-    """Update finding status and set reviewed_at timestamp."""
-    with get_db(immediate=True) as conn:
-        conn.execute(
-            "UPDATE night_findings SET status = ?, "
-            "reviewed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
-            "WHERE id = ?",
-            (status, finding_id),
-        )
-
-
-def get_finding_by_id(finding_id: int) -> Optional[dict]:
-    """Return a single finding by id, or None if not found."""
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT * FROM night_findings WHERE id = ?",
-            (finding_id,),
-        ).fetchone()
-        return dict(row) if row else None
-
-
-def get_all_findings(project_id: str, status: Optional[str] = None) -> list[dict]:
-    """Return all findings for project, optionally filtered by status."""
-    with get_db() as conn:
-        if status is not None:
-            rows = conn.execute(
-                "SELECT * FROM night_findings WHERE project_id = ? AND status = ? ORDER BY id",
-                (project_id, status),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM night_findings WHERE project_id = ? ORDER BY id",
-                (project_id,),
-            ).fetchall()
-        return [dict(r) for r in rows]
-
-
-def get_projects_for_night_scan(project_ids: list[str]) -> list[dict]:
-    """Return enabled projects whose project_id is in the given list."""
-    if not project_ids:
-        return []
-    placeholders = ",".join("?" * len(project_ids))
-    with get_db() as conn:
-        rows = conn.execute(
-            f"SELECT * FROM project_state WHERE enabled = 1 AND project_id IN ({placeholders}) ORDER BY project_id",
-            project_ids,
-        ).fetchall()
-        return [dict(r) for r in rows]
-
-
 def _delegate(fn, immediate: bool = False):
     """Bind a leaf-module function (conn first) to this module's connection.
 
@@ -442,6 +353,14 @@ clear_decisions = _delegate(db_decisions.clear_decisions, immediate=True)
 log_sdk_post_result_error = _delegate(db_decisions.log_sdk_post_result_error)
 log_gate_cycle = _delegate(db_decisions.log_gate_cycle)
 get_gate_health = _delegate(db_decisions.get_gate_health)
+
+# --- night findings -> db_findings.py (TECH-212) ---
+save_finding = _delegate(db_findings.save_finding, immediate=True)
+get_new_findings = _delegate(db_findings.get_new_findings)
+update_finding_status = _delegate(db_findings.update_finding_status, immediate=True)
+get_finding_by_id = _delegate(db_findings.get_finding_by_id)
+get_all_findings = _delegate(db_findings.get_all_findings)
+get_projects_for_night_scan = _delegate(db_findings.get_projects_for_night_scan)
 
 
 if __name__ == "__main__":
