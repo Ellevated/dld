@@ -366,70 +366,8 @@ get_projects_for_night_scan = _delegate(db_findings.get_projects_for_night_scan)
 if __name__ == "__main__":
     import sys
 
-    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    import db_cli
 
-    if cmd == "seed":
-        import json
-
-        if len(sys.argv) != 3:
-            print("Usage: python3 db.py seed <path/to/projects.json>", file=sys.stderr)
-            sys.exit(1)
-        path = sys.argv[2]
-        with open(path) as f:
-            projects = json.load(f)
-        seed_projects_from_json(projects)
-        print(f"seeded {len(projects)} projects")
-
-    elif cmd == "save-finding":
-        # Args: project_id fingerprint severity confidence file_path line_range summary suggestion
-        if len(sys.argv) != 10:
-            print(
-                "Usage: python3 db.py save-finding <project_id> <fingerprint> <severity>"
-                " <confidence> <file_path> <line_range> <summary> <suggestion>",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        fid = save_finding(
-            sys.argv[2],
-            sys.argv[3],
-            sys.argv[4],
-            sys.argv[5],
-            sys.argv[6],
-            sys.argv[7],
-            sys.argv[8],
-            sys.argv[9],
-        )
-        print(fid if fid is not None else "duplicate")
-
-    elif cmd == "get-new-findings":
-        import json
-
-        if len(sys.argv) != 3:
-            print("Usage: python3 db.py get-new-findings <project_id>", file=sys.stderr)
-            sys.exit(1)
-        print(json.dumps(get_new_findings(sys.argv[2])))
-
-    elif cmd == "update-finding-status":
-        if len(sys.argv) != 4:
-            print(
-                "Usage: python3 db.py update-finding-status <finding_id> <status>",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        update_finding_status(int(sys.argv[2]), sys.argv[3])
-        print(f"updated finding {sys.argv[2]} -> {sys.argv[3]}")
-
-    elif cmd == "update-phase":
-        if len(sys.argv) != 4:
-            print("Usage: python3 db.py update-phase <project_id> <phase>", file=sys.stderr)
-            sys.exit(1)
-        update_project_phase(sys.argv[2], sys.argv[3])
-        print(f"phase: {sys.argv[2]} -> {sys.argv[3]}")
-
-    else:
-        print(
-            "Usage: python3 db.py <seed|save-finding|get-new-findings"
-            "|update-finding-status|update-phase> [args...]",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    # sys.modules[__name__] is this module under its __main__ identity — passing it
+    # keeps db_cli a leaf and guarantees one module object, one DB_PATH.
+    sys.exit(db_cli.main(sys.argv, sys.modules[__name__]))
