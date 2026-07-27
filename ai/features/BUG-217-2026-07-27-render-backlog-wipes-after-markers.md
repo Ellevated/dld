@@ -1,6 +1,40 @@
-# Bug: [BUG-217] render_backlog стирает AFTER-маркеры — зависимости между спеками не живут
+# Bug: [BUG-217] ОТОЗВАНА — премиса неверна
 
 **Priority:** P1 | **Date:** 2026-07-27
+
+> ## ⛔ WITHDRAWN 2026-07-27 — не воспроизводится, дефекта нет
+>
+> Спека утверждает, что `callback._render_and_commit_backlog` разрушает `ai/backlog.md`
+> на каждом цикле. **У этой функции ноль call-sites.**
+>
+> `grep -rn "_render_and_commit_backlog" --include="*.py" .` → одно попадание, само
+> определение (`callback.py:1095`). Вызов удалён в **ARCH-196** (2026-05-27), что
+> зафиксировано в `CHANGELOG.md:26`: «removed inline `_render_and_commit_backlog` call —
+> `ai/backlog.md` is now exclusively written by spark/autopilot (CQRS principle).
+> Function retained as emergency operator CLI only».
+>
+> Живой путь записи — `lifecycle._atomic_write` → `render_backlog.sync_status`, который
+> переписывает только ячейку статуса. Доказано на реальном прогоне: коммит `ee6aaec`
+> (`lifecycle(TECH-210): blocked`) изменил в backlog **одну строку** — ячейку статуса —
+> и оба `AFTER`-маркера остались нетронутыми.
+>
+> **Как я ошибся.** Прочитал тело функции, увидел внутри вызов разрушительного
+> `render_backlog.render_backlog()` и заключил, что путь живой — не грепнув call-sites.
+> Это тот же отказ, что с `lifecycle.list_by_status` в тот же день: контракт взят из
+> чтения фрагмента без проверки, как он подключён. Ровно то, против чего написан
+> эпик ARCH-209.
+>
+> Второе доказательство, которое я истолковал наоборот: `grep -c "AFTER " ai/backlog.md`
+> = 0 означало не «маркеры стёрли», а «их никто никогда не писал». Механизм не был
+> сломан — он был неиспользован.
+>
+> **Что из этого остаётся правдой:** зависимости `AFTER` действительно живут только в
+> `ai/backlog.md`, а не в lifecycle-SoT. Это по-прежнему архитектурная асимметрия,
+> и upstream-сигнал о ней сохранён (в исправленной формулировке). Но это вопрос к
+> `/architect`, а не дефект.
+>
+> Ничего по этой спеке не реализовывать. Оставлена в репозитории целиком, не удалена —
+> отозванная гипотеза с разбором ошибки полезнее пустого места.
 
 > **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml` (ARCH-186).
 > Callback is the single writer; status/blocked_reason/transitions live there.
