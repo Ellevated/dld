@@ -1,20 +1,24 @@
 allowed_files_hash: null
-blocked_reason: 'no_merged_implementation — if implementation IS real, run: python3
-  scripts/vps/spec_operator.py force-done dld BUG-217 ''gate regex bug, verified manually''
-  --by=operator'
-finished_at: null
+blocked_reason: отозвана — премиса неверна, у _render_and_commit_backlog ноль call-sites
+  (ARCH-196)
+finished_at: '2026-07-27T20:47:43Z'
 kind: bug
 priority: p1
 pueue_id: 1021
 spec_id: BUG-217
 started_at: null
-status: blocked
+status: done
 transitions:
 - at: '2026-07-27T19:36:25Z'
   by: callback
   from: queued
   pueue_id: 1021
   to: blocked
-updated_at: '2026-07-27T19:36:25Z'
-updated_by: callback
-version: 2
+- at: '2026-07-27T20:47:43Z'
+  by: operator
+  from: blocked
+  pueue_id: null
+  to: done
+updated_at: '2026-07-27T20:47:43Z'
+updated_by: operator
+version: 3
