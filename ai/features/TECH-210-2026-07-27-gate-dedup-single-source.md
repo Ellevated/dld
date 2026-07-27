@@ -289,59 +289,303 @@ of truth». После правки обещание становится пра
 
 ## Implementation Plan
 
+> **Plan verified against the worktree on 2026-07-27.** All line numbers below are the
+> CURRENT ones. Four claims in the sections above turned out to be wrong; the corrections
+> are marked **[VERIFIED-FIX]** and are binding — where this section contradicts §Context
+> or §Impact Tree, this section wins.
+
 ### Research Sources
 - `research-codebase.md` §2 — построчная диффа трёх пар, включая `%H`/`%h`
 - `research-devil.md` DA-4 — ловушка monkeypatch, определившая выбор подхода
 - [Ned Batchelder — One way to fix Python circular imports](https://nedbatchelder.com/blog/202405/one_way_to_fix_python_circular_imports) — различие `import X` и `from X import y`
 
+### Hard constraints (restated — Coder must not relax any of these)
+
+1. `callback.py` зовёт только через атрибут модуля: `gate_logic.match_subject(...)`.
+   `from gate_logic import ...` в `callback.py` — **запрещено** (ломает monkeypatch, EC-5/EC-8).
+   Правило действует ТОЛЬКО для `callback.py`; в `spec_verify.py` форма `from` допустима.
+2. Семантика гейта не меняется ни в одном из EC-1..EC-11.
+3. Трогать можно ТОЛЬКО файлы из `## Allowed Files`. Ничего больше — даже если тест красный.
+4. `--cov-fail-under=54` в `.github/workflows/test.yml` **понижать нельзя**.
+5. `tests/regression/**` и `tests/contracts/**` неприкосновенны (правило проекта + EC-11).
+
+### Verified line map (`scripts/vps/callback.py`, 1698 LOC)
+
+| Что | Строки | Судьба |
+|---|---|---|
+| `import gate_logic` | 38 | остаётся (комментарий «keep the two copies in sync» переписать) |
+| `_SPEC_ID_RE` | 43-45 | **ОСТАЁТСЯ** — см. [VERIFIED-FIX 1] |
+| `_ALLOWED_FILE_EXT_RE` | 443-447 | удалить |
+| `_ALLOWED_FILES_V1_HEADING_RE` | 449-451 | удалить |
+| `_ALLOWED_FILES_V1_MARKER_RE` | 452-453 | удалить |
+| `_ALLOWED_FILES_V1_BULLET_RE` | 454-455 | удалить |
+| `_ALLOWED_FILES_V1_NUMBERED_RE` | 456-459 | удалить |
+| `_ALLOWED_FILES_HEADING_RE` | 461-470 | удалить — **не был в списке спеки** [VERIFIED-FIX 1] |
+| `_NEXT_H2_RE` | 471 | удалить |
+| `_parse_allowed_files_v1` | 474-510 | удалить |
+| `_parse_allowed_files_legacy` | 513-533 | удалить |
+| `_parse_allowed_files` | 536-572 | удалить |
+| `_subject_implements` | 741-807 | удалить |
+| `_fetch_develop` | 810-827 | удалить |
+| `_is_done_on_develop` | 830-894 | удалить |
+
+Баннер `# --- TECH-166 / TECH-167: Implementation guard helpers ---` (441) **оставить** —
+под ним продолжают жить `_get_started_at` (575), `_audit_log_path` (591), `_commit_stats` (627),
+`_detect_out_of_scope_files` (692).
+
+`import re` (27) и `import subprocess` (28) **остаются** — у обоих есть живые потребители
+вне удаляемого кода (`re`: 45/224/345/393; `subprocess`: 97/162/297/356/386/655/717/947/971/1237).
+
+**Живые call-sites (9, а не 5):**
+
+| Строка | Сейчас | Станет |
+|---|---|---|
+| 731 | `_subject_implements(current_subject, spec_id)` | `gate_logic.match_subject(current_subject, spec_id)` |
+| 1217 | `_parse_allowed_files(spec_file)` | `gate_logic.parse_allowed_files(spec_file)` |
+| 1255 | `_fetch_develop(project_path)` | `gate_logic.fetch_develop(project_path)` |
+| 1257 | `if _is_done_on_develop(project_path, spec_id, allowed):` | `if gate_logic.find_implementation_commit(project_path, spec_id, allowed):` |
+| 1272 | `_fetch_develop(project_path)` | `gate_logic.fetch_develop(project_path)` |
+| 1273 | `if _is_done_on_develop(project_path, spec_id, allowed):` | `if gate_logic.find_implementation_commit(project_path, spec_id, allowed):` |
+| 1514 | `_parse_allowed_files(spec_file)` | `gate_logic.parse_allowed_files(spec_file)` |
+| 1522 | `_fetch_develop(project_path)` | `gate_logic.fetch_develop(project_path)` |
+| 1523 | `if _is_done_on_develop(project_path, spec_id, allowed):` | `if gate_logic.find_implementation_commit(project_path, spec_id, allowed):` |
+
+Строка **892** (`_subject_implements` внутри `_is_done_on_develop`) в этом списке **отсутствует
+намеренно**: она живёт внутри удаляемой функции и исчезает вместе с ней. Спека числила её
+как call-site для перенаправления — это ошибка учёта.
+
+### [VERIFIED-FIX 1] — состав семи регэкспов другой
+
+`_SPEC_ID_RE` (callback.py:45) используется **вне** удаляемого кода: строки **329, 335, 347**
+внутри `resolve_spec_id`, который никуда не уезжает. Удалить его = `NameError` на резолве
+spec_id из pueue-лейбла, то есть сломать callback целиком.
+
+Зато `_ALLOWED_FILES_HEADING_RE` (461-470) в списке спеки отсутствовал, а удалять его надо —
+единственный потребитель `_parse_allowed_files_legacy` уезжает.
+
+Итог: удаляемых регэкспов по-прежнему семь, но множество другое:
+**−`_SPEC_ID_RE`, +`_ALLOWED_FILES_HEADING_RE`**. `gate_logic` держит собственную копию
+`_SPEC_ID_RE` (gate_logic.py:36), она используется только внутри `match_subject` — дубль
+остаётся сознательно и в scope этой спеки не входит.
+
+### [VERIFIED-FIX 2] — сверка сигнатур (утверждение «байт-в-байт» проверено)
+
+| Пара | `callback` | `gate_logic` | Вердикт |
+|---|---|---|---|
+| A | `_subject_implements(subject: str, spec_id: str) -> bool` :741 | `match_subject(subject: str, spec_id: str) -> bool` :203 | сигнатура и тело **идентичны** (779-807 ≡ 248-276); различаются только docstring'и. Claim подтверждён |
+| C1 | `_parse_allowed_files_v1(spec_text: str) -> list[str] \| None` :474 | то же имя/сигнатура :95 | тело идентично; в callback два лишних комментария (502-503) |
+| C2 | `_parse_allowed_files_legacy(spec_text: str) -> list[str] \| None` :513 | то же :134 | идентично |
+| C3 | `_parse_allowed_files(spec_path: Path) -> list[str] \| None` :536 | `parse_allowed_files(spec_path: Path) -> list[str] \| None` :159 | логика идентична. **Два отличия в наблюдаемом выводе:** log-строки используют `→` (U+2192) в callback и `->` в gate_logic; логгер меняется с `callback` на `gate_logic`. Гейт от этого не меняется, но операторские грепы по логам — да |
+| D | `_fetch_develop(project_path: str) -> None`, **timeout=30** :810 | `fetch_develop(project_path: str, timeout: int = 15) -> bool` :279 | **не «одна логика»**: лишний defaulted-аргумент, другой возврат и **бюджет fetch урезается вдвое** (30s → 15s). Возврат нигде не используется; урезание таймаута — сознательно принимаемое последствие (best-effort fetch, gate fail-closed), но это изменение поведения, и его надо назвать вслух |
+| B | `_is_done_on_develop(...) -> bool`, `%h` :830 | `find_implementation_commit(...) -> str \| None`, `%H` :311 | позиционные аргументы совпадают; возврат/pretty/текст WARNING'а различаются. Все 3 живых call-site используют результат в булевом контексте — безопасно |
+
+### [VERIFIED-FIX 3] — BLOCKER: удаление ломает 10 файлов вне Allowed Files
+
+`## Impact Tree` грепал только `scripts/vps/`. Корневое дерево `tests/` содержит **~70**
+обращений к удаляемым именам:
+
+| Файл | Обращений | В Allowed Files? | Иммутабелен? |
+|---|---|---|---|
+| `tests/regression/test_callback_spec_corpus.py` :45 | 1 (`callback._parse_allowed_files(spec_path)`) | нет | **ДА** |
+| `tests/unit/test_callback_parser.py` | 19 | нет | нет |
+| `tests/unit/test_callback_implementation_guard.py` | 14 | нет | нет |
+| `tests/unit/test_callback_allowlist_v1.py` | 11 | нет | нет |
+| `tests/unit/test_callback_branch_awareness.py` | 7 | нет | нет |
+| `tests/integration/test_callback_already_merged.py` | 13 | нет | нет |
+| `tests/integration/test_callback_feature_branch.py` | 7 | нет | нет |
+| `tests/integration/test_callback_blocked_no_dispatch.py` | 3 | нет | нет |
+| `tests/integration/test_callback_no_impl_demote.py` | 2 | нет | нет |
+| `tests/integration/test_callback_status_sync.py` | 2 | нет | нет |
+
+Спека прямо утверждает обратное («он вызывает `callback.main`, не приватные имена») —
+утверждение **ложно**, проверено чтением файла: строка 45 вызывает приватное имя напрямую,
+и падёт на `AttributeError` во всех 25+ параметризованных кейсах.
+
+Это ровно те файлы, которые гоняет coverage-гейт `test.yml:65-72`, то есть EC-12 падает вместе
+с EC-11.
+
+**Противоречие неразрешимо внутри текущих границ спеки:** DoD требует удалить
+`_parse_allowed_files`, EC-11 + правило проекта требуют, чтобы неизменённый
+`tests/regression/test_callback_spec_corpus.py` остался зелёным. Одновременно выполнить нельзя.
+
+Требуется решение владельца (одно из):
+- **(a)** расширить `## Allowed Files` девятью `tests/unit/**` + `tests/integration/**` файлами и
+  оставить в `callback.py` **ровно один** тонкий делегат `_parse_allowed_files = gate_logic.parse_allowed_files`
+  ради иммутабельного корпуса. Ловушка DA-4 здесь не срабатывает: ни один тест в дереве не
+  патчит `callback._parse_allowed_files` (проверено грепом) — это чистый парсер, а не точка мока;
+- **(b)** то же расширение + разовое разрешение владельца на правку одной строки в
+  `tests/regression/test_callback_spec_corpus.py:45`;
+- **(c)** сузить спеку: удалить только матчер + гейт + fetch, а три парсера
+  (`_parse_allowed_files*`) оставить до отдельной спеки.
+
 ### Task 1: Перевести call-sites `callback.py` на `gate_logic`
 **Type:** code
 **Files:**
   - modify: `scripts/vps/callback.py`
-**Pattern:** `callback.py:857` — уже существующий вызов `gate_logic.strip_bookkeeping_paths`
-**Acceptance:** пять call-sites (731, 892, 1257, 1273, 1523) зовут `gate_logic.*`;
-функции ещё на месте, тесты зелёные — это шаг без удаления
+**Pattern:** `callback.py:857` — существующий вызов `gate_logic.strip_bookkeeping_paths`
+**Изменения:** ровно девять строк из таблицы «Живые call-sites» (731, 1217, 1255, 1257, 1272,
+1273, 1514, 1522, 1523). Ничего не удалять, тела шести функций остаются на месте нетронутыми.
+Комментарий на строке 38 переписать: `# noqa: E402 — single source of gate logic (TECH-210)`.
+**Acceptance:**
+- `grep -n "^from gate_logic import" scripts/vps/callback.py` → 0
+- `python -m py_compile scripts/vps/callback.py` → exit 0
+- девять вызовов идут через `gate_logic.`; функции ещё существуют; коммит без удалений
+- `cd scripts/vps/tests && python -m pytest -q` зелёный (тесты всё ещё патчат
+  `callback._is_done_on_develop`, но эти патчи теперь **не перехватывают** — ожидается, что
+  часть тестов пойдёт в настоящий git; если какой-то тест из-за этого красный, это Task 4,
+  а не повод откатывать Task 1)
 
-### Task 2: Удалить копии и регэкспы
+### Task 2: Удалить копии и регэкспы — **ГЕЙТ, не выполнять без решения**
 **Type:** code
 **Files:**
   - modify: `scripts/vps/callback.py`
-**Pattern:** —
-**Acceptance:** `grep -cn "_subject_implements\|_is_done_on_develop\|_fetch_develop\|_parse_allowed_files\|_ALLOWED_FILES_V1\|_ALLOWED_FILE_EXT_RE\|_NEXT_H2_RE" scripts/vps/callback.py` = 0;
-`wc -l scripts/vps/callback.py` ≈ 1430
+
+**STOP-условие.** Перед первой правкой проверить, разрешено ли одно из (a)/(b)/(c) из
+[VERIFIED-FIX 3]. Если решения нет — **остановиться, ничего не удалять**, зафиксировать
+в `## Autopilot Log` и уйти в `blocked` с причиной
+`allowed_files_insufficient: 10 test files outside allowlist reference the removed names, one of them immutable`.
+Догадываться и расширять `## Allowed Files` самостоятельно — запрещено.
+
+**Если решение получено — удалить:** блоки строк 443-471 (семь регэкспов, состав по
+[VERIFIED-FIX 1] — `_SPEC_ID_RE` на 43-45 **не трогать**), 474-510, 513-533, 536-572,
+741-807, 810-827, 830-894. Баннер 441 и импорты 27/28 оставить.
+При варианте (a) вместо удаления 536-572 поставить одну строку
+`_parse_allowed_files = gate_logic.parse_allowed_files  # immutable regression corpus, TECH-210`.
+
+**Acceptance:**
+- `grep -c "_subject_implements\|_is_done_on_develop\|_fetch_develop\|_ALLOWED_FILES\|_ALLOWED_FILE_EXT_RE\|_NEXT_H2_RE" scripts/vps/callback.py` = 0
+- `grep -c "_SPEC_ID_RE" scripts/vps/callback.py` = **4** (объявление + 3 использования в `resolve_spec_id`)
+- `wc -l scripts/vps/callback.py` ≈ 1430 (было 1698)
+- `python -c "import callback; assert not hasattr(callback,'_is_done_on_develop')"` (EC-6)
+- отдельный коммит от Task 1
 
 ### Task 3: `spec_verify.py` на публичный парсер
 **Type:** code
 **Files:**
   - modify: `scripts/vps/spec_verify.py`
 **Pattern:** `gate-daemon.py` — существующий потребитель `gate_logic.parse_allowed_files`
-**Acceptance:** `python3 scripts/vps/spec_verify.py <любая спека>` даёт тот же вывод, что до правки
+**Изменения (4 точки, все проверены):**
+- :11 docstring `Uses:` → `scripts.vps.gate_logic.parse_allowed_files (TECH-167 canonical parser)`
+- :32 комментарий → `# Reuse the canonical allowlist parser from gate_logic.py — single source of truth.`
+- :37-41 `try: from callback import _parse_allowed_files` →
+  `try: from gate_logic import parse_allowed_files` + текст ошибки на строке 40 привести к
+  `gate_logic.parse_allowed_files`
+- :228 `allowed = _parse_allowed_files(spec_path)` → `allowed = parse_allowed_files(spec_path)`
+  — **эта строка в спеке не числилась**, без неё модуль падает на `NameError`
 
-### Task 4: Переписать тесты
+Задача независима от Task 2: `gate_logic.parse_allowed_files` существует уже сейчас.
+**Acceptance:**
+- `grep -c "callback" scripts/vps/spec_verify.py` = 0
+- `python3 scripts/vps/spec_verify.py . TECH-208` даёт тот же вывод и тот же exit code, что до правки (EC-10)
+
+### Task 4: Переписать тесты (только три файла из Allowed Files)
 **Type:** test
 **Files:**
-  - modify: `scripts/vps/tests/test_callback.py`
-  - modify: `scripts/vps/tests/test_gate_logic.py`
-  - modify: `scripts/vps/tests/test_claude_runner_timeout.py`
-**Pattern:** `test_gate_logic.py` — уже содержит тесты матчера в правильной форме
-**Acceptance:** 29 ассертов матчера переехали в `test_gate_logic.py` (не удалены — переехали,
-каждый кейс сохранён); 7 `monkeypatch.setattr` целятся в `gate_logic.*`; source-ассерты
-`TestVariantCNeverIntroduced` читают `gate_logic.py` и сохраняют исходный смысл
-(гейт не смеет ходить в голый локальный `develop`)
+  - modify: `scripts/vps/tests/test_callback.py` (870 LOC)
+  - modify: `scripts/vps/tests/test_gate_logic.py` (720 LOC)
+  - modify: `scripts/vps/tests/test_claude_runner_timeout.py` (222 LOC)
+
+**4a. `test_callback.py` — 7 `monkeypatch.setattr` перенацелить на `gate_logic`:**
+
+| Строка | Сейчас | Станет |
+|---|---|---|
+| 174 | `setattr(callback, "_fetch_develop", lambda *a: None)` | `setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)` |
+| 175 | `setattr(callback, "_is_done_on_develop", lambda *a: True)` | `setattr(gate_logic, "find_implementation_commit", lambda *a: "deadbee")` |
+| 214 | `_fetch_develop` | `gate_logic.fetch_develop` |
+| 215 | `_is_done_on_develop` → `False` | `gate_logic.find_implementation_commit` → `None` |
+| 690 | `original_is_done = callback._is_done_on_develop` | `original_is_done = gate_logic.find_implementation_commit` |
+| 704 | `setattr(callback, "_is_done_on_develop", _delayed_is_done)` | `setattr(gate_logic, "find_implementation_commit", _delayed_is_done)` |
+| 800 | `_fetch_develop` | `gate_logic.fetch_develop` |
+| 801 | `_is_done_on_develop` → `False` | `gate_logic.find_implementation_commit` → `None` |
+
+Внутри `_delayed_is_done` (692-702) первый возврат `False` заменить на `None` — тип теперь
+`str | None`. Добавить `import gate_logic` рядом с `import callback` в шапке файла.
+Строку-комментарий 544 («Do NOT stub `_fetch_develop` or `_is_done_on_develop`») переписать
+на новые имена — тест EC-9 намеренно гоняет настоящий git, поведение не менять.
+
+**4b. 29 ассертов матчера (355-447) → `test_gate_logic.py`.** Уже покрыто в
+`test_gate_logic.py` (не дублировать): conventional feat :135, conventional fix+bang :140,
+merge-форма :145, bare prefix :151, чужой spec_id :156, GROWTH :161, trailing parens со
+scope :169 и без :180, multi-spec tail :191, `(see ID)` reject :199, mid-subject parens
+reject :204, `merge:` colon-форма :209, `Merge branch '...'` :220, чужая ветка reject :231.
+
+**Реально переезжают 12 кейсов, которых в `test_gate_logic.py` НЕТ:**
+multi-scope `feat(FTR-925,FTR-926)` и с пробелом (361-362); lowercase scope (396-398);
+mixed-case `feat(Ftr-1076)` (404); `merge FTR-925: impl` (369); `Merge feature/FTR-1076: ...` (407);
+`Merge autopilot/BUG-1065 into develop` (410); `Merge fix/BUG-439 — restore constraint` (411);
+case-insensitive multi-scope (414-415); `(FTR-1077 Task 3)` reject (429); пустые входы (386-387);
+`feat(FTR-923): impl X (see also FTR-925)` reject (375).
+
+Классы `TestSubjectImplements` (351), `TestSubjectImplementsRealWorld` (390),
+`TestSubjectImplementsAntiFalsePositive` (418) удалить из `test_callback.py` целиком.
+Класс `TestMatchSubjectParityWithCallback` (450-490) удалить — паритет двух копий теряет смысл,
+когда копия одна; его 7 позитивов и 3 негатива уже присутствуют в `test_gate_logic.py`.
+Добавить EC-5: тест, что `monkeypatch.setattr(gate_logic, "find_implementation_commit", fake)`
+перехватывает вызов из `callback.verify_status_sync` (по DA-4 — выполнять **первым**).
+
+⚠️ `test_gate_logic.py` уже 720 LOC при лимите 600 для тестов. Переезд 12 кейсов доводит
+до ~790. Разбиение файла в scope не входит и `## Allowed Files` его не разрешает — принять
+предсуществующее нарушение, не усугублять лишними кейсами.
+
+**4c. `test_claude_runner_timeout.py:191-222` — `TestVariantCNeverIntroduced`:**
+- :196 и :218 `(Path(VPS_DIR) / "callback.py")` → `"gate_logic.py"`
+- :199 regex `def _is_done_on_develop\(` → `def find_implementation_commit\(`
+- :201, :204, :212 тексты ассертов → `find_implementation_commit`
+- :220-221 `assert "_fetch_develop(" in source` → `assert "fetch_develop(" in source`;
+  `assert "_is_done_on_develop(" in source` → `assert "find_implementation_commit(" in source`
+
+Смысл сохранить дословно: гейт не смеет ходить в голый локальный `develop`. Проверка
+`origin/develop` in body и «нет bare `"develop"`» остаётся; сигнатура
+`find_implementation_commit` многострочная (gate_logic.py:311-315), regex должен это пережить —
+`r"def find_implementation_commit\(.*?\).*?(?=\ndef |\Z)"` с `re.DOTALL` подходит.
+
+**Acceptance:**
+- `cd scripts/vps/tests && python -m pytest -q` → 0 failed
+- `grep -c "callback\._subject_implements\|callback\._is_done_on_develop\|callback\._fetch_develop" scripts/vps/tests/test_callback.py` = 0
+- EC-5 проходит и падает, если вернуть `from gate_logic import ...` в `callback.py`
 
 ### Task 5: `gate_logic.py` под 400
 **Type:** code
 **Files:**
   - modify: `scripts/vps/gate_logic.py`
-**Pattern:** —
-**Acceptance:** `wc -l scripts/vps/gate_logic.py` ≤ 400; ни одна ссылка на инцидент
-(BUG-338, TECH-177, plpilot BUG-346, birth-commit) не потеряна
+**Текущий размер:** 402 LOC — недобор ровно **3 строки**.
+**Что резать (только docstring'и, ни строки кода):** строки 102 и 141 («Copied verbatim from
+callback._parse_allowed_files_v1/_legacy») и 162 («Mirrors callback._parse_allowed_files»)
+после Task 2 становятся ссылками на несуществующий код — удалить их. Это ровно 3 строки.
+Дополнительно освежить 205 («Renamed from callback._subject_implements») и 283 («Renamed from
+callback._fetch_develop») и 317-318 («Renamed from callback._is_done_on_develop») — они
+исторически верны, оставить.
+**Сохранить дословно:** упоминания TECH-177/L-derived-3 (207-210), BUG-192 (215, 219),
+plpilot BUG-338/339/340/346/347 (220, 226-228), 2026-07-02 merge-формы (219-224),
+birth-commit ADR-025 (63-68, 347-354), FF-09 invariant (19-20), Devil Attack 2/3/10 (289, 321).
+**Acceptance:**
+- `wc -l scripts/vps/gate_logic.py` ≤ 400 (EC-7)
+- `grep -c "BUG-338\|TECH-177\|BUG-346\|ADR-025\|FF-09" scripts/vps/gate_logic.py` не уменьшился
+- `PYTHONPATH=scripts/vps python -c "import gate_logic"` → exit 0, без вывода (AV-S2)
+
+### Coverage-гейт (`.github/workflows/test.yml:64-72`)
+
+Правку делать **только если** прогон реально красный. Проверять до и после:
+```bash
+PYTHONPATH=scripts/vps pytest tests/unit/test_callback_*.py \
+  tests/integration/test_callback_*.py tests/regression/ \
+  --cov=callback --cov-report=term-missing --cov-fail-under=54
+```
+Разрешено менять **чем** измеряется покрытие (например `--cov=callback --cov=gate_logic`).
+Понижать `54` — запрещено, порог обязан остаться `--cov-fail-under=54` дословно.
 
 ### Execution Order
 1 → 2 → 3 → 4 → 5
 
 Порядок не переставлять: Task 1 отдельно от Task 2 — это разделение «перенаправить» и
 «удалить» на два коммита, чтобы при регрессии было видно, какой из двух шагов виноват.
+Task 3 формально независим (не требует Task 2), но идёт третьим, чтобы порядок коммитов
+совпадал с порядком задач.
+
+Если Task 2 остановлен по STOP-условию — Task 3 и Task 5 всё равно выполнимы и полезны
+(они не зависят от удаления), Task 4 выполняется частично: 4a и 4c да, 4b нет (пока копии
+на месте, ассерты по `callback._subject_implements` продолжают работать и удалять их нечем
+обосновать).
 
 ---
 
@@ -453,3 +697,95 @@ DEPLOY_URL=local-only
 ---
 
 ## Autopilot Log
+
+### 2026-07-27 — BLOCKED at PHASE 1 (planner validation), zero code written
+
+**ACTION REQUIRED — owner decision before this spec can execute.**
+
+Baseline captured before blocking: `scripts/vps/tests` = **421 passed** on `origin/develop`.
+Line numbers in the spec had **not** drifted — every symbol sits exactly where § Context says.
+The blocker is a spec-authoring defect, not staleness.
+
+#### Blocker: Impact Tree Step 1 grepped only `scripts/vps/`, missing the root `tests/` tree
+
+The spec asserts (§ Impact Tree Step 1) that the 29 matcher references are "все в
+`tests/test_callback.py`". Re-grepping the whole repo finds **48 further direct
+`callback.<removed_name>` references in 10 root test files**, none of which are in
+`## Allowed Files`, and **none** of which are `monkeypatch` (all are real call-sites that
+break loudly on deletion):
+
+| File | Refs | Mutable? |
+|---|---|---|
+| `tests/unit/test_callback_parser.py` | 19 | yes |
+| `tests/unit/test_callback_implementation_guard.py` | 14 | yes |
+| `tests/integration/test_callback_already_merged.py` | 13 | yes |
+| `tests/unit/test_callback_allowlist_v1.py` | 11 | yes |
+| `tests/unit/test_callback_branch_awareness.py` | 7 | yes |
+| `tests/integration/test_callback_feature_branch.py` | 7 | yes |
+| `tests/integration/test_callback_blocked_no_dispatch.py` | 3 | yes |
+| `tests/integration/test_callback_status_sync.py` | 2 | yes |
+| `tests/integration/test_callback_no_impl_demote.py` | 2 | yes |
+| `tests/regression/test_callback_spec_corpus.py` | 1 | **NO — immutable** |
+
+#### The hard contradiction
+
+`tests/regression/test_callback_spec_corpus.py:45` is literally
+`actual = callback._parse_allowed_files(spec_path)`.
+
+The spec claims this file "вызывает `callback.main`, не приватные имена" (§ Step 4
+CHECKLIST) — **false**, verified by reading the file. Therefore:
+
+- **DoD** requires `callback._parse_allowed_files` be deleted.
+- **EC-11** requires that regression test green **without editing it**, and CLAUDE.md
+  forbids modifying `tests/regression/` at all.
+
+Both cannot hold. `callback._parse_allowed_files` must survive in some form.
+
+**EC-12 falls with EC-11:** `.github/workflows/test.yml:65-72` runs the coverage gate over
+exactly `tests/unit/test_callback_*.py`, `tests/integration/test_callback_*.py` and
+`tests/regression/` — the same 10 files. They cannot be left broken.
+
+Autopilot may not widen `## Allowed Files` on its own (BUG-199 fence), so no resolution is
+reachable in-session.
+
+#### Three resolutions for the owner
+
+1. **Thin delegate for the parser only** — keep `callback._parse_allowed_files` as a
+   one-line delegate to `gate_logic.parse_allowed_files`, delete the other five. The
+   § Approaches rejection of delegates was argued against `_is_done_on_develop`, where
+   DA-4's silent-mock trap is real; a pure parser with no monkeypatch users anywhere does
+   not carry that risk. Still requires adding the 9 mutable test files to Allowed Files.
+2. **Widen `## Allowed Files`** by the 9 mutable test files and rewrite all 47 refs;
+   the regression test still needs resolution 1 or 3 on top.
+3. **Narrow the spec** to pairs A/B/D (`_subject_implements`, `_is_done_on_develop`,
+   `_fetch_develop`) and defer the three allowlist parsers (C1-C3) to a follow-up that
+   owns the root test tree. This keeps the *demonstrated* defect (pair B divergence) in
+   scope and drops the part with the immutable-test conflict.
+
+#### Three further discrepancies found (fix in whichever resolution is chosen)
+
+- **`_SPEC_ID_RE` must NOT be deleted.** Spec lists it among the 7 regexes to remove, but
+  `callback.py:329,335,347` use it inside `resolve_spec_id`, which stays. Deleting it =
+  `NameError` on every pueue-label resolve. Conversely `_ALLOWED_FILES_HEADING_RE`
+  (`callback.py:461-470`) is missing from the spec's list and *should* go. Set stays 7,
+  membership swaps.
+- **Call-sites are 9, not 5.** Real: 731, 1217, 1255, 1257, 1272, 1273, 1514, 1522, 1523.
+  The spec's list missed both `_parse_allowed_files` calls (1217, 1514) and all three
+  `_fetch_develop` calls (1255, 1272, 1522); its `892` is *inside* the deleted function.
+  Also `spec_verify.py:228` calls the name — absent from the spec's 11/32/38/40 list.
+- **Pair D is a behaviour change, undeclared.** `callback._fetch_develop(path) -> None`
+  hardcodes `timeout=30`; `gate_logic.fetch_develop(path, timeout=15) -> bool`. The fetch
+  budget **halves**. Defensible (best-effort, gate is fail-closed) but it should be a
+  stated decision, not a side effect. Log output also shifts: logger name
+  `callback`→`gate_logic`, arrow glyph `→`→`->`.
+
+#### Non-blocking warnings for the eventual run
+
+- `scripts/vps/tests/test_gate_logic.py` is already **720 LOC** against the 600 test limit;
+  migrating the matcher cases pushes it to ~790, and splitting it is not permitted by
+  the current Allowed Files.
+- Only **12** of the 29 matcher assertions are genuinely new — `test_gate_logic.py` already
+  covers 14 cases. `TestMatchSubjectParityWithCallback` (`test_callback.py:450-490`) becomes
+  meaningless once one copy remains and should be deleted, not migrated.
+- `gate_logic.py` is 402 LOC — exactly 3 over. The three "Copied verbatim from callback…"
+  docstring lines (102, 141, 162) go stale after deletion and are precisely 3 lines.
