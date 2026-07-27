@@ -216,3 +216,79 @@ Architect: add a lightweight "model-upgrade checklist" ritual (or extend
 against (a) finding-stage gate prompts, (b) fan-out dispatch blocks, (c)
 effort/model routing tables + ADRs. Make model-capabilities.md the SSOT mirror
 of frontmatter (TECH-203 starts this).
+
+---
+
+## SIGNAL-20260727-spark-ARCH-209
+
+| Field | Value |
+|-------|-------|
+| Source | spark |
+| Spec ID | ARCH-209 / BUG-217 |
+| Target | architect |
+| Type | contradiction |
+| Severity | warning |
+
+### Message
+
+Зависимости между спеками (`AFTER <ID>`) — единственное поле, чей источник истины
+находится в `ai/backlog.md`, а не в `ai/lifecycle/*.yaml`. ADR-023 объявляет backlog
+рендером, не SoT. Оба утверждения истинны одновременно, и из этого следует дефект:
+рендер законно перезаписывает файл целиком и стирает поле, которого нигде больше нет.
+
+Багфикс (BUG-217) закрывает симптом — callback перестаёт разрушать backlog. Он не
+закрывает противоречие: поле по-прежнему живёт в производном артефакте.
+
+### Evidence
+
+`orchestrator._backlog_deps` (`orchestrator.py:737-755`) читает `AFTER` только из строки
+backlog. `callback._render_and_commit_backlog` (`callback.py:1105`) зовёт
+`render_backlog.render_backlog()`, который собирает файл с нуля из lifecycle-YAML и не
+читает существующий. Безопасная `render_backlog.sync_status` существует, документирует
+эту опасность в собственном docstring и вызывается только из `lifecycle.py:332`.
+
+`grep -c "AFTER " ai/backlog.md` = 0 на момент находки, при том что механизм написан
+против конкретного инцидента (ARCH-1246/FTR-1245 против открытой TECH-1244, awardybot,
+2026-06-20). Ни одна зависимость за историю проекта не пережила первый callback.
+
+### Suggested Action
+
+Architect: решить, переезжает ли `after:` в `ai/lifecycle/{id}.yaml` как поле схемы.
+Это смена формата на 10 проектах и 197 существующих файлах — размер ADR, не багфикса.
+Альтернатива — явно записать в ADR-023, что backlog является SoT для одного поля, и
+защитить его тестом. Молчаливое сосуществование двух ответов — то, что породило дефект.
+
+---
+
+## SIGNAL-20260727-spark-lessons-bank
+
+| Field | Value |
+|-------|-------|
+| Source | spark |
+| Spec ID | ARCH-209 |
+| Target | architect |
+| Type | gap |
+| Severity | info |
+
+### Message
+
+Gate 7 (Historical Risks) авто-проходит во всех девяти написанных сегодня спеках, потому
+что `ai/lessons/` содержит только `.gitkeep` (0 байт, 2026-05-10) — ни `index.jsonl`, ни
+доменных подпапок. Секция `## Historical Risks` присутствует в каждой спеке и в каждой
+пуста.
+
+Гейт, который никогда не срабатывает, не отличим от отсутствующего гейта. При этом
+дефектный след по `scripts/vps/` богат и лежит в git-истории и в docstring'ах — сегодня
+его пришлось собирать вручную по каждой спеке.
+
+### Evidence
+
+`ls -la ai/lessons/` → только `.gitkeep`. `feature-mode.md` Gate 7: «If `ai/lessons/`
+does not exist in the project → Gate 7 auto-passes». Директория существует и пуста —
+формально это даже не тот случай, который описывает гейт.
+
+### Suggested Action
+
+Architect: либо засеять банк уроков (`/seed-lessons` существует как триггер в
+`localization.md`), либо снять секцию из шаблона спеки. Пустая обязательная секция учит
+её игнорировать.
