@@ -4,7 +4,8 @@ Module: lifecycle_audit
 Role: READ-ONLY multi-project drift detector. Catches divergence between
       the 5 surfaces that should stay in sync: lifecycle yaml, spec.md,
       backlog.md row, working tree state, and counter files.
-Uses: lifecycle (list, read), orchestrator (_parse_backlog), git CLI (ls-tree)
+Uses: lifecycle (list, read), audit_probe (git/fs probes, backlog parsing),
+      audit_categories (14 detector functions) — TECH-211 split
 Used by: operator (manual CLI), CI smoke (future).
 
 USAGE
@@ -45,199 +46,28 @@ import argparse
 import json
 import logging
 import os
-import re
-import subprocess
 import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+import audit_categories  # noqa: E402
+import audit_probe  # noqa: E402
 import lifecycle  # noqa: E402
 
 log = logging.getLogger("lifecycle_audit")
 
-CATEGORIES = (
-    "orphan_spec_md",
-    "orphan_yaml",
-    "missing_from_backlog",
-    "bootstrap_as_done",
-    "markdown_status_mismatch",
-    "backlog_status_mismatch",
-    "backlog_format_unparsed",
-    "wt_lifecycle_dirty",
-    "wt_features_dirty",
-    "unauthorized_writer",
-    "git_divergence",
-    "push_failures_counter",
-    "bootstrap_anomaly",
-    "bootstrap_unparsable",
-)
-
-# ──────────────────────────────────────────────────────────────────────
-# Git helpers (read-only)
-# ──────────────────────────────────────────────────────────────────────
-
-
-def _git(repo: str, *args: str, timeout: int = 15) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", *args],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=timeout,
-    )
-
-
-def _ls_tree(repo: str, path: str) -> list[str]:
-    """Return filenames under `HEAD:<path>` (or [] if path missing in HEAD)."""
-    r = _git(repo, "ls-tree", "--name-only", f"HEAD:{path}")
-    if r.returncode != 0:
-        return []
-    return [n for n in r.stdout.splitlines() if n]
-
-
-def _git_dirty(repo: str, path: str) -> list[str]:
-    """Return porcelain lines for <path> (empty if clean)."""
-    r = _git(repo, "status", "--porcelain", path)
-    if r.returncode != 0:
-        return []
-    return [ln for ln in r.stdout.splitlines() if ln.strip()]
-
-
-def _git_divergence(repo: str) -> tuple[int, int]:
-    """Return (ahead, behind) counts vs origin/develop. (-1, -1) on error."""
-    r = _git(repo, "rev-list", "--left-right", "--count", "HEAD...origin/develop")
-    if r.returncode != 0:
-        return (-1, -1)
-    parts = r.stdout.strip().split()
-    if len(parts) != 2:
-        return (-1, -1)
-    try:
-        return (int(parts[0]), int(parts[1]))
-    except ValueError:
-        return (-1, -1)
-
-
-# ──────────────────────────────────────────────────────────────────────
-# Markdown / backlog parsing (read-only)
-# ──────────────────────────────────────────────────────────────────────
-
-
-_SPEC_ID_RE = re.compile(r"^(BUG|FTR|TECH|ARCH|GROWTH)-\d+$")
-_MD_STATUS_RE = re.compile(r"^\*\*Status:\*\*\s*([a-z_]+)\s*$", re.MULTILINE)
-
-
-def _spec_id_from_filename(name: str) -> str | None:
-    """ai/features/TECH-195-2026-05-26-foo.md → TECH-195."""
-    m = re.match(r"^((?:BUG|FTR|TECH|ARCH|GROWTH)-\d+)", name)
-    return m.group(1) if m else None
-
-
-def _list_feature_specs(repo: str) -> dict[str, str]:
-    """Map spec_id → filename for ai/features/*.md (filesystem, not HEAD)."""
-    out: dict[str, str] = {}
-    features_dir = Path(repo) / "ai" / "features"
-    if not features_dir.is_dir():
-        return out
-    for p in features_dir.glob("*.md"):
-        sid = _spec_id_from_filename(p.name)
-        if sid and sid not in out:
-            out[sid] = p.name
-    return out
-
-
-def _md_status(repo: str, filename: str) -> str | None:
-    """Extract `**Status:** xxx` line from spec md. None if missing/unreadable."""
-    p = Path(repo) / "ai" / "features" / filename
-    try:
-        text = p.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    m = _MD_STATUS_RE.search(text)
-    return m.group(1) if m else None
-
-
-def _parse_backlog_columns(text: str) -> dict[str, str | None]:
-    """READ-ONLY port of orchestrator._parse_backlog.
-
-    Kept in-module to avoid import cycle and keep audit fully READ-ONLY.
-    Maps spec_id → status (or None if row exists but status unparseable).
-    """
-    valid_statuses = {"queued", "in_progress", "blocked", "resumed", "done", "draft"}
-    out: dict[str, str | None] = {}
-    lines = text.splitlines()
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if line.lstrip().startswith("|") and i + 1 < len(lines):
-            divider = lines[i + 1].strip()
-            if re.match(r"^\|?\s*:?-{2,}.*\|", divider):
-                headers = [c.strip() for c in line.strip().strip("|").split("|")]
-                col_map = {h.lower(): idx for idx, h in enumerate(headers)}
-                status_col = col_map.get("status")
-                i += 2
-                while i < len(lines):
-                    row = lines[i]
-                    if not row.lstrip().startswith("|"):
-                        break
-                    cells = [c.strip() for c in row.strip().strip("|").split("|")]
-                    sid = None
-                    for cell in cells[:3]:
-                        cell_clean = cell.strip("`*[] ")
-                        if _SPEC_ID_RE.match(cell_clean):
-                            sid = cell_clean
-                            break
-                    if sid:
-                        status_val: str | None = None
-                        if status_col is not None and status_col < len(cells):
-                            cand = cells[status_col].strip("`*[] ").lower()
-                            if cand in valid_statuses:
-                                status_val = cand
-                        if status_val is None:
-                            for cell in cells:
-                                cand = cell.strip("`*[] ").lower()
-                                if cand in valid_statuses:
-                                    status_val = cand
-                                    break
-                        out[sid] = status_val
-                    i += 1
-                continue
-        i += 1
-    return out
+# Assignment aliases (NOT from-imports — see TECH-211 DA-4): preserved for
+# test_orchestrator_bootstrap.py:513-519, which imports these two names
+# directly from this module.
+CATEGORIES = audit_categories.CATEGORIES
+_parse_backlog_columns = audit_probe._parse_backlog_columns
 
 
 # ──────────────────────────────────────────────────────────────────────
 # Per-project audit
 # ──────────────────────────────────────────────────────────────────────
-
-
-def _read_counter(repo: str, name: str) -> int:
-    p = Path(repo) / "ai" / name
-    if not p.is_file():
-        return 0
-    try:
-        return int(p.read_text().strip())
-    except (ValueError, OSError):
-        return 0
-
-
-def _is_bootstrap_as_done(data: dict) -> bool:
-    return (
-        data.get("status") == "done"
-        and not data.get("transitions")
-        and data.get("pueue_id") is None
-        and data.get("finished_at") is None
-    )
-
-
-def _yaml_writers(data: dict) -> set[str]:
-    """All `by` values seen in transitions + updated_by field."""
-    s = {t.get("by") for t in (data.get("transitions") or []) if t.get("by")}
-    if data.get("updated_by"):
-        s.add(data["updated_by"])
-    return s
 
 
 def audit_project(repo: str) -> list[dict]:
@@ -246,14 +76,14 @@ def audit_project(repo: str) -> list[dict]:
     if not Path(repo).is_dir():
         return findings
 
-    # ── 1. Inventory: yaml from HEAD, md from filesystem, backlog parse
-    yaml_names = _ls_tree(repo, lifecycle.LIFECYCLE_DIR)
+    # ── Inventory: yaml from HEAD, md from filesystem, backlog parse
+    yaml_names = audit_probe._ls_tree(repo, lifecycle.LIFECYCLE_DIR)
     yaml_ids = {n[:-5] for n in yaml_names if n.endswith(".yaml")}
-    md_map = _list_feature_specs(repo)
+    md_map = audit_probe._list_feature_specs(repo)
     md_ids = set(md_map.keys())
     backlog_path = Path(repo) / "ai" / "backlog.md"
     backlog_text = backlog_path.read_text(encoding="utf-8") if backlog_path.is_file() else ""
-    backlog_map = _parse_backlog_columns(backlog_text)
+    backlog_map = audit_probe._parse_backlog_columns(backlog_text)
     backlog_ids = set(backlog_map.keys())
 
     # Pre-load all yamls (single pass)
@@ -263,125 +93,24 @@ def audit_project(repo: str) -> list[dict]:
         if d:
             yaml_data[sid] = d
 
-    # ── 2. orphan_spec_md: md exists but yaml absent in HEAD
-    for sid in sorted(md_ids - yaml_ids):
-        findings.append(
-            {"category": "orphan_spec_md", "spec_id": sid, "detail": md_map[sid]}
-        )
-
-    # ── 3. orphan_yaml: yaml present, no md
-    for sid in sorted(yaml_ids - md_ids):
-        findings.append({"category": "orphan_yaml", "spec_id": sid, "detail": "no md"})
-
-    # ── 4. missing_from_backlog: yaml exists, backlog has no row
-    for sid in sorted(yaml_ids - backlog_ids):
-        findings.append(
-            {"category": "missing_from_backlog", "spec_id": sid, "detail": "no row"}
-        )
-
-    # ── 5. bootstrap_as_done: TECH-195 signature
-    for sid in sorted(yaml_ids):
-        if _is_bootstrap_as_done(yaml_data.get(sid, {})):
-            findings.append(
-                {
-                    "category": "bootstrap_as_done",
-                    "spec_id": sid,
-                    "detail": "status=done, no transitions, no pueue_id, no finished_at",
-                }
-            )
-
-    # ── 6. markdown_status_mismatch
-    for sid in sorted(yaml_ids & md_ids):
-        md_st = _md_status(repo, md_map[sid])
-        ya_st = yaml_data.get(sid, {}).get("status")
-        if md_st and md_st != ya_st:
-            findings.append(
-                {
-                    "category": "markdown_status_mismatch",
-                    "spec_id": sid,
-                    "detail": f"md={md_st} yaml={ya_st}",
-                }
-            )
-
-    # ── 7. backlog_status_mismatch (only when backlog has a status)
-    for sid in sorted(yaml_ids & backlog_ids):
-        b_st = backlog_map.get(sid)
-        ya_st = yaml_data.get(sid, {}).get("status")
-        if b_st is not None and b_st != ya_st:
-            findings.append(
-                {
-                    "category": "backlog_status_mismatch",
-                    "spec_id": sid,
-                    "detail": f"backlog={b_st} yaml={ya_st}",
-                }
-            )
-
-    # ── 8. backlog_format_unparsed: row matched spec_id but status is None
-    for sid in sorted(backlog_ids):
-        if backlog_map.get(sid) is None:
-            findings.append(
-                {
-                    "category": "backlog_format_unparsed",
-                    "spec_id": sid,
-                    "detail": "row found but status not extracted",
-                }
-            )
-
-    # ── 9. wt_lifecycle_dirty
-    for line in _git_dirty(repo, lifecycle.LIFECYCLE_DIR):
-        findings.append(
-            {"category": "wt_lifecycle_dirty", "spec_id": "-", "detail": line}
-        )
-
-    # ── 10. wt_features_dirty
-    for line in _git_dirty(repo, "ai/features"):
-        findings.append(
-            {"category": "wt_features_dirty", "spec_id": "-", "detail": line}
-        )
-
-    # ── 11. unauthorized_writer (ADR-025: spark, autopilot not in writers)
-    for sid in sorted(yaml_ids):
-        bad = _yaml_writers(yaml_data.get(sid, {})) & {"spark", "autopilot"}
-        if bad:
-            findings.append(
-                {
-                    "category": "unauthorized_writer",
-                    "spec_id": sid,
-                    "detail": f"by={sorted(bad)}",
-                }
-            )
-
-    # ── 12. git_divergence
-    ahead, behind = _git_divergence(repo)
-    if (ahead, behind) != (-1, -1) and (ahead > 0 or behind > 0):
-        findings.append(
-            {
-                "category": "git_divergence",
-                "spec_id": "-",
-                "detail": f"ahead={ahead} behind={behind}",
-            }
-        )
-
-    # ── 13. push_failures_counter
-    n = _read_counter(repo, ".lifecycle-push-failures")
-    if n > 0:
-        findings.append(
-            {"category": "push_failures_counter", "spec_id": "-", "detail": f"count={n}"}
-        )
-
-    # ── 14. bootstrap_anomaly
-    n = _read_counter(repo, ".bootstrap-anomaly-count")
-    if n > 0:
-        findings.append(
-            {"category": "bootstrap_anomaly", "spec_id": "-", "detail": f"count={n}"}
-        )
-
-    # ── 15. bootstrap_unparsable (TECH-195 Task 1)
-    n = _read_counter(repo, ".bootstrap-unparsable-count")
-    if n > 0:
-        findings.append(
-            {"category": "bootstrap_unparsable", "spec_id": "-", "detail": f"count={n}"}
-        )
+    findings.extend(audit_categories.orphan_spec_md(md_ids, yaml_ids, md_map))
+    findings.extend(audit_categories.orphan_yaml(yaml_ids, md_ids))
+    findings.extend(audit_categories.missing_from_backlog(yaml_ids, backlog_ids))
+    findings.extend(audit_categories.bootstrap_as_done(yaml_ids, yaml_data))
+    findings.extend(
+        audit_categories.markdown_status_mismatch(repo, yaml_ids, md_ids, md_map, yaml_data)
+    )
+    findings.extend(
+        audit_categories.backlog_status_mismatch(yaml_ids, backlog_ids, backlog_map, yaml_data)
+    )
+    findings.extend(audit_categories.backlog_format_unparsed(backlog_ids, backlog_map))
+    findings.extend(audit_categories.wt_lifecycle_dirty(repo))
+    findings.extend(audit_categories.wt_features_dirty(repo))
+    findings.extend(audit_categories.unauthorized_writer(yaml_ids, yaml_data))
+    findings.extend(audit_categories.git_divergence(repo))
+    findings.extend(audit_categories.push_failures_counter(repo))
+    findings.extend(audit_categories.bootstrap_anomaly(repo))
+    findings.extend(audit_categories.bootstrap_unparsable(repo))
 
     return findings
 
