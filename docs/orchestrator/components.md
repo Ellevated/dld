@@ -94,6 +94,16 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 иначе откроешь circuit-breaker в prod. WAL, `busy_timeout=5000`, `BEGIN IMMEDIATE` на slot-операциях.
 Идемпотентные runtime-миграции `_ensure_migrations` (self-upgrade старых БД).
 
+**TECH-212 (2026-07-28):** `db.py` (602 → 373 LOC) split into three pure-leaf sibling
+modules — `db_decisions.py` (127 LOC: decisions + gate_health + sdk telemetry),
+`db_findings.py` (105 LOC: night_findings CRUD), `db_cli.py` (88 LOC: argv dispatcher).
+The leaves take the sqlite connection as their first parameter and never `import db`;
+`db.py` re-exposes all 12 of their functions via a `_delegate(fn, immediate=...)` factory,
+so `db.<name>` and `from db import get_db` are byte-identical for every caller below.
+`db_cli.main(sys.argv, sys.modules[__name__])` avoids `import db` deliberately — under
+`python3 db.py` that module is `__main__`, and importing `db` would create a second module
+object with its own `DB_PATH` / `_MIGRATIONS_APPLIED`.
+
 **7 таблиц:**
 
 | Таблица | Назначение |
@@ -107,9 +117,10 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 | `gate_health` | Per-cycle метрики gate-daemon (ARCH-190) |
 
 Функции по группам: **slots** (`try_acquire_slot`/`release_slot`/`get_available_slots`/
-`get_occupied_slots`), **task_log** (`log_task`/`finish_task`/`get_task_by_pueue_id`), **decisions**
-(`record_decision`/`count_demotes_since`/`clear_decisions`), **gate_health** (`log_gate_cycle`),
-**findings** (`save_finding` INSERT OR IGNORE).
+`get_occupied_slots`, in `db.py`), **task_log** (`log_task`/`finish_task`/`get_task_by_pueue_id`,
+in `db.py`), **decisions** (`record_decision`/`count_demotes_since`/`clear_decisions`, in
+`db_decisions.py`), **gate_health** (`log_gate_cycle`, in `db_decisions.py`), **findings**
+(`save_finding` INSERT OR IGNORE, in `db_findings.py`).
 
 ---
 
