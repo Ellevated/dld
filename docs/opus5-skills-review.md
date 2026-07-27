@@ -35,29 +35,70 @@ they drive thinks differently.
 | Cache-read tokens in one production run | 19.6M |
 | Fable 5 placement in routing | none |
 
+## Step 0 result — two of the four suspicions did not survive measurement
+
+Recorded here rather than quietly dropped, because the wrong version of this list was
+about to drive edits across 116 files.
+
+**"54 files contain verification scaffolding" was wrong.** That number came from a
+substring match on `verif`. The 194 occurrences are almost entirely deterministic
+gates (CI, coverage, file gates, "no uncommitted changes before force-removal"),
+grep-evidence discipline ("no path cited as a reuse target without a verifying command
+and its actual output"), and security domain content. Anthropic's guidance says to
+*keep* deterministic gates; grep-evidence is anti-hallucination, not self-verification.
+A precise match for the actual anti-pattern finds **3 hits, two of which are the
+instruction that suppresses it** (`_shared/output-conventions.md`, added by ADR-029).
+There is no verification-scaffolding problem.
+
+**"~220k tokens of prompt with duplication" was half wrong.** The tree is 831 KB /
+~212k tokens, but near-duplicate blocks across files total **13 KB — 1%**. The volume
+is not redundancy. And skills load on demand, so the tree size is not what any single
+session pays.
+
+**What the money actually is.** 40 production runs, from the run logs:
+
+| | tokens | share |
+|---|---|---|
+| cache_read (context re-read) | 74,864,547 | **89%** |
+| cache_creation (context written) | 9,170,161 | 10% |
+| input (genuinely new) | 53,202 | **0%** |
+
+Healthy runs sit at hit rate 0.91–0.96 with cache_creation of 67–125k. The dowry-mc
+timeout that cost **$58.57** shows cache_creation of **6,244,651** at hit rate **0.50**
+— cache thrashing, an order of magnitude off every healthy run. cache_creation bills at
+a premium; that single number is most of the $58.
+
+Each subagent spawn primes a new cache prefix, and each compaction invalidates it. A
+5-task spec is 20+ spawns. The cost is not what the prompts say — it is **how many times
+we re-prime a model that no longer needs re-priming**.
+
 ## What now works against us
 
-1. **"verification" in 54 files.** Anthropic is explicit: explicit verify steps make
-   Opus 5 *over*-verify. Over-verification is turns; turns are the 90-minute timeout
-   and the $58 run.
+Revised after Step 0. Two items removed, one sharpened.
+
+1. **Re-priming, not prompting.** 20+ spawns per spec, each building a fresh cache
+   prefix on a model that could have held the whole spec in one context. This is where
+   every dollar is, and it is pure 200K-era design.
 2. **Fan-out as a research pattern.** Four scouts existed because one agent could not
    hold the codebase. It can now. Fan-out for *judgment* (council, devil's advocate)
    is a different thing and keeps its value — the two must stop being one pattern.
-3. **~220k tokens of prompt, with duplication.** The same rules live in SKILL.md, in
-   the mode file, and in the agent prompt. Duplicated and conflicting instructions
-   degrade Opus 5 directly.
-4. **Fable 5 is unplaced.** A model shipped and the routing table does not know it.
+3. **Fable 5 is unplaced.** A model shipped and the routing table does not know it.
+
+Open oddity, not yet explained: one awardybot run logged **1 turn and $26.19** against
+78k cache_read. Either a cost mis-attribution or something expensive happening in a
+single turn. Worth a look before trusting per-run cost as a metric.
 
 ## Plan
 
 Ordered by where money burns, not by what is easiest.
 
-- [ ] **0. Inventory** — walk all 116 files, list the specific instructions that hurt
-      under Opus 5, grouped by the seven patterns in `.claude/rules/model-capabilities.md`.
-      Read-only. Output is a list of edits, not an opinion.
-- [ ] **1. Autopilot** — does context isolation still earn its cost at 1M? Hypothesis:
-      one long-lived agent instead of six, no explicit verify steps. This is where the
-      money burns.
+- [x] **0. Inventory** — done 2026-07-27. Killed two of the four suspicions and
+      located the cost precisely (see Step 0 result above). The prompts are not the
+      problem; the spawn architecture is.
+- [ ] **1. Autopilot** — does context isolation still earn its cost at 1M? The target
+      metric is now specific: cache_creation per spec and cache hit rate, against the
+      0.91–0.96 / 67–125k baseline of healthy runs. Hypothesis: one long-lived agent
+      instead of six. This is where the money burns.
 - [ ] **2. Spark** — four scouts down to however many are actually needed. The Gate 1b
       spec-size limiter added 2026-07-26 is a bandage over specs bloated by the
       multi-agent design itself.
