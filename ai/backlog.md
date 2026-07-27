@@ -19,7 +19,7 @@
 | GROWTH-005 | blocked | ftr | 2026-05-16 | GROWTH-005 |
 | GROWTH-006 | blocked | ftr | 2026-05-16 | GROWTH-006 |
 | BUG-205 | done | BUG | 2026-06-19 | [spec](features/BUG-205-2026-06-19-orchestrator-dispatch-toctou.md) |
-| BUG-217 | queued | bug | 2026-07-27 | [spec](features/BUG-217-2026-07-27-render-backlog-wipes-after-markers.md) |
+| BUG-217 | blocked | bug | 2026-07-27 | [spec](features/BUG-217-2026-07-27-render-backlog-wipes-after-markers.md) |
 | TECH-210 | queued | tech | 2026-07-27 | [spec](features/TECH-210-2026-07-27-gate-dedup-single-source.md) |
 | TECH-211 | queued | tech | 2026-07-27 | [spec](features/TECH-211-2026-07-27-split-reaper-and-audit.md) |
 | TECH-212 | queued | tech | 2026-07-27 | [spec](features/TECH-212-2026-07-27-split-db-module.md) |
