@@ -995,6 +995,7 @@ def recover_false_reconciliation(
     *,
     reason: str,
     by: str = "operator",
+    check_only: bool = False,
 ) -> None:
     """Demote a spec the reconciliation gate closed against its own birth commit.
 
@@ -1086,6 +1087,12 @@ def recover_false_reconciliation(
             criterion="cited_commit_is_real_work",
             value=f"{sha} {subject!r} touches {files[:5]}",
         )
+
+    if check_only:
+        # Every criterion above has passed. Callers use this to preview a
+        # recovery honestly — a dry-run that skips validation would report the
+        # legitimately-reconciled specs as recoverable too.
+        return
 
     branch = _current_branch(repo_dir)
 

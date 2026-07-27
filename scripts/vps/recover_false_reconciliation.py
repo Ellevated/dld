@@ -73,20 +73,18 @@ def main(argv: list[str] | None = None) -> int:
             reason = row.get("blocked_reason") or ""
             if not reason.startswith("already_implemented_on_develop:"):
                 continue
-            if not args.confirm:
-                # Validate without writing: the function raises before any CAS write.
-                print(f"  WOULD RECOVER {project_id}/{spec_id}  ({reason})")
-                recovered += 1
-                continue
             try:
-                lifecycle.recover_false_reconciliation(path, spec_id, reason=_REASON)
-                print(f"  RECOVERED {project_id}/{spec_id}")
+                lifecycle.recover_false_reconciliation(
+                    path, spec_id, reason=_REASON, check_only=not args.confirm
+                )
+                verb = "RECOVERED    " if args.confirm else "WOULD RECOVER"
+                print(f"  {verb} {project_id}/{spec_id}")
                 recovered += 1
             except lifecycle.NotFalseReconciliationError as exc:
-                print(f"  keep      {project_id}/{spec_id} — {exc.criterion}")
+                print(f"  keep as done  {project_id}/{spec_id} — {exc.criterion}")
                 refused += 1
             except Exception as exc:  # noqa: BLE001
-                print(f"  FAILED    {project_id}/{spec_id}: {exc}")
+                print(f"  FAILED        {project_id}/{spec_id}: {exc}")
                 failed += 1
 
     mode = "EXECUTED" if args.confirm else "DRY-RUN (pass --confirm to execute)"
