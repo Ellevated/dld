@@ -340,3 +340,65 @@ def test_sync_status_byte_identical_when_already_synced(tmp_git_repo):
     )
     out = render_backlog.sync_status(repo, backlog)
     assert out == backlog
+
+
+# ---------------------------------------------------------------------------
+# BUG-217: AFTER-маркер переживает полный цикл lifecycle.write_lifecycle
+# ---------------------------------------------------------------------------
+
+
+def test_after_marker_survives_full_lifecycle_write(tmp_git_repo):
+    """Живой путь записи backlog — lifecycle._atomic_write, а не render_backlog().
+
+    Он читает HEAD:ai/backlog.md, гонит sync_status и вкладывает результат в тот же
+    plumbing-коммит, что и yaml. Замок на то, что 'AFTER <ID>' (единственное место,
+    где живёт зависимость между спеками — orchestrator._backlog_deps читает ТОЛЬКО
+    строку backlog) не исчезает ни в HEAD, ни в WT.
+    """
+    import lifecycle
+    import orchestrator
+
+    repo = tmp_git_repo
+
+    backlog = (
+        "# DLD Backlog\n\n"
+        "Проза, которую написал founder — не трогать.\n\n"
+        "## P1 — High impact (default)\n\n"
+        "| ID | Status | Kind | Updated | Spec |\n"
+        "|----|--------|------|---------|------|\n"
+        "| TECH-210 | queued | tech | 2026-07-27 | [spec](features/a.md) |\n"
+        "| TECH-216 | queued | tech | 2026-07-27 | [spec](features/b.md) — AFTER TECH-210 |\n"
+    )
+    (repo / "ai" / "backlog.md").write_text(backlog, encoding="utf-8")
+    subprocess.run(["git", "add", "ai/backlog.md"], cwd=str(repo), check=True)
+    subprocess.run(["git", "commit", "-m", "docs: backlog"], cwd=str(repo), check=True)
+
+    lifecycle.create_initial(repo, "TECH-210", "p1", "tech", by="orchestrator")
+    lifecycle.create_initial(repo, "TECH-216", "p1", "tech", by="orchestrator")
+
+    # Полный цикл: статус TECH-210 едет queued -> in_progress -> done
+    lifecycle.write_lifecycle(repo, "TECH-210", "in_progress", by="callback")
+    lifecycle.write_lifecycle(repo, "TECH-210", "done", by="callback")
+
+    head = subprocess.run(
+        ["git", "show", "HEAD:ai/backlog.md"],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    wt = (repo / "ai" / "backlog.md").read_text(encoding="utf-8")
+
+    # EC-1: маркер жив в HEAD и в WT, ровно один раз
+    assert head.count("AFTER TECH-210") == 1, f"AFTER стёрт в HEAD:\n{head}"
+    assert wt.count("AFTER TECH-210") == 1, f"AFTER стёрт в WT:\n{wt}"
+
+    # EC-2: статус всё-таки синхронизирован
+    assert "| TECH-210 | done |" in head
+
+    # EC-3: проза и структура целы
+    assert "Проза, которую написал founder — не трогать." in head
+    assert "## P1 — High impact (default)" in head
+
+    # EC-6: читатель зависимостей видит маркер после цикла (читает WT)
+    assert orchestrator._backlog_deps(str(repo), "TECH-216") == {"TECH-210"}
