@@ -47,7 +47,9 @@ _ALLOWED_FILES_V1_HEADING_RE = re.compile(r"^##[ \t]+Allowed Files[ \t]*$")
 _ALLOWED_FILES_V1_MARKER_RE = re.compile(r"<!--\s*callback-allowlist\s+v1\b[^>]*-->")
 _ALLOWED_FILES_V1_BULLET_RE = re.compile(r"^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$")
 # TECH-208: numbered-list items (e.g. "1. `path/to/file.py` — reason").
-_ALLOWED_FILES_V1_NUMBERED_RE = re.compile(r"^\d+\.[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$")
+_ALLOWED_FILES_V1_NUMBERED_RE = re.compile(
+    r"^\d+\.[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$"
+)
 
 # TECH-166 legacy fallback heading variants (case-insensitive):
 #   ## Allowed Files, ## Updated Allowed Files, ## Files Allowed to Modify
@@ -56,6 +58,38 @@ _ALLOWED_FILES_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 _NEXT_H2_RE = re.compile(r"^##\s+\S")
+
+# Paths that can never hold an implementation, and so can never be evidence of
+# one. `ai/lifecycle/` is the load-bearing entry: Spark writes the spec's own
+# birth commit there (`lifecycle(BUG-460): queued`), which parses as a
+# conventional commit carrying the spec id in scope. With the lifecycle file in
+# the allowlist, the path filter admitted that commit and the spec reconciled
+# against its own creation. ADR-025 additionally forbids committing
+# `ai/lifecycle/` at all — a path nobody may touch cannot prove somebody did.
+_BOOKKEEPING_PREFIXES = (
+    "ai/lifecycle/",
+    "ai/features/",
+    "ai/diary/",
+)
+_BOOKKEEPING_EXACT = frozenset({"ai/backlog.md"})
+
+
+def strip_bookkeeping_paths(allowed_files: list[str]) -> list[str]:
+    """Drop paths that record work rather than perform it.
+
+    Docs paths are deliberately NOT stripped: a spec whose whole point is a
+    documentation change has its implementation in `docs/` or `README.md`, and
+    removing those would break the gate for exactly that spec.
+    """
+    kept = []
+    for raw in allowed_files:
+        p = raw.strip().lstrip("./").replace("\\", "/")
+        if p in _BOOKKEEPING_EXACT:
+            continue
+        if any(p.startswith(prefix) for prefix in _BOOKKEEPING_PREFIXES):
+            continue
+        kept.append(raw)
+    return kept
 
 
 def _parse_allowed_files_v1(spec_text: str) -> list[str] | None:
@@ -310,11 +344,31 @@ def find_implementation_commit(
         spec_id: Spec identifier to match (e.g. "TECH-189", "GROWTH-042").
         allowed_files: Non-empty list of relative paths from the spec allowlist.
 
+    Bookkeeping paths are stripped before the path filter (2026-07-27). A spec
+    whose allowlist contains `ai/lifecycle/<ID>.yaml` was matching its OWN birth
+    commit — Spark writes `lifecycle(BUG-460): queued`, which touches an allowed
+    path and parses as a conventional commit with the spec id in scope. Five
+    specs across dowry/wb/plpilot closed as done having never been dispatched,
+    one of them P0. Implementation never lives in these files; `ai/lifecycle/`
+    is additionally forbidden to commit at all (ADR-025), so a path nobody may
+    touch cannot be evidence that somebody did.
+
     Returns:
         Full commit SHA string (truthy) if implementation found, None otherwise.
     """
     if not spec_id or not allowed_files:
         return None
+    impl_files = strip_bookkeeping_paths(allowed_files)
+    if not impl_files:
+        # Allowlist was bookkeeping-only: nothing here could carry an
+        # implementation. Fail closed — dispatch normally rather than reconcile.
+        log.warning(
+            "GATE: %s — allowlist contains only bookkeeping paths, no implementation "
+            "evidence possible; not reconciling",
+            spec_id,
+        )
+        return None
+    allowed_files = impl_files
     for extra_args in ([], ["--first-parent"]):
         cmd = [
             "git",

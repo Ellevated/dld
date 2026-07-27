@@ -35,6 +35,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
 import event_writer  # noqa: E402
+import gate_logic  # noqa: E402  — shared gate helpers, keep the two copies in sync
 import lifecycle  # noqa: E402  — atomic YAML writer (ADR-023)
 
 log = logging.getLogger("callback")
@@ -453,7 +454,9 @@ _ALLOWED_FILES_V1_MARKER_RE = re.compile(r"<!--\s*callback-allowlist\s+v1\b[^>]*
 # Canonical bullet: "- `path/with.ext` optional trailing prose".
 _ALLOWED_FILES_V1_BULLET_RE = re.compile(r"^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$")
 # TECH-208: numbered-list items (e.g. "1. `path/to/file.py` — reason").
-_ALLOWED_FILES_V1_NUMBERED_RE = re.compile(r"^\d+\.[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$")
+_ALLOWED_FILES_V1_NUMBERED_RE = re.compile(
+    r"^\d+\.[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$"
+)
 
 # --- TECH-166 legacy fallback (kept for specs without the v1 marker) --------
 # Heading variants seen across DLD projects (case-insensitive):
@@ -842,9 +845,21 @@ def _is_done_on_develop(project_path: str, spec_id: str, allowed_files: list[str
     Returns False on any error or empty inputs — conservative by design,
     fail-closed: ambiguity → blocked, not done.
 
+    Bookkeeping paths are stripped first (2026-07-27) — see
+    `gate_logic.strip_bookkeeping_paths`. A spec listing `ai/lifecycle/<ID>.yaml`
+    was matching its own birth commit (`lifecycle(BUG-460): queued`), which is a
+    conventional commit with the spec id in scope touching an allowed path.
+
     Keep in sync with gate_logic.find_implementation_commit (L-derived-2).
     """
     if not spec_id or not allowed_files:
+        return False
+    allowed_files = gate_logic.strip_bookkeeping_paths(allowed_files)
+    if not allowed_files:
+        log.warning(
+            "GATE: %s — allowlist is bookkeeping-only, no implementation evidence possible",
+            spec_id,
+        )
         return False
     for extra_args in ([], ["--first-parent"]):
         cmd = [

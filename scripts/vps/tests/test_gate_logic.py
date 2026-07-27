@@ -25,6 +25,7 @@ from gate_logic import (  # noqa: E402
     find_implementation_commit,
     match_subject,
     parse_allowed_files,
+    strip_bookkeeping_paths,
 )
 
 # ---------------------------------------------------------------------------
@@ -641,3 +642,79 @@ def test_merge_of_unrelated_spec_not_matched(git_repo_with_remote):
 
     result = find_implementation_commit(str(repo), "BUG-888", ["src/shared.ts"])
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Regression: a spec must not reconcile against its own birth commit
+#
+# 2026-07-27. Spark writes `ai/lifecycle/<ID>.yaml` at ID-claim time with the
+# subject `lifecycle(BUG-460): queued`, and puts that same path in the spec's
+# `## Allowed Files`. The path filter admitted the commit, match_subject read
+# `lifecycle(BUG-460):` as a conventional commit with the id in scope, and the
+# reconciliation gate marked the spec done before it was ever dispatched.
+# Observed on dowry BUG-460/TECH-461/TECH-462, wb FTR-182, plpilot TECH-352 —
+# five specs, one of them P0, closed having merged nothing.
+# ---------------------------------------------------------------------------
+
+
+class TestBookkeepingPathsAreNotEvidence:
+    def test_strips_lifecycle_backlog_and_spec_paths(self):
+        assert strip_bookkeeping_paths(
+            [
+                "ai/lifecycle/BUG-460.yaml",
+                "ai/backlog.md",
+                "ai/features/BUG-460-2026-07-26-x.md",
+                "ai/diary/index.md",
+            ]
+        ) == []
+
+    def test_keeps_implementation_and_docs_paths(self):
+        # docs are NOT stripped: a documentation spec's implementation lives there
+        kept = strip_bookkeeping_paths(
+            ["src/api/copy.py", "docs/guide.md", "README.md", "ai/backlog.md"]
+        )
+        assert kept == ["src/api/copy.py", "docs/guide.md", "README.md"]
+
+    def test_normalises_leading_dot_slash_and_backslashes(self):
+        assert strip_bookkeeping_paths(["./ai/lifecycle/X.yaml", r"ai\lifecycle\Y.yaml"]) == []
+
+    def test_lifecycle_birth_commit_does_not_reconcile(self, git_repo_with_remote):
+        """The exact dowry BUG-460 shape: only the lifecycle commit exists."""
+        repo = git_repo_with_remote
+        lifecycle_dir = repo / "ai" / "lifecycle"
+        lifecycle_dir.mkdir(parents=True)
+        (lifecycle_dir / "BUG-460.yaml").write_text("status: queued\n", encoding="utf-8")
+        _git(repo, "add", "ai/lifecycle/BUG-460.yaml")
+        _git(repo, "commit", "-q", "-m", "lifecycle(BUG-460): queued")
+        _git(repo, "push", "-q", "origin", "develop")
+        _git(repo, "fetch", "-q", "origin", "develop")
+
+        allowed = ["src/api/awardy_bot/copy.py", "ai/lifecycle/BUG-460.yaml", "ai/backlog.md"]
+        assert find_implementation_commit(str(repo), "BUG-460", allowed) is None
+
+    def test_real_implementation_still_reconciles(self, git_repo_with_remote):
+        """The fix must not blind the gate to actual work."""
+        repo = git_repo_with_remote
+        src = repo / "src"
+        src.mkdir()
+        (src / "copy.py").write_text("x = 1\n", encoding="utf-8")
+        _git(repo, "add", "src/copy.py")
+        _git(repo, "commit", "-q", "-m", "fix(BUG-460): escape first_name")
+        _git(repo, "push", "-q", "origin", "develop")
+        _git(repo, "fetch", "-q", "origin", "develop")
+
+        allowed = ["src/copy.py", "ai/lifecycle/BUG-460.yaml", "ai/backlog.md"]
+        assert find_implementation_commit(str(repo), "BUG-460", allowed) is not None
+
+    def test_bookkeeping_only_allowlist_returns_none(self, git_repo_with_remote):
+        """Nothing in the allowlist could carry an implementation → fail closed."""
+        repo = git_repo_with_remote
+        lifecycle_dir = repo / "ai" / "lifecycle"
+        lifecycle_dir.mkdir(parents=True)
+        (lifecycle_dir / "TECH-1.yaml").write_text("status: queued\n", encoding="utf-8")
+        _git(repo, "add", "ai/lifecycle/TECH-1.yaml")
+        _git(repo, "commit", "-q", "-m", "lifecycle(TECH-1): queued")
+        _git(repo, "push", "-q", "origin", "develop")
+        _git(repo, "fetch", "-q", "origin", "develop")
+
+        assert find_implementation_commit(str(repo), "TECH-1", ["ai/lifecycle/TECH-1.yaml"]) is None
