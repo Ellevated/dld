@@ -67,7 +67,11 @@ Dependency map between project components.
 
 ## scripts/vps/db (orchestrator SQLite)
 
-**Path:** `scripts/vps/db.py`
+**Path:** `scripts/vps/db.py` (373 LOC — was 602, TECH-212 split)
+
+`db.py` keeps `get_db`/`_ensure_migrations`/slots/`projects`/`task_log`/`seed_projects_from_json`
+plus a `_delegate` factory that binds 12 names from the two leaves below back onto the `db`
+module, so `db.<name>` and `from db import get_db` are unchanged for every consumer.
 
 ### Uses (→)
 
@@ -75,6 +79,9 @@ Dependency map between project components.
 |------|-------|----------|
 | sqlite3 | stdlib | connection, Row, contextmanager |
 | schema.sql | scripts/vps/schema.sql | project_state, compute_slots, task_log, night_findings, callback_decisions |
+| db_decisions.py | scripts/vps/db_decisions.py | record_decision, count_demotes_since, clear_decisions, log_sdk_post_result_error, log_gate_cycle, get_gate_health — delegated, `immediate=True` preserved for `clear_decisions` |
+| db_findings.py | scripts/vps/db_findings.py | save_finding, get_new_findings, update_finding_status, get_finding_by_id, get_all_findings, get_projects_for_night_scan — delegated, `immediate=True` preserved for save_finding/update_finding_status |
+| db_cli.py | scripts/vps/db_cli.py | `main(sys.argv, sys.modules[__name__])` — argv dispatcher, deliberately does NOT `import db` (avoids a second module object with its own `DB_PATH` under `python3 db.py`) |
 
 ### Used by (←)
 
@@ -94,6 +101,8 @@ Dependency map between project components.
 - [ ] night-reviewer.sh (CLI: save-finding / get-new-findings / update-phase)
 - [ ] claude-runner.py (log_sdk_post_result_error signature — BUG-188)
 - [ ] gate-daemon.py (log_gate_cycle signature — ARCH-190)
+- [ ] db_decisions.py / db_findings.py (pure leaves, first param is the sqlite connection — no `import db`; keep it that way)
+- [ ] db_cli.py (`main(argv, api)` — api param must stay the db module, not a fresh import)
 
 ---
 
@@ -741,3 +750,4 @@ Used as operator visibility tool and CI smoke gate.
 | 2026-07-27 | **Gate no longer reconciles a spec against its own birth commit:** `gate_logic.strip_bookkeeping_paths` removes `ai/lifecycle/`, `ai/features/`, `ai/diary/`, `ai/backlog.md` from the allowlist before the path-filtered `git log`; applied in both copies of the gate (`gate_logic.find_implementation_commit` + `callback._is_done_on_develop`). Root cause: Spark writes `lifecycle(BUG-460): queued` touching `ai/lifecycle/BUG-460.yaml`, and puts that path in `## Allowed Files` — the subject parses as a conventional commit with the id in scope, so the spec proved its own completion. Five specs closed having merged nothing (dowry BUG-460/TECH-461/TECH-462, wb FTR-182, plpilot TECH-352; TECH-462 was P0). Docs paths deliberately NOT stripped — a documentation spec's implementation lives there. Bookkeeping-only allowlist → fail closed (dispatch normally). +6 tests. | interactive |
 | 2026-07-27 | **VPS test suite green on Windows:** explicit `encoding="utf-8"` on file I/O across 17 test modules (cp1251 default raised UnicodeEncodeError on `⛔`/Cyrillic — the same class as the `lifecycle._run` fix), SIGTERM daemon test skipped on `nt`. 400 passed / 0 failed, was 5 failed. | interactive |
 | 2026-07-02 | **Gate false-blocked fix (plpilot BUG-338/339/340/346/347 + TECH-349):** `match_subject`/`_subject_implements` (gate_logic.py + callback.py, sync L-derived-2) принимают trailing `(SPEC-ID)` в конце subject (все элементы в скобках обязаны быть spec-id-shaped; `(see X)`/`(FTR-X Task 3)` — reject) + merge-формы `merge: feature/SPEC-ID` и `Merge branch 'fix/SPEC-ID-slug'`. `find_implementation_commit`/`_is_done_on_develop` — второй проход `git log --first-parent` (history simplification прятала no-ff merge из path-filtered лога — `Merge SPEC-ID:` никогда не доходил до matcher'а). 11 новых тестов (test_gate_logic.py 8 unit + 3 integration), 3 (test_callback_implementation_guard.py EC-7..9), test_callback.py anti-false-positive narrowed. docs/orchestrator/status-model.md#guard обновлён. | interactive |
+| 2026-07-28 | **TECH-212:** `db.py` (602 → 373 LOC) split into `db_decisions.py` (127 LOC), `db_findings.py` (105 LOC), `db_cli.py` (88 LOC) — pure leaves, zero `import db`, connection passed as first param. `db.py` rebinds all 12 names via a `_delegate(fn, immediate=...)` factory; public API (`db.<name>`, `from db import get_db`) and CLI contract byte-identical. Zero edits to orchestrator.py/callback.py/gate-daemon.py/claude-runner.py/orchestrator_monitor.py/night-reviewer.sh. +12 CLI characterization tests + EC-1..EC-10 structural contract tests (test_db.py 213 → 568 LOC). | autopilot |
