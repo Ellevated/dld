@@ -21,7 +21,7 @@
 | BUG-205 | done | BUG | 2026-06-19 | [spec](features/BUG-205-2026-06-19-orchestrator-dispatch-toctou.md) |
 | BUG-217 | done | bug | 2026-07-27 | [spec](features/BUG-217-2026-07-27-render-backlog-wipes-after-markers.md) |
 | TECH-210 | blocked | tech | 2026-07-27 | [spec](features/TECH-210-2026-07-27-gate-dedup-single-source.md) |
-| TECH-211 | queued | tech | 2026-07-27 | [spec](features/TECH-211-2026-07-27-split-reaper-and-audit.md) |
+| TECH-211 | done | tech | 2026-07-27 | [spec](features/TECH-211-2026-07-27-split-reaper-and-audit.md) |
 | TECH-212 | queued | tech | 2026-07-27 | [spec](features/TECH-212-2026-07-27-split-db-module.md) |
 | TECH-213 | queued | tech | 2026-07-27 | [spec](features/TECH-213-2026-07-27-split-claude-runner.md) |
 | TECH-214 | queued | tech | 2026-07-27 | [spec](features/TECH-214-2026-07-27-split-lifecycle-module.md) |
