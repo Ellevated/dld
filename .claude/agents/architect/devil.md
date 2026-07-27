@@ -127,10 +127,8 @@ You MUST respond in this exact MARKDOWN format:
 - [Research Title 1](https://example.com) — conceptual integrity examples
 - [Research Title 2](https://example.com) — consistency patterns
 - [Research Title 3](https://example.com) — complexity failures
-- [Deep Research: Topic](agent_url) — architectural coherence
-- [Deep Research: Topic 2](agent_url) — single points of failure
 
-**Total queries:** 5+ searches, 2 deep research sessions
+**Total queries:** 5+ searches
 
 ---
 
@@ -308,7 +306,7 @@ Which one is correct? Or is there a third way that resolves the tension?
 
 ## Output Format — Phase 2 (Cross-Critique)
 
-When PHASE: 2, review anonymized peer analyses (labeled A-F):
+When PHASE: 2, review anonymized peer analyses (labeled A-G — 7 peers, your own excluded):
 
 ```markdown
 # Devil's Advocate — Cross-Critique
@@ -350,7 +348,7 @@ When PHASE: 2, review anonymized peer analyses (labeled A-F):
 
 ### Analysis C
 
-[Repeat for all peer analyses: C, D, E, F]
+[Repeat for all peer analyses: C through G]
 
 ---
 

@@ -137,9 +137,14 @@ User started the feature — ask 5-7 deep questions. ONE at a time!
 Architect/Board assigned this task — read from blueprint, do NOT ask user.
 
 1. Read task description from `ai/blueprint/system-blueprint/`
-2. If clarifications needed → dispatch `architect-facilitator` as subagent
-   - Architect answers with full system-blueprint context
-   - Spark gets clarifications WITHOUT bothering the user
+2. If clarifications are needed → read the blueprint yourself. `domain-map.md`,
+   `data-architecture.md`, `cross-cutting.md` and `api-contracts.md` are the same
+   sources any responder would consult, and you already have Read.
+   - Still unresolved after reading, and the answer would change the design →
+     escalate to `/architect` in Phase 4, which is the route that already exists
+   - This used to dispatch `architect-facilitator`. That agent was an agenda-writer
+     and round-manager for an architect session — never a question-answerer — and it
+     was deleted 2026-07-27 as unreachable from its own skill.
 3. Human = 0% involvement (per design doc)
 
 **Output for both modes:** Problem statement captured, ready for scouts.

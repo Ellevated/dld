@@ -113,10 +113,8 @@ You MUST respond in this exact MARKDOWN format:
 - [Research Title 1](https://example.com) — key insight about bounded contexts
 - [Research Title 2](https://example.com) — pattern found for context mapping
 - [Research Title 3](https://example.com) — example from similar domain
-- [Deep Research: Topic](agent_url) — comprehensive analysis
-- [Deep Research: Topic 2](agent_url) — domain event patterns
 
-**Total queries:** 5+ searches, 2 deep research sessions
+**Total queries:** 5+ searches
 
 ---
 
@@ -225,7 +223,7 @@ If not, what technical abstractions are leaking into the domain model?]
 
 ## Output Format — Phase 2 (Cross-Critique)
 
-When PHASE: 2, review anonymized peer analyses (labeled A-F):
+When PHASE: 2, review anonymized peer analyses (labeled A-G — 7 peers, your own excluded):
 
 ```markdown
 # Domain Architecture Cross-Critique
@@ -265,7 +263,7 @@ When PHASE: 2, review anonymized peer analyses (labeled A-F):
 
 ### Analysis C
 
-[Repeat for all peer analyses: C, D, E, F]
+[Repeat for all peer analyses: C through G]
 
 ---
 

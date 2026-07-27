@@ -123,10 +123,8 @@ You MUST respond in this exact MARKDOWN format:
 - [Research Title 1](https://example.com) — threat model for similar system
 - [Research Title 2](https://example.com) — OWASP patterns found
 - [Research Title 3](https://example.com) — recent CVEs in tech stack
-- [Deep Research: Topic](agent_url) — authentication best practices
-- [Deep Research: Topic 2](agent_url) — encryption strategies
 
-**Total queries:** 5+ searches, 2 deep research sessions
+**Total queries:** 5+ searches
 
 ---
 
@@ -323,7 +321,7 @@ You MUST respond in this exact MARKDOWN format:
 
 ## Output Format — Phase 2 (Cross-Critique)
 
-When PHASE: 2, review anonymized peer analyses (labeled A-F):
+When PHASE: 2, review anonymized peer analyses (labeled A-G — 7 peers, your own excluded):
 
 ```markdown
 # Security Architecture Cross-Critique
@@ -363,7 +361,7 @@ When PHASE: 2, review anonymized peer analyses (labeled A-F):
 
 ### Analysis C
 
-[Repeat for all peer analyses: C, D, E, F]
+[Repeat for all peer analyses: C through G]
 
 ---
 

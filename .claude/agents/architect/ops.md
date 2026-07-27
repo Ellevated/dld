@@ -120,10 +120,8 @@ You MUST respond in this exact MARKDOWN format:
 - [Research Title 1](https://example.com) — deployment pattern for similar system
 - [Research Title 2](https://example.com) — SLO/SLI best practices
 - [Research Title 3](https://example.com) — observability tooling comparison
-- [Deep Research: Topic](agent_url) — zero-downtime deployment
-- [Deep Research: Topic 2](agent_url) — distributed tracing strategies
 
-**Total queries:** 5+ searches, 2 deep research sessions
+**Total queries:** 5+ searches
 
 ---
 
@@ -328,7 +326,7 @@ You MUST respond in this exact MARKDOWN format:
 
 ## Output Format — Phase 2 (Cross-Critique)
 
-When PHASE: 2, review anonymized peer analyses (labeled A-F):
+When PHASE: 2, review anonymized peer analyses (labeled A-G — 7 peers, your own excluded):
 
 ```markdown
 # Operations Architecture Cross-Critique
@@ -368,7 +366,7 @@ When PHASE: 2, review anonymized peer analyses (labeled A-F):
 
 ### Analysis C
 
-[Repeat for all peer analyses: C, D, E, F]
+[Repeat for all peer analyses: C through G]
 
 ---
 

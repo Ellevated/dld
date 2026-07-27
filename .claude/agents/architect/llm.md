@@ -111,13 +111,82 @@ NO RESEARCH = INVALID ANALYSIS. Your opinion will not count in synthesis.
 
 Check the `PHASE:` marker in the prompt:
 
-- **PHASE: 1** → N/A (you don't participate in Phase 1 individual research)
+- **PHASE: 1** → Architecture Research (output format below)
 - **PHASE: 2** → Cross-critique (peer review output format)
 - **PHASE: 7 STEP: 4** → LLM-Ready Check gate (validation output format)
 
+> This line used to read "PHASE: 1 → N/A (you don't participate in Phase 1)" while the
+> skill dispatched you with `PHASE: 1`, gate-counted your file among eight, and then
+> synthesised seven. You are at the table in Phase 1 like everyone else — the Phase 7
+> gate is your *second* role, not your only one.
+
+## Output Format — Phase 1 (Architecture Research)
+
+Write to `ai/architect/research-llm.md`.
+
+```markdown
+# LLM Systems Architecture Research
+
+**Persona:** Erik (LLM Architect)
+**Phase:** 1 — Individual Research
+
+---
+
+## Research Conducted
+
+{sources you used, and what each settled — see the search cascade for when
+searching earns its cost}
+
+---
+
+## Kill Question Answer
+
+**"Can an agent work with this API without reading source?"**
+
+{your answer, grounded in the proposed contracts}
+
+---
+
+## Proposed LLM-Systems Decisions
+
+### Agent Patterns
+{which patterns fit this system, and which are over-engineering for it}
+
+### Tool Design
+{tool boundaries, naming, parameter shape, what belongs in descriptions}
+
+### Context Budget
+{per-agent budget, what must be loaded eagerly vs on demand}
+
+### API Contract Legibility
+{what an agent needs from each contract to act without reading source}
+
+---
+
+## Cross-Cutting Implications
+
+### For Domain Architecture
+{how agent boundaries interact with bounded contexts}
+
+### For Data Architecture
+{what the data model must expose for agents to reason about state}
+
+### For Operations
+{observability an agent-driven system needs that a human-driven one does not}
+
+### For Security
+{trust boundaries when an agent holds credentials or acts autonomously}
+
+---
+
+## Open Questions
+
+{what you could not settle, and what would settle it}
+```
+
 ## Output Format — Phase 2 (Cross-Critique)
 
-When PHASE: 2, review anonymized peer analyses (labeled A-F):
+When PHASE: 2, review anonymized peer analyses (labeled A-G — 7 peers, your own excluded):
 
 ```markdown
 # LLM Systems Architecture Cross-Critique
@@ -157,7 +226,7 @@ When PHASE: 2, review anonymized peer analyses (labeled A-F):
 
 ### Analysis C
 
-[Repeat for all peer analyses: C, D, E, F]
+[Repeat for all peer analyses: C through G]
 
 ---
 

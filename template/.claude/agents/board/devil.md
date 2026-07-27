@@ -78,7 +78,6 @@ You investigate these areas with contrarian lens:
 
 **Minimum per round:**
 - **5 search queries** (Exa web search) focused on failures, risks, competitors
-- **2 deep research** (Exa deep researcher) on why similar ideas failed
 
 **Quality bar:**
 - Cite specific failure case studies
@@ -88,14 +87,14 @@ You investigate these areas with contrarian lens:
 ## Phase Detection
 
 **PHASE: 1 — Research (your main work)**
-Facilitator provides `board-agenda-R{N}.md`. You research failure scenarios and write a research report.
+Read your focus section from `ai/board/board-agenda.md`. You research failure scenarios and write a research report.
 
 **PHASE: 2 — Cross-Critique (after all directors finish Phase 1)**
-Facilitator provides 5 anonymous research reports (A-E). You critique them from devil's advocate lens: challenge optimism, spot blind spots, rank by realism.
+Read 5 anonymous peer files from `ai/board/anonymous/` (peer-A.md .. peer-E.md; your own is excluded). You critique them from devil's advocate lens: challenge optimism, spot blind spots, rank by realism.
 
 ## Output Format — Phase 1 (Research Report)
 
-Write to: `ai/board/director-research/devil-R{N}.md`
+Write to: `ai/board/research-devil.md`
 
 ```markdown
 # Devil's Advocate Report — Round {N}
@@ -200,7 +199,7 @@ Write to: `ai/board/director-research/devil-R{N}.md`
 
 ## Output Format — Phase 2 (Cross-Critique)
 
-Write to: `ai/board/cross-critique/devil-R{N}.md`
+Write to: `ai/board/critique-devil.md`
 
 ```markdown
 # Devil's Cross-Critique — Round {N}

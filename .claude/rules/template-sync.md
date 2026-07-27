@@ -61,6 +61,17 @@ These files exist in template AND root. Template has the baseline, root adds DLD
 
 - `rules/architecture.md` — Root adds ADR-015..018 (DLD orchestrator decisions), shell script safety rules
 - `rules/dependencies.md` — Root has full DLD dependency map (scripts/vps/*, orchestrator, callback)
+- `rules/model-capabilities.md` — Root's `paths:` header covers `template/**` and `scripts/vps/*`
+  as well, because DLD edits both trees. Body must stay byte-identical.
+- **LLM-Native economics wording**, in `agents/board/{cmo,coo}.md`,
+  `agents/architect/{dx,evolutionary,synthesizer}.md` — root states it as a fact about this
+  repo ("this codebase is maintained by AI agents … MUST reflect this reality"); template
+  hedges for downstream users ("For human teams, include both"). Deliberate: DLD has no human
+  implementers, a template user might.
+- `agents/architect/synthesizer.md` — template carries an extra "Effort Estimate" section.
+
+Found by audit 2026-07-27, not by anyone noticing. Undocumented divergence is
+indistinguishable from an interrupted sync — record it here when you create it.
 
 When template updates these files, manually merge changes into root.
 

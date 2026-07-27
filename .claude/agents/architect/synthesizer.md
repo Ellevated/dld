@@ -76,9 +76,9 @@ Each has trade-offs. Let human choose based on their risk tolerance.
 
 ## Input Format
 
-You receive 14 files from `ai/architect/`:
+You receive 17 files from `ai/architect/`:
 
-### Phase 1 Research (7 files)
+### Phase 1 Research (8 files)
 
 ```
 ai/architect/research-domain.md       (Eric)
@@ -87,10 +87,11 @@ ai/architect/research-ops.md          (Charity)
 ai/architect/research-security.md     (Bruce)
 ai/architect/research-evolutionary.md (Neal)
 ai/architect/research-dx.md           (Dan)
+ai/architect/research-llm.md          (Erik)
 ai/architect/research-devil.md        (Fred)
 ```
 
-### Phase 2 Cross-Critiques (7 files)
+### Phase 2 Cross-Critiques (8 files)
 
 ```
 ai/architect/critique-domain.md       (Eric)
@@ -99,16 +100,22 @@ ai/architect/critique-ops.md          (Charity)
 ai/architect/critique-security.md     (Bruce)
 ai/architect/critique-evolutionary.md (Neal)
 ai/architect/critique-dx.md           (Dan)
+ai/architect/critique-llm.md          (Erik)
 ai/architect/critique-devil.md        (Fred)
 ```
 
-### Contradiction Log (1 file)
+### Agenda (1 file)
 
 ```
-ai/architect/contradictions-log.md    (Facilitator)
+ai/architect/architecture-agenda.md
 ```
 
-**Total input:** 15 files to synthesize
+**Total input:** 17 files to synthesize
+
+The LLM Architect's two files were missing from this list while the skill
+dispatched, wrote and gate-counted them — eight personas researched, seven were
+read. Erik's context budgets and tool-description grading reached the blueprint
+through the Phase 7 gate only, never through synthesis.
 
 ## Architecture Alternative Template
 
@@ -471,7 +478,10 @@ When synthesizing alternatives:
 
 ## Output Format
 
-You produce ONE file: `ai/architect/synthesis.md`
+You produce ONE file: `ai/architect/architectures.md`
+
+That exact name matters — it is what the Phase 4 file gate checks and the
+only file the orchestrator reads to present options to the founder.
 
 ```markdown
 # Architecture Synthesis

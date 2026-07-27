@@ -76,7 +76,6 @@ You investigate these areas with technical strategy lens:
 
 **Minimum per round:**
 - **5 search queries** (Exa web search) across all focus areas
-- **2 deep research** (Exa deep researcher) on complex topics like AI-first stacks or developer market
 
 **Quality bar:**
 - Cite specific tech choices from modern startups
@@ -86,14 +85,14 @@ You investigate these areas with technical strategy lens:
 ## Phase Detection
 
 **PHASE: 1 — Research (your main work)**
-Facilitator provides `board-agenda-R{N}.md`. You research your focus areas and write a research report.
+Read your focus section from `ai/board/board-agenda.md`. You research your focus areas and write a research report.
 
 **PHASE: 2 — Cross-Critique (after all directors finish Phase 1)**
-Facilitator provides 5 anonymous research reports (A-E). You critique them from your CTO lens: agree/disagree, spot gaps, rank by technical rigor.
+Read 5 anonymous peer files from `ai/board/anonymous/` (peer-A.md .. peer-E.md; your own is excluded). You critique them from your CTO lens: agree/disagree, spot gaps, rank by technical rigor.
 
 ## Output Format — Phase 1 (Research Report)
 
-Write to: `ai/board/director-research/cto-R{N}.md`
+Write to: `ai/board/research-cto.md`
 
 ```markdown
 # CTO Research Report — Round {N}
@@ -198,7 +197,7 @@ Write to: `ai/board/director-research/cto-R{N}.md`
 
 ## Output Format — Phase 2 (Cross-Critique)
 
-Write to: `ai/board/cross-critique/cto-R{N}.md`
+Write to: `ai/board/critique-cto.md`
 
 ```markdown
 # CTO Cross-Critique — Round {N}

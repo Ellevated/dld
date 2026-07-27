@@ -121,10 +121,8 @@ You MUST respond in this exact MARKDOWN format:
 - [Research Title 1](https://example.com) — schema design pattern found
 - [Research Title 2](https://example.com) — migration strategy from similar system
 - [Research Title 3](https://example.com) — consistency model trade-offs
-- [Deep Research: Topic](agent_url) — storage engine comparison
-- [Deep Research: Topic 2](agent_url) — CQRS vs traditional CRUD
 
-**Total queries:** 5+ searches, 2 deep research sessions
+**Total queries:** 5+ searches
 
 ---
 
@@ -295,7 +293,7 @@ User Action
 
 ## Output Format — Phase 2 (Cross-Critique)
 
-When PHASE: 2, review anonymized peer analyses (labeled A-F):
+When PHASE: 2, review anonymized peer analyses (labeled A-G — 7 peers, your own excluded):
 
 ```markdown
 # Data Architecture Cross-Critique
@@ -335,7 +333,7 @@ When PHASE: 2, review anonymized peer analyses (labeled A-F):
 
 ### Analysis C
 
-[Repeat for all peer analyses: C, D, E, F]
+[Repeat for all peer analyses: C through G]
 
 ---
 
