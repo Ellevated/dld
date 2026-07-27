@@ -411,3 +411,158 @@ class TestNightReviewerInlineLookup:
         )
         assert r.returncode == 0
         assert r.stdout.strip() == "/tmp/test-project"
+
+
+# --- TECH-212: structural contract of the split ---
+
+import ast
+import io
+import re
+import tokenize
+
+import pytest
+
+VPS = Path(VPS_DIR)
+LEAF_MODULES = ["db_decisions.py", "db_findings.py", "db_cli.py"]
+
+# EC-1: every name a consumer resolves through `db.` (25 names — connection/slots/
+# projects/tasklog that stayed in db.py, plus the delegates to db_decisions/db_findings).
+PUBLIC_SURFACE = [
+    "get_db",
+    "try_acquire_slot",
+    "release_slot",
+    "get_project_state",
+    "get_all_projects",
+    "update_project_phase",
+    "log_task",
+    "finish_task",
+    "get_available_slots",
+    "get_provider_capacity",
+    "get_occupied_slots",
+    "get_task_by_pueue_id",
+    "seed_projects_from_json",
+    "record_decision",
+    "count_demotes_since",
+    "clear_decisions",
+    "log_sdk_post_result_error",
+    "log_gate_cycle",
+    "get_gate_health",
+    "save_finding",
+    "get_new_findings",
+    "update_finding_status",
+    "get_finding_by_id",
+    "get_all_findings",
+    "get_projects_for_night_scan",
+]
+
+
+class TestSplitContract:
+    def test_public_surface_intact_and_callable(self):
+        """EC-1: every name the five consumers bind is present on `db` and callable."""
+        assert len(PUBLIC_SURFACE) == 25
+        missing = [n for n in PUBLIC_SURFACE if not hasattr(db, n)]
+        assert missing == [], f"db lost public names: {missing}"
+        not_callable = [n for n in PUBLIC_SURFACE if not callable(getattr(db, n))]
+        assert not_callable == [], f"db names became non-callable: {not_callable}"
+
+    def test_from_db_import_get_db_still_works(self):
+        """EC-2: orchestrator_monitor.py:95 binds the name, not the module."""
+        from db import get_db  # noqa: PLC0415
+
+        assert callable(get_db)
+
+    @pytest.mark.parametrize("name", LEAF_MODULES)
+    def test_new_modules_are_leaves(self, name):
+        """EC-3: a cycle here would give `python3 db.py` two module objects.
+
+        Walks the AST instead of grepping the source, so a sibling leaf importing
+        another leaf by name (e.g. `import db_findings`) can never false-positive
+        against an actual `import db` / `from db import ...`.
+        """
+        tree = ast.parse((VPS / name).read_text(encoding="utf-8"), filename=name)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    assert alias.name != "db", f"{name} does `import db`"
+            elif isinstance(node, ast.ImportFrom):
+                assert node.module != "db", f"{name} does `from db import ...`"
+
+    @pytest.mark.parametrize("name", ["db.py", *LEAF_MODULES])
+    def test_under_loc_limit(self, name):
+        """EC-4 + EC-5: 400 LOC is the reason this task exists."""
+        loc = len((VPS / name).read_text(encoding="utf-8").splitlines())
+        assert loc <= 400, f"{name} is {loc} LOC"
+
+    def test_ensure_migrations_defined_once(self):
+        """EC-6: schema init has exactly one home across scripts/vps/*.py."""
+        defs = [
+            p.name
+            for p in VPS.glob("*.py")
+            if re.search(r"^def _ensure_migrations", p.read_text(encoding="utf-8"), re.M)
+        ]
+        assert defs == ["db.py"], f"_ensure_migrations defined in {defs}"
+
+    @pytest.mark.parametrize("name", LEAF_MODULES)
+    def test_sql_stays_parameterized(self, name):
+        """EC-7 / ADR-017: no SQL verb ever sits inside an f-string's own literal text.
+
+        `ast.JoinedStr` is not enough here: adjacent string-literal concatenation
+        (`"SELECT ... " f"AND ... {x}"`) merges into ONE JoinedStr node, so an
+        ast.Constant walk would see the plain "SELECT ..." literal as if it were
+        f-string content and false-positive on exactly the legitimate case this
+        test must tolerate — db_findings.get_projects_for_night_scan builds its
+        query as a plain string ("SELECT ...") concatenated with an f-string that
+        interpolates only the `?,?,?` placeholder list.
+
+        `tokenize` distinguishes them at the token-stream level: FSTRING_MIDDLE
+        tokens are exactly the literal text inside the f-string's own quotes,
+        never the adjacent plain STRING token. That isolates the placeholder-list
+        f-string ("AND project_id IN (...)", no SQL verb) from a hypothetical
+        `f"SELECT * FROM t WHERE id = {x}"` (verb sits in an FSTRING_MIDDLE token).
+
+        Keywords are matched with `\\b` word boundaries: db_cli's
+        `f"updated finding {argv[2]} -> {argv[3]}"` (a plain print statement,
+        no SQL at all) contains "UPDATED", a substring match on "UPDATE" would
+        false-positive there.
+        """
+        source = (VPS / name).read_text(encoding="utf-8")
+        sql_keyword_patterns = [
+            re.compile(rf"\b{kw}\b") for kw in ("SELECT", "INSERT", "UPDATE", "DELETE")
+        ]
+        tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+        for tok in tokens:
+            if tok.type != tokenize.FSTRING_MIDDLE:
+                continue
+            upper = tok.string.upper()
+            for pattern in sql_keyword_patterns:
+                assert not pattern.search(upper), (
+                    f"{name}: f-string literal segment contains SQL keyword "
+                    f"{pattern.pattern!r}: {tok.string!r}"
+                )
+        assert "% (" not in source, f"{name}: %-style SQL interpolation found"
+
+
+class TestDelegatedBehaviourRoundtrip:
+    """EC-10: prove the delegates actually commit through the PUBLIC `db.*` seam.
+
+    A delegate that handed over a context-manager instead of a connection would
+    silently not commit — these roundtrips would fail at the read-back step.
+    """
+
+    def test_record_decision_and_count_window(self, seed_project):
+        for i in range(4):
+            db.record_decision("testproject", f"TECH-{i}", "demote", "no_impl", demoted=True)
+        assert db.count_demotes_since(10) == 4
+        assert db.clear_decisions(10) == 4
+        assert db.count_demotes_since(10) == 0
+
+    def test_findings_lifecycle_through_delegates(self, seed_project):
+        fid = db.save_finding(
+            "testproject", "fp-contract", "high", "high", "src/x.py", "1-2", "sum", "sug"
+        )
+        assert fid is not None
+        new = db.get_new_findings("testproject")
+        assert any(f["id"] == fid and f["status"] == "new" for f in new)
+        db.update_finding_status(fid, "reviewed")
+        new_after = db.get_new_findings("testproject")
+        assert all(f["id"] != fid for f in new_after)
