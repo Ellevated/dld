@@ -1093,25 +1093,42 @@ def _record(project_id, spec_id, action, reason, *, demoted=False):
 
 
 def _render_and_commit_backlog(project_path: str, project_id: str) -> None:
-    """Rule 5: inline render of ai/backlog.md after every lifecycle write.
+    """Operator-only backlog refresh. NOT wired into verify_status_sync.
 
-    Best-effort. Lifecycle yaml is the SoT; backlog.md is a render. If render
-    fails, lifecycle write still succeeds and the next callback retries the
-    render. Logged but never raises.
+    ARCH-196 removed the inline call site: ai/backlog.md is single-writer
+    (spark/autopilot Edit), and lifecycle._atomic_write already folds a
+    status-only `render_backlog.sync_status` pass into the same plumbing
+    commit as the yaml (lifecycle.py:318-353). Do NOT re-wire this into the
+    callback hot path.
+
+    This helper must stay NON-DESTRUCTIVE (BUG-217). `render_backlog.render_backlog()`
+    rebuilds the file from lifecycle yaml alone and destroys founder descriptions,
+    section structure and `AFTER <ID>` markers. Those markers are the ONLY place a
+    dependency between specs lives — `orchestrator._backlog_deps` (orchestrator.py:737)
+    reads nothing else, and it fails silently: no marker -> empty dep set -> dispatch.
+    So: sync statuses into the backlog that is already in HEAD; fall back to the full
+    rebuild only when HEAD has no ai/backlog.md at all (new project).
+
+    Best-effort: logged, never raises.
     """
     try:
         import render_backlog
 
-        content = render_backlog.render_backlog(project_path)
+        head = lifecycle.run_git(["git", "show", "HEAD:ai/backlog.md"], cwd=project_path)
+        if head.returncode == 0:
+            content = render_backlog.sync_status(project_path, head.stdout)
+        else:
+            log.info("RENDER: no ai/backlog.md in HEAD for %s — full rebuild", project_id)
+            content = render_backlog.render_backlog(project_path)
     except Exception as exc:  # noqa: BLE001
-        log.warning("RENDER: render_backlog failed for %s: %s", project_id, exc)
+        log.warning("RENDER: backlog render failed for %s: %s", project_id, exc)
         return
     try:
         ok = lifecycle.write_file_atomic(
             project_path,
             "ai/backlog.md",
             content,
-            "render(backlog): auto-sync from lifecycle",
+            "render(backlog): status sync from lifecycle",
             by="callback",
         )
         if not ok:
@@ -1393,8 +1410,10 @@ def verify_status_sync(
         return
 
     # Rule 5 (ARCH-196): inline backlog render REMOVED — backlog.md is now
-    # single-writer (spark/autopilot Edit). The render helper is retained
-    # at line ~975 as an operator emergency CLI tool only.
+    # single-writer (spark/autopilot Edit); lifecycle._atomic_write folds a
+    # status-only sync_status pass into the same commit as the yaml.
+    # _render_and_commit_backlog (:1095) is an operator-only helper with no
+    # live caller. Re-wiring it here reverts ARCH-196 — do not.
 
     _emit_audit(
         project_id,

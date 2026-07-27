@@ -12,9 +12,14 @@ Uses:
   - lifecycle: LIFECYCLE_DIR constant; read via HEAD git object store (fallback to WT)
 
 Used by:
-  - lifecycle.py: _atomic_write() hook (TASK 4 stub — wired in Task 5)
-  - migrate_backlog_to_lifecycle.py: render after migration
-  - callback.py: optional post-write render
+  - lifecycle.py: _atomic_write() folds sync_status() into the lifecycle commit
+    (the ONLY live writer of ai/backlog.md — status cells only)
+  - migrate_backlog_to_lifecycle.py: full render after migration (one-shot)
+  - callback.py: _render_and_commit_backlog — operator-only, no live caller
+
+WARNING: render_backlog() rebuilds the file from lifecycle yaml alone. It destroys
+founder descriptions, section structure and `AFTER <ID>` dependency markers (BUG-217).
+Use sync_status() unless the file genuinely does not exist yet.
 
 Glossary: ai/glossary/orchestrator.md
 """
