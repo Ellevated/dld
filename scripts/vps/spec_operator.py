@@ -34,7 +34,8 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-import lifecycle  # noqa: E402  (sys.path mutation above)
+import console_safe  # noqa: E402  (sys.path mutation above)
+import lifecycle  # noqa: E402
 
 try:
     import callback  # type: ignore
@@ -159,6 +160,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Before any output: the success line echoes an operator-supplied reason, which
+    # is routinely non-ASCII. Printing it must never override the exit code.
+    console_safe.enable()
     args = build_parser().parse_args(argv)
     return args.func(args)
 

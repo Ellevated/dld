@@ -53,6 +53,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+import console_safe  # noqa: E402
 import lifecycle  # noqa: E402
 
 log = logging.getLogger("lifecycle_audit")
@@ -265,9 +266,7 @@ def audit_project(repo: str) -> list[dict]:
 
     # ── 2. orphan_spec_md: md exists but yaml absent in HEAD
     for sid in sorted(md_ids - yaml_ids):
-        findings.append(
-            {"category": "orphan_spec_md", "spec_id": sid, "detail": md_map[sid]}
-        )
+        findings.append({"category": "orphan_spec_md", "spec_id": sid, "detail": md_map[sid]})
 
     # ── 3. orphan_yaml: yaml present, no md
     for sid in sorted(yaml_ids - md_ids):
@@ -275,9 +274,7 @@ def audit_project(repo: str) -> list[dict]:
 
     # ── 4. missing_from_backlog: yaml exists, backlog has no row
     for sid in sorted(yaml_ids - backlog_ids):
-        findings.append(
-            {"category": "missing_from_backlog", "spec_id": sid, "detail": "no row"}
-        )
+        findings.append({"category": "missing_from_backlog", "spec_id": sid, "detail": "no row"})
 
     # ── 5. bootstrap_as_done: TECH-195 signature
     for sid in sorted(yaml_ids):
@@ -329,15 +326,11 @@ def audit_project(repo: str) -> list[dict]:
 
     # ── 9. wt_lifecycle_dirty
     for line in _git_dirty(repo, lifecycle.LIFECYCLE_DIR):
-        findings.append(
-            {"category": "wt_lifecycle_dirty", "spec_id": "-", "detail": line}
-        )
+        findings.append({"category": "wt_lifecycle_dirty", "spec_id": "-", "detail": line})
 
     # ── 10. wt_features_dirty
     for line in _git_dirty(repo, "ai/features"):
-        findings.append(
-            {"category": "wt_features_dirty", "spec_id": "-", "detail": line}
-        )
+        findings.append({"category": "wt_features_dirty", "spec_id": "-", "detail": line})
 
     # ── 11. unauthorized_writer (ADR-025: spark, autopilot not in writers)
     for sid in sorted(yaml_ids):
@@ -372,9 +365,7 @@ def audit_project(repo: str) -> list[dict]:
     # ── 14. bootstrap_anomaly
     n = _read_counter(repo, ".bootstrap-anomaly-count")
     if n > 0:
-        findings.append(
-            {"category": "bootstrap_anomaly", "spec_id": "-", "detail": f"count={n}"}
-        )
+        findings.append({"category": "bootstrap_anomaly", "spec_id": "-", "detail": f"count={n}"})
 
     # ── 15. bootstrap_unparsable (TECH-195 Task 1)
     n = _read_counter(repo, ".bootstrap-unparsable-count")
@@ -493,13 +484,12 @@ def _print_text(per_project: list[dict], overall: list[dict], category_filter: s
 
 
 def main(argv: list[str] | None = None) -> int:
+    console_safe.enable()
     parser = argparse.ArgumentParser(
         prog="lifecycle_audit",
         description="READ-ONLY multi-project lifecycle drift detector (TECH-195).",
     )
-    parser.add_argument(
-        "--project", dest="project_filter", help="Only audit this project_id."
-    )
+    parser.add_argument("--project", dest="project_filter", help="Only audit this project_id.")
     parser.add_argument(
         "--projects-json",
         help="Path to projects.json (default: $PROJECTS_JSON or scripts/vps/projects.json).",

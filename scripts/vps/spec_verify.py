@@ -34,6 +34,8 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+import console_safe  # noqa: E402
+
 try:
     from callback import _parse_allowed_files  # type: ignore
 except Exception as exc:  # noqa: BLE001
@@ -320,6 +322,7 @@ def render(rep: Report) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    console_safe.enable()
     parser = argparse.ArgumentParser(
         description="Automated Steps 1–3 of the manual spec verification protocol."
     )

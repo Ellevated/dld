@@ -33,6 +33,7 @@ SCRIPT_DIR = str(Path(__file__).resolve().parent)
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
+import console_safe  # noqa: E402
 import lifecycle  # noqa: E402
 
 PROJECTS_JSON = os.environ.get("PROJECTS_JSON", str(Path(SCRIPT_DIR) / "projects.json"))
@@ -46,6 +47,7 @@ def _projects() -> list[tuple[str, str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    console_safe.enable()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--confirm", action="store_true", help="execute (default: dry-run)")
     ap.add_argument("--project", help="limit to one project id")

@@ -23,6 +23,7 @@ from glob import glob
 from pathlib import Path
 from typing import Optional
 
+import console_safe
 import yaml
 from lifecycle import build_initial_yaml
 
@@ -132,6 +133,7 @@ def _build_pair(
 
 
 def main() -> int:
+    console_safe.enable()
     parser = argparse.ArgumentParser(
         description="Migrate ai/backlog.md + ai/features/*.md to ai/lifecycle/*.yaml"
     )

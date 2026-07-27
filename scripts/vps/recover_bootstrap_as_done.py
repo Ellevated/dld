@@ -43,6 +43,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+import console_safe  # noqa: E402
 import lifecycle  # noqa: E402
 
 log = logging.getLogger("recover_bootstrap_as_done")
@@ -99,9 +100,7 @@ def recover_one(project_dir: str, spec_id: str, reason: str) -> int:
         5 on any other lifecycle error (race, missing HEAD yaml, etc).
     """
     try:
-        lifecycle.recover_bootstrap_artifact(
-            project_dir, spec_id, reason=reason, by="operator"
-        )
+        lifecycle.recover_bootstrap_artifact(project_dir, spec_id, reason=reason, by="operator")
         return 0
     except lifecycle.NotBootstrapArtifactError as exc:
         log.warning("REFUSED: %s/%s: %s", project_dir, spec_id, exc)
@@ -216,6 +215,7 @@ def _print_text(summary: list[dict], dry_run: bool) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    console_safe.enable()
     parser = argparse.ArgumentParser(
         prog="recover_bootstrap_as_done",
         description="Find/demote bootstrap-as-done lifecycle artifacts (TECH-195).",
