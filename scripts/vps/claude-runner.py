@@ -246,6 +246,85 @@ def _extract_task_status(result_text: str) -> str:
     return m.group(1) if m else ""
 
 
+# Models this generation is supposed to use. Subagents resolve `opus`/`sonnet`
+# aliases through the CLI, so a stale binary silently serves a previous
+# generation to every subagent while the main loop's explicit pin looks correct.
+# Production logs from 2026-07-16..18 show exactly that: main loop on
+# claude-opus-4-8 with claude-opus-4-6 and claude-sonnet-4-6 subagents underneath.
+_EXPECTED_MODELS = frozenset(
+    m.strip()
+    for m in os.environ.get(
+        "AUTOPILOT_EXPECTED_MODELS",
+        "claude-opus-5,claude-sonnet-5,claude-haiku-4-5-20251001",
+    ).split(",")
+    if m.strip()
+)
+
+
+def _usage_field(usage: dict, *names: str) -> int:
+    """Read a usage counter under either camelCase or snake_case."""
+    for n in names:
+        if n in usage:
+            try:
+                return int(usage[n] or 0)
+            except (TypeError, ValueError):
+                return 0
+    return 0
+
+
+def _session_totals(model_usage: dict) -> dict:
+    """Roll model_usage up into session-wide totals, and flag model drift.
+
+    The top-level counters come from ResultMessage and describe the MAIN LOOP
+    only, while cost_usd covers the whole session — main loop plus every
+    subagent. Comparing them mixes scopes silently: production logs carry runs
+    with `turns: 1` next to `cost_usd: 26.19`, because the main loop resumed,
+    read a background result and stopped, while its subagents had already spent
+    the money. State both scopes instead of leaving the reader to guess.
+    """
+    totals = {
+        "session_input_tokens": 0,
+        "session_output_tokens": 0,
+        "session_cache_creation_input_tokens": 0,
+        "session_cache_read_input_tokens": 0,
+        "session_cache_hit_rate": 0.0,
+        "cost_by_model": {},
+        "model_drift": [],
+    }
+    if not isinstance(model_usage, dict):
+        return totals
+
+    for model, usage in model_usage.items():
+        if not isinstance(usage, dict):
+            usage = getattr(usage, "__dict__", {}) or {}
+        totals["session_input_tokens"] += _usage_field(usage, "inputTokens", "input_tokens")
+        totals["session_output_tokens"] += _usage_field(usage, "outputTokens", "output_tokens")
+        totals["session_cache_creation_input_tokens"] += _usage_field(
+            usage, "cacheCreationInputTokens", "cache_creation_input_tokens"
+        )
+        totals["session_cache_read_input_tokens"] += _usage_field(
+            usage, "cacheReadInputTokens", "cache_read_input_tokens"
+        )
+        cost = usage.get("costUSD", usage.get("cost_usd", 0)) or 0
+        try:
+            totals["cost_by_model"][model] = round(float(cost), 4)
+        except (TypeError, ValueError):
+            totals["cost_by_model"][model] = 0.0
+        if model not in _EXPECTED_MODELS:
+            totals["model_drift"].append(model)
+
+    denom = (
+        totals["session_cache_read_input_tokens"]
+        + totals["session_cache_creation_input_tokens"]
+        + totals["session_input_tokens"]
+    )
+    if denom:
+        totals["session_cache_hit_rate"] = round(
+            totals["session_cache_read_input_tokens"] / denom, 4
+        )
+    return totals
+
+
 _EXIT_REASONS = {
     124: "timeout",
     2: "cli_connection_error",
@@ -563,6 +642,19 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         "salvage": salvage_info,
         "result_preview": result_text[:1000] if result_text else "",
     }
+    # `turns` and the counters above are MAIN-LOOP scope; cost_usd is session
+    # scope. Publish the session scope explicitly rather than leaving the two
+    # to be compared as if they matched.
+    log_data.update(_session_totals(model_usage))
+    if log_data["model_drift"]:
+        logger.warning(
+            "MODEL DRIFT: subagents ran %s — expected %s. A CLI that predates the "
+            "pinned generation resolves `opus`/`sonnet` aliases to its own era, so "
+            "the main loop's pin can look correct while every subagent is a "
+            "generation behind.",
+            ", ".join(sorted(log_data["model_drift"])),
+            ", ".join(sorted(_EXPECTED_MODELS)),
+        )
     log_file.write_text(json.dumps(log_data, ensure_ascii=False, indent=2))
     logger.info(
         "done project=%s exit=%d turns=%d cost=$%.4f in=%d out=%d cache_read=%d cache_hit=%.2f",
