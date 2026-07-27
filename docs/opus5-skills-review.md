@@ -128,9 +128,36 @@ Ordered by where money burns, not by what is easiest.
       - [x] Telemetry made trustworthy first (d414895): session scope published
             alongside main-loop scope, subagent model drift detected. Both corrections
             above came out of it.
-      - [ ] Loop change. Metric: **session cache_creation per completed spec**, against
-            the clean Opus 5 baseline below. Hit rate is not the metric — it stays high
-            regardless.
+      - [x] Loop change, 2026-07-27 (77d5b09): spec-reviewer folded into the loop.
+            4 dispatches per task → 3. See "What the agents' contents changed" below.
+      - [ ] Measure it: **session cache_creation per completed spec** on the next
+            real specs, against the clean Opus 5 baseline below. Hit rate is not the
+            metric — it stays high regardless.
+
+### What the agents' contents changed, 2026-07-27
+
+The plan going in was "one long-lived agent instead of six". Reading what the
+agents actually carry changed that to a single removal.
+
+**Removed — `spec-reviewer`.** 150 lines of pure procedure: read the spec, compare
+requirement by requirement, flag missing or extra. Its two unique checks were
+already covered deterministically — TODO/FIXME by `pre-review-check.py` in Step 3a,
+Allowed Files by the pre-edit hook and the callback guard. What remained is a
+comparison the loop is better placed to make, holding both the spec and the diff
+since PHASE 1.
+
+**Kept — `tester`.** Queued for removal on the same cost argument, then reading
+`tester.md` reversed it: test-selection tables per domain and infra path, the
+immutable-test rules for `tests/contracts/` and `tests/regression/`, eval-judge
+dispatch for `llm-judge` criteria. That is a knowledge module, not ceremony, and
+inlining 214 lines into every task is the prompt bloat this review exists to avoid.
+
+**Kept — `review`.** The one place independence is load-bearing: an author cannot
+see their own duplication. Measured at 0.883 defect recall in the ADR-029 eval.
+
+The lesson generalises to steps 2–4: the question is never "how many agents" but
+**does this agent carry knowledge or independence the caller lacks**. A step that
+only re-derives the caller's position is paying cache creation for nothing.
 
 ### Clean Opus 5 baseline (7 runs, 2026-07-26..27)
 
