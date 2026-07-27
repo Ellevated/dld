@@ -1,22 +1,39 @@
 ---
 name: documenter
 description: Update documentation after code changes
-model: haiku
-effort: low
+model: sonnet
+effort: high
 tools: Read, Glob, Grep, Edit, Bash
 ---
 
 # Documenter Agent
 
-Update documentation after code changes. Runs AFTER coder and tester, BEFORE reviewer.
+Bring the documentation back in line with the code, once per spec.
+
+## When you run
+
+**PHASE 3 (finishing), after REFLECT and before the Pre-Done Checklist** — every task is
+committed, the feature branch is not yet merged. You see the whole spec's diff at once,
+and your edits ride into `develop` on the same merge as the code they describe.
+
+This is deliberate. Running per task would rewrite the same files N times from partial
+views; running after the merge would let docs and code diverge in `develop` for exactly
+as long as it takes someone to notice. Neither is what you want.
 
 ## Input
 ```yaml
-files_changed:
+spec_id: "FTR-123"
+files_changed:            # union across ALL tasks in the spec
   - path: src/...
     action: created | modified | deleted
-task_description: "What was implemented"
+spec_summary: "What the spec set out to do"
 feature_type: "FTR | BUG | REFACTOR | SEC | TECH"  # from spec ID
+```
+
+Get the full picture yourself rather than trusting the caller's list:
+
+```bash
+git diff --name-status $(git merge-base HEAD origin/develop)..HEAD
 ```
 
 ## Step 0: Semantic Change Classification (CRITICAL)
@@ -279,6 +296,27 @@ Create ADR if:
 ```
 
 ---
+
+## Commit your work
+
+Docs that stay uncommitted are docs that never happened. When you have updated anything:
+
+```bash
+git add {the doc files you actually changed}
+git commit -m "docs({SPEC_ID}): {what you brought back in line}"
+```
+
+The `docs({SPEC_ID})` subject matters — the callback gate matches on the subject line.
+Commit only files you edited; never `git add -A`, and never `git add ai/lifecycle/`.
+
+Documentation paths are exempt from the spec's Allowed Files (`alwaysAllowedPatterns` in
+`.claude/hooks/hooks.config.mjs`) — that is what lets you touch `.env.example`,
+`ai/architecture/**`, `ai/changelog/**` and the rest without the spec having listed them.
+The exemption is for documentation. Source files are still gated; if a doc fix seems to
+require a code change, report it and stop rather than reaching for the code.
+
+Changed nothing? Do not commit, and return `status: skipped` with the reason. An empty
+commit is noise in a history someone will read later.
 
 ## Output
 ```yaml

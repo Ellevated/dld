@@ -128,6 +128,7 @@ Their level table names `low` as the level for **subagents** specifically.
 | synthesizers (board, triz) | sonnet | medium | Merge/format |
 | facilitators (architect/board), council-synthesizer | sonnet | **medium** | Down from max. Process keeping is not a reasoning task — max here was pure waste. (`spark-facilitator` was deleted 2026-07-27 — dispatched by nothing) |
 | triz data-collector | sonnet | medium | Shell + aggregation |
+| documenter | **sonnet** | **high** | Greps the whole tree for stale references and judges BREAKING vs REFACTOR — exploratory tool use, which is where higher effort pays. Was haiku/low while unwired; wired into PHASE 3 on 2026-07-27 |
 | bughunt scope-decomposer / findings-collector / report-updater | haiku | — | Format-heavy, clear patterns. **`effort:` has no meaning here** — see below |
 
 **Rule:** effort is a *behavioral signal*, not a token budget. At low effort Claude still

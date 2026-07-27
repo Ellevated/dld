@@ -84,7 +84,7 @@
 |-------|------|
 | **spark** | New feature, architecture decision |
 | **plan** | After spark — detailed tasks |
-| **autopilot** | Execute tasks (coder→tester→documenter→reviewer) |
+| **autopilot** | Execute tasks (coder→tester→review per task; documenter once per spec at finish) |
 | **council** | Complex decisions (5 experts) |
 | **debug** | Root cause analysis |
 

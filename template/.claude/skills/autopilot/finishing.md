@@ -20,6 +20,11 @@ Final verification, status update, merge, and cleanup.
    └─ Write upstream signals if issues found
    └─ Informational only, never blocks
 
+3.5. DOCUMENTER (subagent — see below)
+   └─ Brings docs back in line with the code, once per spec
+   └─ Commits its own edits to the feature branch
+   └─ Never blocks: a documenter failure is a warning, not a stop
+
 4. Pre-Done Checklist (see below)
    └─ ALL items must be checked
 
@@ -172,6 +177,44 @@ mcp__exa__web_search_exa:
 
 ---
 
+## Documenter (Step 3.5)
+
+Runs once per spec, here — not per task, and not after the merge.
+
+Every task is committed and the branch is not yet merged, so the agent sees the whole
+change at once and its edits ride into `develop` on the same merge as the code they
+describe. Per task it would rewrite the same files from partial views; after the merge,
+docs and code would sit diverged in `develop` until someone noticed. Documentation drift
+is not free — stale docs cost the next session the same debugging time that a stale spec
+costs autopilot.
+
+```yaml
+Task tool:
+  subagent_type: "documenter"
+  prompt: |
+    spec_id: "{SPEC_ID}"
+    spec_summary: "{one-line statement of what the spec set out to do}"
+    feature_type: "{FTR | BUG | TECH | ARCH}"
+    files_changed: [{union of files_changed across ALL tasks}]
+```
+
+```
+├─ status: completed → note docs_updated in the Autopilot Log → Step 4
+├─ status: skipped   → note the reason in the Autopilot Log → Step 4
+└─ error / no return → WARN in the Autopilot Log, continue to Step 4
+```
+
+**Never blocks.** A spec whose code is correct does not become un-shippable because a
+changelog entry failed to write. But a skip must be *recorded* — an unexplained silence
+here is how the changelog fell 1.5 days behind before.
+
+**Why the agent can edit files the spec never listed:** documentation paths
+(`.env.example`, `ai/architecture/**`, `ai/changelog/**`, `ai/decisions/**`,
+`ai/glossary/**`, `README.md`, `docs/**`) are in `alwaysAllowedPatterns` in
+`.claude/hooks/hooks.config.mjs`. A spec's Allowed Files lists the code being changed,
+never the docs describing it — before that exemption existed, this dispatch would have
+been denied by the pre-edit hook on its own first edit.
+
 ## Pre-Done Checklist
 
 ⛔ **Before setting status=done, verify ALL items:**
@@ -186,8 +229,14 @@ mcp__exa__web_search_exa:
 - [ ] E2E user journey works (for UI features)
 
 ### Documentation
-- [ ] If BREAKING/FEATURE change → changelog entry added
-- [ ] Related docs updated
+- [ ] Documenter (Step 3.5) ran, and its result is in the Autopilot Log
+- [ ] If it returned `completed` → its `docs_updated` list is recorded and committed
+- [ ] If it returned `skipped` → the reason is recorded, not just the status
+
+These used to read "changelog entry added / related docs updated" — two checkboxes with
+no one assigned to them. They were ticked by whoever was closing the spec, which is why
+documentation drifted while every box stayed green. The work now has an owner; the
+checklist verifies the owner ran.
 
 ### Autopilot Log Completeness
 For EACH task, verify:

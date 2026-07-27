@@ -18,7 +18,8 @@ Prevent tech debt BEFORE it accumulates.
 
 ## When
 
-1. **Automatic** — In autopilot cycle after documenter, BEFORE commit
+1. **Automatic** — PHASE 2 task loop, Step 5, BEFORE commit (documenter is separate:
+   it runs once per spec in PHASE 3, after all tasks are committed)
 2. **On request** — "review" before big changes
 
 ## What It Checks

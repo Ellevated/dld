@@ -129,6 +129,23 @@ export default {
       '.gitignore',
       'pyproject.toml',
       '.claude/**',
+
+      // Documentation. The `documenter` agent runs in PHASE 3 and has to reach
+      // these; a spec's Allowed Files lists the code being changed, never the
+      // docs that describe it, so without this the agent is blocked on its own
+      // first edit. That is why it sat unwired: not a forgotten dispatch, a
+      // dispatch that could not have worked.
+      //
+      // Scope is documentation only — source stays gated by the spec allowlist.
+      '.env.example',
+      'README.md',
+      'CHANGELOG.md',
+      'docs/**',
+      'ai/ARCHITECTURE.md',
+      'ai/architecture/**',
+      'ai/changelog/**',
+      'ai/decisions/**',
+      'ai/glossary/**',
     ],
   },
 
