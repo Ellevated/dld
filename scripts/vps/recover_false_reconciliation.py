@@ -60,13 +60,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  skip {project_id}: path not found ({path})")
             continue
         try:
-            done_specs = lifecycle.list_by_status(path, "done")
+            # Returns full lifecycle dicts, not ids — read the rows, don't re-read by id.
+            done_rows = lifecycle.list_by_status(path, "done")
         except Exception as exc:  # noqa: BLE001 — operator tool, report and continue
             print(f"  skip {project_id}: {exc}")
             continue
 
-        for spec_id in done_specs:
-            row = lifecycle.read_lifecycle(path, spec_id) or {}
+        for row in done_rows:
+            spec_id = row.get("spec_id")
+            if not spec_id:
+                continue
             reason = row.get("blocked_reason") or ""
             if not reason.startswith("already_implemented_on_develop:"):
                 continue
