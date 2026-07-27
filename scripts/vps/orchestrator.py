@@ -852,12 +852,31 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
         )
         return False
 
+    # Provider selection. Claude runs everything by default; a spec may name a
+    # different provider, which is treated as a deliberate request rather than a
+    # hint — so a busy provider makes the spec wait rather than silently running
+    # somewhere else.
+    #
+    # The old condition was `get_available_slots(requested) >= 0`, and COUNT(*) is
+    # never negative, so the spec's provider always won — including when it named
+    # a provider with no slots configured at all (a typo, or a runner that was
+    # never installed). Capacity 0 then failed the check below every cycle, and
+    # the spec sat queued forever under a log line reading "no slots".
     m = re.search(r"^provider:\s+(\w+)", spec_files[0].read_text(errors="replace"), re.MULTILINE)
-    if m and db.get_available_slots(m.group(1)) >= 0:
-        provider = m.group(1)
+    if m:
+        requested = m.group(1)
+        if db.get_provider_capacity(requested) > 0:
+            provider = requested
+        else:
+            log.warning(
+                "spec %s requests provider=%s which has no slots configured — falling back to %s",
+                spec_id,
+                requested,
+                provider,
+            )
 
     if db.get_available_slots(provider) < 1:
-        log.info("no slots for %s provider=%s", project_id, provider)
+        log.info("no slots for %s provider=%s (busy)", project_id, provider)
         return False
 
     task_label = f"{project_id}:{spec_id}"

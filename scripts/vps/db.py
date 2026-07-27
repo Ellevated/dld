@@ -262,6 +262,22 @@ def get_available_slots(provider: str) -> int:
         return row["cnt"]
 
 
+def get_provider_capacity(provider: str) -> int:
+    """Total slots configured for a provider, occupied or not.
+
+    Distinguishes "this provider is busy right now" from "this provider does not
+    exist here" — get_available_slots() returns 0 for both, which is how a spec
+    naming a provider that was never configured could block its own dispatch
+    forever under a log line that said "no slots".
+    """
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM compute_slots WHERE provider = ?",
+            (provider,),
+        ).fetchone()
+        return row["cnt"]
+
+
 def get_occupied_slots() -> list[dict]:
     """Return all compute_slots with non-NULL pueue_id.
 

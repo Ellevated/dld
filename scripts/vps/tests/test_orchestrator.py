@@ -339,7 +339,7 @@ def _write_inbox_file(inbox_dir: Path, name: str, status: str | None) -> Path:
         "Idea body text.",
     ]
     f = inbox_dir / name
-    f.write_text("\n".join(parts))
+    f.write_text("\n".join(parts), encoding="utf-8")
     return f
 
 
@@ -366,14 +366,14 @@ class TestScanInboxStatusGate:
         assert not f.exists()
         done_file = inbox_dir / "done" / "20260507-queued.md"
         assert done_file.exists()
-        text = done_file.read_text()
+        text = done_file.read_text(encoding="utf-8")
         assert "**Status:** processing" in text
         assert "**Status:** queued" not in text
 
     def test_scan_inbox_ignores_draft(self, tmp_path, seed_project):
         inbox_dir = tmp_path / "ai" / "inbox"
         f = _write_inbox_file(inbox_dir, "20260507-draft.md", "draft")
-        original = f.read_text()
+        original = f.read_text(encoding="utf-8")
 
         with patch("orchestrator._pueue_add") as mock_add:
             count = orchestrator.scan_inbox("testproject", str(tmp_path))
@@ -381,7 +381,7 @@ class TestScanInboxStatusGate:
         assert count == 0
         assert not mock_add.called
         assert f.exists()
-        assert f.read_text() == original
+        assert f.read_text(encoding="utf-8") == original
 
     @pytest.mark.parametrize("status", ["clarifying", "stale", "rejected"])
     def test_scan_inbox_ignores_clarifying_stale_rejected(self, tmp_path, seed_project, status):
@@ -399,7 +399,7 @@ class TestScanInboxStatusGate:
         """Regression guard for clean break: legacy `Status: new` MUST NOT dispatch."""
         inbox_dir = tmp_path / "ai" / "inbox"
         f = _write_inbox_file(inbox_dir, "20260507-legacy.md", "new")
-        original = f.read_text()
+        original = f.read_text(encoding="utf-8")
 
         with patch("orchestrator._pueue_add") as mock_add:
             count = orchestrator.scan_inbox("testproject", str(tmp_path))
@@ -407,7 +407,7 @@ class TestScanInboxStatusGate:
         assert count == 0
         assert not mock_add.called
         assert f.exists()
-        assert f.read_text() == original
+        assert f.read_text(encoding="utf-8") == original
 
     def test_scan_inbox_no_status_field(self, tmp_path, seed_project):
         inbox_dir = tmp_path / "ai" / "inbox"
@@ -431,7 +431,7 @@ class TestBootstrapAnomaly:
         # Build backlog with each spec ID + status=queued, plus one filler col so
         # the regex sees `| ID | desc | queued | P0 | spec |`.
         rows = "\n".join(f"| {sid} | desc | queued | P0 | [spec]({sid}.md) |" for sid in spec_ids)
-        backlog.write_text(rows)
+        backlog.write_text(rows, encoding="utf-8")
         # Each spec.md file in features/ with the spec ID in the filename
         for sid in spec_ids:
             (features / f"{sid}-2026-05-23-anomaly-test.md").write_text(
@@ -503,7 +503,7 @@ class TestBootstrapAnomaly:
         assert "created 5 lifecycle yamls" in anomaly_logs[0].message
         counter = tmp_path / "ai" / ".bootstrap-anomaly-count"
         assert counter.is_file()
-        assert counter.read_text().strip() == "1"
+        assert counter.read_text(encoding="utf-8").strip() == "1"
 
 
 class TestHeartbeatMonitor:
@@ -531,7 +531,7 @@ class TestHeartbeatMonitor:
 
         hb = tmp_path / ".orchestrator-heartbeat"
         stale_ts = datetime.now(tz=timezone.utc) - timedelta(minutes=15)
-        hb.write_text(stale_ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        hb.write_text(stale_ts.strftime("%Y-%m-%dT%H:%M:%SZ"), encoding="utf-8")
         monkeypatch.setattr(heartbeat_monitor, "HEARTBEAT_FILE", hb)
 
         # event_writer.notify is imported lazily inside main() — patch via sys.modules
@@ -572,7 +572,7 @@ class TestTOCTOURecheck:
         """Create a dummy spec file so scan_queued can glob for it."""
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True, exist_ok=True)
-        (features / f"{spec_id}-dummy.md").write_text("# Dummy spec\n")
+        (features / f"{spec_id}-dummy.md").write_text("# Dummy spec\n", encoding="utf-8")
 
     def test_stale_block_stops_dispatch(self, tmp_path, seed_project):
         """EC-4: lifecycle re-read returns 'blocked' → abort, no pueue add."""
@@ -741,7 +741,7 @@ class TestDependencyGate:
         backlog = tmp_path / "ai" / "backlog.md"
         backlog.parent.mkdir(parents=True, exist_ok=True)
         header = "| ID | status | kind | date | desc |\n| --- | --- | --- | --- | --- |\n"
-        backlog.write_text(header + "\n".join(rows) + "\n")
+        backlog.write_text(header + "\n".join(rows) + "\n", encoding="utf-8")
 
     # --- _backlog_deps ---
 
@@ -807,7 +807,7 @@ class TestDependencyGate:
         """ARCH-1246 (dep unmet) skipped → FTR-1247 (no dep) dispatched."""
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True, exist_ok=True)
-        (features / "FTR-1247-dummy.md").write_text("# dummy\n")
+        (features / "FTR-1247-dummy.md").write_text("# dummy\n", encoding="utf-8")
         queued = [{"spec_id": "ARCH-1246"}, {"spec_id": "FTR-1247"}]
         mock_add = MagicMock(return_value=42)
 
@@ -872,7 +872,7 @@ class TestReconciliationGate:
     def _setup_features(self, tmp_path: Path, spec_id: str) -> None:
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True, exist_ok=True)
-        (features / f"{spec_id}-dummy.md").write_text("# Dummy spec\n")
+        (features / f"{spec_id}-dummy.md").write_text("# Dummy spec\n", encoding="utf-8")
 
     def test_already_implemented_marks_done_no_dispatch(self, tmp_path, seed_project):
         """Positive allowlist + implementation commit on develop → write done, no pueue add."""
@@ -1114,7 +1114,7 @@ class TestSpecReadinessGate:
         spec_id = "FTR-READY4"
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True)
-        (features / f"{spec_id}-console-scaffold.md").write_text("# Spec\n")
+        (features / f"{spec_id}-console-scaffold.md").write_text("# Spec\n", encoding="utf-8")
         mock_add = MagicMock(return_value=42)
 
         with (
@@ -1150,7 +1150,7 @@ class TestSpecReadinessGate:
         spec_id = "FTR-0081"
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True)
-        (features / f"{spec_id}-2026-07-26-console-scaffold.md").write_text("# Spec\n")
+        (features / f"{spec_id}-2026-07-26-console-scaffold.md").write_text("# Spec\n", encoding="utf-8")
         mock_add = MagicMock(return_value=42)
 
         with (
@@ -1178,6 +1178,110 @@ class TestSpecReadinessGate:
 
         assert result is True
         mock_add.assert_called_once()
+
+
+# --- Provider selection: spec request vs project default ---
+
+
+class TestProviderSelection:
+    """Claude runs everything by default; a spec may name another provider.
+
+    The old condition was `get_available_slots(requested) >= 0`, and COUNT(*) is
+    never negative — so the spec's provider always won, including when it named
+    one with no slots configured at all. Capacity 0 then failed the availability
+    check every cycle and the spec sat queued forever, under a log line that said
+    "no slots" and pointed at the wrong thing entirely.
+    """
+
+    def _dispatch(self, tmp_path, spec_body, capacity, available, mock_add):
+        spec_id = "FTR-PROV1"
+        features = tmp_path / "ai" / "features"
+        features.mkdir(parents=True, exist_ok=True)
+        (features / f"{spec_id}-provider.md").write_text(spec_body, encoding="utf-8")
+
+        with (
+            patch.object(
+                orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+            ),
+            patch("orchestrator._unmet_dependencies", return_value=[]),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "queued", "spec_id": spec_id},
+            ),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator.db.get_provider_capacity", side_effect=capacity),
+            patch("orchestrator.db.get_available_slots", side_effect=available),
+            patch("orchestrator._pueue_add", mock_add),
+            patch("orchestrator.SCRIPT_DIR", tmp_path),
+            patch("orchestrator.db.try_acquire_slot") as mock_acquire,
+            patch("orchestrator.db.log_task"),
+            patch("orchestrator.db.update_project_phase"),
+            patch.object(orchestrator.gate_logic, "parse_allowed_files", return_value=None),
+        ):
+            result = orchestrator.scan_queued("testproject", str(tmp_path))
+        return result, mock_acquire
+
+    def test_unknown_provider_falls_back_to_default(self, tmp_path, seed_project):
+        """`provider: openai` is not configured here — run on claude, do not stall."""
+        mock_add = MagicMock(return_value=42)
+        result, mock_acquire = self._dispatch(
+            tmp_path,
+            "# Spec\nprovider: openai\n",
+            capacity=lambda p: 0,  # openai has no slots at all
+            available=lambda p: 2,  # claude does
+            mock_add=mock_add,
+        )
+
+        assert result is True
+        assert mock_add.call_args[0][0] == "claude-runner"
+        assert mock_acquire.call_args[0][1] == "claude"
+
+    def test_configured_provider_wins(self, tmp_path, seed_project):
+        """A deliberate `provider: codex` is honoured when codex exists and is free."""
+        mock_add = MagicMock(return_value=42)
+        result, mock_acquire = self._dispatch(
+            tmp_path,
+            "# Spec\nprovider: codex\n",
+            capacity=lambda p: 1,
+            available=lambda p: 1,
+            mock_add=mock_add,
+        )
+
+        assert result is True
+        assert mock_add.call_args[0][0] == "codex-runner"
+        assert mock_acquire.call_args[0][1] == "codex"
+
+    def test_configured_but_busy_provider_waits(self, tmp_path, seed_project):
+        """Back-pressure: a busy codex makes the spec wait, not silently run on claude."""
+        mock_add = MagicMock(return_value=42)
+        result, mock_acquire = self._dispatch(
+            tmp_path,
+            "# Spec\nprovider: codex\n",
+            capacity=lambda p: 1,
+            available=lambda p: 0 if p == "codex" else 2,
+            mock_add=mock_add,
+        )
+
+        assert result is False
+        mock_add.assert_not_called()
+        mock_acquire.assert_not_called()
+
+    def test_no_provider_line_uses_project_default(self, tmp_path, seed_project):
+        mock_add = MagicMock(return_value=42)
+        result, mock_acquire = self._dispatch(
+            tmp_path,
+            "# Spec\nno provider declared here\n",
+            capacity=lambda p: 0,
+            available=lambda p: 2,
+            mock_add=mock_add,
+        )
+
+        assert result is True
+        assert mock_add.call_args[0][0] == "claude-runner"
+        assert mock_acquire.call_args[0][1] == "claude"
 
 
 # --- Cycle pacing: honest 5-min period (_next_sleep) ---

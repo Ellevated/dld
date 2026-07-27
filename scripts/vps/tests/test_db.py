@@ -174,6 +174,16 @@ class TestSlotAcquisition:
         db.try_acquire_slot("testproject", "claude", pueue_id=40)
         assert db.get_available_slots("claude") == 1
 
+    def test_get_provider_capacity_ignores_occupancy(self, seed_project):
+        """Capacity says whether a provider EXISTS here, not whether it is free."""
+        db.try_acquire_slot("testproject", "codex", pueue_id=41)
+        assert db.get_available_slots("codex") == 0
+        assert db.get_provider_capacity("codex") == 1
+
+    def test_get_provider_capacity_unknown_provider(self, seed_project):
+        """A provider nobody configured — the case that used to stall a spec forever."""
+        assert db.get_provider_capacity("openai") == 0
+
 
 # --- project state + phase ---
 
