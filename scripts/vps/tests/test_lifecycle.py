@@ -55,7 +55,7 @@ def tmp_git_repo(tmp_path):
     # Create ai/lifecycle/ with a .gitkeep so HEAD exists
     lc_dir = repo / "ai" / "lifecycle"
     lc_dir.mkdir(parents=True)
-    (lc_dir / ".gitkeep").write_text("")
+    (lc_dir / ".gitkeep").write_text("", encoding="utf-8")
     git("add", ".")
     git("commit", "-m", "init")
 
@@ -110,7 +110,7 @@ def test_concurrent_commit_during_write_not_reverted(tmp_git_repo):
         if not state["injected"] and cmd[:2] == ["git", "write-tree"]:
             state["injected"] = True
             # Simulate a parallel process advancing the branch mid-write.
-            (tmp_git_repo / "concurrent.txt").write_text("from a parallel writer")
+            (tmp_git_repo / "concurrent.txt").write_text("from a parallel writer", encoding="utf-8")
             subprocess.run(["git", "add", "concurrent.txt"], cwd=str(tmp_git_repo), check=True)
             subprocess.run(
                 ["git", "commit", "-m", "concurrent commit during lifecycle write"],
@@ -145,7 +145,7 @@ def test_operator_staged_file_does_not_leak(tmp_git_repo):
     """Operator does git add some-other-file. Callback writes lifecycle.
     Commit contains ONLY lifecycle, not some-other-file."""
     wip = tmp_git_repo / "operator-wip.txt"
-    wip.write_text("wip")
+    wip.write_text("wip", encoding="utf-8")
     subprocess.run(["git", "add", "operator-wip.txt"], cwd=str(tmp_git_repo), check=True)
 
     lifecycle.write_lifecycle(tmp_git_repo, "TECH-100", "done")
@@ -183,7 +183,7 @@ def test_dirty_wt_does_not_revert_callback_write(tmp_git_repo):
 
     lifecycle.create_initial(tmp_git_repo, "TECH-200", "p1", "tech")
     (tmp_git_repo / "ai" / "qa").mkdir(parents=True, exist_ok=True)
-    (tmp_git_repo / "ai" / "qa" / "garbage.md").write_text("untracked")
+    (tmp_git_repo / "ai" / "qa" / "garbage.md").write_text("untracked", encoding="utf-8")
     lifecycle.write_lifecycle(tmp_git_repo, "TECH-200", "done")
 
     # Orchestrator next cycle: ff-only pull is a no-op when up-to-date.
@@ -272,7 +272,7 @@ def test_assert_clean_lifecycle_tree_raises_on_dirty(tmp_git_repo):
     """Manually writing a lifecycle yaml without committing → raises RuntimeError."""
     lc_dir = tmp_git_repo / "ai" / "lifecycle"
     lc_dir.mkdir(parents=True, exist_ok=True)
-    (lc_dir / "TECH-520.yaml").write_text("spec_id: TECH-520\nstatus: queued\n")
+    (lc_dir / "TECH-520.yaml").write_text("spec_id: TECH-520\nstatus: queued\n", encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="Dirty lifecycle"):
         lifecycle.assert_clean_lifecycle_tree(tmp_git_repo)
@@ -356,12 +356,12 @@ def test_push_best_effort_warns_on_failure(tmp_git_repo, caplog):
     assert any("lifecycle push failed" in r.message for r in caplog.records)
     counter = Path(tmp_git_repo) / "ai" / ".lifecycle-push-failures"
     assert counter.is_file()
-    assert counter.read_text().strip() == "1"
+    assert counter.read_text(encoding="utf-8").strip() == "1"
 
     # Second failure increments
     with patch.object(lifecycle, "_run", return_value=fail):
         lifecycle._push_best_effort(str(tmp_git_repo), "develop")
-    assert counter.read_text().strip() == "2"
+    assert counter.read_text(encoding="utf-8").strip() == "2"
 
 
 def test_cas_loop_treats_timeout_as_retry(tmp_git_repo):

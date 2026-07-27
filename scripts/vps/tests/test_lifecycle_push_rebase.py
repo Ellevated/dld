@@ -55,7 +55,7 @@ def _config_identity(repo: Path) -> None:
 def _commit_file(repo: Path, rel: str, content: str, msg: str) -> None:
     p = repo / rel
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content)
+    p.write_text(content, encoding="utf-8")
     _git(repo, "add", rel)
     _git(repo, "commit", "-m", msg)
 
@@ -67,7 +67,7 @@ def _origin_files(origin: Path, branch: str = "main") -> set:
 
 def _push_failures(repo: Path) -> int:
     counter = repo / "ai" / ".lifecycle-push-failures"
-    return int(counter.read_text().strip()) if counter.is_file() else 0
+    return int(counter.read_text(encoding="utf-8").strip()) if counter.is_file() else 0
 
 
 # ---------------------------------------------------------------------------
@@ -96,9 +96,9 @@ def repos(tmp_path):
     )
     _config_identity(local)
     (local / "ai" / "lifecycle").mkdir(parents=True)
-    (local / "ai" / "lifecycle" / ".gitkeep").write_text("")
-    (local / "ai" / "backlog.md").write_text("# Backlog\n")
-    (local / "src.py").write_text("x = 0\n")
+    (local / "ai" / "lifecycle" / ".gitkeep").write_text("", encoding="utf-8")
+    (local / "ai" / "backlog.md").write_text("# Backlog\n", encoding="utf-8")
+    (local / "src.py").write_text("x = 0\n", encoding="utf-8")
     _git(local, "add", ".")
     _git(local, "commit", "-m", "init")
     _git(local, "push", "-u", "origin", "main")
@@ -174,8 +174,8 @@ def test_backlog_ahead_commit_is_rebased(repos):
     _git(other, "push", "origin", "main")
 
     # Lifecycle commit that also touches the backlog render (the real shape).
-    (local / "ai" / "lifecycle" / "BUG-2.yaml").write_text("status: done\n")
-    (local / "ai" / "backlog.md").write_text("# Backlog\n\nBUG-2 done\n")
+    (local / "ai" / "lifecycle" / "BUG-2.yaml").write_text("status: done\n", encoding="utf-8")
+    (local / "ai" / "backlog.md").write_text("# Backlog\n\nBUG-2 done\n", encoding="utf-8")
     _git(local, "add", "ai/lifecycle/BUG-2.yaml", "ai/backlog.md")
     _git(local, "commit", "-m", "lifecycle(BUG-2): done")
 
@@ -224,12 +224,12 @@ def test_dirty_wt_blocks_rebase(repos):
     _commit_file(local, "ai/lifecycle/BUG-3.yaml", "status: done\n", "lifecycle(BUG-3): done")
 
     # Make the WT dirty — rebase must refuse.
-    (local / "src.py").write_text("x = DIRTY\n")
+    (local / "src.py").write_text("x = DIRTY\n", encoding="utf-8")
 
     ok = lifecycle._rebase_onto_origin(str(local), "main")
     assert ok is False
     # WT untouched, no rebase-in-progress left behind.
-    assert (local / "src.py").read_text() == "x = DIRTY\n"
+    assert (local / "src.py").read_text(encoding="utf-8") == "x = DIRTY\n"
     assert not (local / ".git" / "rebase-merge").exists()
     assert not (local / ".git" / "rebase-apply").exists()
 

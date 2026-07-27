@@ -137,9 +137,9 @@ def test_bump_unparsable_counter_creates_and_increments(tmp_path):
     counter = project / "ai" / ".bootstrap-unparsable-count"
     assert not counter.exists()
     _bump_unparsable_counter(str(project))
-    assert counter.read_text().strip() == "1"
+    assert counter.read_text(encoding="utf-8").strip() == "1"
     _bump_unparsable_counter(str(project))
-    assert counter.read_text().strip() == "2"
+    assert counter.read_text(encoding="utf-8").strip() == "2"
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -166,7 +166,7 @@ def tmp_git_repo(tmp_path):
     git("config", "user.email", "test@example.com")
     git("config", "user.name", "Test User")
     (repo / "ai" / "lifecycle").mkdir(parents=True)
-    (repo / "ai" / "lifecycle" / ".gitkeep").write_text("")
+    (repo / "ai" / "lifecycle" / ".gitkeep").write_text("", encoding="utf-8")
     (repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
     git("add", ".")
     git("commit", "-m", "init")
@@ -198,7 +198,7 @@ def _git_add_commit(repo, *relative_paths: str) -> None:
 def test_bootstrap_short_format_awardybot_style(tmp_git_repo):
     """awardybot/dowry-style backlog → bootstrap creates yaml status=queued (not done)."""
     spec = tmp_git_repo / "ai" / "features" / "TECH-1082-foo.md"
-    spec.write_text("# TECH-1082\n**Priority:** P2\n**Kind:** tech\n")
+    spec.write_text("# TECH-1082\n**Priority:** P2\n**Kind:** tech\n", encoding="utf-8")
     (tmp_git_repo / "ai" / "backlog.md").write_text(
         "| ID | status | kind | date | spec |\n"
         "|---|---|---|---|---|\n"
@@ -220,7 +220,7 @@ def test_bootstrap_short_format_awardybot_style(tmp_git_repo):
 def test_bootstrap_default_queued_not_done(tmp_git_repo):
     """Unparsable row in backlog → bootstrap defaults to queued, NOT done (the bug)."""
     spec = tmp_git_repo / "ai" / "features" / "TECH-999-broken.md"
-    spec.write_text("# TECH-999\n**Priority:** P1\n**Kind:** tech\n")
+    spec.write_text("# TECH-999\n**Priority:** P1\n**Kind:** tech\n", encoding="utf-8")
     # Row references spec_id but provides no parseable status anywhere.
     (tmp_git_repo / "ai" / "backlog.md").write_text(
         "| ID | description |\n|---|---|\n| TECH-999 | this row has nothing parseable as status |\n"
@@ -237,13 +237,13 @@ def test_bootstrap_default_queued_not_done(tmp_git_repo):
     # Counter incremented.
     counter = tmp_git_repo / "ai" / ".bootstrap-unparsable-count"
     assert counter.exists(), "counter file should be created on unparsable row"
-    assert counter.read_text().strip() == "1"
+    assert counter.read_text(encoding="utf-8").strip() == "1"
 
 
 def test_bootstrap_template_format_still_works(tmp_git_repo):
     """Regression: template-format backlog (| ID | desc | status | ... |) still parses."""
     spec = tmp_git_repo / "ai" / "features" / "TECH-500-bar.md"
-    spec.write_text("# TECH-500\n**Priority:** P1\n**Kind:** tech\n")
+    spec.write_text("# TECH-500\n**Priority:** P1\n**Kind:** tech\n", encoding="utf-8")
     (tmp_git_repo / "ai" / "backlog.md").write_text(
         "| ID | description | status | priority | spec |\n"
         "|---|---|---|---|---|\n"
@@ -260,7 +260,7 @@ def test_bootstrap_idempotent_after_refactor(tmp_git_repo):
     """Regression (Task 1): if yaml exists in HEAD, bootstrap does not overwrite."""
     lifecycle.create_initial(tmp_git_repo, "TECH-600", "p0", "tech")
     spec = tmp_git_repo / "ai" / "features" / "TECH-600-x.md"
-    spec.write_text("# TECH-600\n**Priority:** P0\n**Kind:** tech\n")
+    spec.write_text("# TECH-600\n**Priority:** P0\n**Kind:** tech\n", encoding="utf-8")
     (tmp_git_repo / "ai" / "backlog.md").write_text(
         "| ID | status |\n|---|---|\n| TECH-600 | done |\n"
     )
@@ -276,7 +276,7 @@ def test_bootstrap_idempotent_after_refactor(tmp_git_repo):
 def test_bootstrap_skips_orphan_spec_not_in_backlog(tmp_git_repo):
     """spec.md without backlog entry → bootstrap skips it (existing safety preserved)."""
     spec = tmp_git_repo / "ai" / "features" / "TECH-777-orphan.md"
-    spec.write_text("# TECH-777\n**Priority:** P1\n**Kind:** tech\n")
+    spec.write_text("# TECH-777\n**Priority:** P1\n**Kind:** tech\n", encoding="utf-8")
     (tmp_git_repo / "ai" / "backlog.md").write_text(
         "| ID | status |\n|---|---|\n| TECH-888 | queued |\n"
     )
@@ -294,9 +294,9 @@ def test_bootstrap_reads_head_not_working_tree(tmp_git_repo):
         "|---|---|---|---|\n"
         "| TECH-888 | queued | TECH | HEAD spec |\n"
     )
-    (tmp_git_repo / "ai" / "backlog.md").write_text(head_backlog)
+    (tmp_git_repo / "ai" / "backlog.md").write_text(head_backlog, encoding="utf-8")
     spec_file = tmp_git_repo / "ai" / "features" / "TECH-888-test-head-read.md"
-    spec_file.write_text("# Feature: TECH-888\n\n## Allowed Files\n\n- `src/foo.py`\n")
+    spec_file.write_text("# Feature: TECH-888\n\n## Allowed Files\n\n- `src/foo.py`\n", encoding="utf-8")
     _git_add_commit(tmp_git_repo, "ai/backlog.md", "ai/features/TECH-888-test-head-read.md")
 
     # Now overwrite WT backlog with TECH-999 (not committed) — simulates callback
@@ -546,7 +546,7 @@ def test_audit_detects_orphan_yaml(tmp_git_repo):
 def test_audit_detects_orphan_spec_md(tmp_git_repo):
     """spec.md exists but yaml absent in HEAD → orphan_spec_md."""
     spec = tmp_git_repo / "ai" / "features" / "TECH-666-x.md"
-    spec.write_text("# TECH-666\n**Status:** queued\n")
+    spec.write_text("# TECH-666\n**Status:** queued\n", encoding="utf-8")
     findings = audit_project(str(tmp_git_repo))
     orphans = [f for f in findings if f["category"] == "orphan_spec_md"]
     assert any(f["spec_id"] == "TECH-666" for f in orphans)
@@ -591,9 +591,9 @@ def test_audit_detects_unauthorized_writer(tmp_git_repo):
 
 def test_audit_counters_picked_up(tmp_git_repo):
     """All three counter files → 3 separate findings."""
-    (tmp_git_repo / "ai" / ".bootstrap-unparsable-count").write_text("3")
-    (tmp_git_repo / "ai" / ".bootstrap-anomaly-count").write_text("1")
-    (tmp_git_repo / "ai" / ".lifecycle-push-failures").write_text("7")
+    (tmp_git_repo / "ai" / ".bootstrap-unparsable-count").write_text("3", encoding="utf-8")
+    (tmp_git_repo / "ai" / ".bootstrap-anomaly-count").write_text("1", encoding="utf-8")
+    (tmp_git_repo / "ai" / ".lifecycle-push-failures").write_text("7", encoding="utf-8")
     findings = audit_project(str(tmp_git_repo))
     cats = {f["category"] for f in findings}
     assert "bootstrap_unparsable" in cats
@@ -652,7 +652,7 @@ def test_audit_category_filter_narrows_output(tmp_git_repo, tmp_path, capsys):
 def test_audit_run_rejects_unknown_category(tmp_path):
     """--category=foo → rc=2 (usage error)."""
     pj = tmp_path / "projects.json"
-    pj.write_text("[]")
+    pj.write_text("[]", encoding="utf-8")
     rc = audit_run(
         project_filter=None,
         projects_json=str(pj),

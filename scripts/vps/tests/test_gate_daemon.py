@@ -91,7 +91,7 @@ def _make_repo_with_remote(tmp_path: Path, name: str = "repo") -> Path:
     _git(local, "config", "user.email", "t@t")
     _git(local, "config", "user.name", "t")
     _git(local, "remote", "add", "origin", str(remote))
-    (local / "README.md").write_text("init\n")
+    (local / "README.md").write_text("init\n", encoding="utf-8")
     _git(local, "add", "README.md")
     _git(local, "commit", "-q", "-m", "init")
     _git(local, "push", "-q", "origin", "develop")
@@ -305,7 +305,9 @@ class TestShadowJsonlLineCount:
         for h in gd._shadow_log.handlers:
             h.flush()
 
-        lines = [ln for ln in shadow_log_path.read_text().splitlines() if ln.strip()]
+        lines = [
+            ln for ln in shadow_log_path.read_text(encoding="utf-8").splitlines() if ln.strip()
+        ]
         assert len(lines) == len(spec_ids), (
             f"Expected {len(spec_ids)} JSONL lines, got {len(lines)}"
         )
@@ -332,7 +334,7 @@ class TestPerProjectErrorIsolation:
         _git(repo_a, "init", "-q", "-b", "develop")
         _git(repo_a, "config", "user.email", "t@t")
         _git(repo_a, "config", "user.name", "t")
-        (repo_a / "README.md").write_text("a\n")
+        (repo_a / "README.md").write_text("a\n", encoding="utf-8")
         _git(repo_a, "add", "README.md")
         _git(repo_a, "commit", "-q", "-m", "init")
         # No remote — fetch_develop will fail but should not raise
@@ -447,18 +449,18 @@ class TestHeartbeatMtime:
         from datetime import datetime, timezone
 
         ts1 = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        heartbeat_path.write_text(ts1)
+        heartbeat_path.write_text(ts1, encoding="utf-8")
         mtime1 = heartbeat_path.stat().st_mtime
 
         # Brief sleep to ensure mtime changes
         time.sleep(0.05)
 
         ts2 = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        heartbeat_path.write_text(ts2)
+        heartbeat_path.write_text(ts2, encoding="utf-8")
         mtime2 = heartbeat_path.stat().st_mtime
 
         assert mtime2 > mtime1, "heartbeat mtime must advance after second cycle write"
-        assert heartbeat_path.read_text().strip() == ts2
+        assert heartbeat_path.read_text(encoding="utf-8").strip() == ts2
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +469,10 @@ class TestHeartbeatMtime:
 
 
 class TestGracefulSigterm:
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="Windows has no SIGTERM delivery to another process; the daemon is Linux-only",
+    )
     def test_sigterm_exits_within_2s(self, tmp_path, monkeypatch):
         """T07: SIGTERM mid-idle → daemon exits cleanly within 2s."""
         db_path = tmp_path / "test_orchestrator.db"
@@ -477,7 +483,7 @@ class TestGracefulSigterm:
 
         shadow_log = tmp_path / "shadow.jsonl"
         projects_json = tmp_path / "projects.json"
-        projects_json.write_text("[]")
+        projects_json.write_text("[]", encoding="utf-8")
 
         env = {
             **os.environ,

@@ -44,7 +44,7 @@ def _write_hb(
         "model": "claude-opus-4-8",
         "updated_at": updated_at.isoformat(),
     }
-    hb_path.write_text(json.dumps(data))
+    hb_path.write_text(json.dumps(data), encoding="utf-8")
     return hb_path
 
 
@@ -132,7 +132,7 @@ class TestReadHeartbeat:
 
     def test_invalid_json(self, tmp_path: Path) -> None:
         bad = tmp_path / "bad.heartbeat.json"
-        bad.write_text("not json{")
+        bad.write_text("not json{", encoding="utf-8")
         assert reaper.read_heartbeat(bad) is None
 
     def test_missing_file(self, tmp_path: Path) -> None:

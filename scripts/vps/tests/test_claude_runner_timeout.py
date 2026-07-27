@@ -38,18 +38,18 @@ class TestAsyncioTimeoutStructure:
     """EC-1 structural: asyncio.timeout is used, not asyncio.wait_for."""
 
     def test_no_wait_for_in_source(self):
-        source = (Path(VPS_DIR) / "claude-runner.py").read_text()
+        source = (Path(VPS_DIR) / "claude-runner.py").read_text(encoding="utf-8")
         assert "asyncio.wait_for" not in source, \
             "asyncio.wait_for should be replaced by asyncio.timeout"
 
     def test_asyncio_timeout_present(self):
-        source = (Path(VPS_DIR) / "claude-runner.py").read_text()
+        source = (Path(VPS_DIR) / "claude-runner.py").read_text(encoding="utf-8")
         assert "asyncio.timeout" in source, \
             "asyncio.timeout context manager must be present"
 
     def test_exit_code_124_on_timeout(self):
         """Parse AST to verify exit_code=124 is assigned in a TimeoutError handler."""
-        source = (Path(VPS_DIR) / "claude-runner.py").read_text()
+        source = (Path(VPS_DIR) / "claude-runner.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         found = False
         for node in ast.walk(tree):
@@ -71,13 +71,13 @@ class TestBUG188GuardIntact:
     """EC-2: result_received and not result_is_error → exit_code stays 0."""
 
     def test_bug188_guard_present_in_source(self):
-        source = (Path(VPS_DIR) / "claude-runner.py").read_text()
+        source = (Path(VPS_DIR) / "claude-runner.py").read_text(encoding="utf-8")
         assert "result_received and not result_is_error" in source, \
             "BUG-188 guard must be present"
 
     def test_bug188_exit_code_stays_zero(self):
         """Verify the guard does NOT reassign exit_code in the BUG-188 branch."""
-        source = (Path(VPS_DIR) / "claude-runner.py").read_text()
+        source = (Path(VPS_DIR) / "claude-runner.py").read_text(encoding="utf-8")
         # Find the BUG-188 block: between 'result_received and not result_is_error'
         # and 'elif "timeout"' — exit_code must NOT be reassigned
         idx_start = source.index("result_received and not result_is_error")
@@ -142,7 +142,7 @@ class TestHeartbeatWriter:
         )
         hb = log_dir / "test-proj-20260606-120000.heartbeat.json"
         assert hb.exists(), "heartbeat file must be created"
-        data = json.loads(hb.read_text())
+        data = json.loads(hb.read_text(encoding="utf-8"))
         assert data["turn"] == 3
         assert data["elapsed_s"] == 42
         assert data["last_tool"] == "Bash"
@@ -168,7 +168,7 @@ class TestHeartbeatWriter:
         mod._write_heartbeat(log_dir, "proj", "label", 1, 10, "Read", "iso", "model")
         mod._write_heartbeat(log_dir, "proj", "label", 2, 20, "Write", "iso", "model")
         hb = log_dir / "proj-label.heartbeat.json"
-        data = json.loads(hb.read_text())
+        data = json.loads(hb.read_text(encoding="utf-8"))
         assert data["turn"] == 2, "second write must overwrite first"
         assert data["last_tool"] == "Write"
 
@@ -179,7 +179,7 @@ class TestHeartbeatWriter:
         BEFORE the isinstance(AssistantMessage) branch, so updated_at stays
         fresh during long tool-execution phases.
         """
-        source = (Path(VPS_DIR) / "claude-runner.py").read_text()
+        source = (Path(VPS_DIR) / "claude-runner.py").read_text(encoding="utf-8")
         # The heartbeat call must appear inside the async for loop,
         # BEFORE the AssistantMessage check (TECH-198 Layer A)
         idx_hb = source.index("_write_heartbeat(")
@@ -193,7 +193,7 @@ class TestVariantCNeverIntroduced:
 
     def test_no_local_develop_gate_path(self):
         """_is_done_on_develop must check origin/develop, never just 'develop'."""
-        source = (Path(VPS_DIR) / "callback.py").read_text()
+        source = (Path(VPS_DIR) / "callback.py").read_text(encoding="utf-8")
         import re
         fn_match = re.search(
             r"def _is_done_on_develop\(.*?\).*?(?=\ndef |\Z)", source, re.DOTALL
@@ -215,7 +215,7 @@ class TestVariantCNeverIntroduced:
 
     def test_push_local_is_best_effort_not_gate(self):
         """push-local is a flush helper, NOT a gate — gate must still check origin."""
-        source = (Path(VPS_DIR) / "callback.py").read_text()
+        source = (Path(VPS_DIR) / "callback.py").read_text(encoding="utf-8")
         # push-local block must NOT skip _fetch_develop or _is_done_on_develop
         assert "_fetch_develop(" in source, "_fetch_develop must still be called"
         assert "_is_done_on_develop(" in source, \

@@ -67,7 +67,7 @@ def _isolated_db(tmp_path):
     """Fresh SQLite DB per test — prevents circuit breaker state from accumulating."""
     db_path = str(tmp_path / "orchestrator.db")
     conn = sqlite3.connect(db_path)
-    schema = (Path(VPS_DIR) / "schema.sql").read_text()
+    schema = (Path(VPS_DIR) / "schema.sql").read_text(encoding="utf-8")
     conn.executescript(schema)
     conn.close()
     db._MIGRATIONS_APPLIED = False
@@ -92,7 +92,7 @@ def _make_origin_repo(tmp_path: Path) -> tuple[Path, Path]:
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
     _git(repo, "remote", "add", "origin", str(origin))
-    (repo / "README.md").write_text("init\n")
+    (repo / "README.md").write_text("init\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-q", "-m", "init")
     _git(repo, "push", "-u", "origin", "develop")
@@ -116,7 +116,7 @@ def _add_impl_commit(repo: Path, spec_id: str, file_path: str) -> None:
     """Create file, commit with feat({spec_id}): implement feature, push to origin/develop."""
     full_path = repo / file_path
     full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_text(f"# {spec_id} implementation\n")
+    full_path.write_text(f"# {spec_id} implementation\n", encoding="utf-8")
     _git(repo, "add", file_path)
     _git(repo, "commit", "-m", f"feat({spec_id}): implement feature")
     _git(repo, "push", "origin", "develop")

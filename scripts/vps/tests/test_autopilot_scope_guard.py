@@ -37,7 +37,7 @@ class TestFixAPromptStructure:
             skill_path = repo_root / prefix / "skills" / "autopilot" / "SKILL.md"
             if not skill_path.exists():
                 pytest.skip(f"{skill_path} not found")
-            content = skill_path.read_text()
+            content = skill_path.read_text(encoding="utf-8")
             assert "LOOP-MODE-SCOPE-FENCE" in content, (
                 f"{skill_path}: missing HARD-GATE LOOP-MODE-SCOPE-FENCE"
             )
@@ -48,7 +48,7 @@ class TestFixAPromptStructure:
             skill_path = repo_root / prefix / "skills" / "autopilot" / "SKILL.md"
             if not skill_path.exists():
                 pytest.skip(f"{skill_path} not found")
-            content = skill_path.read_text()
+            content = skill_path.read_text(encoding="utf-8")
             assert "ONLY active when autopilot is invoked WITHOUT" in content, (
                 f"{skill_path}: Interactive Mode section missing loop-mode exclusion guard"
             )
@@ -59,7 +59,7 @@ class TestFixAPromptStructure:
             fin_path = repo_root / prefix / "skills" / "autopilot" / "finishing.md"
             if not fin_path.exists():
                 pytest.skip(f"{fin_path} not found")
-            content = fin_path.read_text()
+            content = fin_path.read_text(encoding="utf-8")
             assert "governance violation" in content.lower(), (
                 f"{fin_path}: missing 'governance violation' in Loop Mode Exit Check"
             )
@@ -70,7 +70,7 @@ class TestFixAPromptStructure:
             skill_path = repo_root / prefix / "skills" / "autopilot" / "SKILL.md"
             if not skill_path.exists():
                 pytest.skip(f"{skill_path} not found")
-            content = skill_path.read_text()
+            content = skill_path.read_text(encoding="utf-8")
             assert "INTERACTIVE ONLY" in content, (
                 f"{skill_path}: 'Continue to next spec' missing INTERACTIVE ONLY annotation"
             )
@@ -87,7 +87,7 @@ class TestFixBEnvWiring:
     def test_scan_queued_sets_spec_env_in_pueue_add(self) -> None:
         """scan_queued must call _pueue_add with env containing CLAUDE_CURRENT_SPEC_PATH."""
         orch_path = SCRIPT_DIR / "orchestrator.py"
-        content = orch_path.read_text()
+        content = orch_path.read_text(encoding="utf-8")
 
         in_scan_queued = False
         found_spec_path_in_env = False
@@ -115,7 +115,7 @@ class TestFixBEnvWiring:
     def test_claude_runner_forwards_spec_env(self) -> None:
         """claude-runner.py must forward CLAUDE_CURRENT_SPEC_PATH to the agent session."""
         runner_path = SCRIPT_DIR / "claude-runner.py"
-        content = runner_path.read_text()
+        content = runner_path.read_text(encoding="utf-8")
         assert '"CLAUDE_CURRENT_SPEC_PATH"' in content, (
             "claude-runner.py must include CLAUDE_CURRENT_SPEC_PATH in agent env dict"
         )
@@ -126,7 +126,7 @@ class TestFixBEnvWiring:
     def test_pre_edit_hook_prefers_env_over_branch(self) -> None:
         """pre-edit.mjs must prefer CLAUDE_CURRENT_SPEC_PATH env over inferSpecFromBranch."""
         hook_path = REPO_ROOT / ".claude" / "hooks" / "pre-edit.mjs"
-        content = hook_path.read_text()
+        content = hook_path.read_text(encoding="utf-8")
         assert "process.env.CLAUDE_CURRENT_SPEC_PATH" in content, (
             "pre-edit.mjs must read CLAUDE_CURRENT_SPEC_PATH from env"
         )
@@ -155,7 +155,7 @@ def _make_git_repo(tmp_path: Path) -> Path:
         ["git", "-C", str(repo), "config", "user.name", "Test"],
         capture_output=True, check=True,
     )
-    (repo / "README.md").write_text("# Test")
+    (repo / "README.md").write_text("# Test", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
     subprocess.run(
         ["git", "-C", str(repo), "commit", "-m", "init"],
@@ -177,7 +177,7 @@ class TestFixCOutOfScopeDetection:
 
         allowed = ["src/main.py", "src/utils.py"]
         (git_repo / "src").mkdir(exist_ok=True)
-        (git_repo / "src" / "main.py").write_text("print('hello')")
+        (git_repo / "src" / "main.py").write_text("print('hello')", encoding="utf-8")
         subprocess.run(["git", "-C", str(git_repo), "add", "."], capture_output=True, check=True)
         subprocess.run(
             ["git", "-C", str(git_repo), "commit", "-m", "feat(FTR-100): add main"],
@@ -195,8 +195,8 @@ class TestFixCOutOfScopeDetection:
 
         allowed = ["src/main.py"]
         (git_repo / "src").mkdir(exist_ok=True)
-        (git_repo / "src" / "main.py").write_text("print('hello')")
-        (git_repo / "extra.py").write_text("print('extra')")
+        (git_repo / "src" / "main.py").write_text("print('hello')", encoding="utf-8")
+        (git_repo / "extra.py").write_text("print('extra')", encoding="utf-8")
         subprocess.run(["git", "-C", str(git_repo), "add", "."], capture_output=True, check=True)
         subprocess.run(
             ["git", "-C", str(git_repo), "commit", "-m", "feat(FTR-100): add main and extra"],
@@ -213,7 +213,7 @@ class TestFixCOutOfScopeDetection:
         import callback
 
         allowed = ["src/main.py"]
-        (git_repo / "extra.py").write_text("print('extra')")
+        (git_repo / "extra.py").write_text("print('extra')", encoding="utf-8")
         subprocess.run(["git", "-C", str(git_repo), "add", "."], capture_output=True, check=True)
         subprocess.run(
             ["git", "-C", str(git_repo), "commit", "-m", "chore: unrelated cleanup"],
@@ -231,9 +231,9 @@ class TestFixCOutOfScopeDetection:
 
         allowed = ["src/main.py"]
         (git_repo / "src").mkdir(exist_ok=True)
-        (git_repo / "src" / "main.py").write_text("print('hello')")
+        (git_repo / "src" / "main.py").write_text("print('hello')", encoding="utf-8")
         (git_repo / "ai").mkdir(exist_ok=True)
-        (git_repo / "ai" / "diary.md").write_text("diary entry")
+        (git_repo / "ai" / "diary.md").write_text("diary entry", encoding="utf-8")
         subprocess.run(["git", "-C", str(git_repo), "add", "."], capture_output=True, check=True)
         subprocess.run(
             ["git", "-C", str(git_repo), "commit", "-m", "feat(FTR-100): add main"],
@@ -307,7 +307,7 @@ class TestAuditIntegration:
                 0.0,
                 out_of_scope_files=["extra.py", "rogue.js"],
             )
-            content = audit_path.read_text()
+            content = audit_path.read_text(encoding="utf-8")
             record = json.loads(content.strip())
             assert record["out_of_scope_files"] == ["extra.py", "rogue.js"]
             assert record["spec_id"] == "FTR-100"
@@ -339,7 +339,7 @@ class TestAuditIntegration:
                 "2026-01-01",
                 0.0,
             )
-            content = audit_path.read_text()
+            content = audit_path.read_text(encoding="utf-8")
             record = json.loads(content.strip())
             assert "out_of_scope_files" not in record
             assert record["spec_id"] == "FTR-100"

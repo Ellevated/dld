@@ -52,7 +52,7 @@ def tmp_git_repo(tmp_path):
     # Create ai/lifecycle/ with a .gitkeep so HEAD exists
     lc_dir = repo / "ai" / "lifecycle"
     lc_dir.mkdir(parents=True)
-    (lc_dir / ".gitkeep").write_text("")
+    (lc_dir / ".gitkeep").write_text("", encoding="utf-8")
     git("add", ".")
     git("commit", "-m", "init")
 

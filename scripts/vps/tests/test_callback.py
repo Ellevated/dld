@@ -56,7 +56,7 @@ def _isolated_db(tmp_path):
     """Fresh SQLite DB per test — prevents circuit breaker state from accumulating."""
     db_path = str(tmp_path / "orchestrator.db")
     conn = sqlite3.connect(db_path)
-    schema = (Path(VPS_DIR) / "schema.sql").read_text()
+    schema = (Path(VPS_DIR) / "schema.sql").read_text(encoding="utf-8")
     conn.executescript(schema)
     conn.close()
     db._MIGRATIONS_APPLIED = False
@@ -72,7 +72,7 @@ def git_repo(tmp_path):
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
     # Initial commit so HEAD exists
-    (repo / "README.md").write_text("init\n")
+    (repo / "README.md").write_text("init\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
@@ -312,7 +312,7 @@ class TestFindLogFileFiltersStale:
         log_dir.mkdir()
         # Stale log (mtime in the past)
         old = log_dir / "proj-old.log"
-        old.write_text("{}")
+        old.write_text("{}", encoding="utf-8")
         import os
 
         os.utime(old, (1000, 1000))
@@ -326,7 +326,7 @@ class TestFindLogFileFiltersStale:
         log_dir = tmp_path / "logs"
         log_dir.mkdir()
         new = log_dir / "proj-new.log"
-        new.write_text("{}")
+        new.write_text("{}", encoding="utf-8")
         import os
 
         os.utime(new, (5000, 5000))
@@ -339,7 +339,7 @@ class TestFindLogFileFiltersStale:
         log_dir = tmp_path / "logs"
         log_dir.mkdir()
         f = log_dir / "proj-x.log"
-        f.write_text("{}")
+        f.write_text("{}", encoding="utf-8")
         monkeypatch.setattr(callback, "SCRIPT_DIR", tmp_path)
         result = callback._find_log_file("proj")
         assert result == f
@@ -509,7 +509,7 @@ def _make_origin_repo(tmp_path):
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
     _git(repo, "remote", "add", "origin", str(origin))
-    (repo / "README.md").write_text("init\n")
+    (repo / "README.md").write_text("init\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-q", "-m", "init")
     _git(repo, "push", "-u", "origin", "develop")
@@ -535,7 +535,7 @@ class TestPushLocalBeforeGate:
 
         # Simulate: impl commit on local develop (not pushed)
         (repo / "src").mkdir(exist_ok=True)
-        (repo / "src" / "main.py").write_text("# impl\n")
+        (repo / "src" / "main.py").write_text("# impl\n", encoding="utf-8")
         _git(repo, "add", "src/main.py")
         _git(repo, "commit", "-m", "feat(TECH-T6): implement feature")
 
@@ -568,7 +568,7 @@ class TestPushLocalBeforeGate:
         # Create feature branch with impl — NOT merged to develop
         _git(repo, "checkout", "-b", "feature/TECH-T7")
         (repo / "src").mkdir(exist_ok=True)
-        (repo / "src" / "app.py").write_text("# feature\n")
+        (repo / "src" / "app.py").write_text("# feature\n", encoding="utf-8")
         _git(repo, "add", "src/app.py")
         _git(repo, "commit", "-m", "feat(TECH-T7): feature impl")
         _git(repo, "checkout", "develop")
@@ -599,7 +599,7 @@ class TestPushLocalBeforeGate:
         _git(repo, "init", "-q", "-b", "develop")
         _git(repo, "config", "user.email", "t@t")
         _git(repo, "config", "user.name", "t")
-        (repo / "README.md").write_text("init\n")
+        (repo / "README.md").write_text("init\n", encoding="utf-8")
         _git(repo, "add", "README.md")
         _git(repo, "commit", "-q", "-m", "init")
 
@@ -695,7 +695,7 @@ class TestGraceRetry:
                 return False  # first check: not visible yet
             # Push impl BEFORE second check (simulates network lag)
             (repo / "src").mkdir(exist_ok=True)
-            (repo / "src" / "g.py").write_text("# impl\n")
+            (repo / "src" / "g.py").write_text("# impl\n", encoding="utf-8")
             _git(repo, "add", "src/g.py")
             _git(repo, "commit", "-m", "feat(TECH-G8): implement")
             _git(repo, "push", "origin", "develop")
@@ -732,7 +732,7 @@ class TestAutopilotSignaledOverride:
 
         # Impl is on origin (gate would return True)
         (repo / "src").mkdir(exist_ok=True)
-        (repo / "src" / "as.py").write_text("# impl\n")
+        (repo / "src" / "as.py").write_text("# impl\n", encoding="utf-8")
         _git(repo, "add", "src/as.py")
         _git(repo, "commit", "-m", "feat(TECH-AS): implement")
         _git(repo, "push", "origin", "develop")
@@ -764,7 +764,7 @@ class TestAutopilotSignaledOverride:
 
         # Impl on origin
         (repo / "src").mkdir(exist_ok=True)
-        (repo / "src" / "ns.py").write_text("# impl\n")
+        (repo / "src" / "ns.py").write_text("# impl\n", encoding="utf-8")
         _git(repo, "add", "src/ns.py")
         _git(repo, "commit", "-m", "feat(TECH-NS): implement")
         _git(repo, "push", "origin", "develop")
@@ -829,7 +829,7 @@ class TestParseLogTaskStatus:
 
     def _write_log(self, tmp_path, payload):
         p = tmp_path / "proj-20260620-000000.log"
-        p.write_text(json.dumps(payload, ensure_ascii=False))
+        p.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         return p
 
     def test_top_level_field_preferred(self, tmp_path):

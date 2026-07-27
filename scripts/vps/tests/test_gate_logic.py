@@ -63,7 +63,7 @@ def git_repo(tmp_path):
     _git(repo, "init", "-q", "-b", "develop")
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
-    (repo / "README.md").write_text("init\n")
+    (repo / "README.md").write_text("init\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
@@ -93,7 +93,7 @@ def git_repo_with_remote(tmp_path):
     _git(local, "config", "user.name", "t")
     _git(local, "remote", "add", "origin", str(remote))
     # First commit + push so origin/develop exists
-    (local / "README.md").write_text("init\n")
+    (local / "README.md").write_text("init\n", encoding="utf-8")
     _git(local, "add", "README.md")
     _git(local, "commit", "-q", "-m", "init")
     _git(local, "push", "-q", "origin", "develop")
@@ -114,7 +114,7 @@ def _add_commit(
     """Create a file, stage it, and commit. Returns the commit SHA."""
     fpath = repo / filename
     fpath.parent.mkdir(parents=True, exist_ok=True)
-    fpath.write_text(f"content for {filename}\n")
+    fpath.write_text(f"content for {filename}\n", encoding="utf-8")
     _git(repo, "add", filename)
     msg = subject if not body else f"{subject}\n\n{body}"
     _git(repo, "commit", "-q", "-m", msg)
@@ -420,14 +420,14 @@ def test_parse_allowed_files_legacy_no_section_returns_none():
 def test_DA5_spec_without_allowed_files_returns_none(tmp_path):
     """DA-5: spec file without ## Allowed Files section → parse_allowed_files returns None."""
     spec = tmp_path / "SPEC-A.md"
-    spec.write_text("# Feature\n\nNo allowed files section.\n")
+    spec.write_text("# Feature\n\nNo allowed files section.\n", encoding="utf-8")
     assert parse_allowed_files(spec) is None
 
 
 def test_parse_allowed_files_v1_from_file(tmp_path):
     """parse_allowed_files reads file and returns v1 canonical paths."""
     spec = tmp_path / "SPEC-B.md"
-    spec.write_text(_V1_SPEC_HAPPY)
+    spec.write_text(_V1_SPEC_HAPPY, encoding="utf-8")
     result = parse_allowed_files(spec)
     assert result == [
         "scripts/vps/gate_logic.py",
@@ -444,7 +444,7 @@ def test_parse_allowed_files_missing_file_returns_none(tmp_path):
 def test_parse_allowed_files_v1_numbered_from_file(tmp_path):
     """TECH-208: parse_allowed_files reads numbered-list spec and returns paths."""
     spec = tmp_path / "BUG-355.md"
-    spec.write_text(_V1_SPEC_NUMBERED)
+    spec.write_text(_V1_SPEC_NUMBERED, encoding="utf-8")
     result = parse_allowed_files(spec)
     assert result == [
         "scripts/vps/callback.py",

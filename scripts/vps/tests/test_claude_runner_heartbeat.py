@@ -37,7 +37,7 @@ sys.modules["claude_runner"] = _mod
 import ast
 import textwrap
 
-_source = (Path(__file__).resolve().parent.parent / "claude-runner.py").read_text()
+_source = (Path(__file__).resolve().parent.parent / "claude-runner.py").read_text(encoding="utf-8")
 _tree = ast.parse(_source)
 
 # Find _write_heartbeat function
@@ -84,7 +84,7 @@ class TestWriteHeartbeat:
         hb_file = tmp_path / "testproj-20260613-120000.heartbeat.json"
         assert hb_file.exists()
 
-        data = json.loads(hb_file.read_text())
+        data = json.loads(hb_file.read_text(encoding="utf-8"))
         assert data["turn"] == 3
         assert data["elapsed_s"] == 120
         assert data["last_tool"] == "Bash"
@@ -108,7 +108,7 @@ class TestWriteHeartbeat:
         # First call (simulates AssistantMessage)
         _write_heartbeat(**kwargs)
         hb_file = tmp_path / "testproj-20260613-120000.heartbeat.json"
-        data1 = json.loads(hb_file.read_text())
+        data1 = json.loads(hb_file.read_text(encoding="utf-8"))
         t1 = data1["updated_at"]
 
         # Small delay to ensure timestamp difference
@@ -118,7 +118,7 @@ class TestWriteHeartbeat:
         # turn stays at 1 (only incremented on AssistantMessage in the real loop)
         kwargs["elapsed_s"] = 15
         _write_heartbeat(**kwargs)
-        data2 = json.loads(hb_file.read_text())
+        data2 = json.loads(hb_file.read_text(encoding="utf-8"))
         t2 = data2["updated_at"]
 
         # updated_at should have advanced
@@ -143,7 +143,7 @@ class TestWriteHeartbeat:
                 model="claude-opus-4-8",
             )
 
-        data = json.loads(hb_file.read_text())
+        data = json.loads(hb_file.read_text(encoding="utf-8"))
         assert data["turn"] == 2
         assert data["elapsed_s"] == 30
 
@@ -166,7 +166,7 @@ class TestWriteHeartbeat:
                 started_at_iso="2026-06-13T12:00:00+00:00", model="claude-opus-4-8",
             )
 
-        data = json.loads(hb_file.read_text())
+        data = json.loads(hb_file.read_text(encoding="utf-8"))
         assert data["last_tool"] == "Bash"
         assert data["elapsed_s"] == 25
 

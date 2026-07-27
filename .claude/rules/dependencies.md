@@ -135,6 +135,7 @@ Dependency map between project components.
 | claude CLI | `CLAUDE_CLI_PATH` env, else newest of PATH / `~/.local/bin/claude` / `/usr/local/bin/claude` | `--version` probe then SDK `cli_path=`. Resolution is **by version, not PATH order** — see `_resolve_cli_path` |
 | claude_agent_sdk | pip dep 0.1.63 | query(), ClaudeAgentOptions(stderr=callback) (BUG-188 Layer 2) |
 | db.py | scripts/vps/db.py | log_sdk_post_result_error() — telemetry on post-result SDK exception (BUG-188 Layer 4, lazy import) |
+| salvage.py | scripts/vps/salvage.py | spec_id_from_path(), salvage_run() — push the worktree on non-zero exit and on SIGTERM (optional import) |
 
 ### Used by (←)
 
@@ -142,6 +143,36 @@ Dependency map between project components.
 |-----|-----------|----------|
 | run-agent.sh | scripts/vps/run-agent.sh:47 | exec dispatch (provider=claude) |
 | heartbeat_reaper.py | scripts/vps/heartbeat_reaper.py | reads logs/*.heartbeat.json files written by _write_heartbeat (TECH-198) |
+
+---
+
+## scripts/vps/salvage.py
+
+**Path:** `scripts/vps/salvage.py`
+
+Pushes what a dead autopilot run built. Autopilot commits per task into a worktree
+branch and pushes once, at the end of PHASE 3 (TECH-085), so every abnormal exit
+strands finished commits on a local branch nothing else reads. Runs only on failure,
+so the one-push-per-spec rule is untouched.
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| lifecycle.py | scripts/vps/lifecycle.py | `run_git` — byte-level git I/O (never `text=True`) |
+| git CLI | PATH | worktree list, plumbing snapshot (private `GIT_INDEX_FILE` + CAS `update-ref`), push |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| claude-runner.py | scripts/vps/claude-runner.py `_salvage_if_needed` | non-zero exit + SIGTERM handler |
+
+### When changing API, check
+
+- [ ] claude-runner.py (`_salvage_if_needed` — return dict lands in the run log as `salvage`)
+- [ ] callback.py (`_parse_log_file` if `salvage` ever becomes a decision input; today it is telemetry only)
+- [ ] worktree-setup.md §0a sweep (a pushed branch makes the worktree sweepable — that is intended)
 
 ---
 
@@ -171,7 +202,7 @@ Dependency map between project components.
 
 | What | Where | Function |
 |------|-------|----------|
-| db.py | scripts/vps/db.py | seed_projects_from_json(), get_all_projects(), get_project_state(), get_available_slots(), try_acquire_slot(), log_task(), update_project_phase() |
+| db.py | scripts/vps/db.py | seed_projects_from_json(), get_all_projects(), get_project_state(), get_available_slots(), get_provider_capacity(), try_acquire_slot(), log_task(), update_project_phase() |
 | run-agent.sh | scripts/vps/run-agent.sh | pueue add autopilot + inbox dispatch (CLAUDE_CURRENT_SPEC_PATH env for both, BUG-199) |
 | night-reviewer.sh | scripts/vps/night-reviewer.sh | pueue add --group night-reviewer (dispatch_night_review) |
 | pueue CLI | PATH | pueue add --group --label --print-task-id |
@@ -247,6 +278,7 @@ Dependency map between project components.
 | Who | File:line | Function |
 |-----|-----------|----------|
 | callback.py | scripts/vps/callback.py | write_lifecycle() — sole writer of status |
+| salvage.py | scripts/vps/salvage.py | run_git() — public alias of `_run`; do not re-derive its byte-level I/O rules |
 | orchestrator.py | scripts/vps/orchestrator.py | list_by_status(), create_initial() (bootstrap), assert_clean_lifecycle_tree() (startup), reconcile_orphans() |
 | render_backlog.py | scripts/vps/render_backlog.py | read_lifecycle() + list_all() for view generation |
 | migrate_backlog_to_lifecycle.py | scripts/vps/migrate_backlog_to_lifecycle.py | initial migration one-shot |
@@ -567,6 +599,40 @@ to absolute paths per project. Idempotent.
 
 ---
 
+## scripts/vps/install-lifecycle-guard.sh (2026-07-27)
+
+**Path:** `scripts/vps/install-lifecycle-guard.sh`
+
+Makes the ADR-025 guard actually run everywhere. `install-hooks-all-worktrees.sh`
+only rewrites `core.hooksPath` and skips any repo without a checked-in `.git-hooks/`
+— six of the ten orchestrated repos. This installs one shared wrapper outside the
+repos, resolves the guard from the repo first and DLD's copy second, and chains to
+the repo's own pre-commit when that hook is executable.
+
+Idempotent. `--dry-run` shows the plan; `--verify` reports effective state only.
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| git CLI | PATH | `config core.hooksPath`, `config dld.previousHooksPath` (rollback breadcrumb) |
+| jq | PATH | parse projects.json `.[].path` |
+| .claude/hooks/pre-commit-lifecycle-guard.mjs | DLD repo | central guard, baked into the wrapper as an absolute path |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| operator | manual | fleet-wide guard install / re-verify |
+
+### When changing API, check
+
+- [ ] `.claude/hooks/pre-commit-lifecycle-guard.mjs` (moving it invalidates the baked path — re-run the installer)
+- [ ] setup-vps.sh --phase4-hooks (would overwrite `core.hooksPath` back to a per-repo path)
+- [ ] salvage.py (its plumbing snapshot bypasses this guard by construction — the `ai/lifecycle` exclusion lives there)
+
+---
+
 ## scripts/vps/recover_bootstrap_as_done.py (TECH-195)
 
 **Path:** `scripts/vps/recover_bootstrap_as_done.py`
@@ -693,4 +759,8 @@ Used as operator visibility tool and CI smoke gate.
 | 2026-07-26 | **`lifecycle._run` byte-level git I/O:** dropped `text=True` — it translated `\n`→`\r\n` on stdin (CRLF blobs in the lifecycle SoT despite `.gitattributes`, permanently dirty `ai/lifecycle/` → `assert_clean_lifecycle_tree` aborted daemon startup for every project) and decoded git output with the locale codec (cp1251 → `UnicodeDecodeError` on Cyrillic). +7 tests (`test_lifecycle_run_encoding.py`). | interactive |
 | 2026-07-26 | **Spec-readiness gate in `scan_queued`:** a queued lifecycle row with no spec body in `ai/features/` is skipped instead of dispatched. Spec-first ID CAS (ADR-027) writes `queued` at ID-claim time, minutes before the body is committed; the 60s poll lost that race and burned a slot + a session for a `missing_allowed_files` block (awardybot BUG-1410). Row stays `queued`; persistent rows are orphans, reported by `lifecycle_audit.py`. +5 tests. | interactive |
 | 2026-07-26 | **`scripts/check-research-stack.py`** (new, mirrored into `template/scripts/`): probes Exa's live `tools/list`, checks Context7 install scope, and cross-checks every `mcp__exa__*` name in `.claude/` + `template/.claude/` against what the server actually serves. Catches silent research degradation — the failure mode that left 259 dead tool references across 55 files. | interactive |
+| 2026-07-27 | **Lifecycle guard actually deployed:** NEW `install-lifecycle-guard.sh` — shared wrapper + central-guard fallback + chain to the repo's own hook. Audit found the structural half of ADR-025 running in exactly one of ten repos: dld/dowry/wb carried the wrapper but pointed `core.hooksPath` at `.git/hooks`, wb's path was relative (dead inside worktrees), six repos had neither file. Verified live 6/6, including the worktree case. | interactive |
+| 2026-07-27 | **Timeout no longer discards the run's work:** NEW `salvage.py` — on non-zero exit or SIGTERM, snapshots the worktree via plumbing (hooks can't veto a salvage; `ai/lifecycle/` excluded) and pushes the branch to origin. `claude-runner` wires it into both paths and now reports `turns` from the observed count when no ResultMessage arrived — a 575-turn timeout used to log "0 turns, $0.00". `lifecycle.run_git` public alias. +23 tests. | interactive |
+| 2026-07-27 | **Provider selection fixed:** `db.get_provider_capacity()` separates "busy" from "not configured here". `orchestrator` scan_queued honoured a spec's `provider:` unconditionally (`get_available_slots(...) >= 0` — COUNT is never negative), so a spec naming an unconfigured provider blocked its own dispatch forever under a "no slots" log. Unknown → warn + project default; known but busy → wait. +6 tests. | interactive |
+| 2026-07-27 | **VPS test suite green on Windows:** explicit `encoding="utf-8"` on file I/O across 17 test modules (cp1251 default raised UnicodeEncodeError on `⛔`/Cyrillic — the same class as the `lifecycle._run` fix), SIGTERM daemon test skipped on `nt`. 400 passed / 0 failed, was 5 failed. | interactive |
 | 2026-07-02 | **Gate false-blocked fix (plpilot BUG-338/339/340/346/347 + TECH-349):** `match_subject`/`_subject_implements` (gate_logic.py + callback.py, sync L-derived-2) принимают trailing `(SPEC-ID)` в конце subject (все элементы в скобках обязаны быть spec-id-shaped; `(see X)`/`(FTR-X Task 3)` — reject) + merge-формы `merge: feature/SPEC-ID` и `Merge branch 'fix/SPEC-ID-slug'`. `find_implementation_commit`/`_is_done_on_develop` — второй проход `git log --first-parent` (history simplification прятала no-ff merge из path-filtered лога — `Merge SPEC-ID:` никогда не доходил до matcher'а). 11 новых тестов (test_gate_logic.py 8 unit + 3 integration), 3 (test_callback_implementation_guard.py EC-7..9), test_callback.py anti-false-positive narrowed. docs/orchestrator/status-model.md#guard обновлён. | interactive |

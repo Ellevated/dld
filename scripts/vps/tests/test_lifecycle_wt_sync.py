@@ -51,7 +51,7 @@ def tmp_git_repo(tmp_path):
     # Create ai/lifecycle/ with a .gitkeep so HEAD exists
     lc_dir = repo / "ai" / "lifecycle"
     lc_dir.mkdir(parents=True)
-    (lc_dir / ".gitkeep").write_text("")
+    (lc_dir / ".gitkeep").write_text("", encoding="utf-8")
     git("add", ".")
     git("commit", "-m", "init")
 
@@ -109,7 +109,7 @@ def test_wt_synced_after_write_lifecycle(tmp_git_repo):
 
     # WT content must match HEAD blob
     head_content = _git_show(repo, yaml_path)
-    wt_content = wt_file.read_text()
+    wt_content = wt_file.read_text(encoding="utf-8")
     assert wt_content == head_content, (
         f"WT content diverged from HEAD:\n"
         f"HEAD:\n{head_content}\n"
@@ -148,7 +148,7 @@ def test_wt_created_after_create_initial(tmp_git_repo):
 
     # WT content must match HEAD blob
     head_content = _git_show(repo, yaml_path)
-    wt_content = wt_file.read_text()
+    wt_content = wt_file.read_text(encoding="utf-8")
     assert wt_content == head_content, (
         f"WT content diverged from HEAD after create_initial:\n"
         f"HEAD:\n{head_content}\n"
@@ -191,7 +191,7 @@ def test_wt_synced_after_write_file_atomic(tmp_git_repo):
 
     # WT content must match HEAD blob
     head_content = _git_show(repo, rel_path)
-    wt_content = wt_file.read_text()
+    wt_content = wt_file.read_text(encoding="utf-8")
     assert wt_content == head_content, (
         f"WT content diverged from HEAD after write_file_atomic:\n"
         f"HEAD:\n{head_content}\n"
