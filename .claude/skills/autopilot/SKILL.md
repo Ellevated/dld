@@ -64,7 +64,7 @@ PHASE 2: Execute (per task)    → task-loop.md
   └─ [Tester] sonnet → pass?
       └─ fail? → [Debugger] opus (max 3) → escalation.md
   └─ PRE-CHECK (deterministic)
-  └─ [Spec Reviewer] sonnet → approved?
+  └─ Spec compliance checked inline (no dispatch)
   └─ [Code Quality] opus → approved?
   └─ COMMIT (no push)
   └─ LOCAL VERIFY (if AV section) → warn only
@@ -106,7 +106,7 @@ PHASE 2: FOR EACH TASK (fresh subagent per task!)
   [CODER] → code → files_changed
   [TESTER] → Smart Testing
   PRE-CHECK → deterministic validation
-  [SPEC REVIEWER] → Stage 1
+  Spec compliance → inline, Step 4
   [CODE QUALITY] → Stage 2
   COMMIT (NO PUSH yet!)
   See: task-loop.md (SSOT for execution flow)
@@ -139,7 +139,7 @@ For EACH task from plan:
 │ 1. CODER → files_changed                            │
 │ 2. TESTER → Smart Testing                           │
 │ 3. PRE-CHECK → deterministic validation             │
-│ 4. SPEC REVIEWER (Stage 1) → matches spec?          │
+│ 4. SPEC COMPLIANCE (inline) → matches spec?         │
 │ 5. CODE QUALITY (Stage 2) → architecture ok?        │
 │ 6. COMMIT (NO PUSH yet!)                            │
 │ 7. LOCAL VERIFY → smoke + functional (warn only)    │
@@ -197,7 +197,7 @@ while (queued/resumed tasks in ai/backlog.md):
        a. CODER → files_changed
        b. TESTER → pass? (debug loop if fail)
        c. PRE-CHECK → deterministic validation
-       d. SPEC REVIEWER → matches spec?
+       d. SPEC COMPLIANCE (inline) → matches spec?
        e. CODE QUALITY → architecture ok?
        f. COMMIT (no push)
 

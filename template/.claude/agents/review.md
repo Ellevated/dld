@@ -10,7 +10,7 @@ tools: Read, Glob, Grep, Bash
 
 You are the architecture watchdog. Prevent tech debt BEFORE commit.
 
-**Stage 2 of Two-Stage Review** (after Spec Reviewer approved)
+**Stage 2 of Two-Stage Review** (after the loop's inline spec-compliance check)
 
 ## Reviewer Discipline (READ FIRST)
 
@@ -52,7 +52,7 @@ feature_spec: "ai/features/FTR-XXX.md"
 ## What You DON'T Check
 - Code works (Tester)
 - Syntax/lint (CI)
-- Matches spec (Spec Reviewer — Stage 1)
+- Matches spec (checked inline by the task loop — Stage 1)
 
 ## What You Check
 

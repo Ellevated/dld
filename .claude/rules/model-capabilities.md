@@ -74,7 +74,6 @@ Their level table names `low` as the level for **subagents** specifically.
 | scout | sonnet | high | Research quality matters; tool use rises measurably at high/xhigh |
 | audit/synthesizer | sonnet | high | Down from xhigh — merge task, not frontier reasoning |
 | tester | sonnet | medium | Execution-focused |
-| spec-reviewer | sonnet | medium | Checklist verification |
 | eval-judge | sonnet | high | Rubric-based evaluation |
 | bughunt personas (6) | sonnet | medium | Read + describe from a fixed perspective |
 | bughunt spec-assembler, validator | sonnet | medium | Down from high — structured assembly/triage |

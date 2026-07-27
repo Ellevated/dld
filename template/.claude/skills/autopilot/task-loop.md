@@ -3,8 +3,33 @@
 SSOT for task execution. Runs once per task from the Implementation Plan.
 
 ```
-CODER → TESTER → PRE-CHECK → SPEC REVIEWER → CODE QUALITY → COMMIT → DIARY → LOCAL VERIFY → NEXT
+CODER → TESTER → PRE-CHECK → SPEC CHECK → CODE QUALITY → COMMIT → DIARY → LOCAL VERIFY → NEXT
+                              (you)
 ```
+
+## Who gets a subagent, and why
+
+A subagent starts cold. Before it can act it rebuilds the task context you are
+already holding — the spec, the plan, the diff — and that rebuild is billed as
+cache creation, which is where the money in a run actually goes. Measured across
+production runs, cost tracks cache-creation volume almost linearly; a spec that
+cost $20 built 1.3M tokens of context doing it.
+
+So the test is whether a step needs **something you do not have**:
+
+| Step | Subagent? | Why |
+|---|---|---|
+| Coder | **yes** | Writes on a cheaper model while you orchestrate — a real division of labour |
+| Tester | **yes** | Carries the test-selection tables, the immutable-test rules and eval-judge dispatch. Knowledge you do not hold, and should not inline into every task |
+| Debugger | **on failure** | Reasoning about a failure is the part that needs a model |
+| Spec compliance | **no** | You are holding the spec and the diff. A fresh agent would re-read both to reach the position you are already in |
+| Code quality | **yes** | The one place independence is load-bearing: an agent that did not write the code sees duplication and debt the author is blind to |
+
+The cut is specific, not a policy of "fewer agents". Anthropic's guidance for
+this model generation is explicit that a separate subagent asked to verify work
+already done produces over-verification rather than better verification — so the
+step that only re-derived what this context knows is folded in, and the steps
+that carry knowledge or independence are left alone.
 
 ## State tracking
 
@@ -95,23 +120,26 @@ Either failing → CODER fixes → re-run that check. Either absent → skip it.
 
 ---
 
-## Step 4: SPEC REVIEWER
+## Step 4: SPEC COMPLIANCE — check it yourself
 
-```yaml
-Task tool:
-  subagent_type: "spec-reviewer"
-  prompt: |
-    feature_spec: "ai/features/{TASK_ID}*.md"
-    task: "Task {N}/{M} — {title}"
-    files_changed: [...]
-```
+Re-read this task's requirements in `ai/features/{TASK_ID}*.md` and hold them
+against `files_changed` and the diff. Two questions, both answerable from what
+you already have:
+
+- Is anything the task asked for **missing**?
+- Is anything there that the task did **not** ask for?
 
 ```
-├─ approved             → Step 5
-├─ needs_implementation → CODER adds missing → re-review
-└─ needs_removal        → CODER removes extras → re-review
+├─ matches              → Step 5
+├─ missing something    → CODER adds it → re-check
+└─ extra beyond scope   → CODER removes it → re-check
                           spec_review_loop < 2? retry : ESCALATE
 ```
+
+Quote the spec line and the file:line you are matching it against, for each
+requirement. Naming both ends is what keeps this a check rather than a feeling —
+and it is the same evidence a separate reviewer would have produced, at the
+cost of re-reading a spec you have had in context since PHASE 1.
 
 ---
 
@@ -294,7 +322,7 @@ Reset at the start of each task.
 
 ---
 
-## Status writes — forbidden here
+## Status Writes — Forbidden
 
 Autopilot never edits `**Status:**` in the spec or the status column in `ai/backlog.md`.
 Final task closure emits `task_status` in the result_preview JSON; callback writes status.

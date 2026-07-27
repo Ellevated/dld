@@ -174,7 +174,7 @@ Tester fails + in-scope failure.
 
 ## Two-Stage Review
 
-### Stage 1: Spec Reviewer
+### Stage 1: Spec compliance (inline, no agent)
 **Model:** Sonnet
 
 **Question:** "Does the code match the spec EXACTLY?"
@@ -201,7 +201,7 @@ Tester fails + in-scope failure.
 ⛔ NO COMMIT without BOTH reviewers approved!
 
 Only path:
-  SPEC REVIEWER: approved
+  SPEC COMPLIANCE: checked inline
     → CODE QUALITY REVIEWER: approved
       → COMMIT
 ```
@@ -260,7 +260,6 @@ fix_steps: [...]
 | Coder | Sonnet | 90% capability, 2x speed |
 | Tester | Sonnet | Running tests, parsing |
 | Debugger | Opus | Root cause analysis |
-| Spec Reviewer | Sonnet | Spec matching |
 | Code Quality Reviewer | Opus | Architecture review |
 | Documenter | Sonnet | Routine updates |
 | Council | Opus | Complex decisions |

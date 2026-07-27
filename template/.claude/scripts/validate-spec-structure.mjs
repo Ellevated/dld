@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Deterministic validator: checks spec file structure (mandatory sections).
- * Used by Spark Phase 6 (Gate S1) and Autopilot spec-reviewer pre-check.
+ * Used by Spark Phase 6 (Gate S1) and the autopilot loop's inline spec check.
  *
  * Usage: node validate-spec-structure.mjs <spec_file>
  * Exit: 0 = pass, 1 = fail (reasons on stdout)

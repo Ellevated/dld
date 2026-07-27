@@ -193,7 +193,7 @@ mcp__exa__web_search_exa:
 For EACH task, verify:
 - [ ] Coder entry present
 - [ ] Tester entry present
-- [ ] Spec Reviewer entry with status
+- [ ] Spec compliance entry with result
 - [ ] Code Quality entry with status
 - [ ] Commit hash present
 
@@ -225,7 +225,7 @@ Add to feature file:
 - Tester: passed | failed → debug loop | skipped (no tests for .md)
 - Deploy: applied | skipped (no migrations)
 - Documenter: completed | skipped (no docs needed)
-- Spec Reviewer: approved | needs_implementation | needs_removal
+- Spec compliance: matches | missing something | extra beyond scope
 - Code Quality Reviewer: approved | needs_refactor ({N} blocking, {M} advisory)
 - Exa Verify: no issues | WARNING: {description}
 - Local Verify: pass | warn: {details} | skip (no AV)

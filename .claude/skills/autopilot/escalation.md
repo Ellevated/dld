@@ -191,7 +191,7 @@ Escalation events get an additional index row:
 When to set status=blocked:
 
 - Deploy validation failed
-- Spec Reviewer loop > 2 iterations
+- Spec compliance loop > 2 iterations
 - Unclear requirements
 - Human decision needed
 - Git conflicts

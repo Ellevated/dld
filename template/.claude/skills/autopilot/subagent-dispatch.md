@@ -14,7 +14,6 @@ How to spawn and manage subagents in autopilot workflow.
 | Coder | `coder` | sonnet | PHASE 2 per task |
 | Tester | `tester` | sonnet | PHASE 2 per task |
 | Debugger | `debugger` | opus | If Tester fails (max 3) |
-| Spec Reviewer | `spec-reviewer` | sonnet | PHASE 2 per task |
 | ~~Diary Recorder~~ | ~~diary-recorder~~ | — | **DEPRECATED:** inline in task-loop Step 6.5 (ADR-007) |
 | Eval Judge | `eval-judge` | sonnet | LLM-as-Judge eval criteria |
 
@@ -95,18 +94,11 @@ Task tool:
     attempt: {debug_attempts}
 ```
 
-### Spec Reviewer
+### Spec compliance — no dispatch
 
-```yaml
-Task tool:
-  subagent_type: "spec-reviewer"
-  prompt: |
-    feature_spec: "ai/features/{TASK_ID}*.md"
-    task: "Task {N}/{M} — <user_input>{title}</user_input>"
-    files_changed:
-      - path: "{path}"
-        action: "{created|modified}"
-```
+Checked inline by the task loop (task-loop.md Step 4). It compared a spec and a
+diff that the caller already holds, so the dispatch bought a second context to
+re-derive the first one's position. See task-loop.md § "Who gets a subagent".
 
 ### Code Quality Reviewer
 
@@ -171,5 +163,5 @@ Each task gets FRESH subagents — no shared context pollution!
 | Model | Use For | Why |
 |-------|---------|-----|
 | **Opus** | Plan, Debugger, Code Quality | Architecture decisions, root cause analysis |
-| **Sonnet** | Coder, Tester, Spec Reviewer | 90% capability, 2x speed, cost-effective |
+| **Sonnet** | Coder, Tester | 90% capability, 2x speed, cost-effective |
 | **Haiku** | ~~Diary (deprecated)~~ | Diary now inline in task-loop Step 6.5 |

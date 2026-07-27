@@ -151,7 +151,7 @@ Only for: hotfixes <5 LOC, doc-only, config tweaks.
 
 ```
 NO COMMIT without BOTH:
-  1. SPEC REVIEWER: approved
+  1. SPEC COMPLIANCE: checked inline (task-loop.md Step 4)
   2. CODE QUALITY REVIEWER: approved
 ```
 
@@ -163,7 +163,7 @@ Before `git commit`, verify ALL:
 [ ] CODER completed — files created/modified
 [ ] TESTER completed — tests passed
 [ ] DOCUMENTER completed — docs updated (if needed)
-[ ] SPEC REVIEWER — approved
+[ ] SPEC COMPLIANCE — checked inline, spec line + file:line named
 [ ] CODE QUALITY REVIEWER — approved
 ```
 
@@ -176,7 +176,7 @@ Say out loud before commit:
 ```
 "Coder: completed — files: [list]"
 "Tester: passed"
-"Spec Reviewer: approved"
+"Spec compliance: checked — {requirement} -> {file}:{line}"
 "Code Quality: approved"
 ```
 
