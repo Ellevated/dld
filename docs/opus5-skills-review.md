@@ -174,12 +174,54 @@ only re-derives the caller's position is paying cache creation for nothing.
 Anything Step 1 does is judged against these. Small specs are already cheap; the
 question is the top of that table, where one bug fix costs $20 and builds 1.3M tokens
 of context.
-- [ ] **2. Spark** — four scouts down to however many are actually needed. The Gate 1b
-      spec-size limiter added 2026-07-26 is a bandage over specs bloated by the
-      multi-agent design itself.
+- [x] **2. Spark** — done 2026-07-27. Four scouts down to three, plus one dead agent
+      removed. See "Step 2 result" below.
 - [ ] **3. Council / architect / board** — keep the diversity, it is judgment rather
       than research. Cut only the scaffolding.
 - [ ] **4. Fable 5** placement + a fresh effort sweep.
+
+### Step 2 result — Spark, 2026-07-27
+
+Same test as Step 1: does this agent carry knowledge or independence the caller lacks?
+
+**Merged — `spark-external` + `spark-patterns` → `spark-research`.** Two agents, both
+running Exa against the same feature, both ending in a recommendation, neither able to
+see the other's. The proof was sitting in their own prompts: the worked example in
+`external.md` concludes "aiogram 3.x — native async, built-in rate limiting", and the
+worked example in `patterns.md` concludes "Approach 1, aiogram's built-in throttling is
+the clear winner". Two scouts, two research passes, one answer — written by whoever
+authored the prompts, without noticing they had converged. Best practices and
+alternatives are two views of one search, so they are now one scout with one
+recommendation instead of two that synthesis had to reconcile.
+
+**Deleted — `spark-facilitator`.** 340 lines describing the 8-phase protocol, dispatched
+by nothing: not by `feature-mode.md`, not by `SKILL.md`, not by the orchestrator's
+`_ROUTE_SKILL_MAP`. Spark runs in the main loop. Worse than unused, it had drifted:
+5 validation gates against feature-mode's 8, no Session Budget, no Gate 1b/7/8, and
+`spec stays draft` on failure — a status `SKILL.md` says Spark never emits and the
+orchestrator never picks up. A second copy of a protocol is a copy that will disagree
+with the original; this one already did.
+
+**Kept — `spark-codebase`.** Grep evidence across the tree, the Impact Tree, and the two
+sections Gates 7 and 8 read directly (`## Historical Risks`, `## Verified References`).
+Both gates auto-pass when it is missing, so losing it ships a spec with unverified
+references. Knowledge plus a lot of file-reading volume that would otherwise land in the
+main context.
+
+**Kept — `spark-devil`.** Same reason autopilot keeps `review`: the author of a proposal
+cannot see its holes. Its `DA-*`/`SA-*` assertions feed Gate 2 directly, and it is the
+one scout with a golden dataset (`test/agents/devil/`).
+
+Dispatches per feature spec: **4 → 3**. Prompt tree: **−1,208 lines** across both mirrors.
+
+**Not done, deliberately.** The `## Example Output` blocks in `codebase.md` and
+`devil.md` (188 lines of invented Telegram-bot content) are a candidate under Anthropic's
+"tool usage examples in the prompt — redundant" guidance, and they risk anchoring specs
+in an unrelated domain. But the Output Format template already specifies the structure,
+so what an example adds is *calibration*, not format — and calibration is exactly what
+cannot be judged by eye. `devil` has a golden dataset; that cut should be measured
+against it, not made by feel. The merged scout carries no example block: keeping either
+of the two converged examples would have re-created the duplication being removed.
 
 ## How it stays honest
 

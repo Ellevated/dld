@@ -52,7 +52,7 @@ Write tool → {SESSION_DIR}/state.json
 Before launching Phase 2 (Research), inform user (non-blocking):
 
 ```
-"Feature spec: {title} — 4 scouts (parallel) + synthesis, est. ~$1-3. Running..."
+"Feature spec: {title} — 3 scouts (parallel) + synthesis, est. ~$1-3. Running..."
 ```
 
 ---
@@ -71,7 +71,7 @@ Before launching Phase 2 (Research), inform user (non-blocking):
 ✅ Orchestrator reads scout files for synthesis (4 files × ~5K = ~20K acceptable)
 ```
 
-Note: Phase 3 synthesis reads scout output files directly (~20K total). This is an acceptable exception to ADR-010 zero-read — small, bounded output from 4 scouts.
+Note: Phase 3 synthesis reads scout output files directly (~15K total). This is an acceptable exception to ADR-010 zero-read — small, bounded output from 3 scouts.
 
 ---
 
@@ -81,13 +81,16 @@ If scout phases fail partially, continue with available data:
 
 | Failed Phase | Action | Impact |
 |-------------|--------|--------|
-| Phase 2: 1 scout fails | Continue with 3 of 4 scouts | Note missing perspective in synthesis |
-| Phase 2: 2+ scouts fail | Continue with available (min 2 required) | Reduced analysis quality, note gaps |
+| Phase 2: 1 scout fails | Continue with 2 of 3 scouts | Note missing perspective in synthesis |
+| Phase 2: 2 scouts fail | Continue with the survivor | Reduced analysis quality, note gaps |
 | Phase 2: All scouts fail | Skip research, proceed with user input only | Spec based on dialogue only, note "No external research" |
 | Phase 3: Synthesis fails | Read scout files directly, present raw findings | User manually picks approach |
 | Phase 6: Validation fails | Retry once, then skip validation gate | Note "Spec not validated" |
 
-Minimum viable spec: user dialogue (Phase 1) + 2 scout reports.
+Minimum viable spec: user dialogue (Phase 1) + the codebase scout. Losing `spark-codebase`
+is the one failure that degrades the spec structurally — Gate 7 (Historical Risks) and
+Gate 8 (Verified References) both read its output, and both auto-pass without it, so the
+spec ships with unverified references. Note it explicitly when it happens.
 
 ---
 
@@ -150,9 +153,21 @@ DO NOT proceed to Phase 2 until:
 
 ---
 
-## Phase 2: RESEARCH (4 Parallel Scouts)
+## Phase 2: RESEARCH (3 Parallel Scouts)
 
-Dispatch 4 isolated scouts in parallel. Each scout gets a frozen snapshot — they do NOT see each other's work.
+Dispatch 3 isolated scouts in parallel. Each scout gets a frozen snapshot — they do NOT see each other's work.
+
+Three, because each one holds something this session does not:
+
+| Scout | What it brings that you cannot get otherwise |
+|---|---|
+| `spark-research` | Everything outside the repo — web, docs, library versions. A separate context absorbs the search volume instead of flooding this one |
+| `spark-codebase` | Grep evidence across the whole tree, the Impact Tree, and `## Verified References` / `## Historical Risks`, which Gates 7 and 8 read directly |
+| `spark-devil` | Independence of judgment. The author of a proposal cannot see its holes — this is the same reason autopilot keeps a separate `review` |
+
+Research and alternatives used to be two scouts running the same Exa queries and returning
+two recommendations that then had to be reconciled. They are one search, so they are one
+scout.
 
 > **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
 > one turn). They run concurrently only when emitted together — calls in
@@ -160,16 +175,16 @@ Dispatch 4 isolated scouts in parallel. Each scout gets a frozen snapshot — th
 > concurrent agents and queues the rest, so emitting many at once is safe.
 
 ```yaml
-# Scout 1: External (best practices, libraries)
+# Scout 1: Research (practices, libraries, alternative approaches)
 Task tool:
   description: "Spark scout: external research"
-  subagent_type: spark-external       # → agents/spark/external.md
+  subagent_type: spark-research       # → agents/spark/research.md
   run_in_background: true
   prompt: |
     FEATURE: {feature description}
     BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
     SOCRATIC INSIGHTS: {key insights from Phase 1}
-    Output: research-external.md
+    Output: research-web.md
 
 # Scout 2: Codebase (existing code, dependencies)
 Task tool:
@@ -182,18 +197,7 @@ Task tool:
     SOCRATIC INSIGHTS: {key insights from Phase 1}
     Output: research-codebase.md
 
-# Scout 3: Patterns (alternatives, trade-offs)
-Task tool:
-  description: "Spark scout: alternative patterns"
-  subagent_type: spark-patterns       # → agents/spark/patterns.md
-  run_in_background: true
-  prompt: |
-    FEATURE: {feature description}
-    BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
-    SOCRATIC INSIGHTS: {key insights from Phase 1}
-    Output: research-patterns.md
-
-# Scout 4: Devil's Advocate
+# Scout 3: Devil's Advocate
 Task tool:
   description: "Spark scout: devil's advocate"
   subagent_type: spark-devil          # → agents/spark/devil.md
@@ -205,20 +209,20 @@ Task tool:
     Output: research-devil.md
 ```
 
-**All 4 scouts run in PARALLEL, ALL background, and do NOT see each other's work.**
+**All 3 scouts run in PARALLEL, ALL background, and do NOT see each other's work.**
 
 If `ai/blueprint/system-blueprint/` exists, ALL scouts receive it as CONSTRAINT.
 
-**⏳ FILE GATE:** Wait for ALL 4 completion notifications, then verify:
+**⏳ FILE GATE:** Wait for ALL 3 completion notifications, then verify:
 ```
-Glob("{SESSION_DIR}/research-*.md") → must find 4 files
-If < 4: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
+Glob("{SESSION_DIR}/research-*.md") → must find 3 files
+If < 3: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
 ```
 
 <GATE>
 DO NOT proceed to Phase 3 until:
-- [ ] ALL 4 scout completion notifications received
-- [ ] Glob confirms 4 research files exist in SESSION_DIR
+- [ ] ALL 3 scout completion notifications received
+- [ ] Glob confirms 3 research files exist in SESSION_DIR
 - [ ] `research-codebase.md` contains a `## Verified References` section (grep `^## Verified References$` → ≥1 hit). Codebase scout in degraded mode is an acceptable exception — note "no codebase research" in state.json.
 - [ ] state.json updated: research = done, files = [list of 4 files]
 </GATE>
@@ -229,7 +233,7 @@ DO NOT proceed to Phase 3 until:
 
 Read all inputs:
 - Problem statement from Phase 1
-- 4 research files from Phase 2
+- 3 research files from Phase 2
 - `ai/blueprint/system-blueprint/` (as constraint)
 
 ### Build 2-3 Approaches WITHIN Blueprint
@@ -238,10 +242,10 @@ For each approach:
 
 | Field | Source |
 |-------|--------|
-| Summary | Pattern scout + External scout recommendations |
+| Summary | Research scout `## Approaches` + `## Recommendation` |
 | Affected files | Codebase scout Impact Tree |
 | Risks | Devil scout edge cases |
-| Test strategy | Devil scout + External scout |
+| Test strategy | Devil scout assertions + Research scout |
 | Blueprint compliance | ✓ or ⚠️ with explanation |
 
 ### Rules
@@ -404,7 +408,6 @@ Write spec using selected approach from Phase 4:
 
 ```markdown
 # Feature: [FTR-XXX] Title
-
 **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
 
 > **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml` (ARCH-186).

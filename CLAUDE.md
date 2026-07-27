@@ -197,7 +197,7 @@ Glossary: ai/glossary/{domain}.md
 | **bootstrap** | Day 0 — extract idea from founder's head (interviewer, not decider) |
 | **board** | Business architecture — revenue, channels, org model (after bootstrap) |
 | **architect** | System architecture — domains, data, APIs, cross-cutting (after board) |
-| **spark** | Feature spec — multi-agent with 4 scouts + tests mandatory (within blueprint) |
+| **spark** | Feature spec — multi-agent with 3 scouts + tests mandatory (within blueprint) |
 | **autopilot** | Execute tasks (plan + coder/tester per task + reflect upstream) |
 | **council** | Complex/controversial decisions (5 experts + cross-critique) |
 | **audit** | Code analysis, consistency check (READ-ONLY) |
