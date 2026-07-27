@@ -19,6 +19,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import heartbeat_reaper as reaper
+import reaper_liveness
+import reaper_pueue
 
 
 # ---------------------------------------------------------------------------
@@ -170,8 +172,8 @@ class TestReapStaleSessions:
 
         with (
             patch.object(reaper, "LOG_DIR", tmp_path),
-            patch.object(reaper, "get_running_claude_tasks", return_value=tasks),
-            patch.object(reaper, "is_process_idle", return_value=True),
+            patch.object(reaper_pueue, "get_running_claude_tasks", return_value=tasks),
+            patch.object(reaper_liveness, "is_process_idle", return_value=True),
             patch.object(reaper, "kill_task", side_effect=fake_kill),
             patch.object(reaper, "notify_reap", side_effect=fake_notify),
         ):
@@ -197,7 +199,7 @@ class TestReapStaleSessions:
 
         with (
             patch.object(reaper, "LOG_DIR", tmp_path),
-            patch.object(reaper, "get_running_claude_tasks", return_value=tasks),
+            patch.object(reaper_pueue, "get_running_claude_tasks", return_value=tasks),
             patch.object(reaper, "kill_task") as mock_kill,
         ):
             reaped = reaper.reap_stale_sessions()
@@ -218,7 +220,7 @@ class TestReapStaleSessions:
 
         with (
             patch.object(reaper, "LOG_DIR", tmp_path),
-            patch.object(reaper, "get_running_claude_tasks", return_value=tasks),
+            patch.object(reaper_pueue, "get_running_claude_tasks", return_value=tasks),
             patch.object(reaper, "kill_task") as mock_kill,
         ):
             reaped = reaper.reap_stale_sessions()
@@ -241,8 +243,8 @@ class TestReapStaleSessions:
 
         with (
             patch.object(reaper, "LOG_DIR", tmp_path),
-            patch.object(reaper, "get_running_claude_tasks", return_value=tasks),
-            patch.object(reaper, "is_process_idle", return_value=False),  # BUSY
+            patch.object(reaper_pueue, "get_running_claude_tasks", return_value=tasks),
+            patch.object(reaper_liveness, "is_process_idle", return_value=False),  # BUSY
             patch.object(reaper, "kill_task") as mock_kill,
         ):
             reaped = reaper.reap_stale_sessions()
@@ -265,8 +267,8 @@ class TestReapStaleSessions:
 
         with (
             patch.object(reaper, "LOG_DIR", tmp_path),
-            patch.object(reaper, "get_running_claude_tasks", return_value=tasks),
-            patch.object(reaper, "is_process_idle", return_value=None),  # inconclusive
+            patch.object(reaper_pueue, "get_running_claude_tasks", return_value=tasks),
+            patch.object(reaper_liveness, "is_process_idle", return_value=None),  # inconclusive
             patch.object(reaper, "kill_task") as mock_kill,
         ):
             reaped = reaper.reap_stale_sessions()
@@ -278,7 +280,7 @@ class TestReapStaleSessions:
         """No running tasks → 0 reaped, no errors."""
         with (
             patch.object(reaper, "LOG_DIR", tmp_path),
-            patch.object(reaper, "get_running_claude_tasks", return_value=[]),
+            patch.object(reaper_pueue, "get_running_claude_tasks", return_value=[]),
         ):
             reaped = reaper.reap_stale_sessions()
         assert reaped == 0
@@ -291,22 +293,22 @@ class TestReapStaleSessions:
 class TestParseIso:
 
     def test_standard_iso(self) -> None:
-        dt = reaper._parse_iso("2026-06-13T12:00:00+00:00")
+        dt = reaper_pueue._parse_iso("2026-06-13T12:00:00+00:00")
         assert dt is not None
         assert dt.year == 2026
 
     def test_z_suffix(self) -> None:
-        dt = reaper._parse_iso("2026-06-13T12:00:00Z")
+        dt = reaper_pueue._parse_iso("2026-06-13T12:00:00Z")
         assert dt is not None
 
     def test_empty(self) -> None:
-        assert reaper._parse_iso("") is None
+        assert reaper_pueue._parse_iso("") is None
 
     def test_none(self) -> None:
-        assert reaper._parse_iso(None) is None
+        assert reaper_pueue._parse_iso(None) is None
 
     def test_garbage(self) -> None:
-        assert reaper._parse_iso("not-a-date") is None
+        assert reaper_pueue._parse_iso("not-a-date") is None
 
 
 # ---------------------------------------------------------------------------
@@ -317,10 +319,10 @@ class TestProjectFromCommand:
 
     def test_extracts_project_name(self) -> None:
         cmd = "bash run-agent.sh /home/dld/projects/awardybot claude autopilot FTR-1185"
-        assert reaper._project_from_command(cmd) == "awardybot"
+        assert reaper_pueue._project_from_command(cmd) == "awardybot"
 
     def test_no_match(self) -> None:
-        assert reaper._project_from_command("python3 some_script.py") == ""
+        assert reaper_pueue._project_from_command("python3 some_script.py") == ""
 
     def test_empty(self) -> None:
-        assert reaper._project_from_command("") == ""
+        assert reaper_pueue._project_from_command("") == ""
