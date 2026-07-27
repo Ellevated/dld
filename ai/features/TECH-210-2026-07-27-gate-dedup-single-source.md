@@ -119,15 +119,29 @@ imports from callback, lifecycle, db, orchestrator»).
 | `scripts/vps/tests/test_callback.py` | 29 + 8 мест | ассерты и monkeypatch | переписать |
 | `scripts/vps/tests/test_claude_runner_timeout.py` | 194-222 | ассерты по тексту `callback.py` | перенацелить на `gate_logic.py` |
 
-После работы: `grep -n "_subject_implements\|_is_done_on_develop\|_parse_allowed_files"
-scripts/vps/callback.py` = **0**.
+После работы (уточнено 2026-07-28 под решение «алиас»):
+
+```
+grep -c "_subject_implements\|_is_done_on_develop\|_fetch_develop" scripts/vps/callback.py  → 0
+grep -c "^def _parse_allowed_files"                                 scripts/vps/callback.py  → 0
+grep -c "^_parse_allowed_files = gate_logic.parse_allowed_files"    scripts/vps/callback.py  → 1
+```
+
+То есть определений парсера не остаётся ни одного, остаётся одно присваивание имени.
 
 ### Step 4: CHECKLIST — mandatory folders
 
 - [x] `scripts/vps/tests/**` — три файла затронуты
-- [x] `tests/**` (корень) — `tests/regression/test_callback_spec_corpus.py` гоняет
-      корпус спек через парсер allowlist. **Не редактируется** (правило иммутабельных
-      тестов), обязан остаться зелёным как есть — он вызывает `callback.main`, не приватные имена
+- [x] `tests/**` (корень) — **исправлено 2026-07-28.** Первая редакция утверждала, что
+      `tests/regression/test_callback_spec_corpus.py` «вызывает `callback.main`, не
+      приватные имена». **Ложь**: строка 45 — `actual = callback._parse_allowed_files(spec_path)`.
+      Утверждение сделано без чтения файла, и Step 1 грепал только `scripts/vps/`.
+      Фактически корневое дерево держит ~70 обращений к удаляемым именам в 10 файлах.
+      После решения от 2026-07-28 (алиас на парсер) правятся **два**:
+      `tests/unit/test_callback_branch_awareness.py` и
+      `tests/unit/test_callback_implementation_guard.py` — оба в Allowed Files.
+      Остальные восемь, включая иммутабельный regression-корпус, ходят через алиас
+      и не трогаются
 - [x] `db/migrations/**` — в проекте нет
 - [x] `ai/glossary/**` — директории не существует (предсуществующий дрейф)
 
@@ -153,6 +167,9 @@ ONLY the files listed below may be modified during implementation.
 - `scripts/vps/tests/test_gate_logic.py` — принять кейсы матчера из `test_callback.py` (modify)
 - `scripts/vps/tests/test_claude_runner_timeout.py` — перенацелить source-ассерты (modify)
 - `.github/workflows/test.yml` — coverage-гейт привязан к имени модуля `callback` (modify)
+- `tests/unit/test_callback_branch_awareness.py` — BUG-1039 regression по `_is_done_on_develop` (modify)
+- `tests/unit/test_callback_implementation_guard.py` — TECH-166 guard, 14 ассертов (modify)
+- `scripts/vps/tests/test_gate_logic_subject.py` — вынос кейсов матчера, если файл не влезает в 600 (NEW)
 
 **FORBIDDEN:** All other files. Autopilot must refuse changes outside this list.
 
@@ -616,6 +633,8 @@ Task 3 формально независим (не требует Task 2), но 
 | EC-6 | Удалённые имена отсутствуют | `hasattr(callback, "_is_done_on_develop")` | `False` | deterministic | user | P1 |
 | EC-7 | `gate_logic.py` под лимитом | `wc -l scripts/vps/gate_logic.py` | ≤ 400 | deterministic | user | P1 |
 | EC-8 | `callback` не связывает имена | `grep "^from gate_logic import" scripts/vps/callback.py` | 0 попаданий | deterministic | design-правило | P1 |
+| EC-13 | Алиас парсера делегирует, а не копирует | `callback._parse_allowed_files is gate_logic.parse_allowed_files` | `True` | deterministic | решение 2026-07-28 | P0 |
+| EC-14 | Урезание fetch-бюджета объявлено | `gate_logic.fetch_develop` на медленном remote | таймаут 15s, возврат `False`, гейт даёт `blocked`, **не** `done` | deterministic | planner [VERIFIED-FIX 2] пара D | P0 |
 
 ### Integration Assertions
 
@@ -627,7 +646,7 @@ Task 3 формально независим (не требует Task 2), но 
 | EC-12 | Coverage-гейт проходит | команда из `test.yml:65-72` | ≥54%, порог **не понижен** | integration | devil SA-3 | P0 |
 
 ### Coverage Summary
-Deterministic: 8 | Integration: 4 | LLM-Judge: 0 | Total: 12 (min 3 ✓)
+Deterministic: 10 | Integration: 4 | LLM-Judge: 0 | Total: 14 (min 3 ✓)
 
 ### TDD Order
 1. EC-5 **первым** — он определяет, годен ли выбранный паттерн вообще (devil DA-4)
@@ -675,10 +694,13 @@ DEPLOY_URL=local-only
 ## Definition of Done
 
 ### Functional
-- [ ] Шесть функций и семь регэкспов удалены из `callback.py`
-- [ ] Все call-sites зовут `gate_logic.*` через атрибут модуля
-- [ ] `spec_verify.py` использует публичный `gate_logic.parse_allowed_files`
+- [ ] **Пять** функций и семь регэкспов удалены из `callback.py` (состав семи — по
+      [VERIFIED-FIX 1]: без `_SPEC_ID_RE`, с `_ALLOWED_FILES_HEADING_RE`)
+- [ ] `_parse_allowed_files` остаётся **одной строкой-алиасом** на `gate_logic.parse_allowed_files`
+- [ ] Все девять call-sites зовут `gate_logic.*` через атрибут модуля
+- [ ] `spec_verify.py` использует публичный `gate_logic.parse_allowed_files` (строки 38 и 228)
 - [ ] `gate_logic.py` ≤ 400 LOC
+- [ ] `scripts/vps/tests/test_gate_logic.py` ≤ 600 LOC (лимит тестов)
 
 ### Tests
 - [ ] EC-1..EC-11 проходят
@@ -700,7 +722,97 @@ DEPLOY_URL=local-only
 
 ### 2026-07-27 — BLOCKED at PHASE 1 (planner validation), zero code written
 
-**ACTION REQUIRED — owner decision before this spec can execute.**
+> ## ✅ РЕШЕНО 2026-07-28 — resolution 1 (тонкий делегат для парсера)
+>
+> Владелец выбрал вариант 1. Блокер снят, спека исполнима. Ниже — что именно меняется;
+> при расхождении с текстом ACTION REQUIRED **побеждает этот блок**.
+>
+> ### Решение
+>
+> `callback._parse_allowed_files` **остаётся** — одной строкой:
+>
+> ```python
+> # Дедупликация — это одна реализация, а не ноль имён. Алиас держит публичный шов
+> # для 35 прямых вызовов в корневом tests/, иммутабельного regression-корпуса и
+> # spec_verify.py; тело живёт в gate_logic.
+> _parse_allowed_files = gate_logic.parse_allowed_files
+> ```
+>
+> Удаляются по-прежнему: `_parse_allowed_files_v1`, `_parse_allowed_files_legacy`,
+> `_subject_implements`, `_fetch_develop`, `_is_done_on_develop` и семь регэкспов
+> в составе по [VERIFIED-FIX 1].
+>
+> ### Почему алиас здесь безопасен, а для гейта — нет
+>
+> Отказ от делегатов в § Approaches был аргументирован ловушкой DA-4: тест патчит
+> `callback._is_done_on_develop`, конвейер уходит в `gate_logic`, мок молча не срабатывает.
+> Ловушка требует monkeypatch. Замер по корневому дереву:
+>
+> | Имя | Ссылок в `tests/` | `monkeypatch.setattr` | Прямых вызовов |
+> |---|---|---|---|
+> | `_parse_allowed_files` | 36 | **0** | 35 |
+> | `_parse_allowed_files_v1` / `_legacy` | 0 | 0 | 0 |
+> | `_is_done_on_develop` | 13 | 0 | 13 |
+> | `_subject_implements` | 2 | 0 | 2 |
+> | `_fetch_develop` | 0 | 0 | 0 |
+>
+> У парсера **ноль** monkeypatch-потребителей во всём дереве — ловушке нечем сработать.
+> У гейтовых функций monkeypatch есть, но только в `scripts/vps/tests/test_callback.py`,
+> который уже в Allowed Files и переписывается штатно.
+>
+> ### Границы правятся меньше, чем оценил planner
+>
+> Resolution 1 предполагала «всё равно нужны 9 мутабельных тест-файлов». Это оценка
+> сверху: она считала все ~70 обращений, но 36 из них — к парсеру, и алиас их закрывает.
+> Ломаются **два** файла, оба из-за пар A и B:
+>
+> - `tests/unit/test_callback_branch_awareness.py` — BUG-1039 regression по `_is_done_on_develop`
+> - `tests/unit/test_callback_implementation_guard.py` — TECH-166 guard
+>
+> Оба добавлены в `## Allowed Files`. Ссылки в них перенацеливаются на
+> `gate_logic.find_implementation_commit` / `gate_logic.match_subject`; **ни один кейс
+> не удаляется** — это регрессионные сторожа за конкретными инцидентами.
+>
+> Остальные восемь корневых файлов (`test_callback_parser.py`,
+> `test_callback_allowlist_v1.py`, `test_callback_already_merged.py`,
+> `test_callback_feature_branch.py`, `test_callback_blocked_no_dispatch.py`,
+> `test_callback_no_impl_demote.py`, `test_callback_status_sync.py`,
+> `tests/regression/test_callback_spec_corpus.py`) **не трогаются** — они ходят через
+> алиас. EC-11 и EC-12 снова достижимы.
+>
+> ### Три довеска от planner — приняты
+>
+> 1. **`_SPEC_ID_RE` не удалять** (живёт в `resolve_spec_id`), вместо него уходит
+>    `_ALLOWED_FILES_HEADING_RE`. Состав семи меняется, число остаётся.
+> 2. **Call-sites 9, а не 5** — таблица в § Verified line map каноническая. Две строки
+>    `_parse_allowed_files` (1217, 1514) при алиасе можно оставить как есть или перевести
+>    на `gate_logic.parse_allowed_files` — семантика одна; предпочтительно перевести,
+>    чтобы алиас остался чисто внешним швом. Плюс `spec_verify.py:228`.
+> 3. **Пара D меняет поведение: fetch-бюджет 30s → 15s.** Принимается сознательно и
+>    объявляется здесь: fetch best-effort, гейт fail-closed, недобор истории даёт
+>    `blocked`, а не ложный `done`. Новый EC-13 это фиксирует.
+>
+> ### Лимит тестового файла
+>
+> `test_gate_logic.py` — 720 LOC при лимите 600 для тестов, миграция кейсов даёт ~790.
+> Из 29 ассертов матчера **новых только 12**, а класс
+> `TestMatchSubjectParityWithCallback` (`test_callback.py:450-490`) после схлопывания
+> копий теряет смысл и **удаляется, а не переезжает**. Если после этого файл всё ещё
+> над 600 — разрешено вынести матчер в `scripts/vps/tests/test_gate_logic_subject.py`
+> (добавлен в Allowed Files заранее, чтобы не упереться в BUG-199 fence второй раз).
+>
+> ### Причина блокера — дефект авторства спеки, записан
+>
+> § Impact Tree Step 1 грепал только `scripts/vps/`. Корневое дерево `tests/` не
+> проверялось, и Step 4 CHECKLIST утверждал про regression-корпус «вызывает
+> `callback.main`, не приватные имена» — ложь, строка 45 зовёт приватное имя напрямую.
+> Правило на будущее: **Impact Tree Step 1 грепает от корня репозитория, а не от
+> директории правки.** Утверждение о содержимом файла делается после чтения файла.
+
+---
+
+**ACTION REQUIRED — снят 2026-07-28, см. блок «РЕШЕНО» выше. Текст ниже сохранён как
+разбор блокера.**
 
 Baseline captured before blocking: `scripts/vps/tests` = **421 passed** on `origin/develop`.
 Line numbers in the spec had **not** drifted — every symbol sits exactly where § Context says.
