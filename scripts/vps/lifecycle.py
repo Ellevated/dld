@@ -116,6 +116,21 @@ class NotBootstrapArtifactError(Exception):
         self.value = value
 
 
+class NotFalseReconciliationError(Exception):
+    """Raised by recover_false_reconciliation when the signature does not match
+    — the spec really was implemented, and Rule 7 must keep protecting it.
+    """
+
+    def __init__(self, *, spec_id: str, criterion: str, value) -> None:
+        super().__init__(
+            f"lifecycle({spec_id}): not a false reconciliation — "
+            f"{criterion}={value!r}; refusing to recover (Rule 7 still applies)"
+        )
+        self.spec_id = spec_id
+        self.criterion = criterion
+        self.value = value
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -971,6 +986,124 @@ def recover_bootstrap_artifact(
     # have *just* validated the bootstrap-as-done signature above, which is
     # the narrow operator-escape ADR-025 always envisioned (see
     # recover_bootstrap_as_done.py docstring).
+    _cas_loop(repo_dir, spec_id, branch, make_yaml)
+
+
+def recover_false_reconciliation(
+    repo_dir,
+    spec_id: str,
+    *,
+    reason: str,
+    by: str = "operator",
+) -> None:
+    """Demote a spec the reconciliation gate closed against its own birth commit.
+
+    Second narrow Rule 7 escape, same shape as recover_bootstrap_artifact and
+    the same reason for existing: `done` is terminal by construction, so a spec
+    closed by a bug cannot be reopened by any normal path.
+
+    The bug (fixed 2026-07-27 in gate_logic.strip_bookkeeping_paths): a spec
+    listing `ai/lifecycle/<ID>.yaml` in its Allowed Files matched the commit
+    Spark writes to claim its own ID — `lifecycle(BUG-460): queued` — because
+    that subject parses as a conventional commit with the spec id in scope.
+
+    Signature required, ALL of it — otherwise refuse:
+
+      * status == "done"
+      * blocked_reason starts with "already_implemented_on_develop:"
+      * pueue_id is None   (never dispatched)
+      * started_at is None (never ran)
+      * the cited commit is bookkeeping-only — its subject begins `lifecycle(`
+        or it touches nothing outside ai/lifecycle, ai/features, ai/diary,
+        ai/backlog.md
+
+    That last check is what keeps this honest. A spec genuinely reconciled
+    against real work on develop cites a real implementation commit, fails the
+    check, and stays done.
+
+    Args:
+        repo_dir: Path to the project repo.
+        spec_id: Spec identifier, e.g. "BUG-460".
+        reason: Recorded in the lifecycle transition.
+        by: Writer identity; must be in _ALLOWED_WRITERS.
+
+    Raises:
+        ValueError: `by` not in _ALLOWED_WRITERS.
+        FileNotFoundError: no HEAD yaml for spec_id.
+        NotFalseReconciliationError: signature did not match — Rule 7 stands.
+        LifecycleWriteRaceError: CAS retries exhausted.
+    """
+    if by not in _ALLOWED_WRITERS:
+        raise ValueError(
+            f"recover_false_reconciliation: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS)}"
+        )
+
+    repo_dir = str(repo_dir)
+    existing = _read_yaml_from_head(repo_dir, spec_id)
+    if existing is None:
+        raise FileNotFoundError(
+            f"recover_false_reconciliation({spec_id}): no HEAD yaml in {repo_dir}"
+        )
+
+    if existing.get("status") != "done":
+        raise NotFalseReconciliationError(
+            spec_id=spec_id, criterion="status", value=existing.get("status")
+        )
+    blocked_reason = existing.get("blocked_reason") or ""
+    prefix = "already_implemented_on_develop:"
+    if not blocked_reason.startswith(prefix):
+        raise NotFalseReconciliationError(
+            spec_id=spec_id, criterion="blocked_reason", value=blocked_reason
+        )
+    if existing.get("pueue_id") is not None:
+        raise NotFalseReconciliationError(
+            spec_id=spec_id, criterion="pueue_id", value=existing.get("pueue_id")
+        )
+    if existing.get("started_at") is not None:
+        raise NotFalseReconciliationError(
+            spec_id=spec_id, criterion="started_at", value=existing.get("started_at")
+        )
+
+    sha = blocked_reason[len(prefix) :].strip()
+    if not sha:
+        raise NotFalseReconciliationError(spec_id=spec_id, criterion="cited_sha", value=sha)
+
+    subject = _run(["git", "log", "-1", "--format=%s", sha], cwd=repo_dir).stdout.strip()
+    files = [
+        ln.strip()
+        for ln in _run(
+            ["git", "show", "--name-only", "--format=", sha], cwd=repo_dir
+        ).stdout.splitlines()
+        if ln.strip()
+    ]
+    bookkeeping_only = subject.startswith("lifecycle(") or all(
+        f.startswith(("ai/lifecycle/", "ai/features/", "ai/diary/")) or f == "ai/backlog.md"
+        for f in files
+    )
+    if not bookkeeping_only:
+        raise NotFalseReconciliationError(
+            spec_id=spec_id,
+            criterion="cited_commit_is_real_work",
+            value=f"{sha} {subject!r} touches {files[:5]}",
+        )
+
+    branch = _current_branch(repo_dir)
+
+    def make_yaml():
+        head_now = _read_yaml_from_head(repo_dir, spec_id)
+        base = head_now if head_now is not None else existing
+        return _build_yaml_content(
+            spec_id,
+            "queued",
+            existing=base,
+            reason=reason,
+            by=by,
+            pueue_id=None,
+            allowed_files_hash=None,
+        )
+
+    # Deliberately bypassing Rule 7, exactly as recover_bootstrap_artifact does:
+    # the signature above has just proven this `done` was never earned.
     _cas_loop(repo_dir, spec_id, branch, make_yaml)
 
 

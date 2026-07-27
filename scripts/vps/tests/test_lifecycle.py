@@ -568,3 +568,82 @@ def test_create_initial_spark_rejects_non_queued(tmp_git_repo):
         by="orchestrator",
     )
     assert lifecycle.read_lifecycle(tmp_git_repo, "TECH-904")["status"] == "done"
+
+
+# ---------------------------------------------------------------------------
+# recover_false_reconciliation — the second narrow Rule 7 escape (2026-07-27)
+#
+# Reopens specs the reconciliation gate closed against their own birth commit
+# (`lifecycle(BUG-460): queued`). Must refuse anything that looks like real work.
+# ---------------------------------------------------------------------------
+
+
+def _git(repo, *args):
+    r = subprocess.run(
+        ["git"] + list(args), cwd=str(repo), capture_output=True, text=True, check=False
+    )
+    if r.returncode != 0:
+        raise RuntimeError(f"git {args} failed: {r.stderr.strip()}")
+    return r.stdout.strip()
+
+
+def _make_false_reconciled(repo, spec_id, *, subject, extra_file=None):
+    """Create the on-disk shape of a falsely-reconciled spec, return the cited sha."""
+    lifecycle.create_initial(repo, spec_id, priority="p1", kind="tech", by="spark")
+    if extra_file:
+        target = repo / extra_file
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("x = 1\n", encoding="utf-8")
+        _git(repo, "add", extra_file)
+    else:
+        _git(repo, "add", f"ai/lifecycle/{spec_id}.yaml")
+    _git(repo, "commit", "--allow-empty", "-m", subject)
+    sha = _git(repo, "rev-parse", "HEAD")
+    lifecycle.write_lifecycle(
+        repo, spec_id, "done", by="orchestrator",
+        reason=f"already_implemented_on_develop:{sha[:12]}",
+    )
+    return sha
+
+
+def test_recovers_spec_closed_by_its_own_birth_commit(tmp_git_repo):
+    _make_false_reconciled(tmp_git_repo, "BUG-460", subject="lifecycle(BUG-460): queued")
+    assert lifecycle.read_lifecycle(tmp_git_repo, "BUG-460")["status"] == "done"
+
+    lifecycle.recover_false_reconciliation(
+        tmp_git_repo, "BUG-460", reason="false reconciliation, gate bug 2026-07-27"
+    )
+    after = lifecycle.read_lifecycle(tmp_git_repo, "BUG-460")
+    assert after["status"] == "queued"
+    assert after["pueue_id"] is None
+
+
+def test_refuses_when_cited_commit_is_real_work(tmp_git_repo):
+    """The guard that makes this safe: a real implementation commit stays done."""
+    _make_false_reconciled(
+        tmp_git_repo, "BUG-461",
+        subject="fix(BUG-461): escape first_name",
+        extra_file="src/copy.py",
+    )
+    with pytest.raises(lifecycle.NotFalseReconciliationError) as exc:
+        lifecycle.recover_false_reconciliation(tmp_git_repo, "BUG-461", reason="attempt")
+    assert exc.value.criterion == "cited_commit_is_real_work"
+    assert lifecycle.read_lifecycle(tmp_git_repo, "BUG-461")["status"] == "done"
+
+
+def test_refuses_a_spec_that_actually_ran(tmp_git_repo):
+    """pueue_id set = it was dispatched; Rule 7 keeps protecting it."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-9", priority="p1", kind="tech", by="spark")
+    lifecycle.write_lifecycle(tmp_git_repo, "TECH-9", "in_progress", by="orchestrator", pueue_id=42)
+    lifecycle.write_lifecycle(tmp_git_repo, "TECH-9", "done", by="callback")
+    with pytest.raises(lifecycle.NotFalseReconciliationError):
+        lifecycle.recover_false_reconciliation(tmp_git_repo, "TECH-9", reason="attempt")
+    assert lifecycle.read_lifecycle(tmp_git_repo, "TECH-9")["status"] == "done"
+
+
+def test_rejects_unknown_writer_identity(tmp_git_repo):
+    _make_false_reconciled(tmp_git_repo, "BUG-462", subject="lifecycle(BUG-462): queued")
+    with pytest.raises(ValueError):
+        lifecycle.recover_false_reconciliation(
+            tmp_git_repo, "BUG-462", reason="x", by="autopilot"
+        )
