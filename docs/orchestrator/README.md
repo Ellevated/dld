@@ -126,16 +126,20 @@ pueue completion → callback.py (всегда exit 0):
 QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=idle
 ```
 
-**Переходы статуса** (пишет только `callback`/`operator`, см. [status-model.md](status-model.md)):
+**Переходы статуса** (пишет только `callback`/`operator`/`orchestrator`, см. [status-model.md](status-model.md)):
 
 | Переход | Триггер |
 |---------|---------|
 | `→ queued` | spark `create_initial` / orchestrator bootstrap (safe default) |
-| `queued/resumed → in_progress` | поля `started_at` ставятся при записи; диспатч — orchestrator, запись — callback |
+| `queued/resumed → in_progress` | orchestrator `scan_queued` после успешного `pueue add`: `write_lifecycle(..., "in_progress", by="orchestrator", pueue_id=<id>)`; этим же переходом ставится `started_at` |
 | `in_progress → done` | guard видит реализующий коммит на origin/develop |
 | `in_progress → blocked` | guard не нашёл реализацию ИЛИ autopilot сигналит blocked/needs_review |
 | `blocked → resumed` | оператор (`spec_operator demote --blocked`/правка backlog → resumed) |
 | `done` — **терминал** | write-once (Rule 7); откат только `operator` через narrow escape |
+
+До BUG-218 этот переход документировался за `callback` и не выполнялся вовсе: callback
+срабатывает на **завершении** pueue-задачи, и в этот момент пишет уже `done`/`blocked`, а не
+`in_progress`.
 
 ---
 
@@ -148,9 +152,13 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 
 Полностью в [status-model.md](status-model.md#инварианты-статуса). Кратко:
 
-1. **Single-writer.** Статус пишет только `callback` через `lifecycle.write_lifecycle(by="callback")`.
-   Writers ограничены `{callback, orchestrator, operator, qa, audit, migration}`. `autopilot`/`spark`
-   — **не** writers (autopilot сигналит JSON `task_status`).
+1. **Single-writer per transition.** Не «пишет только callback» — пишут `callback`, `orchestrator`
+   (диспатч `→ in_progress` в `scan_queued`, reconciliation gate и `reconcile_orphans` →
+   `done`/`queued`) и `operator`, но всегда через один и тот же примитив,
+   `lifecycle.write_lifecycle(by=<writer>)`, никогда напрямую в yaml. Инвариант — не имя писателя,
+   а то, что на каждый переход есть ровно один легитимный путь записи. Writers ограничены
+   `{callback, orchestrator, operator, qa, audit, migration}`. `autopilot`/`spark` — **не** writers
+   (autopilot сигналит JSON `task_status`).
 2. **SoT = yaml @ HEAD.** Истина — `ai/lifecycle/{spec}.yaml` в git-объектах HEAD. Markdown (спека,
    `backlog.md`) — read-only render. Ручная правка WT-yaml невидима (читается HEAD).
 3. **Write-once-done (Rule 7, структурно в примитиве).** `done → !done` запрещён всем; escape —

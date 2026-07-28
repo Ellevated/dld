@@ -209,3 +209,10 @@ alert/blocked), оба heartbeat-инструмента fail-open (никогд�
 13. **exit_code contract (ADR-024)** — post-result Exception не оверрайдит `exit_code=0`.
 14. **Reconciliation перед диспатчем** — не запускать сессию на спеке, чья работа уже на `origin/develop`
     (out-of-band completion). `scan_queued` помечает её `done` напрямую (`by="orchestrator"`) и пропускает.
+15. **Диспатч обязан оставить след в SoT.** После `pueue add` статус спеки — `in_progress` с
+    записанным `pueue_id`; без этого `reconcile_orphans` не видит кандидатов, а `started_at` остаётся
+    null навсегда (BUG-218).
+16. **Запись статуса не отменяет диспатч.** Любой отказ `write_lifecycle` на этом пути — WARNING в
+    лог, не `return False`.
+17. **`startup_reconcile` fail-closed.** `get_live_pueue_ids() is None` (pueue недоступен) —
+    восстановление пропускается целиком; демоут по предположению снёс бы живую очередь.
