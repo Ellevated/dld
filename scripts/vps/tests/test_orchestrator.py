@@ -630,9 +630,12 @@ class TestTOCTOURecheck:
                                         with patch("orchestrator.db.try_acquire_slot"):
                                             with patch("orchestrator.db.log_task"):
                                                 with patch("orchestrator.db.update_project_phase"):
-                                                    result = orchestrator.scan_queued(
-                                                        "testproject", str(tmp_path)
-                                                    )
+                                                    with patch.object(
+                                                        orchestrator.lifecycle, "write_lifecycle"
+                                                    ):
+                                                        result = orchestrator.scan_queued(
+                                                            "testproject", str(tmp_path)
+                                                        )
 
         assert result is True
         mock_add.assert_called_once()
@@ -719,9 +722,12 @@ class TestTOCTOURecheck:
                                         with patch("orchestrator.db.try_acquire_slot"):
                                             with patch("orchestrator.db.log_task"):
                                                 with patch("orchestrator.db.update_project_phase"):
-                                                    result = orchestrator.scan_queued(
-                                                        "testproject", str(tmp_path)
-                                                    )
+                                                    with patch.object(
+                                                        orchestrator.lifecycle, "write_lifecycle"
+                                                    ):
+                                                        result = orchestrator.scan_queued(
+                                                            "testproject", str(tmp_path)
+                                                        )
 
         assert result is True
         mock_add.assert_called_once()
@@ -835,9 +841,13 @@ class TestDependencyGate:
                                                     with patch(
                                                         "orchestrator.db.update_project_phase"
                                                     ):
-                                                        result = orchestrator.scan_queued(
-                                                            "testproject", str(tmp_path)
-                                                        )
+                                                        with patch.object(
+                                                            orchestrator.lifecycle,
+                                                            "write_lifecycle",
+                                                        ):
+                                                            result = orchestrator.scan_queued(
+                                                                "testproject", str(tmp_path)
+                                                            )
 
         assert result is True
         mock_add.assert_called_once()
@@ -1185,6 +1195,7 @@ class TestSpecReadinessGate:
             patch("orchestrator.db.log_task"),
             patch("orchestrator.db.update_project_phase"),
             patch.object(orchestrator.gate_logic, "parse_allowed_files", return_value=None),
+            patch.object(orchestrator.lifecycle, "write_lifecycle"),
         ):
             result = orchestrator.scan_queued("testproject", str(tmp_path))
 
@@ -1232,6 +1243,7 @@ class TestProviderSelection:
             patch("orchestrator.db.log_task"),
             patch("orchestrator.db.update_project_phase"),
             patch.object(orchestrator.gate_logic, "parse_allowed_files", return_value=None),
+            patch.object(orchestrator.lifecycle, "write_lifecycle"),
         ):
             result = orchestrator.scan_queued("testproject", str(tmp_path))
         return result, mock_acquire
