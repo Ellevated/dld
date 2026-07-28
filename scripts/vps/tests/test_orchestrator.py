@@ -17,6 +17,7 @@ if VPS_DIR not in sys.path:
 
 import db
 import orchestrator
+import orchestrator_slots
 
 
 # --- EC-7: get_occupied_slots returns correct data ---
@@ -246,7 +247,7 @@ class TestReleaseOrphanSlots:
     def test_pueue_unreachable_no_release(self, seed_project):
         """EC-1: Pueue failure → 0 released, DB unchanged."""
         db.try_acquire_slot("testproject", "claude", pueue_id=50)
-        with patch("orchestrator.get_live_pueue_ids", return_value=None):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value=None):
             released = orchestrator.release_orphan_slots()
         assert released == 0
         assert len(db.get_occupied_slots()) == 1  # slot still occupied
@@ -255,7 +256,7 @@ class TestReleaseOrphanSlots:
         """EC-2: All tasks running → 0 released."""
         db.try_acquire_slot("testproject", "claude", pueue_id=5)
         db.try_acquire_slot("testproject", "claude", pueue_id=6)
-        with patch("orchestrator.get_live_pueue_ids", return_value={5, 6}):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value={5, 6}):
             released = orchestrator.release_orphan_slots()
         assert released == 0
         assert len(db.get_occupied_slots()) == 2
@@ -263,7 +264,7 @@ class TestReleaseOrphanSlots:
     def test_genuine_orphan_released(self, seed_project):
         """EC-3: Orphan slot (pueue_id=99 not in pueue) → released."""
         db.try_acquire_slot("testproject", "claude", pueue_id=99)
-        with patch("orchestrator.get_live_pueue_ids", return_value=set()):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value=set()):
             released = orchestrator.release_orphan_slots()
         assert released == 1
         assert db.get_occupied_slots() == []
@@ -272,13 +273,13 @@ class TestReleaseOrphanSlots:
     def test_empty_pueue_releases_all_orphans(self, seed_project):
         """EC-4: pueue has no tasks, DB has occupied slot → release it."""
         db.try_acquire_slot("testproject", "claude", pueue_id=42)
-        with patch("orchestrator.get_live_pueue_ids", return_value=set()):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value=set()):
             released = orchestrator.release_orphan_slots()
         assert released == 1
 
     def test_no_occupied_slots_noop(self, seed_project):
         """EC-5: No occupied slots → fast no-op."""
-        with patch("orchestrator.get_live_pueue_ids", return_value={1, 2, 3}):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value={1, 2, 3}):
             released = orchestrator.release_orphan_slots()
         assert released == 0
 
@@ -286,7 +287,7 @@ class TestReleaseOrphanSlots:
         """Mix of live and orphan slots — only orphan released."""
         db.try_acquire_slot("testproject", "claude", pueue_id=10)  # live
         db.try_acquire_slot("testproject", "claude", pueue_id=99)  # orphan
-        with patch("orchestrator.get_live_pueue_ids", return_value={10}):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value={10}):
             released = orchestrator.release_orphan_slots()
         assert released == 1
         occupied = db.get_occupied_slots()
@@ -296,7 +297,7 @@ class TestReleaseOrphanSlots:
     def test_release_idempotent(self, seed_project):
         """Double release of same orphan — second call is no-op."""
         db.try_acquire_slot("testproject", "claude", pueue_id=77)
-        with patch("orchestrator.get_live_pueue_ids", return_value=set()):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value=set()):
             orchestrator.release_orphan_slots()
             released = orchestrator.release_orphan_slots()
         assert released == 0
@@ -313,7 +314,7 @@ class TestWatchdogIntegration:
         assert db.get_available_slots("claude") == initial_available - 1
 
         # Simulate pueue returning no tasks (task 555 is gone)
-        with patch("orchestrator.get_live_pueue_ids", return_value=set()):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value=set()):
             released = orchestrator.release_orphan_slots()
         assert released == 1
         assert db.get_available_slots("claude") == initial_available
