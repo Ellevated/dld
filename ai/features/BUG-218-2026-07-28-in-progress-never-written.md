@@ -906,3 +906,92 @@ DEPLOY_URL=local-only
 ---
 
 ## Autopilot Log
+
+### Task 1/5: Регрессионные тесты обоих дефектов — 2026-07-28
+- Coder: completed (1 файл: `scripts/vps/tests/test_orchestrator_in_progress.py`, 198→218 LOC)
+- Tester: RED по построению — 9 failed / 2 passed на неизменённом `orchestrator.py` (EC-10)
+- Spec compliance: matches + 1 коррекция дрейфа (D8: добавлен `patch("orchestrator.SCRIPT_DIR", repo)`)
+- Code Quality Reviewer: needs_refactor (1 blocking, 4 advisory) → пофикшено → approved
+  - **blocking:** EC-5/EC-6 были зелены ТРИВИАЛЬНО — `write_lifecycle` на пути диспатча
+    не вызывается вовсе, поэтому `side_effect` не срабатывал. Тесты остались бы зелёными
+    и при неверном фиксе, ставящем запись в недостижимую ветку. Добавлен
+    `mock_write.assert_called_once()` → сплит стал 9 red / 2 green
+  - advisory: `db.get_provider_capacity` не был запатчен, а `db.DB_PATH` смотрит в живую
+    SQLite — недостижимо лишь по случайности текста фикстуры. Запатчен
+  - advisory (принято к сведению, не чинится здесь): девятая приватная копия фикстуры
+    `tmp_git_repo` — хойст в `conftest.py` это правка девяти файлов, отдельная TECH-спека
+- Local Verify: AV-S1 pass
+- Commit: `d7b7a7f`
+
+### Task 2/5: Запись `in_progress` при диспатче — 2026-07-28
+- Coder: completed (2 файла: `orchestrator.py` +25, `test_orchestrator.py` 3 ассерции)
+- Tester: `test_orchestrator_in_progress.py` 10/11 (EC-8 красный — это Task 3, ожидаемо);
+  `test_orchestrator.py` 68 passed; `test_autopilot_scope_guard.py` 15 passed
+- Spec compliance: matches. D1 (три ассерции) внесена в ЭТОТ коммит, а не в Task 4 —
+  иначе дерево красное через границу коммита
+- Code Quality Reviewer: approved (0 blocking, 4 advisory)
+  - Проверено под атакой: широкий `except` действительно достигает заявленного инварианта;
+    `BaseException` не глотается; деградация — ровно то состояние, в котором прод жил всегда
+  - advisory принята: комментарий про `LifecycleAlreadyDoneError` переоценивал благость
+    («run will find nothing to do and exit») — переформулирован
+- Local Verify: AV-S1 pass; AV-S2 1103 ≤ 1120
+- EC-12: реальных веток `return False` 18 → 18. `grep -c` даёт 19, но +1 — слово в
+  обязательном комментарии, не ветка. Гейт спеки наивен, инвариант соблюдён
+- Commit: `38d77d5`
+
+### Task 3/5: Fail-closed в `startup_reconcile` — 2026-07-28
+- Coder: completed (1 файл: `orchestrator.py`, 12 строк)
+- Tester: `test_orchestrator_in_progress.py` 11/11; полный `scripts/vps/tests` 498 passed
+  (baseline 487 + 11 новых), 0 failed; `test_orchestrator_lifecycle.py` зелёный и НЕ изменён
+- Spec compliance: matches. Пропуск узкий — `cleanup_stale_stashes` и
+  `assert_clean_lifecycle_tree` выполняются до `continue`
+- Code Quality Reviewer: approved (0 blocking, 3 advisory)
+  - Проверено: других falsy-схлопываний Optional-контракта в `scripts/vps/` нет;
+    `release_orphan_slots` уже корректен (BUG-162)
+  - advisory принята: тест «узкого пропуска» мокал `cleanup_stale_stashes`, но не ассертил
+    вызов — половина заявления была недоказана. Добавлен `mock_stashes.assert_called_once()`
+  - advisory ЗАПИСАНА, не чинится: пропуск одноразовый. Если pueue лежал на старте и поднялся
+    без рестарта демона, осиротевшие `in_progress` не демоутятся никогда → recovery только
+    рестартом. Осознанный размен против R0-исхода (массовый передиспатч живой работы)
+- EC-11: `grep -c "get_live_pueue_ids() or set()"` = 0
+- Commit: `d3748b7`
+
+### Task 4/5: Патч `write_lifecycle` в оставшихся happy-path тестах — 2026-07-28
+- Coder: completed (1 файл: `test_orchestrator.py`, 5 мест, +21/−9 где все 9 удалений —
+  переиндентация того же вызова `scan_queued`)
+- Tester: `test_orchestrator.py` 68 passed (число тестов не изменилось); полный прогон 498
+- Spec compliance: matches с двумя коррекциями дрейфа — D3 (мест 5, а не 10: три теста делят
+  хелпер `_dispatch`, ещё три уехали в Task 2) и D9 (стоимость — 3 спавна git на
+  `FileNotFoundError`, а не «цикл CAS-ретраев»: `_cas_loop` ловит только `TimeoutExpired`)
+- Code Quality Reviewer: approved (0 blocking, 2 advisory)
+  - Проверено, что покрытие не потеряно: ни один из пяти ничего про lifecycle-запись не
+    ассертил, а `test_orchestrator_in_progress.py` пиннит строго больше
+- Commit: `6071b5e`
+
+### Task 5/5: Документация контракта переходов — 2026-07-28
+- Coder: completed (3 файла: `README.md`, `status-model.md`, `components.md`)
+- Tester: skipped (docs)
+- Spec compliance: matches + три коррекции дрейфа — D5 (подзаголовок на строке 129, не 127),
+  D6 (`README.md:151` «Статус пишет только callback» — ложь, в спеке не значилась, исправлена
+  с сохранением инварианта single-writer), D7 (секция инвариантов — НУМЕРОВАННЫЙ список 1–14,
+  а не буллеты; искалась по заголовку, т.к. BUG-217 правит этот файл параллельно)
+- Code Quality Reviewer: inline (docs-only; точность сверена против кода, прочитанного в этой
+  же сессии, — отдельный ревьюер только перечитал бы тот же дифф)
+- EC-13: `grep -c "запись — callback"` = 0; `grep -c "в двух местах"` = 0
+- Commit: `949762c`
+
+### PHASE 3 — финальная верификация
+- `./test ci` — **CI_PARITY_UNAVAILABLE**: `./test` в этом репозитории не скрипт, а директория.
+  Гейт выполнен вручную по факту `.github/workflows/ci.yml`
+- `ruff check` на изменённых файлах — All checks passed
+- `ruff format --check` — `test_orchestrator.py` требует переформатирования, **но ровно так же
+  и на чистом `origin/develop`**. Не регрессия этой спеки (см. SIGNAL-2026-07-28-0135)
+- Полный CI-parity прогон `pytest tests/ scripts/vps/tests/`: **685 passed, 3 failed**
+  Все три падения воспроизведены на чистом `origin/develop` — pre-existing, не эта спека.
+  **Дельта этой спеки: 0 новых падений, +11 новых тестов**
+  (`tests/integration/test_claude_runner_post_result_exception.py` не собирается —
+  `ModuleNotFoundError: claude_agent_sdk`, окружение, исключён из прогона)
+- Exa Verification: пропущена осознанно — правка целиком во внутренней логике оркестрации,
+  внешних библиотек и паттернов, о которых имеет смысл искать pitfalls, не вводит
+- Reflect: записаны SIGNAL-2026-07-28-1105 (spark: Impact Tree не читал, что тесты уже мокают
+  правящийся вызов) и SIGNAL-2026-07-28-1106 (architect: корневой `tests/` красный на develop)

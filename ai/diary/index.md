@@ -19,3 +19,12 @@
 | 2026-07-28 | TECH-212 | success | Структурные контрактные тесты EC-1..EC-10 (568 LOC) | 0 | 1 | done |
 | 2026-07-28 | TECH-212 | advisory | dependencies.md + docs/orchestrator/components.md вне Allowed Files — не описывают 3 новых модуля | 0 | 0 | done |
 | 2026-07-28 | TECH-212 | advisory | get_finding_by_id / get_all_findings — мёртвый код без единого потребителя, перенесён как есть | 0 | 0 | done |
+| 2026-07-28 | BUG-218 | success | Регрессионные тесты обоих дефектов, RED 9/2 до фикса (11 тестов) | 0 | 1 | pending |
+| 2026-07-28 | BUG-218 | success | scan_queued пишет in_progress с pueue_id после pueue add | 0 | 2 | pending |
+| 2026-07-28 | BUG-218 | success | startup_reconcile fail-closed при недоступном pueue | 0 | 2 | pending |
+| 2026-07-28 | BUG-218 | success | Патч write_lifecycle в 5 happy-path тестах (не 10 — три делят хелпер) | 0 | 1 | pending |
+| 2026-07-28 | BUG-218 | success | docs/orchestrator: назван фактический писатель перехода | 0 | 3 | pending |
+| 2026-07-28 | BUG-218 | advisory | EC-5/EC-6 были зелены тривиально — тест без detection power поймал ревьюер, не прогон | 0 | 1 | pending |
+| 2026-07-28 | BUG-218 | advisory | Девятая приватная копия фикстуры tmp_git_repo — хойст в conftest.py = отдельная TECH-спека | 0 | 0 | pending |
+| 2026-07-28 | BUG-218 | advisory | startup_reconcile fail-closed одноразовый: pueue лёг на старте и поднялся без рестарта → сироты не демоутятся никогда | 0 | 0 | pending |
+| 2026-07-28 | BUG-218 | advisory | Корневой tests/ красный на develop (3 pre-existing) + ruff format красный там же | 0 | 0 | pending |

@@ -369,3 +369,44 @@ Architect: либо засеять банк уроков (`/seed-lessons` сущ
   явно не подсказать путь. CI-parity гейт TECH-206 покрывает тесты, но не линтер.
 - **Evidence:** `ruff format --check .` на develop → «17 files would be reformatted»;
   `.github/workflows/ci.yml` job `python-lint`
+
+### SIGNAL-2026-07-28-1105
+- **Source:** autopilot (BUG-218)
+- **Target:** spark
+- **Type:** gap
+- **Message:** Спека Task 4 была материально неверна и, выполненная как написано, оставила бы
+  дерево красным через две границы коммита. Три из десяти happy-path тестов
+  (`test_orchestrator.py:954/989/1144`) УЖЕ патчили `write_lifecycle` как `mock_write` и
+  ассертили `mock_write.assert_not_called()`. Task 2 (запись `in_progress`) ломает ровно эти
+  ассерции, а Task 4 предлагал «добавить патч в стек» — патч там уже был; чинить надо было
+  ассерцию, и делать это внутри Task 2, а не через два коммита. Плюс acceptance Task 4 гласил
+  «ни одна ассерция не ослаблена», что заблокировало бы кодера на его же гейте.
+  Корень: спека писала Impact Tree по `grep "assert result is True"` (нашла 10 строк верно),
+  но не читала, что каждый из этих тестов уже делает с `write_lifecycle`. Проверка «кто
+  вызывает» была, проверки «что уже замокано и что про это ассертится» — не было.
+  Предлагаемое правило для Spark: если правка добавляет вызов X в продовый путь, Impact Tree
+  обязан грепнуть тесты на `mock`/`patch` этого же X и перечислить существующие ассерции
+  про него — они и есть то, что сломается.
+- **Evidence:** `scripts/vps/tests/test_orchestrator.py:956, :991, :1146` (`mock_write.assert_not_called()`)
+  против спеки § Implementation Plan Task 4 Step 1; Drift Log D1/D2/D3 в теле спеки
+
+### SIGNAL-2026-07-28-1106
+- **Source:** autopilot (BUG-218)
+- **Target:** architect
+- **Type:** gap
+- **Message:** Корневой `tests/` красный на `develop` — 3 падения, воспроизводятся на чистом
+  `origin/develop` без каких-либо правок:
+  `test_callback_blocked_no_dispatch.py::test_missing_task_status_dispatches`,
+  `test_callback_status_sync.py::test_ec15_operator_uncommitted_edits_in_spec_survive`,
+  `test_callback_allowlist_v1.py::test_ec3_v1_marker_numbered_list_ignored`.
+  CI-джоб `ci.yml` делает `pytest tests/`, то есть этот джоб на develop уже красный.
+  Вместе с SIGNAL-2026-07-28-0135 (`ruff format --check` красный там же) это значит, что на
+  develop красны минимум два CI-джоба, и ни один автопилот-прогон этого не замечает: gate
+  автопилота исторически гонял только `scripts/vps/tests`. Пока baseline красный, «дельта
+  ноль» — единственный честный критерий, но его надо считать явно, иначе следующий прогон
+  либо примет чужую красноту за свою, либо спрячет свою за чужой.
+  Дополнительно: `tests/integration/test_claude_runner_post_result_exception.py` не собирается
+  вообще — `ModuleNotFoundError: claude_agent_sdk` (пакета нет в окружении VPS-агента), то есть
+  коллекция падает целиком, если не игнорировать модуль явно.
+- **Evidence:** `pytest tests/ scripts/vps/tests/` на fix/BUG-218 → 3 failed / 685 passed;
+  те же три теста на `origin/develop` → 3 failed; `.github/workflows/ci.yml:90`
