@@ -484,11 +484,14 @@ spec_id из pueue-лейбла, то есть сломать callback цели�
 **Изменения (4 точки, все проверены):**
 - :11 docstring `Uses:` → `scripts.vps.gate_logic.parse_allowed_files (TECH-167 canonical parser)`
 - :32 комментарий → `# Reuse the canonical allowlist parser from gate_logic.py — single source of truth.`
-- :37-41 `try: from callback import _parse_allowed_files` →
-  `try: from gate_logic import parse_allowed_files` + текст ошибки на строке 40 привести к
+- :39-43 `try: from callback import _parse_allowed_files` (сам `from`-импорт на :40) →
+  `try: from gate_logic import parse_allowed_files` + текст ошибки на строке **42** привести к
   `gate_logic.parse_allowed_files`
-- :228 `allowed = _parse_allowed_files(spec_path)` → `allowed = parse_allowed_files(spec_path)`
+  — *[planner 2026-07-28: было указано «37-41 / ошибка на 40» — сдвиг на +2, строка 37 это
+  `import console_safe`. Актуальные номера: try 39, import 40, print 42, sys.exit 43.]*
+- :230 `allowed = _parse_allowed_files(spec_path)` → `allowed = parse_allowed_files(spec_path)`
   — **эта строка в спеке не числилась**, без неё модуль падает на `NameError`
+  *[planner 2026-07-28: было «228», фактически 230.]*
 
 Задача независима от Task 2: `gate_logic.parse_allowed_files` существует уже сейчас.
 **Acceptance:**
@@ -719,6 +722,98 @@ DEPLOY_URL=local-only
 ---
 
 ## Autopilot Log
+
+### 2026-07-28 (цикл 2) — BLOCKED at PHASE 1, zero code written
+
+**Причина: резолюция от 2026-07-28 опирается на ложный замер. Ловушка DA-4 существует
+и срабатывает на Task 1 — до единого удаления.**
+
+Блок «✅ РЕШЕНО» утверждает:
+
+> | `_is_done_on_develop` | 13 | **0** monkeypatch | 13 прямых вызовов |
+>
+> У гейтовых функций monkeypatch есть, но только в `scripts/vps/tests/test_callback.py`,
+> который уже в Allowed Files и переписывается штатно.
+
+**Проверено грепом — неверно.** В корневом `tests/integration/` лежат **22
+`monkeypatch.setattr(callback, "_fetch_develop"/"_is_done_on_develop", ...)`** в **пяти**
+файлах, ни один из которых не в `## Allowed Files`:
+
+| Файл | Строки | Есть стаб `→ True`? |
+|---|---|---|
+| `tests/integration/test_callback_already_merged.py` | 150/151, 169/170, 193/194, 219/220, 242/243 | **да** (151, 243) |
+| `tests/integration/test_callback_feature_branch.py` | 142/143, 164/165, 183/184 | **да** (165) |
+| `tests/integration/test_callback_status_sync.py` | 334/335 | **да** (335) |
+| `tests/integration/test_callback_no_impl_demote.py` | 180/181 | **да** (181) |
+| `tests/integration/test_callback_blocked_no_dispatch.py` | 192/193 | нет |
+
+**Механика отказа (подтверждена чтением `test_callback_already_merged.py:143-156`):**
+`test_ec1_gate_true_becomes_done` стабит `callback._is_done_on_develop → True` и ассертит
+`status == "done"`. После Task 1 `verify_status_sync` уходит в
+`gate_logic.find_implementation_commit`, патч становится инертным, настоящий гейт бежит
+по tmp-репозиторию без implementation-коммита на `origin/develop`, возвращает `None` —
+и статус переворачивается `done → blocked`. Тест краснеет.
+
+Это ровно ловушка DA-4, из-за которой § Approaches отверг делегаты. Она **не про парсер**
+(там замер верен — 0 monkeypatch, алиас безопасен), а про пару B, и алиас до неё не достаёт.
+
+**Срабатывает на Task 1, не на Task 2.** STOP-условие Task 2 действительно снято, но это
+не помогает: перенаправление call-sites само по себе ломает пять файлов вне allowlist.
+`test.yml:50` гоняет `tests/integration/test_callback_*.py` отдельным шагом **и** внутри
+coverage-гейта (65-72) — EC-11/EC-12 падают так же, как в первом блокере.
+
+Расширять `## Allowed Files` самостоятельно автопилоту запрещено (BUG-199 fence).
+
+#### ACTION REQUIRED — решение владельца (одна строка разрешения)
+
+Добавить в `## Allowed Files` пять файлов и перенацелить их 22 `monkeypatch.setattr`
+на `gate_logic.fetch_develop` / `gate_logic.find_implementation_commit`
+(`True` → строка-SHA, `False` → `None`):
+
+- `tests/integration/test_callback_already_merged.py`
+- `tests/integration/test_callback_feature_branch.py`
+- `tests/integration/test_callback_status_sync.py`
+- `tests/integration/test_callback_no_impl_demote.py`
+- `tests/integration/test_callback_blocked_no_dispatch.py`
+
+С этим расширением Tasks 1-5 исполнимы как написано, с поправками D2/D3/§7 ниже.
+
+#### Ещё четыре расхождения, найденные в этом цикле (чинить вместе с разрешением)
+
+- **D2 — Task 4c ослабляет регрессионный тест.** `test_push_local_is_best_effort_not_gate`
+  (`test_claude_runner_timeout.py:216-222`) читает исходник `callback.py` и стережёт, что
+  гейт зовётся **из callback**. Перенацеливание :218 на `gate_logic.py`, как велит план,
+  превращает `assert "fetch_develop(" in source` в совпадение с **определением** — вечно
+  истинно, сторож мёртв. Правильно: :218 продолжает читать `callback.py`, ассерты стают
+  `"gate_logic.fetch_develop("` / `"gate_logic.find_implementation_commit("`. На
+  `gate_logic.py` переезжает только `test_no_local_develop_gate_path` (194-214). Строки
+  **195** (docstring) и **219** (комментарий) тоже называют старые имена и в списке правок
+  плана отсутствуют.
+- **D3 — несовпадение типа возврата в двух разрешённых корневых файлах.** Все 11 прямых
+  вызовов в `test_callback_branch_awareness.py` (75, 94, 106, 118, 132, 144) и
+  `test_callback_implementation_guard.py` (114, 123, 133, 146, 173) ассертят `is True` /
+  `is False`. `find_implementation_commit` возвращает `str | None` — `is True` падает на
+  SHA-строке. План называет эту конверсию для `test_callback.py:690-704`, но не для
+  корневых файлов, которые сам же и добавил.
+- **§7 — переезжают 13 кейсов матчера, не 12**, и `TestMatchSubjectParityWithCallback`
+  **нельзя просто удалить**: 4 из 7 позитивов (459-462) и 2 из 3 негативов (480, 481) в
+  `test_gate_logic.py` отсутствуют. Недостающие классы реджектов: `Refs: FTR-925` (443-444)
+  и `feat: FTR-925 something` — ID в теле без scope (380, 447).
+- **Task 3 — номера строк `spec_verify.py` сдвинуты на +2.** Исправлено в § Task 3 прямо
+  сейчас: `try` 39, `from callback import` 40, текст ошибки 42, `sys.exit` 43, call-site
+  **230** (не 228). Строка 37 — это `import console_safe`.
+
+#### Baseline этого цикла (чистый `origin/develop`, worktree `tech/TECH-210`)
+
+- `scripts/vps/tests` → **498 passed**, 0 failed (спека числила 421 — устарело, не дефект)
+- корневой `pytest tests/` → **187 passed, 3 failed**, а не «184 passed, 6 failed», как
+  говорит AV-F2. Предсуществующие падения: `test_callback_blocked_no_dispatch.py::test_missing_task_status_dispatches`,
+  `test_callback_status_sync.py::test_ec15_operator_uncommitted_edits_in_spec_survive`,
+  `test_callback_allowlist_v1.py::test_ec3_v1_marker_numbered_list_ignored`.
+  **AV-F2 надо переписать на 187/3** при следующем заходе.
+- Дрейфа строк нет: LOC всех восьми файлов и вся «Verified line map» совпали точно.
+
+---
 
 ### 2026-07-27 — BLOCKED at PHASE 1 (planner validation), zero code written
 
