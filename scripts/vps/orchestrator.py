@@ -576,15 +576,27 @@ def startup_reconcile() -> None:
 
     For every project, abort if ai/lifecycle/ working-tree is dirty (uncommitted
     drift = data loss risk). Then demote any in_progress lifecycle whose
-    pueue_id is not alive (crash recovery).
+    pueue_id is not alive (crash recovery). Fail-closed: if pueue status is
+    unavailable, orphan reconciliation is skipped for all projects (integrity
+    checks still run) rather than demoting every live spec.
     """
-    alive = get_live_pueue_ids() or set()
+    # get_live_pueue_ids returns None on failure and an empty set when pueue is
+    # genuinely idle — the distinction is the whole point of its contract. Folding
+    # None into set() (`or set()`, until BUG-218) made an unreachable pueue look
+    # like "nothing is running", which demotes every live spec. Harmless while
+    # nothing was ever in_progress; a mass-demote of running work now that specs
+    # actually reach that status.
+    alive = get_live_pueue_ids()
+    if alive is None:
+        log.warning("startup_reconcile: pueue status unavailable — skipping orphan reconciliation")
     for proj in db.get_all_projects():
         pdir = proj["path"]
         if not os.path.isdir(os.path.join(pdir, "ai", "lifecycle")):
             continue
         cleanup_stale_stashes(pdir)
         lifecycle.assert_clean_lifecycle_tree(pdir)  # raises on dirty
+        if alive is None:
+            continue
         reconciled = lifecycle.reconcile_orphans(pdir, alive)
         if reconciled:
             log.warning(

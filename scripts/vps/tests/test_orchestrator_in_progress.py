@@ -204,15 +204,21 @@ class TestStartupReconcileFailClosed:
         assert lifecycle.read_lifecycle(tmp_git_repo, "TECH-910")["status"] == "queued"
 
     def test_integrity_checks_still_run_when_pueue_is_down(self, tmp_git_repo):
-        """Пропуск узкий: проверка чистоты WT от pueue не зависит."""
+        """Пропуск узкий: обе стартовые проверки от pueue не зависят.
+
+        Пиннить надо ОБЕ, а не одну: «узкий пропуск» — это утверждение про
+        cleanup_stale_stashes И assert_clean_lifecycle_tree. Проверка только
+        второй оставляла бы половину заявления недоказанной.
+        """
         with (
             patch("orchestrator.get_live_pueue_ids", return_value=None),
             patch(
                 "orchestrator.db.get_all_projects",
                 return_value=[{"project_id": "t", "path": str(tmp_git_repo)}],
             ),
-            patch("orchestrator.cleanup_stale_stashes"),
+            patch("orchestrator.cleanup_stale_stashes") as mock_stashes,
             patch.object(orchestrator.lifecycle, "assert_clean_lifecycle_tree") as mock_assert,
         ):
             orchestrator.startup_reconcile()
         mock_assert.assert_called_once()
+        mock_stashes.assert_called_once()
