@@ -1,13 +1,20 @@
 allowed_files_hash: null
-blocked_reason: null
+blocked_reason: 'no_merged_implementation — if implementation IS real, run: python3
+  scripts/vps/spec_operator.py force-done dld TECH-214 ''gate regex bug, verified
+  manually'' --by=operator'
 finished_at: null
 kind: tech
 priority: p1
-pueue_id: null
+pueue_id: 1034
 spec_id: TECH-214
 started_at: null
-status: queued
-transitions: []
-updated_at: '2026-07-27T17:39:54Z'
-updated_by: spark
-version: 1
+status: blocked
+transitions:
+- at: '2026-07-28T11:04:49Z'
+  by: callback
+  from: queued
+  pueue_id: 1034
+  to: blocked
+updated_at: '2026-07-28T11:04:49Z'
+updated_by: callback
+version: 2
