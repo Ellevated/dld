@@ -79,6 +79,12 @@ def scan_inbox(project_id: str, project_dir: str) -> int:
     TECH-181: status gate — only files explicitly promoted by Hermes to `queued`
     are dispatched. Legacy `new`, `draft`, `clarifying`, `stale`, `rejected` are
     ignored. Clean break, no auto-migration (see spec rationale).
+
+    TECH-215 note for test authors: this reads THIS module's `SCRIPT_DIR`, so
+    `patch("orchestrator.SCRIPT_DIR", tmp_path)` does NOT reach it. A test that
+    patches the facade and then exercises this path will silently write
+    `.task-cmd-*.txt` into the deployed `scripts/vps/` and shell out to the real
+    pueue daemon. Patch `orchestrator_inbox.SCRIPT_DIR` instead.
     """
     inbox_dir = Path(project_dir) / "ai" / "inbox"
     if not inbox_dir.is_dir():

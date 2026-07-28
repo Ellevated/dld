@@ -9,6 +9,12 @@ Replaces orchestrator.sh + inbox-processor.sh (ARCH-161).
 Post-ARCH-186: reads task queue from ai/lifecycle/*.yaml (not ai/backlog.md).
 """
 
+# ruff: noqa: I001
+# Import order here is load-bearing, not stylistic: the sys.path bootstrap must
+# run before the sibling imports, and the facade re-export block at the bottom
+# must stay at the bottom (see the TECH-215 comment there). Auto-sorting either
+# block breaks the module.
+
 import atexit
 import logging
 import logging.handlers
@@ -24,6 +30,7 @@ from threading import Event
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
+
 # gate_logic is not called from this module any more (the reconciliation step
 # moved to orchestrator_queue), but the import is load-bearing: eight sites in
 # test_orchestrator.py do patch.object(orchestrator.gate_logic, ...), which

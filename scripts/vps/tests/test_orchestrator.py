@@ -17,8 +17,6 @@ if VPS_DIR not in sys.path:
 
 import db
 import orchestrator
-import orchestrator_inbox
-import orchestrator_slots
 
 
 # --- EC-7: get_occupied_slots returns correct data ---
