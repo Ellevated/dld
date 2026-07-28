@@ -1333,3 +1333,94 @@ class TestNextSleep:
     def test_just_under_floor_clamped(self):
         # Remainder smaller than the floor → clamp up to MIN_CYCLE_SLEEP.
         assert orchestrator._next_sleep(300, 290) == orchestrator.MIN_CYCLE_SLEEP
+
+
+# ---------------------------------------------------------------------------
+# TECH-215: compatibility surface of the orchestrator facade.
+#
+# Every name below is either imported by a bound `from orchestrator import ...`,
+# or is a monkeypatch target in a test file that is NOT in this spec's Allowed
+# Files. Losing one is not a red test somewhere else — it is a SILENT pass:
+# `patch("orchestrator.X")` on a name the split moved away rebinds an attribute
+# nothing reads, and the test then runs against unpatched production code.
+# ---------------------------------------------------------------------------
+
+_FACADE_NAMES = [
+    # module-level state
+    "SCRIPT_DIR",
+    "log",
+    "MIN_CYCLE_SLEEP",
+    "BOOTSTRAP_ANOMALY_THRESHOLD",
+    # slots / pueue
+    "sync_projects",
+    "get_live_pueue_ids",
+    "pueue_has_active_label",
+    "pueue_has_active_spec",
+    "release_orphan_slots",
+    "is_agent_running",
+    "git_pull",
+    "_pueue_add",
+    # backlog / bootstrap
+    "_parse_backlog",
+    "_bump_unparsable_counter",
+    "_parse_priority_kind",
+    "bootstrap_new_specs",
+    "cleanup_stale_stashes",
+    "startup_reconcile",
+    # inbox
+    "scan_inbox",
+    # queue
+    "_AFTER_DEP_RE",
+    "_backlog_deps",
+    "_unmet_dependencies",
+    "scan_queued",
+    "dispatch_night_review",
+    # main loop
+    "process_project",
+    "_next_sleep",
+    "main",
+]
+
+
+class TestFacadeCompatSurface:
+    """EC-7/EC-13: names the untouchable test files reach through `orchestrator`."""
+
+    @pytest.mark.parametrize("name", _FACADE_NAMES)
+    def test_name_resolves_from_orchestrator(self, name):
+        assert hasattr(orchestrator, name), (
+            f"orchestrator.{name} disappeared — a monkeypatch or bound import "
+            f"in a non-editable test file now silently misses"
+        )
+
+    def test_bound_import_of_adr_026_names(self):
+        """test_orchestrator_bootstrap.py:28 binds both at import time."""
+        from orchestrator import _bump_unparsable_counter, _parse_backlog  # noqa: F401
+
+    def test_scan_queued_body_lives_in_orchestrator_py(self):
+        """test_autopilot_scope_guard.py:87 greps this file's TEXT, not its imports."""
+        src = (Path(orchestrator.__file__)).read_text(encoding="utf-8")
+        assert "def scan_queued" in src
+        body, _, _ = src.partition("def scan_queued")[2].partition("\ndef ")
+        assert "CLAUDE_CURRENT_SPEC_PATH" in body and "pueue_env" in body
+        assert "env=pueue_env" in body
+
+    def test_patched_facade_name_is_seen_by_its_caller(self, tmp_path):
+        """The whole point: patching the facade must still reach the callee.
+
+        git_pull stays in orchestrator.py precisely so that
+        patch("orchestrator.is_agent_running") is observed by it.
+        """
+        # git_pull's first gate is `os.path.isdir(project_dir/.git)`. A real repo
+        # root won't do here: this repo is checked out as a worktree, where
+        # `.git` is a FILE (gitdir pointer), not a directory — isdir() is False
+        # and git_pull would short-circuit before is_agent_running is ever
+        # called, silently passing this test for the wrong reason. A bare
+        # `.git/` directory is the minimal fixture that satisfies the gate.
+        (tmp_path / ".git").mkdir()
+        with (
+            patch("orchestrator.is_agent_running", return_value=True) as spy,
+            patch("orchestrator.subprocess.run") as run_mock,
+        ):
+            orchestrator.git_pull("p", str(tmp_path))
+        spy.assert_called_once()
+        run_mock.assert_not_called()
