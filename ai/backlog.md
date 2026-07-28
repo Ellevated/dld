@@ -26,7 +26,7 @@
 | TECH-212 | done | tech | 2026-07-27 | [spec](features/TECH-212-2026-07-27-split-db-module.md) |
 | TECH-213 | blocked | tech | 2026-07-27 | [spec](features/TECH-213-2026-07-27-split-claude-runner.md) |
 | TECH-214 | blocked | tech | 2026-07-27 | [spec](features/TECH-214-2026-07-27-split-lifecycle-module.md) |
-| TECH-215 | queued | tech | 2026-07-27 | [spec](features/TECH-215-2026-07-27-split-orchestrator.md) — AFTER BUG-218 |
+| TECH-215 | blocked | tech | 2026-07-27 | [spec](features/TECH-215-2026-07-27-split-orchestrator.md) — AFTER BUG-218 |
 | TECH-216 | queued | tech | 2026-07-27 | [spec](features/TECH-216-2026-07-27-split-callback.md) — AFTER TECH-210 |
 | ARCH-209 | queued | arch | 2026-07-27 | [spec](features/ARCH-209-2026-07-27-vps-modules-under-400-loc.md) — AFTER TECH-210, AFTER TECH-211, AFTER TECH-212, AFTER TECH-213, AFTER TECH-214, AFTER TECH-215, AFTER TECH-216 |
 
