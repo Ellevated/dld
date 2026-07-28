@@ -24,6 +24,11 @@ from threading import Event
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
+# gate_logic is not called from this module any more (the reconciliation step
+# moved to orchestrator_queue), but the import is load-bearing: eight sites in
+# test_orchestrator.py do patch.object(orchestrator.gate_logic, ...), which
+# works by mutating the shared module object. Deleting this as a "dead import"
+# breaks those eight tests. TECH-215.
 import gate_logic  # noqa: E402,F401
 import lifecycle  # noqa: E402
 import orchestrator_queue  # noqa: E402
@@ -173,6 +178,25 @@ def startup_reconcile() -> None:
             )
 
 
+def _select_dispatchable_spec(project_dir: str, queued_list: list) -> str | None:
+    """BUG-206: first queued/resumed spec with no unmet `AFTER <ID>` dependency.
+
+    Extracted for EC-8 (scan_queued length), but kept in orchestrator.py rather
+    than orchestrator_queue.py: 13 tests patch `orchestrator._unmet_dependencies`,
+    which resolves bare-name only against THIS module's globals. A sibling
+    calling the same bare name would look it up in its own `__dict__` first and
+    silently miss the patch (Python docs, "Where to patch").
+    """
+    for cand in queued_list:
+        cid = cand["spec_id"]
+        unmet = _unmet_dependencies(project_dir, cid)
+        if unmet:
+            log.info("DEP_GATE: skip %s — unmet dependency %s (not done)", cid, ", ".join(unmet))
+            continue
+        return cid
+    return None
+
+
 def scan_queued(project_id: str, project_dir: str) -> bool:
     """Find first queued/resumed spec via lifecycle.yaml and dispatch autopilot.
 
@@ -188,44 +212,16 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
     if not queued_list:
         return False
 
-    # BUG-206: dependency-aware selection. _unmet_dependencies is resolved in
-    # THIS module's globals (it is re-exported below) — 13 tests patch
-    # orchestrator._unmet_dependencies and would silently miss otherwise.
-    spec_id = None
-    for cand in queued_list:
-        cid = cand["spec_id"]
-        unmet = _unmet_dependencies(project_dir, cid)
-        if unmet:
-            log.info("DEP_GATE: skip %s — unmet dependency %s (not done)", cid, ", ".join(unmet))
-            continue
-        spec_id = cid
-        break
+    spec_id = _select_dispatchable_spec(project_dir, queued_list)
     if spec_id is None:
         return False
 
-    skip_reason = orchestrator_queue.recently_processed(
-        SCRIPT_DIR / "callback-audit.jsonl", spec_id
+    gate = orchestrator_queue.gate_before_pueue_add(
+        project_id, project_dir, spec_id, SCRIPT_DIR / "callback-audit.jsonl"
     )
-    if skip_reason:
-        log.info("skip dispatch: %s %s", spec_id, skip_reason)
+    if gate is None:
         return False
-
-    spec_files = orchestrator_queue.spec_body_files(project_dir, spec_id)
-    if not spec_files:
-        log.info(
-            "skip dispatch: %s queued but no spec body in ai/features/ yet "
-            "(spec-first ID claim not finished; orphan if it persists)",
-            spec_id,
-        )
-        return False
-
-    state = db.get_project_state(project_id)
-    provider = orchestrator_queue.resolve_provider(
-        spec_files[0], (state["provider"] if state else None) or "claude", spec_id
-    )
-    if db.get_available_slots(provider) < 1:
-        log.info("no slots for %s provider=%s (busy)", project_id, provider)
-        return False
+    spec_files, provider = gate
 
     task_label = f"{project_id}:{spec_id}"
     if pueue_has_active_label(task_label):
@@ -236,6 +232,8 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
         return False
 
     # BUG-199: pin spec path for the pre-edit hook's Allowed Files enforcement.
+    # Without this, inferSpecFromBranch() returns null on develop after
+    # merge-back, and the hook degrades OPEN — allowing out-of-scope edits.
     spec_path = str(spec_files[0])
     pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": spec_path}
 

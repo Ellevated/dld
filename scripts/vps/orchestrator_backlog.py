@@ -121,6 +121,40 @@ def _bump_unparsable_counter(project_dir: str) -> None:
         pass
 
 
+def _report_bootstrap_anomaly(created_count: int, project_dir: str) -> None:
+    """TECH-189 Task 4 anomaly path, split out of bootstrap_new_specs (EC-8).
+
+    No test patches into this — it exists only to keep the main loop under
+    the 80-line ceiling (TECH-215 Task 6). Behaviour is unchanged: WARNING
+    log, counter bump, best-effort Hermes notify, all gated on
+    created_count > BOOTSTRAP_ANOMALY_THRESHOLD.
+    """
+    if created_count <= BOOTSTRAP_ANOMALY_THRESHOLD:
+        return
+    log.warning(
+        "BOOTSTRAP_ANOMALY: created %d lifecycle yamls in one cycle for %s "
+        "(threshold=%d) — possible backlog-write race or bulk-import",
+        created_count,
+        project_dir,
+        BOOTSTRAP_ANOMALY_THRESHOLD,
+    )
+    counter_path = Path(project_dir) / "ai" / ".bootstrap-anomaly-count"
+    try:
+        prev = int(counter_path.read_text().strip()) if counter_path.is_file() else 0
+        counter_path.write_text(str(prev + 1))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from event_writer import notify
+
+        notify(
+            project_dir.rstrip("/").split("/")[-1],
+            f"BOOTSTRAP_ANOMALY: {created_count} lifecycle yamls in one cycle",
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def bootstrap_new_specs(project_dir: str) -> None:
     """Create ai/lifecycle/{spec_id}.yaml for any NEW Spark spec.md without one.
 
@@ -192,29 +226,7 @@ def bootstrap_new_specs(project_dir: str) -> None:
         except Exception as exc:  # noqa: BLE001
             log.warning("BOOTSTRAP: failed for %s: %s", spec_id, exc)
 
-    if created_count > BOOTSTRAP_ANOMALY_THRESHOLD:
-        log.warning(
-            "BOOTSTRAP_ANOMALY: created %d lifecycle yamls in one cycle for %s "
-            "(threshold=%d) — possible backlog-write race or bulk-import",
-            created_count,
-            project_dir,
-            BOOTSTRAP_ANOMALY_THRESHOLD,
-        )
-        counter_path = Path(project_dir) / "ai" / ".bootstrap-anomaly-count"
-        try:
-            prev = int(counter_path.read_text().strip()) if counter_path.is_file() else 0
-            counter_path.write_text(str(prev + 1))
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            from event_writer import notify
-
-            notify(
-                project_dir.rstrip("/").split("/")[-1],
-                f"BOOTSTRAP_ANOMALY: {created_count} lifecycle yamls in one cycle",
-            )
-        except Exception:  # noqa: BLE001
-            pass
+    _report_bootstrap_anomaly(created_count, project_dir)
 
 
 def _parse_priority_kind(spec_md: Path) -> tuple:

@@ -1352,6 +1352,8 @@ _FACADE_NAMES = [
     "SCRIPT_DIR",
     "log",
     "MIN_CYCLE_SLEEP",
+    # imported modules patched as orchestrator.<mod>.<fn> by other tests
+    "gate_logic",
     "BOOTSTRAP_ANOMALY_THRESHOLD",
     # slots / pueue
     "sync_projects",
@@ -1426,3 +1428,45 @@ class TestFacadeCompatSurface:
             orchestrator.git_pull("p", str(tmp_path))
         spy.assert_called_once()
         run_mock.assert_not_called()
+
+
+class TestSplitStructuralInvariants:
+    """EC-8, EC-9, EC-12: the shape the split exists to produce."""
+
+    _MODULES = [
+        "orchestrator.py",
+        "orchestrator_slots.py",
+        "orchestrator_backlog.py",
+        "orchestrator_inbox.py",
+        "orchestrator_queue.py",
+    ]
+
+    @pytest.mark.parametrize("name", _MODULES)
+    def test_file_under_loc_limit(self, name):
+        path = Path(orchestrator.__file__).parent / name
+        loc = len(path.read_text(encoding="utf-8").splitlines())
+        assert loc <= 400, f"{name}: {loc} LOC > 400"
+
+    @pytest.mark.parametrize("name", _MODULES[1:])
+    def test_sibling_never_imports_the_facade(self, name):
+        """The invariant TECH-214 states for lifecycle: no cycle, ever."""
+        src = (Path(orchestrator.__file__).parent / name).read_text(encoding="utf-8")
+        for line in src.splitlines():
+            s = line.strip()
+            assert s != "import orchestrator", f"{name}: cycle via `import orchestrator`"
+            assert not s.startswith("from orchestrator import"), f"{name}: cycle"
+
+    def test_no_function_body_over_80_lines(self):
+        """EC-8: the reason the split exists — scan_queued hid a bug at 226 lines."""
+        import ast
+
+        offenders = []
+        for name in self._MODULES:
+            path = Path(orchestrator.__file__).parent / name
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    span = node.end_lineno - node.lineno
+                    if span > 80:
+                        offenders.append(f"{name}:{node.name} ({span})")
+        assert not offenders, f"functions over 80 lines: {offenders}"

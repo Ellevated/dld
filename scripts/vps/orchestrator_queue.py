@@ -123,6 +123,54 @@ def spec_body_files(project_dir: str, spec_id: str) -> list[Path]:
     return list(features_dir.glob(f"{spec_id}*"))
 
 
+def gate_before_pueue_add(
+    project_id: str, project_dir: str, spec_id: str, audit_log: Path
+) -> tuple[list[Path], str] | None:
+    """Bundle of three independent pre-dispatch gates: recency, spec-readiness,
+    provider/slot availability.
+
+    Extracted as a single step (EC-8, TECH-215 Task 6) rather than three
+    separate calls in scan_queued: none of `recently_processed`,
+    `spec_body_files`, `resolve_provider` or the `db.*` calls here are
+    monkeypatch targets in a non-editable test file, so bundling them costs
+    nothing — unlike the candidate-selection loop, which stayed in
+    orchestrator.py for exactly that reason.
+
+    Returns (spec_files, provider) if dispatch may proceed, else None.
+    """
+    skip_reason = recently_processed(audit_log, spec_id)
+    if skip_reason:
+        log.info("skip dispatch: %s %s", spec_id, skip_reason)
+        return None
+
+    # SPEC-READINESS GATE (2026-07-26, ARCH-196 / ADR-027)
+    # A lifecycle row can exist before its spec body does: the spec-first ID
+    # claim writes ai/lifecycle/<ID>.yaml to reserve the number, and the body
+    # lands in ai/features/ only once Spark finishes. Dispatching in that
+    # window hands autopilot a spec_id with nothing to read — it burns a whole
+    # session and blocks. Skip quietly; if the row is still bodiless after
+    # Spark should have finished, it is an orphan, which is a Spark defect and
+    # not something dispatch can repair. (awardybot BUG-1410 was this.)
+    spec_files = spec_body_files(project_dir, spec_id)
+    if not spec_files:
+        log.info(
+            "skip dispatch: %s queued but no spec body in ai/features/ yet "
+            "(spec-first ID claim not finished; orphan if it persists)",
+            spec_id,
+        )
+        return None
+
+    state = db.get_project_state(project_id)
+    provider = resolve_provider(
+        spec_files[0], (state["provider"] if state else None) or "claude", spec_id
+    )
+    if db.get_available_slots(provider) < 1:
+        log.info("no slots for %s provider=%s (busy)", project_id, provider)
+        return None
+
+    return spec_files, provider
+
+
 def resolve_provider(spec_file: Path, default_provider: str, spec_id: str) -> str:
     """Provider named in the spec's `provider:` header, or default_provider.
 
@@ -267,7 +315,14 @@ def record_dispatch(
 
 
 def dispatch_night_review() -> None:
-    """Check .review-trigger and dispatch night reviewer if present."""
+    """Check .review-trigger and dispatch night reviewer if present.
+
+    Patch target warning (TECH-215): this function reads `SCRIPT_DIR` and
+    `_pueue_add` from THIS module's globals, not the orchestrator facade's.
+    A future test written as `patch("orchestrator._pueue_add")` would rebind
+    a name this body never reads and pass silently while shelling out to the
+    live pueue daemon. Patch `orchestrator_queue.*` instead.
+    """
     trigger = SCRIPT_DIR / ".review-trigger"
     if not trigger.is_file():
         return
