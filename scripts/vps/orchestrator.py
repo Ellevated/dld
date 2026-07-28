@@ -174,116 +174,6 @@ def startup_reconcile() -> None:
             )
 
 
-def _parse_inbox_file(filepath: Path) -> dict:
-    """Extract route/source/provider/context/idea_text from inbox markdown."""
-    lines = filepath.read_text(errors="replace").splitlines()
-
-    def extract(key: str, default: str = "") -> str:
-        for ln in lines:
-            m = re.match(rf"^\*\*{key}:\*\*\s+(.+)", ln)
-            if m:
-                return m.group(1).strip()
-        return default
-
-    idea_lines, in_body = [], False
-    for ln in lines:
-        if ln.strip() == "---":
-            in_body = True
-        elif in_body:
-            idea_lines.append(ln)
-            if len(idea_lines) >= 50:
-                break
-    idea_text = " ".join(idea_lines).strip()
-    if not idea_text:
-        idea_text = " ".join(
-            ln
-            for ln in lines[:20]
-            if not re.match(r"^\*\*(Source|Route|Status|Context|Provider|Project):\*\*|^#", ln)
-        ).strip()
-    return {
-        "route": extract("Route", "spark"),
-        "source": extract("Source", "openclaw"),
-        "provider": extract("Provider", ""),
-        "context": extract("Context", ""),
-        "idea_text": idea_text,
-    }
-
-
-_ROUTE_SKILL_MAP = {
-    "spark": "spark",
-    "architect": "architect",
-    "council": "council",
-    "spark_bug": "spark",
-    "bughunt": "bughunt",
-    "qa": "qa",
-    "reflect": "reflect",
-    "scout": "scout",
-}
-
-
-def scan_inbox(project_id: str, project_dir: str) -> int:
-    """Scan ai/inbox/ for Status: queued files (Hermes-promoted), dispatch each via pueue.
-
-    TECH-181: status gate — only files explicitly promoted by Hermes to `queued`
-    are dispatched. Legacy `new`, `draft`, `clarifying`, `stale`, `rejected` are
-    ignored. Clean break, no auto-migration (see spec rationale).
-    """
-    inbox_dir = Path(project_dir) / "ai" / "inbox"
-    if not inbox_dir.is_dir():
-        return 0
-
-    _inbox_queued_re = re.compile(r"\*\*Status:\*\*\s*queued", re.IGNORECASE)
-
-    count = 0
-    for inbox_file in sorted(inbox_dir.glob("*.md")):
-        text = inbox_file.read_text(errors="replace")
-        if not _inbox_queued_re.search(text):
-            continue
-
-        log.info("processing inbox: %s/%s", project_id, inbox_file.name)
-        meta = _parse_inbox_file(inbox_file)
-        skill = _ROUTE_SKILL_MAP.get(meta["route"], "spark")
-
-        text = _inbox_queued_re.sub("**Status:** processing", text)
-        inbox_file.write_text(text)
-        done_dir = inbox_dir / "done"
-        done_dir.mkdir(exist_ok=True)
-        done_file = done_dir / inbox_file.name
-        inbox_file.rename(done_file)
-        provider = meta["provider"]
-        if not provider:
-            state = db.get_project_state(project_id)
-            provider = (state["provider"] if state else None) or "claude"
-        headless = f"[headless] Source: {meta['source']}."
-        if meta["context"]:
-            headless += f" Context: {meta['context']}."
-        headless += f" {meta['idea_text']}"
-        task_cmd = f"/{skill} {headless}"
-        ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d-%H%M%S")
-        task_file = SCRIPT_DIR / f".task-cmd-{ts}.txt"
-        task_file.write_text(task_cmd)
-        task_label = f"{project_id}:inbox-{ts}"
-        if pueue_has_active_label(task_label):
-            log.info("skip inbox dispatch: %s already in pueue", task_label)
-            continue
-        pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": str(done_file)}
-        pueue_id = _pueue_add(
-            f"{provider}-runner",
-            task_label,
-            [str(SCRIPT_DIR / "run-agent.sh"), project_dir, provider, skill, str(task_file)],
-            env=pueue_env,
-        )
-        if pueue_id is not None:
-            db.try_acquire_slot(project_id, provider, pueue_id)
-            db.log_task(project_id, task_label, skill, "queued", pueue_id)
-            db.update_project_phase(project_id, "processing_inbox", task_label)
-            log.info("inbox dispatched: %s label=%s pueue_id=%d", project_id, task_label, pueue_id)
-        else:
-            log.error("inbox dispatch failed: %s/%s", project_id, inbox_file.name)
-        count += 1
-    return count
-
-
 # BUG-206: dependency-aware dispatch. Specs declare ordering with an
 # "AFTER <SPEC-ID>" marker in their backlog row (the uniform place this
 # convention lives — spec prose is too noisy to parse reliably). scan_queued
@@ -684,6 +574,11 @@ from orchestrator_backlog import (  # noqa: F401,E402
     _parse_priority_kind,
     bootstrap_new_specs,
     cleanup_stale_stashes,
+)
+from orchestrator_inbox import (  # noqa: F401,E402
+    _ROUTE_SKILL_MAP,
+    _parse_inbox_file,
+    scan_inbox,
 )
 
 

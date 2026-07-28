@@ -17,6 +17,7 @@ if VPS_DIR not in sys.path:
 
 import db
 import orchestrator
+import orchestrator_inbox
 import orchestrator_slots
 
 
@@ -352,8 +353,8 @@ class TestScanInboxStatusGate:
         f = _write_inbox_file(inbox_dir, "20260507-queued.md", "queued")
 
         with (
-            patch("orchestrator._pueue_add", return_value=42) as mock_add,
-            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator_inbox._pueue_add", return_value=42) as mock_add,
+            patch("orchestrator_inbox.pueue_has_active_label", return_value=False),
             patch("orchestrator.db.try_acquire_slot"),
             patch("orchestrator.db.log_task"),
             patch("orchestrator.db.update_project_phase"),
@@ -376,7 +377,7 @@ class TestScanInboxStatusGate:
         f = _write_inbox_file(inbox_dir, "20260507-draft.md", "draft")
         original = f.read_text(encoding="utf-8")
 
-        with patch("orchestrator._pueue_add") as mock_add:
+        with patch("orchestrator_inbox._pueue_add") as mock_add:
             count = orchestrator.scan_inbox("testproject", str(tmp_path))
 
         assert count == 0
@@ -389,7 +390,7 @@ class TestScanInboxStatusGate:
         inbox_dir = tmp_path / "ai" / "inbox"
         f = _write_inbox_file(inbox_dir, f"20260507-{status}.md", status)
 
-        with patch("orchestrator._pueue_add") as mock_add:
+        with patch("orchestrator_inbox._pueue_add") as mock_add:
             count = orchestrator.scan_inbox("testproject", str(tmp_path))
 
         assert count == 0
@@ -402,7 +403,7 @@ class TestScanInboxStatusGate:
         f = _write_inbox_file(inbox_dir, "20260507-legacy.md", "new")
         original = f.read_text(encoding="utf-8")
 
-        with patch("orchestrator._pueue_add") as mock_add:
+        with patch("orchestrator_inbox._pueue_add") as mock_add:
             count = orchestrator.scan_inbox("testproject", str(tmp_path))
 
         assert count == 0
@@ -414,7 +415,7 @@ class TestScanInboxStatusGate:
         inbox_dir = tmp_path / "ai" / "inbox"
         f = _write_inbox_file(inbox_dir, "20260507-nostatus.md", None)
 
-        with patch("orchestrator._pueue_add") as mock_add:
+        with patch("orchestrator_inbox._pueue_add") as mock_add:
             count = orchestrator.scan_inbox("testproject", str(tmp_path))
 
         assert count == 0
