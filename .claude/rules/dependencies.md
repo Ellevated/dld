@@ -205,7 +205,32 @@ so the one-push-per-spec rule is untouched.
 
 ## scripts/vps/orchestrator.py
 
-**Path:** `scripts/vps/orchestrator.py`
+**Path:** `scripts/vps/orchestrator.py` (391 LOC — was 1078, TECH-215 split)
+
+Split into four flat siblings; `orchestrator.py` keeps bootstrap (`_load_env`,
+`_setup_logging`, `_write_pid`), `git_pull`, `startup_reconcile`, `scan_queued`,
+`process_project`/`main`, and re-exports every moved name.
+
+| Module | LOC | Holds |
+|---|---|---|
+| `orchestrator_slots.py` | 209 | `sync_projects`, `get_live_pueue_ids`, `pueue_has_active_label/_spec`, `release_orphan_slots`, `is_agent_running`, `_pueue_add` |
+| `orchestrator_backlog.py` | 303 | `_parse_backlog` (ADR-026), `_bump_unparsable_counter`, `bootstrap_new_specs`, `_parse_priority_kind`, `cleanup_stale_stashes` |
+| `orchestrator_inbox.py` | 136 | `_parse_inbox_file`, `scan_inbox` (ADR-021/022) |
+| `orchestrator_queue.py` | 338 | `_backlog_deps`, `_unmet_dependencies`, the decomposed `scan_queued` steps, `dispatch_night_review` |
+
+**Two contracts that look stylistic and are not:**
+
+1. **Re-export direction.** Names patched as `orchestrator.<name>` are imported into
+   `orchestrator.py` with `from X import Y` and called by BARE NAME; the
+   `orchestrator_queue` steps are called as MODULE ATTRIBUTES
+   (`orchestrator_queue.record_dispatch(...)`). Inverting either direction makes a
+   `patch()` silently miss its target — tests still pass, production is unpatched.
+2. **`SCRIPT_DIR` is per-module.** `scan_inbox` and `dispatch_night_review` read their
+   own module's `SCRIPT_DIR`, so `patch("orchestrator.SCRIPT_DIR", tmp_path)` does not
+   reach them. Patch the owning module or the test shells out to the real pueue daemon.
+
+No sibling imports `orchestrator` (enforced by a test). Edges: `orchestrator` →
+{queue, slots, backlog, inbox}; queue/inbox → slots.
 
 ### Uses (→)
 
@@ -751,4 +776,5 @@ Used as operator visibility tool and CI smoke gate.
 | 2026-07-27 | **VPS test suite green on Windows:** explicit `encoding="utf-8"` on file I/O across 17 test modules (cp1251 default raised UnicodeEncodeError on `⛔`/Cyrillic — the same class as the `lifecycle._run` fix), SIGTERM daemon test skipped on `nt`. 400 passed / 0 failed, was 5 failed. | interactive |
 | 2026-07-02 | **Gate false-blocked fix (plpilot BUG-338/339/340/346/347 + TECH-349):** `match_subject`/`_subject_implements` (gate_logic.py + callback.py, sync L-derived-2) принимают trailing `(SPEC-ID)` в конце subject (все элементы в скобках обязаны быть spec-id-shaped; `(see X)`/`(FTR-X Task 3)` — reject) + merge-формы `merge: feature/SPEC-ID` и `Merge branch 'fix/SPEC-ID-slug'`. `find_implementation_commit`/`_is_done_on_develop` — второй проход `git log --first-parent` (history simplification прятала no-ff merge из path-filtered лога — `Merge SPEC-ID:` никогда не доходил до matcher'а). 11 новых тестов (test_gate_logic.py 8 unit + 3 integration), 3 (test_callback_implementation_guard.py EC-7..9), test_callback.py anti-false-positive narrowed. docs/orchestrator/status-model.md#guard обновлён. | interactive |
 | 2026-07-28 | **TECH-212:** `db.py` (602 → 373 LOC) split into `db_decisions.py` (127 LOC), `db_findings.py` (105 LOC), `db_cli.py` (88 LOC) — pure leaves, zero `import db`, connection passed as first param. `db.py` rebinds all 12 names via a `_delegate(fn, immediate=...)` factory; public API (`db.<name>`, `from db import get_db`) and CLI contract byte-identical. Zero edits to orchestrator.py/callback.py/gate-daemon.py/claude-runner.py/orchestrator_monitor.py/night-reviewer.sh. +12 CLI characterization tests + EC-1..EC-10 structural contract tests (test_db.py 213 → 568 LOC). | autopilot |
+| 2026-07-28 | **TECH-215:** `orchestrator.py` (1078 → 391 LOC) split into `orchestrator_slots.py` (209), `orchestrator_backlog.py` (303), `orchestrator_inbox.py` (136), `orchestrator_queue.py` (338); `scan_queued` (201 lines, four responsibilities in one body) decomposed into named steps. `orchestrator.py` is a facade — every moved name re-exported, entry point and systemd `ExecStart` unchanged. Behaviour-preserving: 22 of 25 functions moved byte-identical, the 3 that changed walked line-by-line against develop. Two non-obvious contracts documented above (re-export direction for `patch()`, per-module `SCRIPT_DIR`). +facade characterization suite, 539 vps tests pass. | autopilot |
 | 2026-07-28 | **BUG-218:** `queued → in_progress` had zero production writers — never implemented, not a regression; docs credited `callback`, which fires on pueue *completion* and can only ever write `done`/`blocked`. `scan_queued` now calls `lifecycle.write_lifecycle(..., "in_progress", by="orchestrator", pueue_id=...)` right after `pueue add` succeeds (a failed write logs and does NOT unwind the dispatch — the pueue task is already queued). This makes `started_at` and `reconcile_orphans` (crash recovery) reachable for the first time. Armed a second, previously inert bug: `startup_reconcile`'s `get_live_pueue_ids() or set()` collapsed a pueue-unreachable `None` into "nothing alive" — harmless while `in_progress` was empty by construction, a mass-demote-and-redispatch the moment the first fix landed. Now fail-closed: `None` skips orphan reconciliation for the cycle instead of demoting. orchestrator.py `Uses(→) lifecycle.py` row updated (this table). +11 tests (`test_orchestrator_in_progress.py`). | autopilot |
