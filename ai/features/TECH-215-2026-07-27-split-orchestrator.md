@@ -1157,3 +1157,41 @@ Allowed Files, и правки там мануальные и механичес
 ---
 
 ## Autopilot Log
+
+### Recovery run — 2026-07-28 16:00 (salvage verification, not re-execution)
+
+The first run hit the 90-min `TIMEOUT_SECONDS` with all five modules written.
+`salvage.py` pushed the branch as `wip(TECH-215): salvaged after timeout — not
+reviewed, not tested`; nothing merged, so callback's gate demoted the spec to
+`blocked (no_merged_implementation)` — correctly. This run verified and finished
+that work rather than redoing it.
+
+- Tester: **539 passed** (`scripts/vps/tests/`), including the facade
+  characterization suite and `TestReconciliationGate`.
+- Code Quality Reviewer: **approved**. AST-level body comparison against
+  `develop` — 22 of 25 functions moved byte-identical; the 3 that changed
+  (`scan_queued`, `bootstrap_new_specs`, `dispatch_night_review`) walked
+  line-by-line with no semantic drift. BUG-218's write-after-dispatch /
+  no-rollback invariant, `startup_reconcile` fail-closed on `None`, the
+  monkeypatch direction rule and the untouched reconciliation gate all verified.
+  5 advisories, 0 blocking.
+- Fixes applied from review: 4 new ruff errors that the salvage commit would have
+  taken into CI (I001 ×2, F401 ×2) + format parity; `scan_inbox` docstring now
+  warns that it reads its own `SCRIPT_DIR`. Lint delta vs develop is **zero**.
+- CI-parity gate on the merged tree: 733 passed, 3 failed — the same 3
+  `callback` failures present on `develop` before the merge (pre-existing,
+  untouched by this spec; `callback.py` is not in Allowed Files).
+- Docs: `.claude/rules/dependencies.md` — module map + the two contracts that
+  read as style and are not.
+- Commits: `7edb5cc` (review fixes), `bf54463` (docs); branch rebased onto
+  `develop` and fast-forwarded, no squash.
+- Post-deploy verify: `dld-orchestrator.service` restarted 16:07:29 — the daemon
+  held the pre-split code in memory, so this is the only way AV-F3/F4 are real.
+  Two full poll cycles clean on the split modules (`synced 10 projects`,
+  `git_pull`, `DEP_GATE` from `orchestrator_queue`, heartbeat written at 16:14:22).
+  No orphan reconciliation fired, no errors.
+
+**DoD:** all Functional / Tests / Technical items verified. `orchestrator.py` 391
+LOC; siblings 209 / 303 / 136 / 338; no function over 80 lines in any of the five;
+entry point unchanged; no sibling imports `orchestrator`; the four out-of-scope
+test files were never touched.
