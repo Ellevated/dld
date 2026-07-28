@@ -2,19 +2,24 @@ allowed_files_hash: null
 blocked_reason: 'no_merged_implementation — if implementation IS real, run: python3
   scripts/vps/spec_operator.py force-done dld TECH-215 ''gate regex bug, verified
   manually'' --by=operator'
-finished_at: null
+finished_at: '2026-07-28T13:16:08Z'
 kind: tech
 priority: p1
-pueue_id: 1035
+pueue_id: 1036
 spec_id: TECH-215
 started_at: null
-status: blocked
+status: done
 transitions:
 - at: '2026-07-28T12:38:18Z'
   by: callback
   from: queued
   pueue_id: 1035
   to: blocked
-updated_at: '2026-07-28T12:38:18Z'
+- at: '2026-07-28T13:16:08Z'
+  by: callback
+  from: blocked
+  pueue_id: 1036
+  to: done
+updated_at: '2026-07-28T13:16:08Z'
 updated_by: callback
-version: 2
+version: 3
