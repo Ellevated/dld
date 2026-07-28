@@ -968,6 +968,33 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
         branch=f"feature/{spec_id}",
     )
     db.update_project_phase(project_id, "autopilot", spec_id)
+    # Lifecycle SoT must show the spec is running (ADR-023). Without this the
+    # documented queued → in_progress → done flow never happens: started_at stays
+    # null forever and reconcile_orphans has nothing to reconcile.
+    #
+    # After _pueue_add, never before: the yaml needs the real pueue_id, and
+    # reconcile_orphans keys crash recovery on it.
+    #
+    # A failed write must NEVER unwind the dispatch — the task is already queued
+    # in pueue and will run regardless. Worst case we degrade to today's
+    # behaviour (status stays queued), which pueue_has_active_label already
+    # tolerates. So: log and continue, never re-raise, never return False.
+    try:
+        lifecycle.write_lifecycle(
+            project_dir,
+            spec_id,
+            "in_progress",
+            by="orchestrator",
+            pueue_id=pueue_id,
+        )
+    except lifecycle.LifecycleAlreadyDoneError:
+        # Rule 7 (ADR-025): callback closed the spec between the TOCTOU re-check
+        # and here. The dispatch cannot be unwound — the pueue task is queued and
+        # will start a session against a spec that is now done. How cheaply that
+        # session exits is the autopilot skill's early-exit check, not ours.
+        log.warning("in_progress skipped: %s already done (race)", spec_id)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("in_progress write failed for %s (dispatch stands): %s", spec_id, exc)
     log.info("autopilot submitted: %s spec=%s pueue_id=%d", project_id, spec_id, pueue_id)
     return True
 

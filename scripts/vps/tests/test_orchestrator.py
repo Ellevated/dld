@@ -953,7 +953,11 @@ class TestReconciliationGate:
 
         assert result is True
         mock_add.assert_called_once()
-        mock_write.assert_not_called()
+        # BUG-218: the reconciliation gate still never writes done here — the
+        # only write on this path is the dispatch write of in_progress.
+        mock_write.assert_called_once()
+        assert mock_write.call_args[0][2] == "in_progress"
+        assert mock_write.call_args[1]["by"] == "orchestrator"
 
     def test_no_allowlist_skips_reconcile_and_dispatches(self, tmp_path, seed_project):
         """No allowlist (parse returns None) → reconcile skipped (degrade), dispatch proceeds."""
@@ -988,7 +992,11 @@ class TestReconciliationGate:
 
         assert result is True
         mock_add.assert_called_once()
-        mock_write.assert_not_called()
+        # BUG-218: reconcile is skipped (degrade), but dispatch still writes
+        # in_progress — the gate never writes done on this path.
+        mock_write.assert_called_once()
+        assert mock_write.call_args[0][2] == "in_progress"
+        assert mock_write.call_args[1]["by"] == "orchestrator"
         mock_find.assert_not_called()
 
 
@@ -1143,7 +1151,11 @@ class TestSpecReadinessGate:
 
         assert result is True
         mock_add.assert_called_once()
-        mock_write.assert_not_called()
+        # BUG-218: the spec-readiness gate does not write done — it only lets
+        # dispatch proceed, and dispatch writes in_progress.
+        mock_write.assert_called_once()
+        assert mock_write.call_args[0][2] == "in_progress"
+        assert mock_write.call_args[1]["by"] == "orchestrator"
 
     def test_body_matched_by_prefix_not_exact_name(self, tmp_path, seed_project):
         """Spec files carry a date+slug suffix; the glob must still find them."""
