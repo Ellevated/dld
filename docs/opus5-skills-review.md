@@ -471,11 +471,28 @@ invented "TECH-042 Add API rate limiting" spec against a FastAPI project that do
 exist. 205 of the harvested pairs carry a real spec, inlined because the original
 worktree path dies with the run.
 
-Two numbers need care. `coder`'s 117 pairs are **14 unique specs** — autopilot dispatches
-per *task*, and ARCH-362 alone contributed 33. And every transcript found locally has
-`entrypoint: "cli"`; whether the CLI writes the same traces under the SDK headless on the
-VPS — where the volume is — is unverified. Retention is already eating the supply: 592 of
-1219 bodies were purged, metadata left behind.
+One number needs care: `coder`'s 117 pairs are **14 unique specs** — autopilot dispatches
+per *task*, and ARCH-362 alone contributed 33.
+
+**Traces are written under the SDK too — settled, not assumed.** Every transcript found
+locally carried `entrypoint: "cli"`, which looked like a limit and was only a reflection
+of where the runs came from. Confirmed two ways: a live headless probe
+(`claude --print --output-format stream-json` with `CLAUDE_CODE_ENTRYPOINT=sdk-py`) wrote
+`subagents/agent-*.jsonl` with `entrypoint: sdk-py, isSidechain: true`; and the bundle
+shows the write is unconditional — the path builder has no branch on entrypoint, and the
+only persistence gate (`shouldSkipPersistence`) resolves to four causes, none reachable
+here. One of them is the `--no-session-persistence` flag, which `claude_agent_sdk` 0.1.81
+cannot even emit. So the VPS, where the volume is, does produce harvestable traces.
+
+Two corrections to the harvest's own account of itself. The registered agent is
+`agentType`, which is always present; `customAgentType` exists only on the
+in-process-teammate branch and duplicates it — the fallback carries ordinary subagents,
+not the primary. And **the retention story was wrong**: 592 metas without bodies is real,
+but `cleanupPeriodDays` cannot produce it. Deletion goes by mtime, the body is newer than
+its meta in 978 of 978 pairs, so the meta would go first — and none of the 592 is older
+than the 30-day default. Compaction is the first suspect and is unconfirmed. **Unexplained
+supply loss in the harvest input remains open**, and raising `cleanupPeriodDays` will not
+fix what has not been diagnosed.
 
 **Module Headers, measured rather than read.** Step 6 explained `coder`'s regression by
 the cut of its Module Headers section, on the strength of `golden-002.rubric.md:7`
