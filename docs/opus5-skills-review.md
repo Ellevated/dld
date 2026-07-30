@@ -433,10 +433,14 @@ four different answers, and the one I was most confident about going in (coder �
 those numbered steps are filler) was the one that regressed. 107 files have no golden
 dataset. None of them should be cut until they do.
 
-**Shipped from this round:** `planner` only (Step 5, byte-identical to what was measured).
-`coder` and `review` stay as they are. `devil`'s example block is a defensible cut on
-token cost at measured-equal quality — recorded as a recommendation, not taken
-unilaterally, because a tie is a judgment call and not a result.
+**Shipped from this round:** `planner` (Step 5) and `devil`, both byte-identical to the
+prompts that were scored. `coder` and `review` stay as they are — one regressed, the other
+produced noise.
+
+The `devil` call was the founder's, and it is worth recording why a tie shipped: quality
+is measured-equal, the prompt is 69% smaller, and the anchoring rows above say the example
+was not neutral — it fixed the alternative count at two in every run. A tie on quality plus
+a real token saving plus evidence of a narrowing effect is a decision, not a coin flip.
 
 ## How it stays honest
 
