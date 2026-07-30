@@ -365,45 +365,6 @@ not two.
 Judge by tasks and files, not by prose length. A 400-line spec with 3 tasks is
 fine; a 60-line spec that quietly rewrites nine files is not.
 
-#### Refactoring specs are sized by LOC under transformation, not by task count
-
-For a spec whose work is *moving existing code* — a file split, a module extraction, a
-migration of callers — task count and file count do not predict whether it fits. Measured
-across the five split specs of the ARCH-209 campaign, 2026-07-27..28:
-
-| Spec | LOC in the file(s) being split | Tasks | Outcome |
-|---|---|---|---|
-| TECH-211 | 459 + 194 | 3 | done |
-| TECH-212 | 602 | 10 | done |
-| TECH-213 | 717 | 4 | **timed out** |
-| TECH-215 | 1078 | 6 | **timed out** |
-| TECH-214 | 1163 | 5 | **timed out** |
-
-The table above would have sent TECH-212 and BUG-218 (10 tasks each) to be split — both
-finished. It passed TECH-213 as comfortably in budget at 4 tasks and 9 files — it produced
-nothing in 90 minutes. **The count of steps says nothing; the volume of code that has to
-be read, understood and moved says everything.**
-
-So, for refactoring work:
-
-| Fits one session | Split into epic + children |
-|---|---|
-| ≤ ~600 LOC under transformation | > ~600 LOC under transformation |
-
-Above that line, the epic's children are *staged extractions*: one module pulled out per
-child spec, each independently shippable and each leaving the tree green. "Split this
-1100-line file" is not a spec — it is an epic whose first child is "extract X from it".
-
-The corollary is worth stating because it changes when you act: a file that grows past the
-400-LOC limit gets harder to fix the longer it is left, and past roughly 600 it can no
-longer be repaired in one session at all. Splitting early is cheaper than splitting late,
-and this is the number that says so.
-
-**Do not respond to a timeout by asking for a larger budget.** The 90-minute cap is what
-produced the table above; without it these three specs would have burned an unbounded
-amount of compute and still merged nothing, and nobody would have learned which quantity
-matters. The overrun is the measurement.
-
 <GATE>
 DO NOT proceed to Phase 5 until:
 - [ ] Decision route selected (AUTO/HUMAN/COUNCIL/ARCHITECT)
