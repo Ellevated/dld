@@ -246,6 +246,109 @@ def _extract_task_status(result_text: str) -> str:
     return m.group(1) if m else ""
 
 
+# --- Safety-classifier refusals -------------------------------------------
+# Opus 5 (and Fable 5) carry safety classifiers that can decline a request. The
+# decline is `stop_reason: "refusal"` inside a normal HTTP 200 with an empty
+# `content` — not an exception, not a 4xx, nothing raises. Two agents in this
+# repo are prompted for exactly the `cyber` category (`council-security`,
+# `bughunt-security-auditor`), and Anthropic's own note on that category is
+# "benign cybersecurity work can also trigger this category". A declined
+# security review that flows on as a successful run is indistinguishable from
+# a clean one.
+_REFUSAL_STOP_REASON = "refusal"
+_REFUSAL_TEXT_LIMIT = 400
+_REFUSAL_EVENT_LIMIT = 10
+
+
+def _message_text(message) -> str:
+    """Join the text blocks of a message. Empty string when it carries none."""
+    parts = []
+    for block in getattr(message, "content", None) or []:
+        text = getattr(block, "text", None)
+        if isinstance(text, str) and text:
+            parts.append(text)
+    return "\n".join(parts)
+
+
+def _refusal_from_message(message) -> dict | None:
+    """Recognise a classifier decline in one SDK message. None when there is none.
+
+    Two shapes reach us and they mean different things:
+
+    1. `stop_reason == "refusal"` on an AssistantMessage or on the ResultMessage
+       — the raw decline. Content is empty or partial and must not be trusted.
+    2. A `system` message with subtype `model_refusal_fallback` — the CLI arms
+       server-side fallback (`server-side-fallback-2026-07-01`) and re-runs the
+       declined request on the model Anthropic maps that refusal category to.
+       The answer is real, but it came from a model we did not pin.
+
+    `stop_details.category` never survives claude_agent_sdk's typed messages:
+    `AssistantMessage`/`ResultMessage` are dataclasses with a `stop_reason`
+    field and no `stop_details` one, so the parser drops it. The fallback
+    system message is the only place the category reaches us, under
+    `data["apiRefusalCategory"]` — SDK message parsing keeps unknown `system`
+    subtypes whole as `SystemMessage(subtype=..., data=<raw dict>)`.
+
+    Duck-typed rather than isinstance-based on purpose: it has to stay callable
+    against a stub message in a test process with no Agent SDK installed.
+    """
+    subtype = getattr(message, "subtype", None)
+    data = getattr(message, "data", None)
+    if isinstance(subtype, str) and _REFUSAL_STOP_REASON in subtype and isinstance(data, dict):
+        explanation = data.get("apiRefusalExplanation") or data.get("content") or None
+        if isinstance(explanation, str):
+            explanation = explanation[:_REFUSAL_TEXT_LIMIT]
+        else:
+            explanation = None
+        return {
+            "source": subtype,
+            "category": data.get("apiRefusalCategory"),
+            "explanation": explanation,
+            "original_model": data.get("originalModel"),
+            "fallback_model": data.get("fallbackModel"),
+            "served_by_fallback": bool(data.get("fallbackModel")),
+        }
+
+    stop_reason = getattr(message, "stop_reason", None)
+    if isinstance(stop_reason, str) and stop_reason.strip().lower() == _REFUSAL_STOP_REASON:
+        return {
+            "source": type(message).__name__,
+            "category": None,
+            "explanation": _message_text(message)[:_REFUSAL_TEXT_LIMIT] or None,
+            "original_model": getattr(message, "model", None),
+            "fallback_model": None,
+            "served_by_fallback": False,
+        }
+    return None
+
+
+def _refusal_summary(events: list) -> dict:
+    """Fold refusal events into the run-log block and the pass/fail decision.
+
+    A decline the CLI re-ran on a fallback model produced real output, so
+    failing the run would re-execute a finished spec for nothing — the BUG-188
+    lesson. It is still an unannounced model swap, so it is surfaced the same
+    way `model_drift` is: loud in the log, telemetry row, exit code untouched.
+
+    A decline with no fallback behind it produced nothing, and that is the case
+    that must not read as a clean run.
+
+    A recovered episode can emit both shapes (the partially streamed assistant
+    turn is retracted, then the fallback notice arrives), so the count of
+    fallbacks served cancels the count of declines rather than adding to it.
+    """
+    declines = sum(1 for e in events if not e.get("served_by_fallback"))
+    served = sum(1 for e in events if e.get("served_by_fallback"))
+    return {
+        "detected": bool(events),
+        "declines": declines,
+        "fallbacks_served": served,
+        "unrecovered": max(0, declines - served),
+        "categories": sorted({str(e["category"]) for e in events if e.get("category")}),
+        "events": events[:_REFUSAL_EVENT_LIMIT],
+    }
+
+
 # Models this generation is supposed to use. Subagents resolve `opus`/`sonnet`
 # aliases through the CLI, so a stale binary silently serves a previous
 # generation to every subagent while the main loop's explicit pin looks correct.
@@ -329,6 +432,7 @@ _EXIT_REASONS = {
     124: "timeout",
     2: "cli_connection_error",
     3: "cli_process_error",
+    4: "classifier_refusal",
     143: "sigterm",
 }
 
@@ -457,6 +561,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     model_usage: dict = {}
     result_received = False
     result_is_error = False
+    refusal_events: list = []
 
     try:
         async with asyncio.timeout(TIMEOUT_SECONDS):
@@ -480,6 +585,15 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
                     started_at_iso,
                     MODEL,
                 )
+
+                # A classifier decline arrives inside a normal HTTP 200, so it
+                # never reaches an except-branch. Check every message: the raw
+                # decline lands on the assistant turn or on the result, while
+                # the fallback notice is a `system` message and is the only
+                # carrier of the refusal category (_refusal_from_message).
+                refusal_event = _refusal_from_message(message)
+                if refusal_event is not None:
+                    refusal_events.append(refusal_event)
 
                 # Capture assistant text (last response before ResultMessage)
                 if isinstance(message, AssistantMessage):
@@ -606,6 +720,26 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     if not turns:
         turns = turn_count
 
+    refusal = _refusal_summary(refusal_events)
+    if refusal["detected"]:
+        logger.warning(
+            "CLASSIFIER REFUSAL: %d decline(s), %d served by a fallback model, "
+            "categories=%s. A decline is an HTTP 200 with empty content, so it "
+            "arrives looking like a finished answer — from council-security or "
+            "bughunt-security-auditor an empty report reads as a clean one. "
+            "Anthropic's note on the `cyber` category: benign cybersecurity "
+            "work can also trigger it.",
+            refusal["declines"],
+            refusal["fallbacks_served"],
+            ", ".join(refusal["categories"]) or "unknown",
+        )
+    if refusal["unrecovered"] and exit_code == 0:
+        # ADR-024 governs SDK exceptions raised AFTER a successful
+        # ResultMessage; this is an in-stream observation and the BUG-188
+        # branch is left untouched. Only upgrade from 0, so a timeout or a
+        # process error keeps its own, more specific code.
+        exit_code = 4
+
     salvage_info = _salvage_if_needed(project_path, exit_code)
 
     # Cache hit rate: fraction of total input that came from cache read.
@@ -639,6 +773,9 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         "cache_hit_rate": cache_hit_rate,
         "model_usage": model_usage,
         "task_status": _extract_task_status(result_text),
+        # Always present, even when nothing was declined: an absent key cannot
+        # be told apart from a runner that predates the check.
+        "refusal": refusal,
         "salvage": salvage_info,
         "result_preview": result_text[:1000] if result_text else "",
     }
@@ -655,6 +792,27 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
             ", ".join(sorted(log_data["model_drift"])),
             ", ".join(sorted(_EXPECTED_MODELS)),
         )
+    # Refusal telemetry. Its own table rather than sdk_post_result_errors: that
+    # table is read to measure post-ResultMessage SDK drift (BUG-188) and its
+    # columns carry no room for category / fallback model, so mixing the two
+    # signals would corrupt both counts.
+    if refusal["detected"] and _orch_db is not None:
+        try:
+            _orch_db.log_classifier_refusal(
+                project_id=project_name,
+                task=task,
+                skill=skill,
+                model=MODEL,
+                category=", ".join(refusal["categories"]) or None,
+                declines=refusal["declines"],
+                fallbacks_served=refusal["fallbacks_served"],
+                unrecovered=refusal["unrecovered"],
+                exit_code=exit_code,
+                detail=json.dumps(refusal["events"], ensure_ascii=False)[:2000],
+            )
+        except Exception as log_exc:
+            # Telemetry must never break the runner (ADR-004 fail-safe).
+            logger.warning("Failed to log classifier_refusal: %s", log_exc)
     log_file.write_text(json.dumps(log_data, ensure_ascii=False, indent=2))
     logger.info(
         "done project=%s exit=%d turns=%d cost=$%.4f in=%d out=%d cache_read=%d cache_hit=%.2f",

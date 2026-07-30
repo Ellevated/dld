@@ -101,6 +101,23 @@ def _ensure_migrations(conn: sqlite3.Connection) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gate_health_ts ON gate_health(ts)")
     except sqlite3.OperationalError:
         pass
+    # classifier_refusals: Opus 5 safety declines arrive as HTTP 200, so they
+    # appear in no error metric and need a counter of their own.
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS classifier_refusals ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+            "project_id TEXT NOT NULL, task TEXT NOT NULL, skill TEXT, model TEXT,"
+            "category TEXT, declines INTEGER NOT NULL DEFAULT 0,"
+            "fallbacks_served INTEGER NOT NULL DEFAULT 0,"
+            "unrecovered INTEGER NOT NULL DEFAULT 0, exit_code INTEGER, detail TEXT)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_classifier_refusals_ts ON classifier_refusals(ts)"
+        )
+    except sqlite3.OperationalError:
+        pass
     _MIGRATIONS_APPLIED = True
 
 
@@ -353,6 +370,7 @@ clear_decisions = _delegate(db_decisions.clear_decisions, immediate=True)
 log_sdk_post_result_error = _delegate(db_decisions.log_sdk_post_result_error)
 log_gate_cycle = _delegate(db_decisions.log_gate_cycle)
 get_gate_health = _delegate(db_decisions.get_gate_health)
+log_classifier_refusal = _delegate(db_decisions.log_classifier_refusal)
 
 # --- night findings -> db_findings.py (TECH-212) ---
 save_finding = _delegate(db_findings.save_finding, immediate=True)

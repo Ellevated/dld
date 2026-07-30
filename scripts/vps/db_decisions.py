@@ -5,7 +5,8 @@ Role: circuit-breaker decisions (TECH-169) + SDK/gate telemetry (BUG-188, ARCH-1
 Uses: sqlite3 (stdlib) — receives an open connection, never opens one.
 Used by: db.py only, through thin delegates that keep the public names
          db.record_decision / db.count_demotes_since / db.clear_decisions /
-         db.log_sdk_post_result_error / db.log_gate_cycle / db.get_gate_health.
+         db.log_sdk_post_result_error / db.log_gate_cycle / db.get_gate_health /
+         db.log_classifier_refusal.
 
 Pure leaf (TECH-212): must never import db. The caller owns the connection and the
 transaction; db.get_db() stays the single place migrations run.
@@ -114,6 +115,47 @@ def log_gate_cycle(
         "(cycle_count, last_poll_at, in_progress_specs, decisions_this_cycle, error_msg) "
         "VALUES (?, ?, ?, ?, ?)",
         (cycle_count, last_poll_at, in_progress_specs, decisions_this_cycle, error_msg),
+    )
+    return cursor.lastrowid or 0
+
+
+def log_classifier_refusal(
+    conn: sqlite3.Connection,
+    project_id: str,
+    task: str,
+    skill: Optional[str],
+    model: Optional[str],
+    category: Optional[str],
+    declines: int,
+    fallbacks_served: int,
+    unrecovered: int,
+    exit_code: Optional[int],
+    detail: Optional[str],
+) -> int:
+    """Record a safety-classifier decline seen by claude-runner.
+
+    A decline is `stop_reason: "refusal"` inside a normal HTTP 200, so it shows
+    up in no error rate and no exception counter. `unrecovered` is the number
+    of declines the CLI could not re-run on a fallback model — those are the
+    ones that produced no report at all, and the runner exits 4 for them.
+    """
+    cursor = conn.execute(
+        "INSERT INTO classifier_refusals "
+        "(project_id, task, skill, model, category, declines, fallbacks_served, "
+        "unrecovered, exit_code, detail) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            project_id,
+            task,
+            skill,
+            model,
+            category,
+            int(declines),
+            int(fallbacks_served),
+            int(unrecovered),
+            exit_code,
+            detail,
+        ),
     )
     return cursor.lastrowid or 0
 

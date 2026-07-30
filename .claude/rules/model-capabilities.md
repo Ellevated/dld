@@ -11,7 +11,7 @@ paths:
 # Model Capabilities (Claude Opus 5 / Sonnet 5)
 
 Reference for agents about current model capabilities.
-Last updated: 2026-07-27 — verified against platform.claude.com, not from memory.
+Last updated: 2026-07-30 — verified against platform.claude.com, not from memory.
 
 ---
 
@@ -215,10 +215,64 @@ A refusal from either returns 200 and flows onward as if it were their report �
 security review that reads as a clean one. `architect-security` runs on sonnet, which has
 no classifiers, so it is unaffected today but would be if it were ever moved to opus.
 
-Nothing in `scripts/` or `.claude/` matches `stop_reason`, `refusal`, or `fallbacks`.
-Server-side retry exists (`fallbacks: "default"` plus the `server-side-fallback-2026-07-01`
-beta header, which routes by refusal category), and a refused request is not billed. None
-of it is wired up. Treat this as an open gap, not a solved problem.
+The full category list is `cyber`, `bio`, `frontier_llm`, `reasoning_extraction`,
+`general_harms`. `stop_details` is always present on a refusal but `category` and
+`explanation` are `null` when the decline maps to no named area — branch on `stop_reason`,
+never on the inner fields.
+
+#### What `claude-runner` now catches
+
+`scripts/vps/claude-runner.py` inspects every SDK message (`_refusal_from_message`) and
+publishes a `refusal` block in the run log — always present, so an absent key means an
+older runner rather than a clean run:
+
+| Field | Meaning |
+|---|---|
+| `detected` | any decline was seen at all |
+| `declines` | raw declines (`stop_reason == "refusal"`) |
+| `fallbacks_served` | declines the CLI re-ran on another model |
+| `unrecovered` | `declines - fallbacks_served`, floored at 0 |
+| `categories` | refusal categories, when the SDK surfaced any |
+| `events` | up to 10 raw events (source, category, explanation, models) |
+
+**Exit contract:** `unrecovered > 0` → **exit 4** (`classifier_refusal` in `_EXIT_REASONS`),
+only ever upgrading from 0 so a timeout or process error keeps its more specific code.
+Pueue records the failure, callback routes the spec to `blocked`, and salvage still pushes
+whatever the run built. A decline the CLI re-ran on a fallback model produced a real
+answer, so it does **not** fail the run — it is warned and recorded exactly like
+`model_drift`, because that is what it is: output from a model we did not pin. Failing it
+would re-run a finished spec, which is the BUG-188 mistake. ADR-024 is untouched: it
+governs SDK exceptions raised *after* a successful `ResultMessage`; this is an in-stream
+observation, and the BUG-188 branch still assigns no exit code.
+
+Telemetry lands in its own `classifier_refusals` table (`db.log_classifier_refusal`,
+created by `_ensure_migrations` so deployed databases pick it up) — deliberately not
+`sdk_post_result_errors`, which measures post-`ResultMessage` SDK drift and has no columns
+for category or fallback model.
+
+#### What is still not caught
+
+- **The category, on the decline itself.** `claude_agent_sdk` 0.1.81 (what
+  `requirements.txt` resolves to) exposes `stop_reason` on `AssistantMessage` and
+  `ResultMessage`, and drops `stop_details` — the dataclasses have no such field, so the
+  parser discards it. The category survives only on the CLI's
+  `system` / `model_refusal_fallback` message, which the SDK keeps whole as
+  `SystemMessage(subtype=…, data=…)` with `data["apiRefusalCategory"]`. So a *recovered*
+  refusal is categorised and an *unrecovered* one is not. Recovering it would need
+  `include_partial_messages` and reading raw `message_delta` events — a per-token message
+  flood through the heartbeat writer, not worth the category string.
+- **`fallbacks` cannot be passed from here.** It is a Messages API *body* parameter and
+  `ClaudeAgentOptions` has no field for it; `betas` is typed
+  `Literal["context-1m-2025-08-07"]` — one value, not an open list. Nothing is lost: the
+  Claude Code CLI (verified 2.1.220) already arms server-side fallback itself, sending
+  `anthropic-beta: server-side-fallback-2026-07-01` and retrying on refusal. That is why
+  the fallback notice exists to be detected. `--fallback-model` is a different mechanism
+  (overloaded/unavailable model), not classifier routing.
+- **Subagent-scope granularity.** The run log says a decline happened, not which subagent
+  hit it. Anthropic's own guidance is that `fallbacks` does not propagate into model calls
+  made from inside tool execution, so per-agent attribution would need CLI support.
+- **A refused request is not billed** when it arrives before any output, so cost telemetry
+  will not show it either. The `classifier_refusals` row is the only counter.
 
 ### Opus 4.8 → Opus 5
 
@@ -256,7 +310,9 @@ Sonnet 5 @ high ≈ Sonnet 4.6 @ max. Benchmark by observed thinking length, not
    Sonnet agents that assume the May date under-search four months
 8. **A refusal is not an answer** — on opus, `stop_reason: "refusal"` comes back as a
    successful response. If output looks empty or evasive on security, bio, or ML-methods
-   content, suspect a classifier decline rather than a bad prompt
+   content, suspect a classifier decline rather than a bad prompt. On VPS runs the
+   `refusal` block in the run log answers this directly; interactively there is no such
+   signal, so the symptom is all you get
 
 ---
 
