@@ -181,6 +181,9 @@ of context.
 - [x] **4. Fable 5 + effort sweep** — done 2026-07-27. See "Step 4 result" below. The
       routing table turned out to contain three wrong facts, and the sweep found a
       refusal contract nobody had noticed.
+- [x] **5. Ablation** — done 2026-07-30. The first measurement on the *quality* axis
+      rather than the cost axis. `planner.md` cut 77%, measured against its golden
+      dataset by two independent instruments. See "Step 5 result" below.
 
 ### Step 2 result — Spark, 2026-07-27
 
@@ -300,6 +303,84 @@ recorded score.
 `reflect-aggregator`, `diary-recorder` — zero dispatch sites between them. `documenter`
 is the live question, since three docs describe it as a pipeline stage that does not run.
 Left for a separate decision rather than folded in here.
+
+### Step 5 result — ablation, 2026-07-30
+
+Step 0 measured the prompt tree on the **cost** axis and concluded "the prompts are not
+the problem; the spawn architecture is". That conclusion is sound on its own axis and
+still holds. It is also the wrong axis for the question Anthropic actually answered:
+`CLAUDE_CODE_SIMPLE=1` did not save tokens, it made the model *reason better*. Instructions
+were not merely costing money — they were suppressing capability. We had never measured
+that, despite owning the instrument since ADR-029.
+
+**Subject:** `planner.md`, the largest agent prompt (15.4 KB) and one of the four with a
+golden dataset. Body cut 15.2 KB → 3.5 KB (**−77%**, Anthropic's order of magnitude).
+Full prompt incl. shared modules 23.8 KB → 12.1 KB (−49%).
+
+**Control.** Only `planner.md`'s own body varies. All four `@`-includes (`minimal-code`,
+`context-loader`, `search-cascade`, `output-conventions`) are expanded into both arms by
+`expand-agent.mjs` so the baseline arm is the real prompt verbatim rather than a
+hand-transcription — verified present exactly once in each. Same model (opus), same
+harness, same inline framing, 3 golden specs × 2 arms.
+
+**What was cut:** the "Critical Context" preamble; Phase 3 "Ultrathink" (which contradicts
+`model-capabilities.md`'s own rule never to ask this model to think harder); the 95-line
+worked Python example in Phase 4; the 56-line Anti-Patterns section; 15 bullets of generic
+"Code Must Be / Tests Must Be / Tasks Must Be"; the 8-bullet "Remember" recap. **What was
+kept:** drift classification and its log format, the sync-zone rule, the Allowed Files
+boundary, the output YAML contract, the lifecycle prohibition.
+
+**Two instruments, because n=3 must not be decided by one judge's noise.**
+
+| | baseline | minimal | Δ |
+|---|---|---|---|
+| Blind pairwise (`comparator`, arms hidden, base = A once and B twice) | 0.800 | **0.927** | +0.127 |
+| Absolute rubric (`eval-judge`) | 0.850 | **0.910** | +0.060 |
+
+Minimal wins **6 of 6** comparisons. Pairwise separates harder than absolute scoring, as
+expected; both agree on direction and on ordering within every golden.
+
+**The deterministic findings matter more than the scores.**
+
+| | baseline | minimal |
+|---|---|---|
+| Tasks carrying a `**Type:**` field | **0 / 0 / 0** | 2 / 5 / 3 |
+| Runs planning edits outside Allowed Files | **2 of 3** | **0 of 3** |
+| Output size | — | 25–31% shorter |
+
+Both were verified against the output text directly, not taken from a judge.
+
+**Allowed Files is the serious one.** Baseline g002 planned `Add fakeredis[lua] to dev
+dependencies` — `pyproject.toml` is not in that spec's Allowed Files. Baseline g003 wrote
+`If src/domains/notifications/__init__.py does not exist, create it empty — a package
+marker is not a code change`, rationalising the boundary away. Minimal, on the same spec,
+climbed the ladder instead: *"adding a dependency requires editing pyproject.toml, which
+is not in Allowed Files. The boundary forces a hand-rolled implementation"* — and wrote
+its own fake. Same model, same task. The 15 KB prompt states the boundary in Phase 1, adds
+a Phase 5 checklist item for it, and then breaks it twice; the 3.5 KB prompt states it
+once, in bold, and holds. This is the Cherny thesis reproduced on our own code: 1194
+numbered imperatives across the tree dilute, one principle stated once does not.
+
+**A shipped defect fell out of the experiment.** `planner.md` Phase 4 says "create this
+EXACT structure" and its template has no `**Type:**` field — while `feature-mode.md`'s
+Implementation Plan template, which Spark writes and the rubric encodes, requires it. The
+planner's worked example has drifted from the spec format it is supposed to produce, and
+the example wins over the requirement every time: 0 occurrences in 3 runs. Baseline also
+emitted `**Acceptance Criteria:**` where the contract says `**Acceptance:**` — same cause.
+
+**Honest caveats.** (1) The minimal prompt was authored after reading the rubrics, so part
+of its Format/Completeness win is that it was written against the correct contract while
+baseline carries a drifted example — ablation and bug-fix are entangled here, and the
+`**Type:**` delta belongs mostly to the bug. The contamination did not extend to EC-ID
+referencing, which was checked and is comparable in both arms (11–13 occurrences each).
+(2) n=3 goldens on one agent. This licenses shipping a change to `planner`, not a
+tree-wide rewrite by feel. (3) Both judges are LLMs; the two deterministic rows above are
+the part of this result that cannot drift.
+
+**What this licenses next.** The same procedure on `coder`, `review` and `devil` — the
+other three agents with golden datasets — before any of the 107 files without one are
+touched. The rule from Step 1 still governs and now has evidence: cut procedure and
+examples, keep knowledge, contracts and independence.
 
 ## How it stays honest
 
