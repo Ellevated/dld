@@ -151,7 +151,7 @@ feat: FTR-1076 description             # no scope, no parens — INVISIBLE to ga
 
 ---
 
-## Mock Boundaries (ADR-014)
+## Mock Boundaries (ADR-030)
 
 When writing tests, follow strict mock boundaries:
 
@@ -187,7 +187,7 @@ responsibility. Autopilot does NOT have `force-done` permission. Operator runs:
 - Change unrelated files
 - Add deps without reason
 - Edit existing prompt versions
-- Mocking DB result shapes in unit tests (ADR-014)
+- Mocking DB result shapes in unit tests (ADR-030)
 
 ## Module Headers Workflow (MANDATORY)
 

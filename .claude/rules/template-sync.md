@@ -69,9 +69,38 @@ These files exist in template AND root. Template has the baseline, root adds DLD
   hedges for downstream users ("For human teams, include both"). Deliberate: DLD has no human
   implementers, a template user might.
 - `agents/architect/synthesizer.md` — template carries an extra "Effort Estimate" section.
+- `agents/tester.md` — root's "Mock Fidelity Audit" heading carries **no ADR number**;
+  template's says `(ADR-014)`. See the ADR-014 collision below. Bodies are otherwise identical.
+- `skills/council/SKILL.md`, `skills/architect/SKILL.md` — root's "Inbox Output" sections
+  write `**Status:** draft`; template's write `**Status:** new`. Root is correct against
+  `ai/inbox/README.md` and ADR-021/022; **template is describing a legacy contract** and
+  should be corrected on its next pass. Root also uses the README's title/field layout, and
+  reports a failed push instead of swallowing it with `|| true`.
 
 Found by audit 2026-07-27, not by anyone noticing. Undocumented divergence is
 indistinguishable from an interrupted sync — record it here when you create it.
+
+## ADR-014 means two different things in the two trees
+
+Not a divergence to preserve — a collision to be aware of before citing the number.
+
+| Tree | ADR-014 |
+|---|---|
+| `template/.claude/rules/architecture.md:76` | Mock boundary rule for unit tests |
+| `.claude/rules/architecture.md:95` | Data Architect gets agenda priority in `/architect` |
+
+Template's ADR table ends at 014. Root continued its own numbering from 014 onward, so the
+number was reused and the mock-boundary decision was never carried into root's table at all.
+
+**Resolved 2026-07-30 — the mock rule now has its own root id, ADR-030.** Nothing was
+renumbered: root's existing 014 keeps its meaning, and the rule template numbered 014 was
+added to root's table at the next free id. `agents/coder.md` and `agents/tester.md` cite
+`ADR-030` and resolve correctly. The two trees still disagree on what "ADR-014" names, so
+**cite by meaning when crossing trees, never by number alone** — that is what the table
+above is for.
+
+The sentence "Root adds ADR-015..018" was itself wrong (root adds 014..018), and that
+error is how the collision stayed invisible.
 
 When template updates these files, manually merge changes into root.
 

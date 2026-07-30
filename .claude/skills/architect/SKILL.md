@@ -109,3 +109,43 @@ ai/blueprint/system-blueprint/
 Greenfield → Next: /spark for features (within blueprint constraints)
 Retrofit   → Next: /board for business strategy (with architecture context)
 ```
+
+---
+
+## Inbox Output (Orchestrator Integration)
+
+After the blueprint is written, create inbox file(s) for each actionable architecture decision:
+
+```markdown
+# Architecture decision — {one line}
+
+**Status:** draft
+**Source:** architect
+**Route:** spark
+**Context:** ai/architect/{session}.md
+
+---
+Architecture decision: {brief description of task for implementation}
+Domain: {affected domain}
+Priority: {P0/P1/P2}
+```
+
+**Rules:**
+- `Status: draft` — never `queued`. Hermes is the only writer of `queued` (ADR-022);
+  `scan_inbox` dispatches nothing else, so a draft waits for the business gate instead
+  of firing Spark on an unreviewed brief.
+- One inbox file per actionable decision (not one for the entire session)
+- Only create for decisions that need implementation (not documentation-only)
+- Context links to the full architect session document
+- Commit + push after creating inbox files — Hermes reads the repo, not your working tree
+
+```bash
+git add ai/blueprint/ ai/architect/ ai/inbox/ 2>/dev/null
+git diff --cached --quiet || git commit -m "docs: architect blueprint + inbox"
+git push origin develop || echo "push failed — the inbox items are committed locally only; Hermes will not see them until they are pushed"
+```
+
+> Never `git add ai/lifecycle/` (ADR-025) — the pre-commit guard blocks it and the
+> callback is the only writer of spec status.
+
+See `ai/inbox/README.md` for the full intake lifecycle.
