@@ -27,12 +27,65 @@ _UNSET = object()
 _MIGRATIONS_APPLIED = False
 
 
+# Idempotent DDL, applied in this order on the first connection of a process.
+# Each tuple is ONE migration step and shares ONE try/except: a step lands whole
+# or is skipped whole, which is exactly how the hand-written blocks behaved.
+# Keep the mirror in schema.sql in step — that file initialises a fresh DB,
+# this list catches up databases that already exist.
+_MIGRATIONS: tuple[tuple[str, ...], ...] = (
+    # TECH-169: circuit-breaker decisions
+    (
+        "CREATE TABLE IF NOT EXISTS callback_decisions ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+        "project_id TEXT NOT NULL, spec_id TEXT, verdict TEXT NOT NULL,"
+        "reason TEXT, demoted INTEGER NOT NULL DEFAULT 0)",
+        "CREATE INDEX IF NOT EXISTS idx_callback_decisions_ts ON callback_decisions(ts)",
+        "CREATE INDEX IF NOT EXISTS idx_callback_decisions_demoted_ts"
+        " ON callback_decisions(demoted, ts)",
+    ),
+    # BUG-188: SDK post-ResultMessage exception diagnostics
+    (
+        "CREATE TABLE IF NOT EXISTS sdk_post_result_errors ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+        "project_id TEXT NOT NULL, task TEXT NOT NULL, turns INTEGER,"
+        "cost_usd REAL, error_msg TEXT, stderr TEXT)",
+        "CREATE INDEX IF NOT EXISTS idx_sdk_post_result_errors_ts ON sdk_post_result_errors(ts)",
+    ),
+    # ARCH-190: gate-daemon per-cycle metrics
+    (
+        "CREATE TABLE IF NOT EXISTS gate_health ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+        "cycle_count INTEGER NOT NULL, last_poll_at TEXT NOT NULL,"
+        "in_progress_specs INTEGER NOT NULL DEFAULT 0,"
+        "decisions_this_cycle INTEGER NOT NULL DEFAULT 0, error_msg TEXT)",
+        "CREATE INDEX IF NOT EXISTS idx_gate_health_ts ON gate_health(ts)",
+    ),
+    # Opus 5 safety declines arrive as HTTP 200, so they appear in no error
+    # metric and need a counter of their own.
+    (
+        "CREATE TABLE IF NOT EXISTS classifier_refusals ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+        "project_id TEXT NOT NULL, task TEXT NOT NULL, skill TEXT, model TEXT,"
+        "category TEXT, declines INTEGER NOT NULL DEFAULT 0,"
+        "fallbacks_served INTEGER NOT NULL DEFAULT 0,"
+        "unrecovered INTEGER NOT NULL DEFAULT 0, exit_code INTEGER, detail TEXT)",
+        "CREATE INDEX IF NOT EXISTS idx_classifier_refusals_ts ON classifier_refusals(ts)",
+    ),
+)
+
+
 def _ensure_migrations(conn: sqlite3.Connection) -> None:
     """Idempotent runtime migrations. Process-cached after first success.
 
+    The ALTER stays hand-written: SQLite has no `ADD COLUMN IF NOT EXISTS`, so
+    it needs the PRAGMA probe that the `CREATE ... IF NOT EXISTS` steps do not.
+    Everything else is data in `_MIGRATIONS` — adding a table is one entry.
+
     TECH-170: add task_log.branch column for feature-branch awareness.
-    TECH-169: add callback_decisions table + indexes.
-    BUG-188: add sdk_post_result_errors table + index.
     """
     global _MIGRATIONS_APPLIED
     if _MIGRATIONS_APPLIED:
@@ -44,80 +97,12 @@ def _ensure_migrations(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             # Race: another process added it between PRAGMA and ALTER.
             pass
-    # TECH-169: callback_decisions table — idempotent CREATE
-    try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS callback_decisions ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
-            "project_id TEXT NOT NULL,"
-            "spec_id TEXT,"
-            "verdict TEXT NOT NULL,"
-            "reason TEXT,"
-            "demoted INTEGER NOT NULL DEFAULT 0"
-            ")"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_callback_decisions_ts ON callback_decisions(ts)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_callback_decisions_demoted_ts "
-            "ON callback_decisions(demoted, ts)"
-        )
-    except sqlite3.OperationalError:
-        pass
-    # BUG-188: sdk_post_result_errors table for SDK post-ResultMessage diagnostics
-    try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS sdk_post_result_errors ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
-            "project_id TEXT NOT NULL,"
-            "task TEXT NOT NULL,"
-            "turns INTEGER,"
-            "cost_usd REAL,"
-            "error_msg TEXT,"
-            "stderr TEXT"
-            ")"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sdk_post_result_errors_ts ON sdk_post_result_errors(ts)"
-        )
-    except sqlite3.OperationalError:
-        pass
-    # ARCH-190: gate_health table for gate-daemon per-cycle metrics
-    try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS gate_health ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
-            "cycle_count INTEGER NOT NULL,"
-            "last_poll_at TEXT NOT NULL,"
-            "in_progress_specs INTEGER NOT NULL DEFAULT 0,"
-            "decisions_this_cycle INTEGER NOT NULL DEFAULT 0,"
-            "error_msg TEXT"
-            ")"
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_gate_health_ts ON gate_health(ts)")
-    except sqlite3.OperationalError:
-        pass
-    # classifier_refusals: Opus 5 safety declines arrive as HTTP 200, so they
-    # appear in no error metric and need a counter of their own.
-    try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS classifier_refusals ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
-            "project_id TEXT NOT NULL, task TEXT NOT NULL, skill TEXT, model TEXT,"
-            "category TEXT, declines INTEGER NOT NULL DEFAULT 0,"
-            "fallbacks_served INTEGER NOT NULL DEFAULT 0,"
-            "unrecovered INTEGER NOT NULL DEFAULT 0, exit_code INTEGER, detail TEXT)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_classifier_refusals_ts ON classifier_refusals(ts)"
-        )
-    except sqlite3.OperationalError:
-        pass
+    for step in _MIGRATIONS:
+        try:
+            for statement in step:
+                conn.execute(statement)
+        except sqlite3.OperationalError:
+            pass
     _MIGRATIONS_APPLIED = True
 
 

@@ -632,3 +632,130 @@ class TestDelegatedBehaviourRoundtrip:
         cnt = conn.execute("SELECT COUNT(*) FROM classifier_refusals").fetchone()[0]
         conn.close()
         assert cnt == 1
+
+
+class TestMigrationTable:
+    """`_ensure_migrations` is a loop over `_MIGRATIONS` — lock what that must do.
+
+    The hand-written version was four near-identical try/except blocks and had
+    grown db.py to 391 of its 400 permitted LOC. Folding it into data must not
+    change what a deployed database ends up with, so these assert the outcome
+    rather than the shape.
+    """
+
+    def _bare_db(self, tmp_path):
+        """A database old enough to predate every migration below."""
+        import sqlite3
+
+        p = tmp_path / "bare.db"
+        conn = sqlite3.connect(str(p))
+        conn.execute("CREATE TABLE task_log (id INTEGER PRIMARY KEY, pueue_id INTEGER)")
+        conn.commit()
+        conn.close()
+        return p
+
+    def _objects(self, path):
+        import sqlite3
+
+        conn = sqlite3.connect(str(path))
+        rows = {(r[0], r[1]) for r in conn.execute("SELECT type, name FROM sqlite_master")}
+        conn.close()
+        return rows
+
+    def test_every_step_lands_on_a_legacy_db(self, tmp_path, monkeypatch):
+        import sqlite3
+
+        p = self._bare_db(tmp_path)
+        monkeypatch.setattr(db, "_MIGRATIONS_APPLIED", False)
+        conn = sqlite3.connect(str(p))
+        db._ensure_migrations(conn)
+        conn.commit()
+        conn.close()
+
+        objects = self._objects(p)
+        for table in (
+            "callback_decisions",
+            "sdk_post_result_errors",
+            "gate_health",
+            "classifier_refusals",
+        ):
+            assert ("table", table) in objects, f"{table} not created"
+        for index in (
+            "idx_callback_decisions_ts",
+            "idx_callback_decisions_demoted_ts",
+            "idx_sdk_post_result_errors_ts",
+            "idx_gate_health_ts",
+            "idx_classifier_refusals_ts",
+        ):
+            assert ("index", index) in objects, f"{index} not created"
+
+    def test_branch_column_still_added(self, tmp_path, monkeypatch):
+        """TECH-170: the ALTER has no IF NOT EXISTS and stays hand-written."""
+        import sqlite3
+
+        p = self._bare_db(tmp_path)
+        monkeypatch.setattr(db, "_MIGRATIONS_APPLIED", False)
+        conn = sqlite3.connect(str(p))
+        db._ensure_migrations(conn)
+        conn.commit()
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(task_log)").fetchall()}
+        conn.close()
+        assert "branch" in cols
+
+    def test_rerun_is_idempotent(self, tmp_path, monkeypatch):
+        import sqlite3
+
+        p = self._bare_db(tmp_path)
+        conn = sqlite3.connect(str(p))
+        for _ in range(3):
+            monkeypatch.setattr(db, "_MIGRATIONS_APPLIED", False)
+            db._ensure_migrations(conn)
+        conn.commit()
+        conn.close()
+        assert ("table", "gate_health") in self._objects(p)
+
+    def test_a_failing_step_does_not_abort_the_later_ones(self, tmp_path, monkeypatch):
+        """Per-step try/except, as before: one broken step must not cost the rest.
+
+        Simulated by wedging a step that raises OperationalError in front of the
+        real list — a lock table would be the production cause.
+        """
+        import sqlite3
+
+        p = self._bare_db(tmp_path)
+        monkeypatch.setattr(
+            db,
+            "_MIGRATIONS",
+            (("CREATE TABLE this is not valid sql",), *db._MIGRATIONS),
+        )
+        monkeypatch.setattr(db, "_MIGRATIONS_APPLIED", False)
+        conn = sqlite3.connect(str(p))
+        db._ensure_migrations(conn)  # must not raise
+        conn.commit()
+        conn.close()
+        assert ("table", "classifier_refusals") in self._objects(p)
+
+    def test_a_step_lands_whole_or_not_at_all(self, tmp_path, monkeypatch):
+        """Table and its indexes share one try/except — same grouping as before."""
+        import sqlite3
+
+        p = self._bare_db(tmp_path)
+        monkeypatch.setattr(
+            db,
+            "_MIGRATIONS",
+            (
+                (
+                    "CREATE TABLE IF NOT EXISTS partial_step (id INTEGER)",
+                    "CREATE INDEX IF NOT EXISTS bad_idx ON no_such_table(nope)",
+                    "CREATE TABLE IF NOT EXISTS never_reached (id INTEGER)",
+                ),
+            ),
+        )
+        monkeypatch.setattr(db, "_MIGRATIONS_APPLIED", False)
+        conn = sqlite3.connect(str(p))
+        db._ensure_migrations(conn)
+        conn.commit()
+        conn.close()
+        objects = self._objects(p)
+        assert ("table", "partial_step") in objects
+        assert ("table", "never_reached") not in objects

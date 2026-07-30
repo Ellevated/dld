@@ -143,8 +143,10 @@ def load_trace(meta_path: Path, stats: Stats) -> Trace | None:
         stats.skip("unreadable_meta", "?", meta_path)
         return None
 
-    # customAgentType is the registered agent (spark-devil); agentType may be a
-    # throwaway name the caller invented for a one-off teammate.
+    # `agentType` is always present and authoritative. `customAgentType` is written
+    # only on the in-process-teammate branch, where it duplicates `agentType` — so the
+    # order below is harmless, but the fallback is what actually carries ordinary Task
+    # subagents. Verified against the CLI bundle 2.1.220, 2026-07-30.
     agent = meta.get("customAgentType") or meta.get("agentType") or ""
     jsonl_path = meta_path.with_name(meta_path.name.replace(".meta.json", ".jsonl"))
     if not jsonl_path.exists():
