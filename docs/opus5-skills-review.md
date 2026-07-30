@@ -181,6 +181,10 @@ of context.
 - [x] **4. Fable 5 + effort sweep** — done 2026-07-27. See "Step 4 result" below. The
       routing table turned out to contain three wrong facts, and the sweep found a
       refusal contract nobody had noticed.
+- [x] **7. Cheap wins + harvesting** — done 2026-07-30. Rules and prompt archaeology out
+      of the hot path (≈5k tokens/session), the Step 4 refusal gap closed, golden coverage
+      4 → 29 agents. The plan's premise for cutting *skills* did not survive: harvesting
+      reads subagent traces and skills have none. See "Step 7 result" below.
 - [x] **5. Ablation** — done 2026-07-30. The first measurement on the *quality* axis
       rather than the cost axis. `planner.md` cut 77%, measured against its golden
       dataset by two independent instruments. See "Step 5 result" below.
@@ -441,6 +445,92 @@ The `devil` call was the founder's, and it is worth recording why a tie shipped:
 is measured-equal, the prompt is 69% smaller, and the anchoring rows above say the example
 was not neutral — it fixed the alternative count at two in every run. A tie on quality plus
 a real token saving plus evidence of a narrowing effect is a decision, not a coin flip.
+
+### Step 7 result — the cheap wins, and a premise that did not survive, 2026-07-30
+
+Run as four parallel tracks. Two delivered what was expected, one delivered the opposite
+of what was expected, and one was structurally impossible — recorded in that order.
+
+**The premise that failed.** The plan was to unblock cutting `autopilot` and `spark`
+(68.9 KB and 58.5 KB of skill prompt, the hottest path there is — a skill lives in the
+main loop and is re-primed on every compaction, while an agent prompt is paid once per
+spawn) by harvesting golden datasets. It cannot work. **Harvesting reads subagent
+transcripts, and skills do not run as subagents** — they execute in the main loop and
+have no Task trace at all. A golden for a skill is an entire session, not an input/output
+pair. This was a wrong assumption in the plan, not a shortfall in the data.
+
+**The rubric is the required half.** `eval-agents.mjs:90-91` skips any pair without a
+rubric; the output file is optional and marked "for human reference". So harvesting
+automates the half that does not gate, and the half that does — what counts as the
+technically correct approach, what plausible-but-wrong answers to penalise — is judgment
+that cannot be mined. 306 harvested pairs carry 1852 `TODO(human)` markers, ~6.1 each.
+
+**What harvesting is still worth.** Coverage 4 → 29 agents; `coder` 3 → 117 pairs. And
+the inputs stop being fiction: the four shipped goldens are synthetic, built on an
+invented "TECH-042 Add API rate limiting" spec against a FastAPI project that does not
+exist. 205 of the harvested pairs carry a real spec, inlined because the original
+worktree path dies with the run.
+
+Two numbers need care. `coder`'s 117 pairs are **14 unique specs** — autopilot dispatches
+per *task*, and ARCH-362 alone contributed 33. And every transcript found locally has
+`entrypoint: "cli"`; whether the CLI writes the same traces under the SDK headless on the
+VPS — where the volume is — is unverified. Retention is already eating the supply: 592 of
+1219 bodies were purged, metadata left behind.
+
+**Module Headers, measured rather than read.** Step 6 explained `coder`'s regression by
+the cut of its Module Headers section, on the strength of `golden-002.rubric.md:7`
+requiring one. Counting the actual repositories says the convention is conditional:
+
+| | with `Module:` |
+|---|---|
+| PLPilot `_shared/content/*.ts` | 18 / 18 |
+| PLPilot `migrations/*.sql` | 0 / 74 |
+| PLPilot `tests/*.ts` | 0 / 75 |
+
+Applicable in 1 of 5 curated pairs, inapplicable in 3. The synthetic rubric demanded it
+unconditionally. **Step 6's conclusion may be an artefact of the synthetic dataset**, and
+five rubrics are now curated to zero TODOs specifically to re-run that measurement. Not
+run yet — that is a separate, paid decision.
+
+**Prompt ballast: less than assumed, contradictions: more.** An inventory of 111 files /
+812 KB found 4.7 KB of genuine archaeology. The 36 KB of "suspicious" material turned out
+to be live instructions duplicated across persona files — and folding them into
+`@_shared/` would save **zero tokens**, because the include expands into the prompt. It
+is a drift fix, not a context fix. Six real defects were worth more than the bytes:
+
+- `bughunt/SKILL.md` claimed it writes inbox items directly and "finishes after inbox +
+  push". `completion.md` says the opposite and the code agrees with `completion.md`. The
+  frontmatter `description` carried the dead model too.
+- 8 architect personas demanded "minimum 5 search queries / NO RESEARCH = INVALID
+  ANALYSIS" while `@_shared/search-cascade.md`, included in the same prompt, permits
+  answering from knowledge. This file's own guidance says conflicting instructions
+  degrade output on this generation.
+- `architect/llm.md` said "TWO phases" above three PHASE branches it implements;
+  `architect/SKILL.md` priced 8 personas as opus when 7 are sonnet; `retrofit-mode.md`
+  contradicted itself on persona count; the OpenClaw → Hermes rename (ADR-022, 2026-05)
+  was never finished in template.
+
+Root savings: **−16.5 KB from rules, −3.75 KB from prompts ≈ 5k tokens per session.**
+
+**The refusal gap from Step 4 is closed.** An unrecovered classifier decline is now
+`exit 4` → pueue Failed → spec blocked, with its own telemetry table (a refusal raises no
+exception and is not billed, so it landed in no existing counter). A decline the CLI
+already re-served on a fallback model deliberately does **not** fail the run — that is the
+BUG-188 mistake that cost $258/week. Two research findings outrank the fix: `fallbacks`
+cannot be passed through `ClaudeAgentOptions` and **does not need to be** — CLI 2.1.220
+already carries the `server-side-fallback-2026-07-01` beta header and emits
+`system/model_refusal_fallback`, which is the only path by which the refusal *category*
+reaches us, since the SDK drops `stop_details`. And there are five categories, not four.
+
+**A hazard created by this step.** `harvest-goldens.py` inlines verbatim source from
+whatever projects ran locally. The first harvest was 15.5 MB across five repositories,
+including a client CRM report and a personal job search — and this repository is public.
+The tree is gitignored; the tool ships, its output must not. Curate into `test/agents/`
+by hand.
+
+**One instrument is quietly broken.** `check-research-stack.py` runs its drift check only
+`if live:` — when Exa is unreachable the check is skipped and the script still reports on
+other things. Silent degradation is the exact failure mode that script exists to catch.
 
 ## How it stays honest
 
