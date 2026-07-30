@@ -72,7 +72,7 @@ mode: bughunt
 findings_count: N
 groups_count: M
 report_path: ai/bughunt/{date}-report.md
-openclaw_review_needed: true
+hermes_review_needed: true
 pushed: true | false
 ```
 
