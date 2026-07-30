@@ -194,7 +194,7 @@ python scripts/check_docs_sync.py
 
 **Action:** BLOCK commit if docs check fails. Require documentation update.
 
-### 6. LLM-Friendly Architecture (ARCH-211)
+### 6. LLM-Friendly Architecture
 
 Prevent codebase degradation. **BLOCK if violations found.**
 

@@ -9,7 +9,7 @@ When to escalate and how to handle failures.
 | Debug retry (code bug) | 3 | → Spark (BUG spec) |
 | Debug retry (architecture) | 3 | → Council |
 | ./test fast fail (per-task gate) | 5 | → STOP (ask human) |
-| ./test ci fail (finishing gate, TECH-206) | 3 | → STOP (ask human) |
+| ./test ci fail (finishing gate) | 3 | → STOP (ask human) |
 | ./test llm fail | 2 | → STOP (ask human) |
 | Reviewer refactor | 2 | → Council |
 | Heavy drift (planner) | 0 | → Council (immediate) |
@@ -197,6 +197,6 @@ When to set status=blocked:
 - Git conflicts
 
 **Emit `task_status: blocked` in the final JSON output.**
-Do NOT edit `**Status:**` markdown in spec or backlog — callback writes
-lifecycle yaml via atomic plumbing (ADR-023, single-writer). Any direct
+Do NOT edit `**Status:**` markdown in spec or backlog — callback is the single
+writer and commits lifecycle yaml via atomic plumbing. Any direct
 markdown edit will be overwritten by the next render_backlog pass.

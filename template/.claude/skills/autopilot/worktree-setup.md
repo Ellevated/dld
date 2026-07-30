@@ -97,7 +97,7 @@ Git worktree isolation for safe parallel development.
    #   improvisation) — the new branch inherits main and PHASE 3 merge into
    #   develop drags unrelated main-only commits (dependabot bumps, release
    #   merge-backs). Pin to origin/develop to guarantee base regardless of
-   #   CWD state. Reference: awardybot TECH-1063 incident, commit 833e5994.
+   #   CWD state. This has bitten a real run — do not skip the check.
 
    Type mapping:
    | Prefix | Branch Type |

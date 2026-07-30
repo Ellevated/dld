@@ -412,7 +412,7 @@ Write spec using selected approach from Phase 4:
 # Feature: [FTR-XXX] Title
 **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
 
-> **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml` (ARCH-186).
+> **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml`.
 > Callback is the single writer; status/blocked_reason/transitions live there.
 > Do not add a `Status:` field to the spec body — it's no longer authoritative.
 
@@ -430,7 +430,7 @@ Write spec using selected approach from Phase 4:
 
 ---
 
-## Impact Tree Analysis (ARCH-392)
+## Impact Tree Analysis
 
 ### Step 1: UP — who uses?
 - [ ] `grep -r "from.*{module}" . --include="*.py"` → ___ results
@@ -462,7 +462,7 @@ Write spec using selected approach from Phase 4:
 
 <!-- callback-allowlist v1: backticked paths only, one per row.
      DO NOT EDIT THIS BLOCK manually after autopilot starts.
-     Format is parsed by scripts/vps/callback.py — see TECH-167/175/ARCH-186. -->
+     Format is parsed by the orchestrator callback. -->
 
 ONLY the files listed below may be modified during implementation.
 
@@ -736,7 +736,7 @@ BULLET_RE    = ^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$
 SECTION_END  = ^##[ \t]+\S          (next H2 heading)
 ```
 
-> ARCH-186 removed the legacy callback marker envelopes. The allowlist is now
+> There are no legacy callback marker envelopes. The allowlist is now
 > identified solely by `HEADING_RE` + the inner `MARKER_RE`. No outer marker block.
 
 ### Algorithm
@@ -892,12 +892,11 @@ research-codebase.md missing or empty) → Gate 8 auto-pass с пометкой
 **Why this gate exists:** Spark писал в спеку конкретные пути/endpoint'ы/
 state-ключи без grep-верификации; расхождение ловилось только в runtime
 автопилота (planner) или code-quality reviewer'ом — уже после того как
-спека ушла как готовая (см. TECH-183, BUG-988/FTR-997/FTR-999).
+спека ушла как готовая.
 Gate 8 закрывает петлю: untraced reference → reject → возврат в Phase 3.
 
 **Note:** Gate 8 is LLM-проверка трассируемости (reference ↔ Verified
-References row). AST-based file-resolver — отдельный follow-up TECH (out
-of scope для TECH-183).
+References row). AST-based file-resolver — отдельный follow-up (out of scope).
 
 **GATE RESULT:** pass / reject with reasons
 

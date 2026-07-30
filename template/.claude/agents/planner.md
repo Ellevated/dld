@@ -97,8 +97,8 @@ blocked_reason: "..."  # only if blocked
 ```
 
 **Never write `**Status:**` and never edit `ai/lifecycle/*.yaml`.** Status lives in
-`ai/lifecycle/{spec_id}.yaml` and is written only by `scripts/vps/callback.py`
-(TECH-172/ADR-023). The spec body's status line and the backlog status column are
+`ai/lifecycle/{spec_id}.yaml` and is written only by `scripts/vps/callback.py`.
+The spec body's status line and the backlog status column are
 read-only renders. Unchecked task checkboxes do not mean "not done" — if lifecycle.yaml
 says done, the spec is done.
 

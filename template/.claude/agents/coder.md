@@ -145,7 +145,7 @@ fix(db): ... (BUG-439)                 # trailing-only spec_id — tolerated by 
 feat: FTR-1076 description             # no scope, no parens — INVISIBLE to gate, guaranteed false demote
 ```
 
-**Why:** the callback gate (DLD `scripts/vps/callback.py:_subject_implements`) matches the SUBJECT LINE only. Scope form is canonical. Since 2026-07-02 the gate also tolerates a pure trailing `(SPEC_ID)` — every element inside the parens must be a spec id; free text like `(FTR-X Task 3)` or `(see BUG-439)` stays rejected (TECH-177 discipline). A subject with NO spec_id anywhere can NEVER match — that commit is invisible to the gate, the spec gets a false `no_merged_implementation` demote and compute burns on re-dispatch (BUG-192 night 2026-05-24/25; plpilot false-blocked wave BUG-338..347 + TECH-349 on 2026-07-01/02).
+**Why:** the callback gate (DLD `scripts/vps/callback.py:_subject_implements`) matches the SUBJECT LINE only. Scope form is canonical. Since 2026-07-02 the gate also tolerates a pure trailing `(SPEC_ID)` — every element inside the parens must be a spec id; free text like `(FTR-X Task 3)` or `(see BUG-439)` stays rejected. A subject with NO spec_id anywhere can NEVER match — that commit is invisible to the gate, the spec gets a false `no_merged_implementation` demote and compute burns on re-dispatch. This has caused repeated false-blocked waves in production.
 
 **Merge commits (PHASE 3):** `Merge feature/SPEC_ID: <description>` (also `Merge autopilot/SPEC_ID …`, `Merge fix/SPEC_ID …`, `merge: feature/SPEC_ID — …`, git-default `Merge branch 'fix/SPEC_ID-slug'`) is accepted; since 2026-07-02 the gate sees merge commits via a `--first-parent` pass (BUG-192 Level 1b + plpilot BUG-338 fix).
 
@@ -168,7 +168,7 @@ When writing tests, follow strict mock boundaries:
 
 **Why:** Mocked row shapes drift from real SQL schema silently. Tests pass, prod breaks.
 
-## Forbidden — Lifecycle writes (ADR-025 / ARCH-193)
+## Forbidden — Lifecycle writes
 
 - NEVER Edit `**Status:**` in `ai/features/*.md` or status column in `ai/backlog.md`.
 - NEVER Edit `ai/lifecycle/*.yaml` directly.
@@ -252,7 +252,7 @@ If a task can't be done without breaking one of these, that's a spec problem —
 
 ---
 
-## Migration Rules — Git-First (TECH-059)
+## Migration Rules — Git-First
 
 ⛔ **Autopilot NEVER applies migrations! CI is the only source of apply.**
 

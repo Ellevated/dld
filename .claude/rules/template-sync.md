@@ -108,6 +108,14 @@ These files exist in template AND root. Template has the baseline, root adds DLD
 
   Keep the *contract* identical when either side changes — `draft`, never `queued`; the
   intake supervisor is the only promoter. Let the *citations* stay different.
+- **Template prompts carry no DLD spec ids.** Root cites `ADR-`/`TECH-`/`ARCH-` numbers
+  freely; template states the same rules in words. 43 citations were stripped from 13 files
+  on 2026-07-31 — a downstream project has neither DLD's ADR table nor its backlog, and its
+  own `TECH-NNN` numbering will collide. When porting root→template, drop the id and keep
+  the rule. Two deliberate exceptions: illustrative placeholders (example commit subjects,
+  example invocations, sample finding ids) and `rules/model-capabilities.md`, whose body is
+  held byte-identical with root — its four ADR citations cannot be stripped on one side
+  only. That file is the one place where the two conventions genuinely conflict.
 
 Found by audit 2026-07-27, not by anyone noticing. Undocumented divergence is
 indistinguishable from an interrupted sync — record it here when you create it.

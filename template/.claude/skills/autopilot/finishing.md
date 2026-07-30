@@ -10,7 +10,7 @@ Final verification, status update, merge, and cleanup.
 
 ```
 1. Final test: ./test ci
-   └─ must pass! (CI-parity gate, TECH-206)
+   └─ must pass! (CI-parity gate)
    └─ no `./test ci`? → CI_PARITY_UNAVAILABLE fallback (see autopilot-git.md §5.6)
 
 2. Exa Verification (see below)
@@ -53,7 +53,7 @@ Final verification, status update, merge, and cleanup.
    git pull --rebase origin develop
    git merge --ff-only {type}/{ID}
 
-   CI-parity merge gate (TECH-206) — BEFORE push:
+   CI-parity merge gate — BEFORE push:
    ./test ci on merged tree. Red → git reset --hard origin/develop
    (abort merge), emit needs_review, do NOT push.
    No `./test ci`? → CI_PARITY_UNAVAILABLE fallback (autopilot-git.md §5.6).
@@ -61,7 +61,7 @@ Final verification, status update, merge, and cleanup.
    git push origin develop
    git stash pop (if stashed)
 
-   ⛔ TECH-197 PUSH GUARD: If `git push origin develop` fails (even
+   ⛔ PUSH GUARD: If `git push origin develop` fails (even
    after retry), emit `"task_status": "needs_review"` instead of
    `"complete"` in the final JSON. Work is merged locally but not
    on origin — callback push-local will attempt recovery, but the
@@ -220,7 +220,7 @@ been denied by the pre-edit hook on its own first edit.
 ⛔ **Before setting status=done, verify ALL items:**
 
 ### Code Quality
-- [ ] `./test ci` passes (CI-parity gate, TECH-206)
+- [ ] `./test ci` passes (CI-parity gate)
 - [ ] No `# TODO` or `# FIXME` in changed files
 - [ ] All tasks from Implementation Plan completed
 
@@ -286,10 +286,10 @@ After tests pass, autopilot emits `task_status` in its final JSON output:
 - `"task_status": "needs_review"` — uncertain, callback marks blocked with reason
 
 Callback (`scripts/vps/callback.py`) reads pueue exit code + `task_status` from agent JSON output
-and writes status to `ai/lifecycle/{spec_id}.yaml` via git plumbing (ADR-023).
+and writes status to `ai/lifecycle/{spec_id}.yaml` via git plumbing.
 
 Migration: in-flight specs may still have legacy autopilot status edits — callback's guard
-re-verifies via implementation guard (ADR-023 / TECH-166).
+re-verifies via implementation guard.
 
 ## Git Safety for Merge
 
@@ -301,7 +301,7 @@ re-verifies via implementation guard (ADR-023 / TECH-166).
 
 ---
 
-## Forbidden — Lifecycle writes (ADR-025 / ARCH-193)
+## Forbidden — Lifecycle writes
 
 - NEVER Edit `**Status:**` in `ai/features/*.md` or status column in `ai/backlog.md`.
 - NEVER Edit `ai/lifecycle/*.yaml` directly.

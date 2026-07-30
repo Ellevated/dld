@@ -4,7 +4,7 @@
 
 ---
 
-## ID Determination Protocol (MANDATORY — Spec-First CAS, ARCH-196)
+## ID Determination Protocol (MANDATORY — Spec-First CAS)
 
 Use the Kafka-style spec-first pattern: **write claims the ID**. The lifecycle
 plumbing (`create_initial` + CAS via `git update-ref`) guarantees uniqueness
@@ -53,7 +53,7 @@ even with concurrent spark sessions on multiple machines (multi-master).
 4. [ ] **Entry added to backlog** — in active tasks table
 5. [ ] **Status = queued** — spec ready for orchestrator pickup!
 6. [ ] **Allowlist Linter passed** (Phase 5.5) — `grep '<!-- callback-allowlist v1' ai/features/{TASK_ID}*.md` returns ≥1 line and `## Allowed Files` heading exists exactly once
-7. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
+7. [ ] **Function overlap check** — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
 8. [ ] **Auto-commit done** — `git add ai/ && git commit` (no push!)
 
@@ -256,7 +256,7 @@ If Phase 5.5 (Allowlist Linter) returned a failure code (E001..E006):
 5. The orchestrator/operator surfaces the error to the founder via Telegram —
    no auto-recovery.
 
-⛔ Pushing a spec that fails the linter defeats the whole point of TECH-167.
+⛔ Pushing a spec that fails the linter defeats the point of the canonical format.
 The callback parser will reject it on the autopilot side, and the founder will
 have to debug the same drift again.
 

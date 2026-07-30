@@ -82,7 +82,7 @@ Only after root cause is found → create BUG-XXX spec:
 
 **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
 
-> **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml` (ARCH-186).
+> **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml`.
 > Callback is the single writer; status/blocked_reason/transitions live there.
 > Do not add a `Status:` field to the spec body — it's no longer authoritative.
 

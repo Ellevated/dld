@@ -86,7 +86,7 @@ warnings: []
 
 **Note:** Plan does NOT change task status. Status was already `queued` (set by Spark).
 
-## Structure Validation (ARCH-211)
+## Structure Validation
 
 When creating tasks, validate LLM-friendly architecture:
 
