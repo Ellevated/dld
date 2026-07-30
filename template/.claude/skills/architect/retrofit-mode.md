@@ -31,7 +31,7 @@ Assign each persona their RETROFIT focus.
 Output: ai/architect/architecture-agenda.md
 ```
 
-### Phase 2: RESEARCH (7 personas, parallel, isolated)
+### Phase 2: RESEARCH (7 personas + devil, parallel, isolated)
 
 Each receives:
 - Deep Audit Report (context — what code ACTUALLY is)
@@ -237,7 +237,7 @@ Output: ai/architect/founder-feedback-R{N}.md
 
 ### Phase 6: ITERATE (round 2-3)
 
-Same as Greenfield. ALL 7 personas go again with feedback.
+Same as Greenfield. ALL 8 personas go again with feedback.
 Full Phase 2-3-4-5 cycle.
 
 Contradiction log: each conflict recorded, next round MUST address.

@@ -31,7 +31,6 @@ Git worktree isolation for safe parallel development.
      #       worktrees (worktree-agent-*, worktree-BUG-*). Their work reaches
      #       develop through a feature branch, so the worktree branch itself is
      #       NEVER "--merged develop" and (a) alone leaks them forever.
-     #       Measured 2026-07-25: 3.4 GB local + 3 GB on VPS accumulated this way.
      merged=""
      git branch --merged develop | grep -q "$wt_branch" && merged=yes
      pushed=""

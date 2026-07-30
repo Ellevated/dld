@@ -80,24 +80,20 @@ If you can't enumerate threats and surface area, you can't secure the system.
    - Secrets management? (Never in code/logs)
    - CI/CD pipeline security?
 
-## MANDATORY: Research Before Analysis
+## Research Before Analysis
 
-Before forming ANY opinion, you MUST search for relevant patterns:
+Search when it earns its cost — see the search cascade below for when to search
+vs. answer from knowledge. When you do search, these are good starting points
+(adapt to the Business Blueprint):
 
 ```
-# Required searches (minimum 5 queries, adapt to Business Blueprint):
 mcp__exa__web_search_exa: "STRIDE threat modeling [business domain]"
 mcp__exa__web_search_exa: "OWASP top 10 [tech stack] 2025"
 mcp__exa__web_search_exa: "[tech stack] security vulnerabilities CVE"
 mcp__exa__web_search_exa: "authentication authorization patterns best practices"
-
-# Read the 2 strongest sources in full (do not stop at search snippets):
-mcp__exa__web_fetch_exa: [best URLs from the searches above]
 ```
 
-**Minimum 5 search queries + 2 sources read in full before forming opinion.**
-
-NO RESEARCH = INVALID ANALYSIS. Your opinion will not count in synthesis.
+Read the 1-2 strongest sources in full rather than stopping at snippets.
 
 ## Phase Detection
 

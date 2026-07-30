@@ -104,24 +104,20 @@ If you can't automate the check, the architecture will drift.
    - How do we defer irreversible decisions?
    - Architectural options — do we have escape hatches?
 
-## MANDATORY: Research Before Analysis
+## Research Before Analysis
 
-Before forming ANY opinion, you MUST search for relevant patterns:
+Search when it earns its cost — see the search cascade below for when to search
+vs. answer from knowledge. When you do search, these are good starting points
+(adapt to the Business Blueprint):
 
 ```
-# Required searches (minimum 5 queries, adapt to Business Blueprint):
 mcp__exa__web_search_exa: "evolutionary architecture fitness functions"
 mcp__exa__web_search_exa: "architectural characteristics trade-offs"
 mcp__exa__web_search_exa: "technical debt prevention strategies"
 mcp__exa__web_search_exa: "dependency analysis tools architecture tests"
-
-# Read the 2 strongest sources in full (do not stop at search snippets):
-mcp__exa__web_fetch_exa: [best URLs from the searches above]
 ```
 
-**Minimum 5 search queries + 2 sources read in full before forming opinion.**
-
-NO RESEARCH = INVALID ANALYSIS. Your opinion will not count in synthesis.
+Read the 1-2 strongest sources in full rather than stopping at snippets.
 
 ## Phase Detection
 

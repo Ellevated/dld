@@ -39,13 +39,6 @@ even with concurrent spark sessions on multiple machines (multi-master).
    `ai/.spark-cas-exhausted-count`, fall back to `MAX + 5` with `cas-fallback`
    in transitions[0].reason.
 
-### Why this replaces "scan backlog → max+1"
-
-Previous protocol had a TOCTOU race: two machines scanning the same backlog get
-the same max, both write the same ID. With multi-master confirmed (10+ historical
-duplicates across awardybot/wb/dowry), the CAS approach moves uniqueness
-enforcement to the lifecycle SoT (git object store, serialised by `git update-ref`).
-
 **Numbering remains SEQUENTIAL ACROSS ALL TYPES** (see CLAUDE.md#Backlog-Rules).
 
 ---

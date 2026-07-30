@@ -163,7 +163,7 @@ Every PHASE 2 task commit MUST use Conventional Commits with the spec_id in scop
 ✅ `feat(FTR-1076): add WB API key schemas`  ✅ `fix(BUG-439): restore constraint`
 ❌ `feat(billing): ... (FTR-1076 Task 3)`  ❌ `fix(db): ... (BUG-439)`
 
-Why: the gate matches the subject line; scope form is canonical (pure trailing `(SPEC_ID)` tolerated since 2026-07-02, free-text trails rejected). A subject with no spec_id anywhere is INVISIBLE to the gate → false demote + re-dispatch burn (BUG-192 night incident 2026-05-24/25 — 5 specs blind-demoted).
+Why: the gate matches the subject line; scope form is canonical (pure trailing `(SPEC_ID)` tolerated since 2026-07-02, free-text trails rejected). A subject with no spec_id anywhere is INVISIBLE to the gate → false demote + re-dispatch burn.
 
 PHASE 3 merge commits: `Merge feature/SPEC_ID: …` (or `autopilot/`, `fix/`) is accepted by gate.
 

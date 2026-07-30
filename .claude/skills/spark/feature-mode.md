@@ -142,9 +142,6 @@ Architect/Board assigned this task — read from blueprint, do NOT ask user.
    sources any responder would consult, and you already have Read.
    - Still unresolved after reading, and the answer would change the design →
      escalate to `/architect` in Phase 4, which is the route that already exists
-   - This used to dispatch `architect-facilitator`. That agent was an agenda-writer
-     and round-manager for an architect session — never a question-answerer — and it
-     was deleted 2026-07-27 as unreachable from its own skill.
 3. Human = 0% involvement (per design doc)
 
 **Output for both modes:** Problem statement captured, ready for scouts.

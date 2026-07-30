@@ -105,7 +105,7 @@ Compare entries with CLAUDE.md:
 
 ### Step 5: Write Findings to Diary/Reflect
 
-**CRITICAL:** Reflect does NOT write to inbox. Only OpenClaw writes to inbox.
+**CRITICAL:** Reflect does NOT write to inbox. Only Hermes writes to inbox.
 Findings are written as durable entries in `ai/reflect/` for later review.
 
 For each pattern found (frequency >= 3):
@@ -129,7 +129,7 @@ For each pattern found (frequency >= 3):
 - Patterns with frequency 2 are noted in diary but NOT included in findings file
 - Max 5 findings per reflect session (prioritize by frequency)
 - All findings for a session go into a single file (not one per pattern)
-- No `Route: spark` — OpenClaw decides next steps from reflect findings
+- No `Route: spark` — Hermes decides next steps from reflect findings
 
 ### Step 5.5: Commit + Push
 
@@ -167,7 +167,7 @@ patterns_found:
   - "Pattern 1 (frequency: N)"
   - "Pattern 2 (frequency: N)"
 findings_written: M
-next_action: "Findings saved to ai/reflect/findings-{date}.md — OpenClaw decides next step"
+next_action: "Findings saved to ai/reflect/findings-{date}.md — Hermes decides next step"
 ```
 
 ---
@@ -176,11 +176,11 @@ next_action: "Findings saved to ai/reflect/findings-{date}.md — OpenClaw decid
 
 | Wrong | Correct |
 |-------|---------|
-| Create TECH spec directly | Write to ai/reflect/ -> OpenClaw decides next step |
-| Edit CLAUDE.md directly | Write to ai/reflect/ -> OpenClaw -> Spark -> skill-creator |
+| Create TECH spec directly | Write to ai/reflect/ -> Hermes decides next step |
+| Edit CLAUDE.md directly | Write to ai/reflect/ -> Hermes -> Spark -> skill-creator |
 | Skip marking entries done | MUST mark diary entries `pending → done` in Step 5.6 |
 | Write all patterns to ai/reflect/ | Only frequency >= 3, max 5 findings |
-| Write findings directly into inbox | Only OpenClaw writes to inbox |
+| Write findings directly into inbox | Only Hermes writes to inbox |
 
 ---
 

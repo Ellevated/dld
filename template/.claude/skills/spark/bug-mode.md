@@ -137,16 +137,6 @@ Only after root cause is found → create BUG-XXX spec:
 
 ---
 
-# Bug Hunt Mode (MOVED)
-
-Bug Hunt is now a standalone skill: `/bughunt`
-
-**Do NOT run Bug Hunt from Spark.** Use `/bughunt <target>` directly.
-
-Quick Bug Mode remains in Spark for simple bugs (<5 files).
-
----
-
 ## Bug Research Template
 
 When investigating bug patterns:

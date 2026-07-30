@@ -30,15 +30,6 @@ Transforms raw ideas into specs via 3 parallel scouts + research + structured di
 
 **Don't use:** Hotfixes <5 LOC (fix directly), pure refactoring without spec
 
-## v2 Changes
-- **Multi-agent:** 3 scouts (research, codebase, devil) replace single-agent research
-- **Blueprint constraint:** If `ai/blueprint/system-blueprint/` exists, Spark works WITHIN it
-- **Tests mandatory:** Every spec must have ## Tests section (min 3 test cases)
-- **Blueprint Reference:** New section linking spec to system blueprint
-- **Auto-decide:** Simple features skip human approval
-- **Escalation to Architect:** Technical architecture questions → `/architect`, not human
-- **Upstream reflect:** After spec, write signals to `ai/reflect/upstream-signals.md`
-
 ## Principles
 1. **READ-ONLY MODE** — Spark NEVER modifies files (except creating spec in `ai/features/` and `ai/diary/`)
 2. **AUTO-HANDOFF** — After spec is ready, auto-handoff to autopilot (no manual "plan" step)

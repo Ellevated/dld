@@ -77,24 +77,20 @@ If you can't describe the exact debugging path, the system isn't production-read
    - Manual approval gates — where and why?
    - Preview environments?
 
-## MANDATORY: Research Before Analysis
+## Research Before Analysis
 
-Before forming ANY opinion, you MUST search for relevant patterns:
+Search when it earns its cost — see the search cascade below for when to search
+vs. answer from knowledge. When you do search, these are good starting points
+(adapt to the Business Blueprint):
 
 ```
-# Required searches (minimum 5 queries, adapt to Business Blueprint):
 mcp__exa__web_search_exa: "production readiness checklist SRE"
 mcp__exa__web_search_exa: "observability vs monitoring SLO best practices"
 mcp__exa__web_search_exa: "[tech stack] deployment patterns zero downtime"
 mcp__exa__web_search_exa: "distributed tracing implementation"
-
-# Read the 2 strongest sources in full (do not stop at search snippets):
-mcp__exa__web_fetch_exa: [best URLs from the searches above]
 ```
 
-**Minimum 5 search queries + 2 sources read in full before forming opinion.**
-
-NO RESEARCH = INVALID ANALYSIS. Your opinion will not count in synthesis.
+Read the 1-2 strongest sources in full rather than stopping at snippets.
 
 ## Phase Detection
 

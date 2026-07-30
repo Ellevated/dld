@@ -50,7 +50,7 @@ System architecture: domains, data, APIs, cross-cutting rules, agent architectur
 Before launching, inform user (non-blocking):
 
 ```
-Greenfield: "Architect: {project} — 19 agents (8 opus × 2 phases + 1 opus synthesizer + validation), est. ~$5-12. Running..."
+Greenfield: "Architect: {project} — 19 agents (8 sonnet × 2 phases + 1 opus synthesizer + validation), est. ~$5-12. Running..."
 Retrofit:   "Architect retrofit: {project} — 19 agents + audit input, est. ~$5-12. Running..."
 ```
 
