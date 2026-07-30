@@ -368,14 +368,17 @@ Optimize skill description for trigger accuracy.
    - 5 edge cases (ambiguous)
 2. User reviews queries via markdown table
 3. Split 60% train / 40% test
-4. Run `node .claude/scripts/improve-description.mjs`:
-   - Evaluate current description (3 runs per query)
-   - Propose improved description
-   - Re-evaluate on train set
-   - Validate on held-out test set
-   - Accept if test accuracy improves
-5. Max 5 iterations
-6. Report before/after accuracy
+4. Rewrite the description by hand against the train set, then check it against the
+   held-out test set. Keep the rewrite only if the test half improves.
+5. Report before/after accuracy
+
+> **Do not use `improve-description.mjs` for step 4.** Its `evaluateAccuracy` does not
+> measure trigger activation — it counts word overlap between the query and the
+> description (`overlap >= 2`), which its own comment flags as a placeholder for the real
+> check. It then asks the model for a rewrite and accepts it when that overlap score
+> rises, while instructing it to add a "Triggers on keywords:" line — which raises the
+> score mechanically. The loop optimises keyword stuffing, not routing. The script is
+> **not present in the DLD repo** and was deliberately not ported there.
 
 ---
 
@@ -412,8 +415,13 @@ Optimize skill description for trigger accuracy.
 | Script | Purpose | Usage |
 |--------|---------|-------|
 | `run-eval.mjs` | Run skill against test prompts | `node .claude/scripts/run-eval.mjs --skill-path X --evals-path Y` |
-| `improve-description.mjs` | Optimize description triggers | `node .claude/scripts/improve-description.mjs --skill-path X` |
 | `aggregate-benchmark.mjs` | Variance analysis | `node .claude/scripts/aggregate-benchmark.mjs --workspace X` |
+
+`run-eval.mjs` shells out to `claude --print --setting-sources=project -p "/<skill> …"`.
+The `--setting-sources` flag is what makes `.claude/skills/` visible to the child; without
+it the prompt arrives as literal text and every eval silently measures nothing.
+
+`improve-description.mjs` is not listed: see the warning under Description Optimization.
 
 ---
 

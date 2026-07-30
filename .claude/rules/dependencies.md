@@ -1,6 +1,7 @@
 ---
 paths:
   - "scripts/**"
+  - ".claude/scripts/**"
   - "packages/**"
   - "tests/**"
 ---
@@ -732,6 +733,34 @@ Used as operator visibility tool and CI smoke gate.
 - [ ] setup-vps.sh (cron line for heartbeat_reaper.py — section 8d)
 - [ ] event_writer.notify signature (5-arg: project_path, skill, status, message, artifact_rel)
 - [ ] claude-runner.py heartbeat file format (fields: turn, elapsed_s, last_tool, started_at, model, updated_at)
+
+---
+
+## .claude/scripts/ (skill-invoked gates)
+
+**Path:** `.claude/scripts/*.mjs`
+
+Called from skill prompts by a running agent, not imported by any Python module — so a
+missing file surfaces as an agent improvising around a shell error, and nothing fails
+loudly. Six of these existed only in `template/` while root prompts referenced them
+(ported 2026-07-31). The reverse pointers below are the check: **before deleting or
+renaming one, grep the skill that calls it.**
+
+| Script | Called from | Contract |
+|---|---|---|
+| `validate-audit-report.mjs` | `skills/audit/deep-mode.md`, `skills/retrofit/SKILL.md` | argv: report path. 0 = pass, 1 = fail, 2 = usage |
+| `validate-audit-coverage.mjs` | `skills/audit/deep-mode.md` | argv: inventory.json + reports dir. 0 = ≥80% covered, 1 = below, 2 = usage |
+| `codebase-inventory.mjs` | `skills/audit/deep-mode.md` | argv: target dir. JSON inventory to stdout, feeds the coverage gate |
+| `validate-blueprint-compliance.mjs` | `skills/autopilot/task-loop.md` | argv: spec file [+ blueprint dir]. 0 = pass, 1 = fail, 2 = skip/usage |
+| `run-eval.mjs` | `skills/skill-creator/SKILL.md` | shells out to `claude --print --setting-sources=project -p "/<skill> …"`. Drops `--setting-sources` and every eval silently measures nothing |
+| `aggregate-benchmark.mjs` | `skills/skill-creator/SKILL.md`, `skills/skill-creator/references/schemas.md` | argv: workspace. Consumes `iteration-N/run-summary.json` written by `run-eval.mjs` — the two share that filename as a contract |
+| `eval-agents.mjs` | `skills/eval` | Root-only. Scans `test/agents/` golden datasets; unrelated to `run-eval.mjs` despite the name |
+
+### When changing API, check
+
+- [ ] The calling skill prompt (both `.claude/` and `template/.claude/` copies — they are identical today)
+- [ ] `run-eval.mjs` ↔ `aggregate-benchmark.mjs` workspace layout (`iteration-N/run-summary.json`, `eval-N-timing.json`)
+- [ ] `codebase-inventory.mjs` ↔ `validate-audit-coverage.mjs` (the latter parses the former's `files[].path`)
 
 ---
 

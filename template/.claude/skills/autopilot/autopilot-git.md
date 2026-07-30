@@ -65,7 +65,7 @@ esac
 ### 2.1 CI Health Check (FIRST!)
 
 ```bash
-./scripts/ci-status.sh
+./scripts/ci-status.sh   # per-project artifact — not every repo ships one
 ```
 
 | Exit | Meaning | Action |
@@ -73,6 +73,11 @@ esac
 | 0 | Green (all CI checks pass) | Continue |
 | 0 | CI-only red (lint, spec compliance, file size — not deploy) | Continue in **REGRESSION-ONLY mode**: record baseline red set. Merge gate (§5.4) requires no NEW failures vs this baseline. Log `CI_BASELINE_RED: {failing checks}`. |
 | 2 | Deploy failure | DEPLOY ERROR PROTOCOL |
+| 127 / "No such file or directory" | The project has no `scripts/ci-status.sh`. It is a **per-project** artifact (awardybot has one, dld does not) and its absence is an expected state, not a signal about CI | Log `CI_STATUS_UNAVAILABLE` and continue. **Not** a deploy failure: do not open the DEPLOY ERROR PROTOCOL, do not block the spec, do not create a BUG. The §5.4 merge gate still applies |
+
+Never substitute a stub that prints OK for a missing script. A stub cannot return 2, so
+it converts "no CI signal" into "CI is green" on the one path that exists to catch a
+broken deploy.
 
 **Deploy failure → BLOCKING:**
 1. Create BUG spec inline (next BUG-XXX)

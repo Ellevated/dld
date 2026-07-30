@@ -70,6 +70,8 @@ Git worktree isolation for safe parallel development.
 1. CI health check: ./scripts/ci-status.sh
    └─ exit 0 → continue
    └─ exit 2 → DEPLOY ERROR PROTOCOL (see below)
+   └─ script absent (127) → log CI_STATUS_UNAVAILABLE, continue
+      (per-project artifact; dld has none. Absence is not a deploy failure)
 
 2. Save main repo path:
    MAIN_REPO="$(git rev-parse --show-toplevel)"
@@ -128,7 +130,8 @@ Git worktree isolation for safe parallel development.
 
 ## Deploy Error Protocol
 
-When `./scripts/ci-status.sh` returns exit code 2:
+When `./scripts/ci-status.sh` returns exit code 2 — **only** 2. A missing script exits
+127 and means the project ships no CI probe, which says nothing about the deploy.
 
 ⛔ **DO NOT attempt to fix directly!**
 
