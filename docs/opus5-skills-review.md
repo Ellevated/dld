@@ -382,6 +382,62 @@ other three agents with golden datasets — before any of the 107 files without 
 touched. The rule from Step 1 still governs and now has evidence: cut procedure and
 examples, keep knowledge, contracts and independence.
 
+### Step 6 result — the same ablation on the other three, 2026-07-30
+
+Run immediately after Step 5, same procedure, same blind pairwise instrument, arm
+placement varied per golden. **The planner result did not generalise, and that is the
+finding.**
+
+| Agent | Cut | Blind pairwise, baseline → minimal | Wins |
+|---|---|---|---|
+| planner (Step 5) | −77% body | 0.800 → **0.927** | minimal 3/3 |
+| coder | −25% | **0.877** → 0.793 | **baseline 2/3** |
+| devil | −59% | 0.867 → 0.877 | 1/3 vs 2/3, means within noise |
+| review | −34% | **0.89** → 0.85 | baseline 1/1 (**n=1**) |
+
+Across all four agents baseline wins 4 of 7 comparisons. Anyone who had shipped a
+tree-wide cut on the strength of Step 5 would have shipped a regression.
+
+**Why coder lost, precisely.** I cut its Module Headers section — a 5-step workflow plus
+a format block — reading it as procedure. `test/agents/coder/golden-002.rubric.md` line 7
+requires *"module header with Uses/Used by"*, and CLAUDE.md documents it as a project
+convention. The judge's reason for the 0.62/0.86 split is exactly that: one file carries
+`Module:/Role:/Uses:/Used by:` and Google-style docstrings, the other has two inline
+comments. **That was knowledge wearing procedure's clothing, and the measurement caught
+what my reading did not.**
+
+**Why devil is a tie, and what the deterministic rows say anyway.** Cutting its 114-line
+`## Example Output` — the cut this document has been deferring since Step 2 for want of a
+measurement — costs 59% of the prompt and moves quality by +0.010, i.e. nothing. But the
+structural counts are not nothing:
+
+| | baseline | minimal |
+|---|---|---|
+| Alternatives proposed | **2 / 2 / 2** | **3 / 3 / 3** |
+| Side-effect (SA-*) assertions | 3 / 2 / 2 | 4 / 3 / 4 |
+
+The baseline's example shows exactly two alternatives, and the baseline produced exactly
+two every single time. The example did not calibrate the output, it **anchored** it —
+which is the argument Step 2 could not make without running this.
+
+**Review is not evidence.** One golden pair, a 0.04 margin, and the judge's own account
+says both arms found all six planted defects and cleared all three decoys, with the
+verdict turning on a single severity label. That is noise. It also holds the only measured
+recall baseline in the repo (0.883, ADR-029), so it is the last prompt that should be
+touched on a hunch.
+
+**What this changes.** The rule from Step 1 — *does this carry knowledge or independence
+the caller lacks* — survives, but Step 5 made it look like a licence to cut. It is not.
+The rule is only decidable **per agent, against a golden dataset**; four agents produced
+four different answers, and the one I was most confident about going in (coder — surely
+those numbered steps are filler) was the one that regressed. 107 files have no golden
+dataset. None of them should be cut until they do.
+
+**Shipped from this round:** `planner` only (Step 5, byte-identical to what was measured).
+`coder` and `review` stay as they are. `devil`'s example block is a defensible cut on
+token cost at measured-equal quality — recorded as a recommendation, not taken
+unilaterally, because a tie is a judgment call and not a result.
+
 ## How it stays honest
 
 Measured, not tasted. The eval harness works: `test/agents/review/` scored ADR-029 at
