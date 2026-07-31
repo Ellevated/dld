@@ -85,8 +85,23 @@ These files exist in template AND root. Template has the baseline, root adds DLD
   `TECH-*` orchestrator rows, and shell-script safety rules. ADR-014 exists in **both** trees
   and names a **different** decision in each — see the collision section below.
 - `rules/dependencies.md` — Root has full DLD dependency map (scripts/vps/*, orchestrator, callback)
-- `rules/model-capabilities.md` — Root's `paths:` header covers `template/**` and `scripts/vps/*`
-  as well, because DLD edits both trees. Body must stay byte-identical.
+- `rules/model-capabilities.md` — **the two bodies deliberately differ since 2026-07-31.**
+  The byte-identical invariant was dropped: root's copy documents DLD's own runner
+  (`claude-runner.py` refusal handling, exit codes, telemetry tables, the Fable-5 routing
+  decision and its ADR trail), none of which a downstream project has. Template carries
+  16.6 KB against root's 21.6 KB.
+
+  **What to sync:** facts about the models — prices and the Sonnet intro-price expiry,
+  context/output windows, effort levels, knowledge cutoffs, the "what to remove from
+  prompts" table, both Breaking Changes tables, refusal semantics as an API behaviour.
+  A model fact that is true for us is true for everyone.
+
+  **What not to sync:** anything naming our runner, orchestrator, env vars, spec ids or
+  internal documents. If a lesson behind one of those is worth carrying, port the lesson
+  in words — the same rule as the id-stripping entry below.
+
+  Root's `paths:` header also covers `template/**` and `scripts/vps/*`, because DLD edits
+  both trees; template's covers only its own `.claude/agents/**` and `.claude/skills/**`.
 - **LLM-Native economics wording**, in `agents/board/{cmo,coo}.md`,
   `agents/architect/{dx,evolutionary,synthesizer}.md` — root states it as a fact about this
   repo ("this codebase is maintained by AI agents … MUST reflect this reality"); template
@@ -112,10 +127,11 @@ These files exist in template AND root. Template has the baseline, root adds DLD
   freely; template states the same rules in words. 43 citations were stripped from 13 files
   on 2026-07-31 — a downstream project has neither DLD's ADR table nor its backlog, and its
   own `TECH-NNN` numbering will collide. When porting root→template, drop the id and keep
-  the rule. Two deliberate exceptions: illustrative placeholders (example commit subjects,
-  example invocations, sample finding ids) and `rules/model-capabilities.md`, whose body is
-  held byte-identical with root — its four ADR citations cannot be stripped on one side
-  only. That file is the one place where the two conventions genuinely conflict.
+  the rule. The one remaining exception is illustrative placeholders — example commit
+  subjects, example invocations, sample finding ids — where the number is the point of the
+  example. `rules/model-capabilities.md` was the second exception until 2026-07-31, when the
+  byte-identical invariant was dropped and its four citations went with the DLD-specific
+  sections; see its entry above.
 
 Found by audit 2026-07-27, not by anyone noticing. Undocumented divergence is
 indistinguishable from an interrupted sync — record it here when you create it.
