@@ -222,7 +222,7 @@ my-project/
 
 ### Workflows
 - [Skills Setup](docs/15-skills-setup.md) — How to configure skills
-- [Spec Template](docs/18-spec-template.md) — Writing good specs
+- [Spec Template](.claude/skills/spark/feature-mode.md) — Phase 5 carries the canonical spec template. `/spark` writes it for you; read it when you need to hand-edit a spec
 - [MCP Setup](docs/20-mcp-setup.md) — Context7 + Exa configuration
 
 ---

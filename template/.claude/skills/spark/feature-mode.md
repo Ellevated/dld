@@ -723,69 +723,59 @@ DO NOT proceed to Phase 6 until:
 
 ## Phase 5.5: ALLOWLIST LINTER (Pre-Validate Hard Gate)
 
-After Write, before Validate. Deterministic check against the spec's
-`## Allowed Files` section. ANY failure here → DELETE spec file, escalate
-to Telegram with the exact error code, do NOT advance to Phase 6.
+After Write, before Validate. Autopilot may write only what this section lists —
+so a section that parses differently than you meant is a run that writes the wrong
+files, or nothing at all.
 
-### Linter rules (regex SSOT — must match callback.py v2)
-
-```
-HEADING_RE   = ^##[ \t]+Allowed Files[ \t]*$            (case-sensitive, exact)
-MARKER_RE    = <!--\s*callback-allowlist\s+v1\b[^>]*-->
-BULLET_RE    = ^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$
-SECTION_END  = ^##[ \t]+\S          (next H2 heading)
+```bash
+node .claude/scripts/validate-allowlist.mjs ai/features/{TASK_ID}-*.md
 ```
 
-> There are no legacy callback marker envelopes. The allowlist is now
-> identified solely by `HEADING_RE` + the inner `MARKER_RE`. No outer marker block.
+Exit 0 = pass. Exit 1 = fix required. Exit 2 = the file is missing or unreadable.
+The script prints one JSON object: `paths`, `implementation_paths`, `errors`,
+`warnings`.
 
-### Algorithm
+The rules live in the script, not here. This used to be four regexes transcribed
+into this file for the model to apply by hand — two copies of one format spec, which
+drifted apart and started rejecting specs the rest of the pipeline accepted. If your
+project also parses `## Allowed Files` in a CI gate or commit hook, keep that parser
+and this script in lockstep and put a test on the pair.
 
-1. Read the just-written spec file.
-2. Find the FIRST line matching `HEADING_RE`. If absent → fail
-   `ALLOWLIST_E001_NO_HEADING`.
-3. Forbid duplicates: if more than one line matches `HEADING_RE` → fail
-   `ALLOWLIST_E002_DUPLICATE_HEADING`.
-4. Slice section = lines after heading until first `SECTION_END` (or EOF).
-5. Search section for `MARKER_RE`. Absent → fail `ALLOWLIST_E003_NO_MARKER`.
-6. Iterate non-blank, non-comment lines in section. For each line:
-   - If line starts with `- ` (bullet) and does NOT match `BULLET_RE` → fail
-     `ALLOWLIST_E004_BAD_BULLET` with offending line.
-   - Lines that are not bullets and not the marker comment and not free
-     prose paragraphs (heuristic: contain a backtick) → fail
-     `ALLOWLIST_E005_PATH_OUTSIDE_BULLET` (catches "paths in fenced code
-     blocks" anti-pattern).
-7. Collect all paths captured by `BULLET_RE`. If count == 0 → fail
-   `ALLOWLIST_E006_EMPTY_LIST`.
+### On failure — fix the section, do not delete the spec
 
-### On failure
+The ID was already claimed in Phase 5, so deleting the spec file burns the ID and
+can strand whatever lifecycle record was written alongside it. The allowlist is a
+section of markdown — repair it.
 
-1. `Bash`: `rm -f ai/features/{TASK_ID}-*.md` (delete the bad spec).
-2. Roll back the backlog edit if it was already added (Edit tool to remove
-   the row).
-3. Set `state.json: write = failed, error = <code>`.
-4. Return JSON to caller:
+1. Read the `errors` array. Each names the line and what the parser will do with it.
+2. Edit the `## Allowed Files` section in place. Canonical entry shapes, one path
+   per line, nothing else parses:
+   ```
+   - `path/to/file.py` — reason (modify)
+   1. `path/to/file.py` — reason (modify)
+   ```
+   Tables, fenced blocks and two paths on one line are not read.
+3. Re-run the script. Repeat at most twice.
+4. Still failing after two repairs → this is a spec problem, not a formatting one
+   (`ALLOWLIST_E007_BOOKKEEPING_ONLY` means the spec lists no file that implements
+   anything). Return to Phase 3, keep the ID, rewrite the section from the Impact Tree.
 
-```yaml
-status: blocked
-error_code: ALLOWLIST_E00X
-error_message: "Spark allowlist linter rejected spec: <human description>"
-remediation: "Re-run /spark and follow the canonical Allowed Files format
-              documented in feature-mode.md Phase 5.5."
-```
-
-5. Telegram notification (via `result_preview`):
-   `Spark linter blocked spec — <error_code>. Manual fix needed.`
+Escalate only if the third attempt fails: set `state.json: lint = failed, error = <code>`
+and return `status: blocked` with the linter's `error_message` and the spec path —
+the spec stays on disk for a human to look at.
 
 ### On success
 
-- state.json: `lint = done, allowlist_paths = [<list>]`.
+- state.json: `lint = done, allowlist_paths = [<paths from the script>]`.
+- Read the `warnings` array before moving on. Warnings do not block, but
+  `ALLOWLIST_W002_EXTRA_PATH_IN_REASON` means a second path on an entry line was
+  not extracted — if that was meant to be an entry, give it its own line now.
 - Proceed to Phase 6.
 
 <GATE>
 DO NOT proceed to Phase 6 until:
-- [ ] Phase 5.5 linter run on freshly-written spec file
-- [ ] Linter exit = success (no E001..E006)
+- [ ] `validate-allowlist.mjs` run on the freshly-written spec, exit 0
+- [ ] `warnings` read and any lost entry given its own line
 - [ ] state.json updated: lint = done, allowlist_paths = [<paths>]
 </GATE>
 
