@@ -136,6 +136,28 @@ These files exist in template AND root. Template has the baseline, root adds DLD
 Found by audit 2026-07-27, not by anyone noticing. Undocumented divergence is
 indistinguishable from an interrupted sync — record it here when you create it.
 
+- `.claude/scripts/validate-allowlist.mjs`, `check-prompt-integrity.mjs` — **logic
+  identical, header comments differ.** Root's cite `callback.py` / `gate_logic.py` line
+  numbers and the parity test that binds them; template's state the same rule without
+  naming files a downstream project does not have (it ships no `scripts/vps/`). Keep the
+  regexes and the checks byte-identical; only the prose that names our parser diverges.
+  `prompt-integrity-baseline.json` differs on purpose — root baselines DLD's own
+  decisions, template ships only the one that is universal.
+
+## Known dangling reference in template
+
+`template/.claude/skills/spark/feature-mode.md` Phase 5 tells the agent to run
+`from scripts.vps.lifecycle import create_initial` — and `scripts/vps/` does not exist in
+the template tree. Same class as the six scripts ported on 2026-07-31, found 2026-08-01
+while replacing the Phase 5.5 linter. Not fixed: porting the lifecycle module downstream
+is a real design decision (a template project may have no orchestrator at all), and the
+alternative is rewriting Phase 5's ID-claim protocol in tree-agnostic terms. Recorded
+here so the next reader does not rediscover it.
+
+`check-prompt-integrity.mjs` does not currently catch it — the reference is a Python
+import, not a shell invocation, and the check is deliberately anchored on interpreters to
+keep its false-positive rate near zero. An import-shaped check is a reasonable extension.
+
 ## ADR-014 means two different things in the two trees
 
 Not a divergence to preserve — a collision to be aware of before citing the number.

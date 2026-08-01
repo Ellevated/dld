@@ -373,7 +373,7 @@ No sibling imports `orchestrator` (enforced by a test). Edges: `orchestrator` �
 |------|-------|----------|
 | db.py | scripts/vps/db.py | get_project_state() (inline python3 -c), update-phase, save-finding, get-new-findings (CLI) |
 | event_writer.py | scripts/vps/event_writer.py | python3 event_writer.py <project_id> <msg> |
-| claude CLI | $CLAUDE_PATH or PATH | flock --timeout 120 /tmp/claude-oauth.lock claude --print --output-format json --max-turns 30 --cwd <path> -p "/audit night" |
+| claude CLI | $CLAUDE_PATH or PATH | `cd <path> && flock --timeout 120 /tmp/claude-oauth.lock claude --print --output-format json --max-turns 30 -p "/audit night"`. **There is no `--cwd` flag** (checked against CLI 2.1.220); the script uses `cd`, and this row said otherwise until 2026-08-01 |
 | flock | util-linux | serialize claude OAuth token access |
 | jq | PATH | parse claude JSON output (.result field + findings array) |
 
@@ -570,12 +570,14 @@ No sibling imports `orchestrator` (enforced by a test). Edges: `orchestrator` �
 | gate-daemon.py | scripts/vps/gate-daemon.py | fetch_develop(), parse_allowed_files(), find_implementation_commit() |
 | orchestrator.py | scripts/vps/orchestrator.py | scan_queued reconciliation gate — parse_allowed_files(), fetch_develop(), find_implementation_commit() before dispatch |
 | callback.py | scripts/vps/callback.py | strip_bookkeeping_paths() — used by `_is_done_on_develop`, the second copy of the gate (L-derived-2) |
+| .claude/scripts/validate-allowlist.mjs | `.claude/scripts/validate-allowlist.mjs` | **Not an import — a reimplementation in JS.** Spark's Phase 5.5 pre-flight check must accept exactly what this module accepts, or it rejects specs the pipeline would run. Enforced by `tests/test_allowlist_parity.py` |
 
 ### When changing API, check
 
 - [ ] gate-daemon.py (_evaluate_project — all three call sites)
 - [ ] orchestrator.py (scan_queued reconciliation gate — same three functions)
 - [ ] tests/test_gate_logic.py (pure-function tests, Wave 1 Task 2)
+- [ ] `.claude/scripts/validate-allowlist.mjs` + `template/.claude/scripts/` copy — the allowlist regexes are duplicated there in JS; `tests/test_allowlist_parity.py` is the tripwire
 
 ---
 
@@ -752,9 +754,11 @@ renaming one, grep the skill that calls it.**
 | `validate-audit-coverage.mjs` | `skills/audit/deep-mode.md` | argv: inventory.json + reports dir. 0 = ≥80% covered, 1 = below, 2 = usage |
 | `codebase-inventory.mjs` | `skills/audit/deep-mode.md` | argv: target dir. JSON inventory to stdout, feeds the coverage gate |
 | `validate-blueprint-compliance.mjs` | `skills/autopilot/task-loop.md` | argv: spec file [+ blueprint dir]. 0 = pass, 1 = fail, 2 = skip/usage |
+| `validate-allowlist.mjs` | `skills/spark/feature-mode.md` Phase 5.5 | argv: spec file. 0 = pass, 1 = fix required, 2 = unreadable. Prints one JSON object. **Its regexes must equal `callback._parse_allowed_files_v1` + `gate_logic.strip_bookkeeping_paths`** — `scripts/vps/tests/test_allowlist_parity.py` fails if they diverge. Editing the parser without editing this script is the drift that test exists to catch |
 | `run-eval.mjs` | `skills/skill-creator/SKILL.md` | shells out to `claude --print --setting-sources=project -p "/<skill> …"`. Drops `--setting-sources` and every eval silently measures nothing |
 | `aggregate-benchmark.mjs` | `skills/skill-creator/SKILL.md`, `skills/skill-creator/references/schemas.md` | argv: workspace. Consumes `iteration-N/run-summary.json` written by `run-eval.mjs` — the two share that filename as a contract |
 | `eval-agents.mjs` | `skills/eval` | Root-only. Scans `test/agents/` golden datasets; unrelated to `run-eval.mjs` despite the name |
+| `check-prompt-integrity.mjs` | CI (`.github/workflows/ci.yml` → `prompt-integrity`), manual | argv: `--tree <dir> [--root <dir>] [--json]`. 0 = clean, 1 = findings, 2 = usage. Finds agents nothing dispatches, scripts a prompt tells an agent to *run* that do not exist, unresolved `@`-includes, and agents whose `model:`/`effort:` is unstated. Suppressions live in `prompt-integrity-baseline.json` **with a reason** — the whole point is that a green run means something. Reporting, not blocking |
 
 ### When changing API, check
 

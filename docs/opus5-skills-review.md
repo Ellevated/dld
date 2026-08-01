@@ -549,6 +549,89 @@ by hand.
 `if live:` — when Exa is unreachable the check is skipped and the script still reports on
 other things. Silent degradation is the exact failure mode that script exists to catch.
 
+### Step 8 result — the skill-ablation blocker was wrong, 2026-08-01
+
+Step 7 closed the question of cutting `autopilot` and `spark` — the two hottest prompts
+in the tree, because a skill lives in the main loop and is re-primed on every compaction
+— with "a golden for a skill is an entire session, not an input/output pair". That is
+true of *harvesting*, which reads subagent transcripts. It is not true of measurement.
+
+**`run-eval.mjs` runs a whole skill.** It shells out to
+`claude --print --setting-sources=project -p "/<skill> <prompt>"` and
+`aggregate-benchmark.mjs` consumes the per-iteration summaries. It was ported into root
+on 2026-07-31 — the day *after* Step 7 concluded skills could not be measured. The
+blocker was a day out of date when it was written down.
+
+What was missing was not the instrument but two things around it:
+
+- **Isolation.** `run-eval.mjs` ran the skill in the current directory. Evaluating
+  `/spark` there claims a real ID, writes a real spec and a real lifecycle record;
+  evaluating `/autopilot` commits and pushes. Added `--cwd`, implemented as the child
+  process's working directory — the CLI has **no `--cwd` flag** (checked against 2.1.220;
+  `rules/dependencies.md` claimed otherwise for `night-reviewer.sh`, which has used `cd`
+  for a while).
+- **Eval sets.** `.claude/skills/{spark,autopilot}/evals/evals.json`, written against
+  failures this repo actually had rather than invented ones: the oversized-spec split
+  (the 90-minute run that merged zero lines), the Allowed Files boundary (the two
+  baseline planner runs that planned edits outside it), loop discipline (which steps may
+  dispatch a subagent), and a spec id that does not exist. Autopilot needs a spec to run
+  at all, so two fixtures ship with it — one clean, one carrying the dependency trap that
+  the ablation caught a real planner rationalising its way around.
+
+Not run. A sweep is a paid, hours-long operation and the founder makes that call; the
+point of this step is that it is now a decision rather than a blocker.
+
+### Step 9 result — two prompt defects, and the check that should have found them
+
+Both were found by reading, which is the problem. Both are decidable by grep.
+
+**The Spark allowlist linter had drifted from the parser it claims to mirror.** Phase 5.5
+carried four regexes transcribed into prose under the heading "regex SSOT — must match
+callback.py v2". It did not match: `callback.py` accepts numbered-list entries and the
+prompt rejected them — and a rejection there ran `rm -f` on the spec. So the failure mode
+was *deleting a spec the pipeline would have accepted*, while leaving its
+`ai/lifecycle/*.yaml` behind as an orphan and burning the id.
+
+Replaced by `.claude/scripts/validate-allowlist.mjs`, with
+`scripts/vps/tests/test_allowlist_parity.py` (23 cases, including every v1 spec in
+`ai/features/`) asserting that linter and parser extract identical paths forever. Two
+things came out of writing it:
+
+- The prompt-era rules were stricter than the parser on four of six checks and had no
+  rule for the one shape that actually breaks the pipeline: an allowlist made entirely of
+  bookkeeping paths, which `strip_bookkeeping_paths` empties, so the implementation guard
+  can never confirm the spec was done. That is now `ALLOWLIST_E007`.
+- The first draft flagged every backticked filename in a reason field as a lost path,
+  which failed real specs on sentences like "imports `gate_logic.parse_allowed_files`".
+  Only entry-shaped lines — list items and table rows — can lose an entry. Prose names
+  references. Worth recording because a linter's own false-positive rate decides whether
+  anyone leaves it switched on.
+
+**`docs/18-spec-template.md` was a second, stale copy of the spec template.** It taught
+`## Allowed Files` as a *table*, which the parser does not read at all; it carried
+`**Status:** draft` after status moved to lifecycle YAML, and a checklist item reading
+"Status is `draft` (not `queued`)" — the opposite of what Spark emits. Confirmed live:
+the linter finds `ARCH-001` losing four paths to exactly that table shape. Deleted;
+README points at the canonical template in `feature-mode.md`.
+
+**The routine.** `.claude/scripts/check-prompt-integrity.mjs` — dead agents, scripts a
+prompt tells an agent to run that do not exist, unresolved `@`-includes, and frontmatter
+with no `model:`/`effort:`. It reproduces mechanically what Steps 4 and 7 found by hand
+(the dead-agent class, the seven dangling script references, `analyzer`/`comparator`
+inheriting effort by omission, four haiku agents carrying an inert `effort:`), and it
+found one thing nobody had: **`bughunt-solution-architect` has no dispatch site at all.**
+Its only mention in the tree is a row in the effort-routing table. CLAUDE.md advertises
+bughunt as producing "standalone grouped specs" — that is this agent's job, and nothing
+calls it.
+
+Wired into CI as reporting, not blocking: seven pre-existing findings remain open, and
+failing the build on them would teach everyone to ignore a red check. Suppressions go in
+`prompt-integrity-baseline.json` and must carry a reason.
+
+The generalisation, which is the part worth keeping: **the prompt tree had no automated
+check of any kind.** Every rot found in this document was found by a person reading files.
+Grep-decidable facts should never cost a review cycle.
+
 ## How it stays honest
 
 Measured, not tasted. The eval harness works: `test/agents/review/` scored ADR-029 at
