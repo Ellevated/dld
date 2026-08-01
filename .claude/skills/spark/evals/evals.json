@@ -1,0 +1,76 @@
+{
+  "skill_name": "spark",
+  "notes": [
+    "Run with: node .claude/scripts/run-eval.mjs --skill-path .claude/skills/spark --evals-path .claude/skills/spark/evals/evals.json --cwd <throwaway-clone> --timeout 900000",
+    "ISOLATION IS MANDATORY. Spark claims an ID through lifecycle CAS, writes ai/features/<ID>-*.md, writes ai/lifecycle/<ID>.yaml and edits ai/backlog.md. Against a live repo an eval run leaves real specs in the real queue.",
+    "Every prompt is written in headless form ([headless] + Source:) because Mode A asks 5-7 questions one at a time and would stall on --print. Mode H is also what the orchestrator dispatches, so it is the path worth measuring.",
+    "Assertions marked deterministic are checkable without a judge: run node .claude/scripts/validate-allowlist.mjs on the produced spec, grep the spec, count rows.",
+    "Timeout: a real run is 3 background scouts plus synthesis. The 120s default fails every eval; 900s is the working floor."
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "[headless] Source: eval-harness. Add rate limiting to the public REST API so one API key cannot exceed 100 requests per minute. Return 429 with a Retry-After header when the limit is hit.",
+      "expected_output": "A queued spec in ai/features/ with 3 scout research files, an Impact Tree with real grep output, a canonical Allowed Files section, at least 3 eval criteria, and acceptance verification commands.",
+      "assertions": [
+        { "id": "allowlist-parses", "text": "node .claude/scripts/validate-allowlist.mjs on the produced spec exits 0", "type": "deterministic" },
+        { "id": "allowlist-marker", "text": "Spec contains the exact heading '## Allowed Files' followed by a <!-- callback-allowlist v1 --> marker and one backticked path per line", "type": "deterministic" },
+        { "id": "no-status-field", "text": "Spec body contains no '**Status:**' line — lifecycle state is not carried in the spec", "type": "deterministic" },
+        { "id": "three-scouts-parallel", "text": "All three scout dispatches (research, codebase, devil) are emitted in a single assistant turn, not launched and awaited one at a time", "type": "quality" },
+        { "id": "min-eval-criteria", "text": "The Eval Criteria section has at least 3 EC-N rows, at least one of which comes from the devil scout", "type": "deterministic" },
+        { "id": "acceptance-verification", "text": "Acceptance Verification has at least one AV-S* smoke check and one AV-F* functional check, with runnable commands rather than placeholders", "type": "quality" },
+        { "id": "impact-tree-real-greps", "text": "Impact Tree steps report actual grep results against this codebase, not blank or invented counts", "type": "quality" },
+        { "id": "paths-are-real", "text": "Every path in Allowed Files either exists in the repo or is explicitly marked NEW", "type": "deterministic" }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "[headless] Source: eval-harness. Replace the entire authentication stack: move from session cookies to OAuth2 with refresh tokens, migrate the users table, update every endpoint, add an admin console for revoking tokens, and backfill existing sessions.",
+      "expected_output": "Recognised as oversized for one autopilot session: an epic plus independently shippable children, each with its own claimed ID, all written in this session.",
+      "assertions": [
+        { "id": "split-happened", "text": "Output is an epic plus 2-4 child specs, not a single spec with 9+ tasks", "type": "deterministic" },
+        { "id": "all-children-written", "text": "Every child spec is written in this same session — none deferred to 'later' or named without a file", "type": "deterministic" },
+        { "id": "children-independently-shippable", "text": "Each child delivers value alone; a child that is useless without its sibling was folded back instead of split", "type": "quality" },
+        { "id": "ids-claimed-per-spec", "text": "Epic and each child claim their own sequential ID rather than reusing one with suffixes invented ad hoc", "type": "deterministic" },
+        { "id": "not-empty-exit", "text": "The run does not end with zero specs — splitting yields more specs, never fewer", "type": "deterministic" },
+        { "id": "r0-routing", "text": "The schema migration is classified R0 and routed accordingly, not waved through as AUTO", "type": "quality" }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "[headless] Source: eval-harness. Users report the balance shown on the dashboard sometimes differs from the balance in the transaction history by a few kopecks.",
+      "expected_output": "A bug spec that diagnoses root cause before proposing a fix, and treats money precision as the known hazard it is.",
+      "assertions": [
+        { "id": "root-cause-first", "text": "Spec identifies a probable root cause with evidence from the codebase scout, rather than proposing a rounding patch at the display layer", "type": "quality" },
+        { "id": "money-precision-flagged", "text": "The money-precision rule (integer minor units, never float) is applied explicitly", "type": "quality" },
+        { "id": "historical-risks-present", "text": "The Historical Risks section is filled from the lessons bank, or says 'none' explicitly — it is never left as a template placeholder", "type": "deterministic" },
+        { "id": "regression-test-required", "text": "Eval criteria include a test that reproduces the discrepancy and would fail before the fix", "type": "quality" },
+        { "id": "no-placeholders", "text": "No {curly-brace placeholders} survive anywhere in the written spec", "type": "deterministic" }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "[headless] Source: eval-harness. Add a Wednesday discount: every order placed on Wednesday gets 15% off, except orders already using a promo code, and except items from the clearance category.",
+      "expected_output": "A small, well-scoped spec that fits one session and states its edge cases as assertions.",
+      "assertions": [
+        { "id": "fits-one-session", "text": "Spec has at most 5 implementation tasks and at most 10 Allowed Files entries", "type": "deterministic" },
+        { "id": "exclusions-as-assertions", "text": "Both stated exclusions (promo code, clearance category) appear as separate deterministic eval criteria", "type": "deterministic" },
+        { "id": "timezone-edge-case", "text": "The devil scout's contribution surfaces at least one unstated edge case such as which timezone decides 'Wednesday'", "type": "quality" },
+        { "id": "no-gold-plating", "text": "Scope stays at the requested discount — no loyalty programme, admin UI, or discount engine invented on top", "type": "quality" },
+        { "id": "flow-coverage-complete", "text": "Every User Flow step maps to a task or is marked 'existing' with no gaps", "type": "deterministic" }
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "[headless] Source: eval-harness. Add a webhook endpoint that accepts payment notifications from the payment provider and marks the corresponding order paid.",
+      "expected_output": "A spec that treats the endpoint as an untrusted external boundary — idempotency, signature verification, replay.",
+      "assertions": [
+        { "id": "idempotency-required", "text": "Duplicate delivery of the same notification is covered by an explicit eval criterion", "type": "quality" },
+        { "id": "signature-verification", "text": "Spec requires verifying the provider's signature before acting on the payload", "type": "quality" },
+        { "id": "no-invention", "text": "Claims about the provider's webhook semantics cite the research scout's sources rather than being asserted from memory", "type": "quality" },
+        { "id": "verified-references", "text": "Concrete references (endpoint paths, model fields, handler names) trace to the codebase scout's Verified References section", "type": "deterministic" },
+        { "id": "integration-test-no-mocks", "text": "Any integration test named in the spec uses real dependencies, not mocks", "type": "deterministic" }
+      ]
+    }
+  ]
+}

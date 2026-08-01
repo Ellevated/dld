@@ -31,7 +31,13 @@ Options:
   --workspace <dir>       Output directory (default: .claude/eval-workspace/<skill-name>)
   --iteration <n>         Iteration number for benchmark mode (default: 1)
   --timeout <ms>          Timeout per eval in milliseconds (default: 120000)
+  --cwd <dir>             Run the skill in this directory (default: current)
   --help                  Show this help
+
+Isolation:
+  A skill that writes files writes them into --cwd. Evaluating /spark or
+  /autopilot against your live repository will create specs, lifecycle records
+  and commits. Point --cwd at a throwaway clone for anything that writes.
 
 Example:
   node .claude/scripts/run-eval.mjs \\
@@ -50,6 +56,9 @@ const skillPath = getArg('--skill-path');
 const evalsPath = getArg('--evals-path');
 const iteration = parseInt(getArg('--iteration') || '1', 10);
 const timeout = parseInt(getArg('--timeout') || '120000', 10);
+// Where the skill runs. The CLI has no --cwd flag (checked against 2.1.220), so
+// this is the child process's working directory, not an argument to claude.
+const runCwd = getArg('--cwd') ? resolve(getArg('--cwd')) : process.cwd();
 
 // --- Pre-flight checks ---
 if (!skillPath || !evalsPath) {
@@ -124,7 +133,8 @@ console.log(JSON.stringify({
   command: `/${skillCommand}`,
   evals_count: evals.length,
   iteration,
-  workspace: iterationDir
+  workspace: iterationDir,
+  cwd: runCwd
 }));
 
 // --- Run each eval ---
@@ -157,6 +167,7 @@ for (const eval_ of evals) {
         timeout,
         encoding: 'utf-8',
         maxBuffer: 10 * 1024 * 1024, // 10MB
+        cwd: runCwd,
         // stdin closed: the CLI otherwise waits ~3s for piped input it never gets
         stdio: ['ignore', 'pipe', 'pipe']
       }
