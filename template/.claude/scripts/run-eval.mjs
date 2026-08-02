@@ -12,9 +12,10 @@
  * Output: Captured outputs in workspace directory, one file per eval.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync } from 'fs';
-import { resolve, join, basename, dirname } from 'path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { resolve, join, basename } from 'path';
 import { execFileSync, spawn } from 'child_process';
+import { captureArtifacts } from './lib/capture-artifacts.mjs';
 
 // --- Parse arguments ---
 const args = process.argv.slice(2);
@@ -207,42 +208,6 @@ function runCli(args, { cwd, timeout }) {
   });
 }
 
-/**
- * Copy what the skill wrote into the workspace.
- *
- * For a skill that writes files, stdout is a report *about* the work and the
- * files are the work. `evals.json` assertions like "allowlist-parses" or
- * "no-status-field" are checks on a produced spec, so without this the judge
- * scores a summary and the artefact it describes is left in a throwaway clone.
- * This also survives a timeout: the spec is on disk before the CLI prints
- * anything at all.
- */
-function captureArtifacts(cwd, destDir) {
-  let porcelain;
-  try {
-    porcelain = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {
-      cwd, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024,
-    });
-  } catch {
-    return { captured: [], note: 'not a git repo — artefacts not captured' };
-  }
-
-  const captured = [];
-  for (const line of porcelain.split('\n')) {
-    if (!line.trim()) continue;
-    // porcelain: XY <path>, and renames use "old -> new"
-    const rel = line.slice(3).trim().split(' -> ').pop().replace(/^"|"$/g, '');
-    const src = join(cwd, rel);
-    if (!existsSync(src)) continue; // deleted
-    const dst = join(destDir, rel);
-    try {
-      mkdirSync(dirname(dst), { recursive: true });
-      cpSync(src, dst, { recursive: true });
-      captured.push(rel);
-    } catch { /* unreadable path — skip rather than fail the run */ }
-  }
-  return { captured };
-}
 
 // --- Run each eval ---
 const results = [];
@@ -254,6 +219,14 @@ for (const eval_ of evals) {
   const timingFile = join(iterationDir, `eval-${evalId}-timing.json`);
 
   console.log(JSON.stringify({ eval_id: evalId, status: 'running', prompt: prompt.slice(0, 80) }));
+
+  // Anchor for artifact capture: anything committed after this is the skill's work.
+  let baseRef = null;
+  try {
+    baseRef = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: runCwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch { /* not a git repo — working tree capture only */ }
 
   const startTime = Date.now();
 
@@ -285,7 +258,7 @@ for (const eval_ of evals) {
   // output, and it survives a timeout that leaves stdout empty.
   const artifactDir = join(iterationDir, `eval-${evalId}-artifacts`);
   mkdirSync(artifactDir, { recursive: true });
-  const artifacts = captureArtifacts(runCwd, artifactDir);
+  const artifacts = captureArtifacts(runCwd, artifactDir, baseRef);
 
   // Save timing
   const timing = {
