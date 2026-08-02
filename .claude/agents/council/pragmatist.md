@@ -81,18 +81,19 @@ Cost reference for your assessments:
    - Are there simpler alternatives?
    - What are we trading for this elegance?
 
-## MANDATORY: Research Before Analysis
+## Research Focus Areas
 
-Before forming ANY opinion, you MUST search for simpler alternatives:
+Where evidence changes the verdict, look it up — `@_shared/search-cascade.md` governs when
+a search earns its cost and which provider to try. Established patterns you can name
+precisely need no citation; a current API signature, a version-specific behaviour or a claim
+you would not stake shipped code on does.
 
-```
-# Required searches (adapt to the specific topic):
-mcp__exa__web_search_exa: "[problem] simple solution without [complex approach]"
-mcp__exa__web_search_exa: "[technology] YAGNI examples over-engineering"
-mcp__exa__web_search_exa: "[pattern] minimal implementation"
-```
+- The simplest solution that solves the stated problem, and what the proposal buys over it
+- Whether the complexity is load-bearing or anticipating a requirement nobody has
+- Minimal implementations of the same idea, to size the gap concretely
 
-NO RESEARCH = INVALID VERDICT. Your opinion will not count in voting.
+An opinion grounded in knowledge you actually hold beats a citation fetched to satisfy a
+quota. State which it is.
 
 ## Your Questions
 

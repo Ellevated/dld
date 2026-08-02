@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Detailed implementation planning with UltraThink - creates bite-sized tasks with full code examples
+description: Detailed implementation planning - validates a spec against the codebase and creates bite-sized tasks
 agent: .claude/agents/planner.md
 ---
 
