@@ -124,7 +124,7 @@ Their level table names `low` as the level for **subagents** specifically.
 | audit/synthesizer | sonnet | high | Down from xhigh — merge task, not frontier reasoning |
 | tester | sonnet | medium | Execution-focused |
 | eval-judge | sonnet | high | Rubric-based evaluation. **Do not lower without re-running the golden pairs** — this is the measuring instrument, and moving it breaks comparability with every recorded score |
-| analyzer, comparator | sonnet | *(unset → high)* | Effort is unstated, so the API default applies. An unstated effort is not a decision; set it explicitly either way |
+| analyzer, comparator | sonnet | **high** | Stated 2026-08-02, deliberately *not* swept. Both are measuring instruments — `comparator` is the blind pairwise judge used to score prompt ablations, `analyzer` reads benchmark output — so moving their level invalidates comparison with every score already recorded, the same caveat that protects `eval-judge`. `high` is what they inherited by omission; writing it down turns an accident into a decision without changing behaviour |
 | bughunt personas (6) | **opus** | **low** | Defect-finding. **Measured:** opus/low scored 0.883 defect recall against sonnet/xhigh at 0.767 (ADR-029 eval). This row said sonnet/medium for two months after the frontmatter changed |
 | bughunt spec-assembler, validator | sonnet | medium | Down from high — structured assembly/triage |
 | board directors, architect personas | sonnet | medium | Down from high — research + structured report |
@@ -139,9 +139,13 @@ thinks on genuinely hard problems — it just thinks less on easy ones.
 
 **Haiku 4.5 does not support the `effort` parameter.** The supported list is Fable 5,
 Mythos 5, Opus 5, Opus 4.8, Mythos Preview, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6,
-Opus 4.5 — Haiku is absent, and its adaptive thinking is "No". The `effort: low` in the
-haiku agents' frontmatter is inert. ADR-019's cost saving came entirely from the
-sonnet→haiku swap; the effort half of that decision never did anything.
+Opus 4.5 — Haiku is absent, and its adaptive thinking is "No". ADR-019's cost saving came
+entirely from the sonnet→haiku swap; the effort half of that decision never did anything.
+
+The four haiku agents carried `effort: low` in their frontmatter until 2026-08-02, when it
+was removed — it had never been applied to anything, and a setting that looks like tuning
+but is inert is worse than no setting: the next reader assumes the level was chosen and
+measured. Do not add it back.
 
 **Anthropic names `low` as the level for subagents specifically** — "simpler tasks that
 need the best speed and lowest costs, such as subagents". Read that against the ADR-029

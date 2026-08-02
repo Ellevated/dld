@@ -94,15 +94,16 @@ jobs:
       - name: Allowlist parity (linter vs parser)
         run: pytest scripts/vps/tests/test_allowlist_parity.py -v
 
-      # Reporting, not blocking. Dead agents and dangling script references are
-      # real findings, but they are pre-existing debt — failing the build on them
-      # would only teach everyone to ignore a red check. Read the log.
+      # Blocking since 2026-08-02. It shipped as reporting-only because 13 findings
+      # were open and failing a build on pre-existing debt only teaches people to
+      # ignore a red check. All 13 are closed, so the tree is clean and the next
+      # dead agent or dangling script reference should stop a merge rather than
+      # scroll past in a log. Suppress a deliberate exception in
+      # prompt-integrity-baseline.json, with a reason.
       - name: Prompt tree integrity (root)
-        continue-on-error: true
         run: node .claude/scripts/check-prompt-integrity.mjs --tree .claude
 
       - name: Prompt tree integrity (template)
-        continue-on-error: true
         run: node .claude/scripts/check-prompt-integrity.mjs --tree template/.claude
 
   python-test:

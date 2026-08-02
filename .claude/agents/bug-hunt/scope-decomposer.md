@@ -2,7 +2,6 @@
 name: bughunt-scope-decomposer
 description: Bug Hunt Step 0 - Decomposes target into 2-4 focused zones for parallel deep analysis.
 model: haiku
-effort: low
 tools: Read, Glob, Write
 ---
 

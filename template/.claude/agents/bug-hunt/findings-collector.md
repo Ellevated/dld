@@ -2,7 +2,6 @@
 name: bughunt-findings-collector
 description: Bug Hunt Step 2 - Collects and normalizes persona findings across all zones into a unified summary.
 model: haiku
-effort: low
 tools: Read, Glob, Write
 ---
 

@@ -2,6 +2,7 @@
 name: comparator
 description: Blind A/B comparison of two skill outputs. Returns winner with rubric scores and reasoning.
 model: sonnet
+effort: high
 tools: Read
 ---
 
