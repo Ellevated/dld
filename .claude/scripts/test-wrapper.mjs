@@ -19,6 +19,26 @@ import { join } from 'path';
 const MAX_TRACE_LINES = 5;
 const FULL_OUTPUT_DIR = 'ai/.test-output';
 
+// Exit code for "the test command does not exist here", kept distinct from 1
+// ("tests ran and failed"). `./test` is a per-project artifact — some repos ship
+// one, some do not — so its absence is an expected state, not a test result.
+const EXIT_COMMAND_UNAVAILABLE = 2;
+
+/**
+ * Distinguish a missing test command from failing tests.
+ *
+ * Without this the wrapper reported `FAIL: 0 failure(s)` — "tests failed, zero
+ * failures" — because no failure pattern matches a shell's not-found message.
+ * That reads as a broken test suite and sends the caller hunting for failures
+ * that were never run.
+ */
+function looksLikeMissingCommand(exitCode, output) {
+  // POSIX shells use 127 for not-found; cmd.exe returns 1 with its own wording.
+  if (exitCode === 127) return true;
+  return /(?:command not found|No such file or directory|is not recognized as an internal or external command|cannot find the path)/i
+    .test(output);
+}
+
 function main() {
   const args = process.argv.slice(2);
   const command = args.length > 0 ? args.join(' ') : './test fast';
@@ -40,6 +60,12 @@ function main() {
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+  if (exitCode !== 0 && looksLikeMissingCommand(exitCode, stdout)) {
+    console.log(`TEST_COMMAND_UNAVAILABLE: ${command}`);
+    console.log('No test command at this path — nothing ran. This is not a test failure.');
+    process.exit(EXIT_COMMAND_UNAVAILABLE);
+  }
 
   if (exitCode === 0) {
     // Extract test count from common frameworks

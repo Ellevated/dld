@@ -106,6 +106,25 @@ jobs:
       - name: Prompt tree integrity (template)
         run: node .claude/scripts/check-prompt-integrity.mjs --tree template/.claude
 
+  harness-test:
+    # The node test suites under test/scripts/ — the skill harness itself
+    # (test-wrapper, autopilot-state, spark-state). 31 assertions that ran
+    # nowhere until 2026-08-02: not in CI, and the wrapper suite aborted on any
+    # Windows checkout because its fixtures were `.sh` + `chmod`. A test that
+    # runs on no machine is indistinguishable from one that does not exist.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Harness suites
+        run: |
+          for f in test/scripts/*.test.mjs; do
+            echo "--- $f"
+            node "$f"
+          done
+
   python-test:
     runs-on: ubuntu-latest
     steps:

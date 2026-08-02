@@ -24,8 +24,20 @@ For LLM-optimized output, use the test-wrapper:
 node .claude/scripts/test-wrapper.mjs ./test fast
 ```
 
-- **Pass:** Single summary line (e.g., `PASS: 15 tests passed (2.3s)`)
-- **Fail:** Compact failure summary + path to full output file
+| Exit | Output | Meaning |
+|---|---|---|
+| 0 | `PASS: 15 tests passed (2.3s)` | Tests ran and passed |
+| 1 | `FAIL: N failure(s)` + path to full output | Tests ran and failed |
+| 2 | `TEST_COMMAND_UNAVAILABLE: <command>` | **Nothing ran.** The project ships no such test command |
+
+**Exit 2 is not a test failure.** `./test` is a per-project artifact — some repos ship
+one, this one may not — so its absence is an expected state. Fall back to the project's
+real command (`pytest`, `npm test`, `cargo test`) and report what that returns. Never
+report exit 2 as a failing suite, and never treat it as a green one.
+
+A missing command used to be reported as `FAIL: 0 failure(s)` — a failing suite with no
+failures in it — which sends the reader hunting for failures that never ran.
+
 - Reduces context noise significantly vs raw test output
 
 **When to use:** Always prefer test-wrapper in autopilot task loop. Use raw commands only for debugging.

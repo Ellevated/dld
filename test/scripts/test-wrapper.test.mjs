@@ -49,11 +49,25 @@ function testPassOutputIsCompact() {
   console.log('  PASS: testPassOutputIsCompact');
 }
 
+/**
+ * A failing "test command", written as a node script rather than a shell script.
+ *
+ * The fixtures used to be `.sh` + `chmod +x`, which cannot run on Windows — the
+ * suite aborted at the second test on any Windows checkout, and nothing in CI
+ * ran it either, so it was failing silently in both places.
+ */
+function failFixture(name, lines) {
+  const path = join(TEST_DIR, `${name}.mjs`);
+  const body = lines.map(l => `console.log(${JSON.stringify(l)});`).join('\n');
+  writeFileSync(path, `${body}\nprocess.exit(1);\n`);
+  return `node ${path}`;
+}
+
 function testFailOutputHasSummary() {
-  // Create a script that exits with code 1
-  const failScript = join(TEST_DIR, 'fail.sh');
-  writeFileSync(failScript, '#!/bin/sh\necho "FAILED tests/test_foo.py::test_bar"\necho "AssertionError: expected 1 got 2"\nexit 1\n');
-  execSync(`chmod +x ${failScript}`);
+  const failScript = failFixture('fail', [
+    'FAILED tests/test_foo.py::test_bar',
+    'AssertionError: expected 1 got 2',
+  ]);
 
   const result = runWrapper(failScript);
   assert.equal(result.exitCode, 1, 'Should exit 1 on failure');
@@ -75,9 +89,7 @@ function testJestCountExtraction() {
 }
 
 function testFullOutputSavedOnFailure() {
-  const failScript = join(TEST_DIR, 'fail2.sh');
-  writeFileSync(failScript, '#!/bin/sh\necho "test output line 1"\necho "FAILED test_bar"\nexit 1\n');
-  execSync(`chmod +x ${failScript}`);
+  const failScript = failFixture('fail2', ['test output line 1', 'FAILED test_bar']);
 
   const result = runWrapper(failScript);
   assert.equal(result.exitCode, 1);
@@ -87,13 +99,29 @@ function testFullOutputSavedOnFailure() {
   console.log('  PASS: testFullOutputSavedOnFailure');
 }
 
-function testDefaultCommand() {
-  // Without a ./test script, default command will fail — that's fine,
-  // we just verify the wrapper handles it gracefully
-  const result = runWrapper('');
-  // Will fail because ./test doesn't exist, but shouldn't crash
-  assert.ok(result.exitCode !== undefined, 'Should return an exit code');
-  console.log('  PASS: testDefaultCommand (graceful failure)');
+function testMissingCommandIsNotAFailure() {
+  // This assertion used to read `exitCode !== undefined`, which `err.status || 1`
+  // can never violate — so it passed while the wrapper reported a missing ./test
+  // as `FAIL: 0 failure(s)`, i.e. a broken suite with no failures in it.
+  const result = runWrapper('./definitely-not-a-real-test-command');
+  assert.equal(result.exitCode, 2, `Missing command should exit 2, got ${result.exitCode}`);
+  assert.ok(
+    result.output.includes('TEST_COMMAND_UNAVAILABLE'),
+    `Should name the missing command: got "${result.output}"`
+  );
+  assert.ok(!result.output.includes('FAIL:'), 'A missing command is not a test failure');
+  console.log('  PASS: testMissingCommandIsNotAFailure');
+}
+
+function testRealFailureStillReportsFail() {
+  // The guard above must not swallow genuine failures.
+  const failScript = failFixture('fail3', ['FAILED tests/test_x.py::test_y']);
+
+  const result = runWrapper(failScript);
+  assert.equal(result.exitCode, 1, 'A real failure keeps exit 1');
+  assert.ok(result.output.includes('FAIL:'), `Should report FAIL: got "${result.output}"`);
+  assert.ok(!result.output.includes('TEST_COMMAND_UNAVAILABLE'), 'A real failure is not a missing command');
+  console.log('  PASS: testRealFailureStillReportsFail');
 }
 
 // --- Runner ---
@@ -107,8 +135,9 @@ function main() {
     testPytestCountExtraction();
     testJestCountExtraction();
     testFullOutputSavedOnFailure();
-    testDefaultCommand();
-    console.log(`\n6/6 tests passed`);
+    testMissingCommandIsNotAFailure();
+    testRealFailureStillReportsFail();
+    console.log(`\n7/7 tests passed`);
   } finally {
     cleanup();
   }
