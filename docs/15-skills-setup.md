@@ -82,8 +82,7 @@ spark → autopilot (plan is subagent inside autopilot)
 │       ├── qa-engineer.md           ← sonnet (edge cases, boundaries)
 │       ├── toc-analyst.md           ← opus (constraints, CRT)
 │       ├── triz-analyst.md          ← opus (contradictions, IFR)
-│       ├── validator.md             ← opus (triage, dedup)
-│       └── solution-architect.md    ← opus (sub-specs, Impact Tree)
+│       └── validator.md             ← opus (triage, dedup)
 │
 ├── skills/                     ← USER INTERFACE (wrappers + orchestrators)
 │   ├── spark/SKILL.md          ← Orchestrator

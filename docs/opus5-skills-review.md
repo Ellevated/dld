@@ -624,6 +624,23 @@ Its only mention in the tree is a row in the effort-routing table. CLAUDE.md adv
 bughunt as producing "standalone grouped specs" — that is this agent's job, and nothing
 calls it.
 
+**Resolved 2026-08-02, and the first reading of it was wrong.** The agent was not
+forgotten; its function was deliberately removed. `skills/bughunt/completion.md` states
+plainly "Does NOT create specs directly" — intake moved behind the Hermes gate
+(ADR-021/022), so bughunt now saves a report and stops. The agent is the tail of a design
+that was retired, and `test/agents-harvested/` still holds eight golden pairs from when it
+really did run.
+
+So the defect was never "a dead agent". It was **CLAUDE.md describing behaviour the system
+had stopped having** — and getting the report filename wrong too (`ai/bughunt/{date}-report.md`,
+not `BUG-XXX-bughunt.md`). Anyone reading CLAUDE.md would expect fix specs to appear in the
+queue after a bug hunt. They do not. Agent deleted from both trees, routing row dropped,
+CLAUDE.md rewritten against `completion.md`, which is the contract.
+
+The generalisable part: an unreachable agent is a *symptom*, and the check reports it as
+one. What it points at is usually a document still promising the removed behaviour — which
+is the expensive half, because prompts and humans both read those documents.
+
 Wired into CI as reporting, not blocking: seven pre-existing findings remain open, and
 failing the build on them would teach everyone to ignore a red check. Suppressions go in
 `prompt-integrity-baseline.json` and must carry a reason.

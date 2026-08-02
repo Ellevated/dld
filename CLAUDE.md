@@ -396,7 +396,7 @@ pueue completion → callback.py → guard → lifecycle.write_lifecycle (CAS) �
 - **Prefixes:** BUG, FTR, TECH, ARCH only (4 types)
 - **Numbering:** Sequential across all types
 - **Archive:** Weekly check, if >50 → archive to 30
-- **Bug Hunt:** Creates a READ-ONLY report (`BUG-XXX-bughunt.md`, not in backlog) + standalone grouped specs (each with own sequential ID and own backlog entry).
+- **Bug Hunt:** Saves a read-only report to `ai/bughunt/{YYYY-MM-DD}-report.md`. It creates **no** specs, **no** inbox items and **no** backlog rows — Hermes reviews the report and decides what becomes work (ADR-021/022). This line used to promise "standalone grouped specs, each with own sequential ID and own backlog entry", which stopped being true when intake moved behind the Hermes gate; `skills/bughunt/completion.md` is the contract.
 
 ---
 

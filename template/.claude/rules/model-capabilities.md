@@ -90,7 +90,6 @@ Their level table names `low` as the level for **subagents** specifically.
 | council experts | opus | high | Anthropic: reserve `max` for "genuinely frontier problems" |
 | triz toc-analyst, triz-analyst | opus | high | Same rationale |
 | architect/synthesizer | opus | high | Same rationale |
-| solution-architect (bughunt) | opus | high | Fix design needs careful reasoning |
 | coder | sonnet | high | Sonnet 5 is strong on coding. Before raising to `xhigh` for multi-file refactors, measure it — the one effort sweep run on this framework found *lower* effort winning |
 | scout, spark-research, spark-codebase | sonnet | high | Exploratory tool calling and detailed search is where Anthropic names higher effort as paying off |
 | spark-devil | sonnet | high | Judgment on a proposal, not tool-heavy — the `scout` rationale does not transfer. Sweep low/medium/high before assuming high is right |
