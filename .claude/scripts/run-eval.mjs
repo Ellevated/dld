@@ -12,9 +12,9 @@
  * Output: Captured outputs in workspace directory, one file per eval.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { resolve, join, basename } from 'path';
-import { execFileSync } from 'child_process';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync } from 'fs';
+import { resolve, join, basename, dirname } from 'path';
+import { execFileSync, spawn } from 'child_process';
 
 // --- Parse arguments ---
 const args = process.argv.slice(2);
@@ -38,6 +38,21 @@ Isolation:
   A skill that writes files writes them into --cwd. Evaluating /spark or
   /autopilot against your live repository will create specs, lifecycle records
   and commits. Point --cwd at a throwaway clone for anything that writes.
+
+Outputs, per eval:
+  eval-N-output.txt        what the CLI printed
+  eval-N-artifacts/        every file the skill created or modified in --cwd
+  eval-N-timing.json       wall clock
+
+  For a skill that writes files, the artifacts are the output and stdout is a
+  report about it. Judge the artifacts.
+
+Timeouts:
+  claude --print prints only when it finishes, so a killed run yields little
+  or no stdout — but the files it already wrote are captured regardless. Size
+  the timeout to the skill: a /spark run is three scouts plus synthesis and does
+  not fit in 15 minutes. A timed-out eval is reported as "timeout", never as a
+  pass.
 
 Example:
   node .claude/scripts/run-eval.mjs \\
@@ -137,6 +152,75 @@ console.log(JSON.stringify({
   cwd: runCwd
 }));
 
+/**
+ * Run the CLI, keeping whatever it emitted even if we have to kill it.
+ *
+ * `execFileSync` discarded everything on timeout — `spawnSync` sets `stdout` to
+ * null for ETIMEDOUT, so a run that was killed at 15 minutes wrote a 26-byte
+ * file reading `spawnSync claude ETIMEDOUT` and the work was unrecoverable.
+ */
+function runCli(args, { cwd, timeout }) {
+  return new Promise((res) => {
+    const chunks = [];
+    const child = spawn('claude', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+      setTimeout(() => child.kill('SIGKILL'), 5000).unref();
+    }, timeout);
+
+    child.stdout.on('data', (d) => chunks.push(d));
+    child.stderr.on('data', (d) => chunks.push(d));
+
+    const finish = (code, err) => {
+      clearTimeout(timer);
+      const text = Buffer.concat(chunks).toString('utf-8');
+      res({ output: err ? `${text}\n${err.message}` : text, code, timedOut });
+    };
+    child.on('close', (code) => finish(code ?? 1));
+    child.on('error', (err) => finish(-1, err));
+  });
+}
+
+/**
+ * Copy what the skill wrote into the workspace.
+ *
+ * For a skill that writes files, stdout is a report *about* the work and the
+ * files are the work. `evals.json` assertions like "allowlist-parses" or
+ * "no-status-field" are checks on a produced spec, so without this the judge
+ * scores a summary and the artefact it describes is left in a throwaway clone.
+ * This also survives a timeout: the spec is on disk before the CLI prints
+ * anything at all.
+ */
+function captureArtifacts(cwd, destDir) {
+  let porcelain;
+  try {
+    porcelain = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {
+      cwd, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024,
+    });
+  } catch {
+    return { captured: [], note: 'not a git repo — artefacts not captured' };
+  }
+
+  const captured = [];
+  for (const line of porcelain.split('\n')) {
+    if (!line.trim()) continue;
+    // porcelain: XY <path>, and renames use "old -> new"
+    const rel = line.slice(3).trim().split(' -> ').pop().replace(/^"|"$/g, '');
+    const src = join(cwd, rel);
+    if (!existsSync(src)) continue; // deleted
+    const dst = join(destDir, rel);
+    try {
+      mkdirSync(dirname(dst), { recursive: true });
+      cpSync(src, dst, { recursive: true });
+      captured.push(rel);
+    } catch { /* unreadable path — skip rather than fail the run */ }
+  }
+  return { captured };
+}
+
 // --- Run each eval ---
 const results = [];
 
@@ -149,41 +233,36 @@ for (const eval_ of evals) {
   console.log(JSON.stringify({ eval_id: evalId, status: 'running', prompt: prompt.slice(0, 80) }));
 
   const startTime = Date.now();
-  let output = '';
-  let success = false;
 
-  try {
-    // Invoke the skill as a slash command. There is no `--skill` flag — the CLI
-    // rejects it outright ("unknown option '--skill'"), so the previous form
-    // failed every eval and the run still reported files on disk.
-    // `--setting-sources=project` is what makes .claude/skills/ discoverable at
-    // all; without it the prompt reaches the model as literal text.
-    // execFileSync, not execSync: the prompt is eval data and must never be
-    // pasted into a shell string, where a backtick or `$(` would run.
-    output = execFileSync(
-      'claude',
-      ['--print', '--setting-sources=project', '-p', `/${skillCommand} ${prompt}`],
-      {
-        timeout,
-        encoding: 'utf-8',
-        maxBuffer: 10 * 1024 * 1024, // 10MB
-        cwd: runCwd,
-        // stdin closed: the CLI otherwise waits ~3s for piped input it never gets
-        stdio: ['ignore', 'pipe', 'pipe']
-      }
-    );
-    success = true;
-  } catch (err) {
-    output = err.stdout || err.message || 'Execution failed';
-    if (err.killed) {
-      output = `TIMEOUT after ${timeout}ms\n\n${output}`;
-    }
+  // Invoke the skill as a slash command. There is no `--skill` flag — the CLI
+  // rejects it outright ("unknown option '--skill'"), so the previous form
+  // failed every eval and the run still reported files on disk.
+  // `--setting-sources=project` is what makes .claude/skills/ discoverable at
+  // all; without it the prompt reaches the model as literal text.
+  // Args are passed as argv, never through a shell: the prompt is eval data, and
+  // a backtick or `$(` in it would otherwise run.
+  const run = await runCli(
+    ['--print', '--setting-sources=project', '-p', `/${skillCommand} ${prompt}`],
+    { cwd: runCwd, timeout }
+  );
+
+  let output = run.output;
+  if (run.timedOut) {
+    output = `TIMEOUT after ${timeout}ms — process killed, partial output below.\n` +
+      `The skill may still have written files; see artifacts/.\n\n${output}`;
   }
+  const success = run.code === 0 && !run.timedOut;
 
   const elapsed = Date.now() - startTime;
 
   // Save output
   writeFileSync(outputFile, output);
+
+  // Capture what the skill wrote — for a file-writing skill this is the real
+  // output, and it survives a timeout that leaves stdout empty.
+  const artifactDir = join(iterationDir, `eval-${evalId}-artifacts`);
+  mkdirSync(artifactDir, { recursive: true });
+  const artifacts = captureArtifacts(runCwd, artifactDir);
 
   // Save timing
   const timing = {
@@ -200,13 +279,22 @@ for (const eval_ of evals) {
   const result = {
     eval_id: evalId,
     success,
+    timed_out: run.timedOut,
+    exit_code: run.code,
+    artifacts: artifacts.captured,
+    artifacts_note: artifacts.note,
     elapsed_ms: elapsed,
     output_file: outputFile,
     output_length: output.length
   };
   results.push(result);
 
-  console.log(JSON.stringify({ eval_id: evalId, status: success ? 'done' : 'failed', elapsed_ms: elapsed }));
+  console.log(JSON.stringify({
+    eval_id: evalId,
+    status: success ? 'done' : (run.timedOut ? 'timeout' : 'failed'),
+    elapsed_ms: elapsed,
+    artifacts: artifacts.captured.length
+  }));
 }
 
 // --- Summary ---
@@ -216,6 +304,7 @@ const summary = {
   total: evals.length,
   succeeded: results.filter(r => r.success).length,
   failed: results.filter(r => !r.success).length,
+  timed_out: results.filter(r => r.timed_out).length,
   results,
   workspace: iterationDir
 };

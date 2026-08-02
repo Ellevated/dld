@@ -5,7 +5,8 @@
     "ISOLATION IS MANDATORY. Spark claims an ID through lifecycle CAS, writes ai/features/<ID>-*.md, writes ai/lifecycle/<ID>.yaml and edits ai/backlog.md. Against a live repo an eval run leaves real specs in the real queue.",
     "Every prompt is written in headless form ([headless] + Source:) because Mode A asks 5-7 questions one at a time and would stall on --print. Mode H is also what the orchestrator dispatches, so it is the path worth measuring.",
     "Assertions marked deterministic are checkable without a judge: run node .claude/scripts/validate-allowlist.mjs on the produced spec, grep the spec, count rows.",
-    "Timeout: a real run is 3 background scouts plus synthesis. The 120s default fails every eval; 900s is the working floor."
+    "Score the artifacts, not stdout. Every deterministic assertion here is a property of the written spec, which run-eval.mjs copies into eval-N-artifacts/. stdout is Spark's report about the run.",
+    "Timeout: 900s was recorded as 'the working floor' and is not — a measured baseline run was killed at exactly 900000ms with the spec already on disk. Use 2700000 (45 min). Before 2026-08-02 a timeout also discarded all output, so that run cost 15 minutes and produced a 26-byte file."
   ],
   "evals": [
     {
