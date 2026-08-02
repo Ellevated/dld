@@ -9,7 +9,6 @@ Covers EC-1..EC-6 plus end-to-end test (Task 8).
 
 from __future__ import annotations
 
-import os
 import sqlite3
 import subprocess
 import sys
@@ -44,17 +43,8 @@ def tmp_db(tmp_path):
         yield db_path
 
 
-@pytest.fixture
-def stub_pueue_bin(tmp_path, monkeypatch):
-    """Replace `pueue` on PATH with a stub that records argv to a file."""
-    stub_dir = tmp_path / "bin"
-    stub_dir.mkdir()
-    log_file = tmp_path / "pueue-calls.log"
-    stub = stub_dir / "pueue"
-    stub.write_text(f'#!/usr/bin/env bash\necho "$@" >> "{log_file}"\nexit 0\n')
-    stub.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{stub_dir}:{os.environ['PATH']}")
-    return log_file
+# `stub_pueue_bin` lives in tests/integration/conftest.py — it needs a
+# platform split that has no business being duplicated per test module.
 
 
 @pytest.fixture

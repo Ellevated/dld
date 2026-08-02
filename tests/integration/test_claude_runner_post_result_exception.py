@@ -24,6 +24,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # SDK site-packages must be in sys.path BEFORE loading claude-runner module
@@ -32,6 +33,17 @@ SCRIPT_DIR = Path(__file__).resolve().parent.parent.parent / "scripts" / "vps"
 _VENV_SITE = str(SCRIPT_DIR / "venv" / "lib" / "python3.12" / "site-packages")
 if _VENV_SITE not in sys.path:
     sys.path.insert(0, _VENV_SITE)
+
+# These tests need the REAL SDK types — the isinstance() branches under test are
+# what they exercise, so a hand-rolled fake would test nothing. CI installs it
+# (scripts/vps/requirements.txt) and the VPS has it in the venv above; a dev box
+# usually does not. Skip rather than raise: a bare ImportError here is a
+# COLLECTION error, which aborts the entire run — all 800+ tests, over one
+# optional dependency.
+pytest.importorskip(
+    "claude_agent_sdk",
+    reason="claude-agent-sdk not installed (pip install -r scripts/vps/requirements.txt)",
+)
 
 # ---------------------------------------------------------------------------
 # SDK message helpers — use real SDK types to match isinstance() checks
