@@ -287,7 +287,7 @@ components:
 # Pre-commit hook: check dependency direction
 # Fails if any import violates: shared ← infra ← domains ← api
 
-./scripts/check-dependencies.sh || exit 1
+python scripts/check_domain_imports.py || exit 1
 ```
 
 ---

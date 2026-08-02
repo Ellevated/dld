@@ -198,12 +198,13 @@ You MUST respond in this exact MARKDOWN format:
 
 **Fitness Function:**
 ```bash
-# Run on every commit (git hook)
-./scripts/check-dependencies.sh
-# Fails if any reverse import detected
+# Run on every commit (git hook), or over changed files only
+python scripts/check_domain_imports.py
+# Exit 1 on any import pointing right, or one domain importing another
 ```
 
-**Tool:** [madge / dependency-cruiser / custom script]
+**Tool:** ships with the framework — `scripts/check_domain_imports.py`, ast-based.
+For JS/TS projects the equivalents are `madge` or `dependency-cruiser`.
 
 #### 2. File Size Limit
 
@@ -235,9 +236,13 @@ radon cc src/ --min B --show-complexity
 
 **Fitness Function:**
 ```bash
-# CI step
-./scripts/api-diff.sh main HEAD
-# Breaks if backward incompatible change
+# CI step — no such script ships with the framework; wire up whichever of
+# these fits, and name it in the architecture doc so it is not folklore:
+#   HTTP API      → openapi-diff between the two specs
+#   consumer pact → pact-broker can-i-deploy
+#   library       → diff the public symbol dump between refs
+<your-api-diff-command> main HEAD
+# Breaks the build on a backward-incompatible change
 ```
 
 **Tool:** [OpenAPI diff / Pact / custom]

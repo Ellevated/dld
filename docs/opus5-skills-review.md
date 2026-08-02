@@ -649,6 +649,57 @@ The generalisation, which is the part worth keeping: **the prompt tree had no au
 check of any kind.** Every rot found in this document was found by a person reading files.
 Grep-decidable facts should never cost a review cycle.
 
+### Step 10 result — closing what the check found, 2026-08-01..02
+
+Step 9 shipped `check-prompt-integrity.mjs` and left its findings open on the argument
+that failing a build on pre-existing debt teaches people to ignore red. Working through
+them turned out to be worth more than the checker: **every one of the four was a promise
+the system had stopped keeping, and none of them failed loudly.**
+
+| Finding | What it actually was |
+|---|---|
+| `agents/review.md` runs `check_domain_imports.py` | The oldest architectural rule in CLAUDE.md — `shared → infra → domains → api` — had **no machine check at all**. The reviewer hit a missing file and fell back to reading |
+| `agents/review.md` runs `check_docs_sync.py` | Same, for the "Documentation Sync" gate |
+| `architect/{evolutionary,synthesizer}` run `check-dependencies.sh` | Not an instruction at all — a *fitness-function example* proposing a script to write. It describes exactly what `check_domain_imports.py` now does |
+| `reflect-aggregator` unreachable | `/reflect` Step 1.5 read `cross-level-patterns.md`, a file only that agent writes, and nothing dispatched it. The file has never existed |
+
+Both missing checks are now written, with tests (33 and 17). Both are ast-based rather
+than grep-based, and the import one shows why: `from ..users import models` inside
+`domains/billing` is a cross-domain import in which neither the layer name nor the word
+"domains" appears anywhere on the line. Both exit 0 where they do not apply — this repo
+has neither `src/` nor `.env.example`, and a gate that fails where it is inapplicable
+gets switched off everywhere, which is worse than not having it.
+
+`reflect-aggregator` was deleted and its aggregation folded into the skill, by the Step 1
+test: grouping signals by topic is neither knowledge the caller lacks nor a judgment that
+needs independence — `/reflect` is already holding the file. `api-diff.sh` is the one case
+where nothing was written: no equivalent exists, so the block now reads
+`<your-api-diff-command>` with three concrete options named, instead of a filename that
+looks like it ships.
+
+**Two things this run says about the checker itself.**
+
+Its false-positive shape is now known: it flags `./scripts/foo.sh` inside a *worked
+example*, because an example of a command and a command are textually identical. The fix
+was to stop writing examples that look like real invocations — which is better than
+loosening the check.
+
+And an unreachable agent is worth more as a pointer than as a cleanup. In both cases here
+— `bughunt-solution-architect` and `reflect-aggregator` — the agent was the cheap half.
+The expensive half was a document still describing the removed behaviour to everyone who
+read it, prompts included.
+
+Findings: 13 → 6. What remains is the routing group (`analyzer`/`comparator` with no
+`effort:`, four haiku agents carrying an inert one) — deliberately left for the effort
+sweep, since two of those are a decision about level rather than a cleanup.
+
+**Unrelated rot found while running the tests**, both pre-existing, both now fixed:
+`tests/unit/test_callback_allowlist_v1.py` asserted that numbered-list allowlists are
+*ignored* — the very behaviour TECH-208 reversed without updating it, so it had been red
+since. One commit left two stale artefacts behind: that test, and the Spark prompt from
+Step 9. And `ruff` was failing repo-wide (13 lint errors, 17 unformatted files, 13 of
+which nothing in this work had touched), meaning CI's `python-lint` job was already red.
+
 ## How it stays honest
 
 Measured, not tasted. The eval harness works: `test/agents/review/` scored ADR-029 at

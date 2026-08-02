@@ -768,6 +768,33 @@ renaming one, grep the skill that calls it.**
 
 ---
 
+## scripts/ (agent-invoked quality gates)
+
+Plain `scripts/*.py`, run by an agent from a prompt — same failure mode as
+`.claude/scripts/`: a missing file surfaces as the agent improvising around a shell
+error, never as a loud failure. Two of these were referenced by prompts for months
+before they existed (found 2026-08-01 by `check-prompt-integrity.mjs`), which is why
+this section exists at all. **Before renaming or deleting one, grep the prompt that
+calls it.** Each ships in `template/scripts/` too.
+
+| Script | Called from | Contract |
+|---|---|---|
+| `pre-review-check.py` | `skills/autopilot/task-loop.md` Step 3a | argv: changed files (or stdin). 0 = pass, 1 = issues. TODO/FIXME, bare `except`, LOC limits |
+| `check_domain_imports.py` | `agents/review.md` §6, `agents/architect/evolutionary.md`, `agents/architect/synthesizer.md` | argv: files, or whole `src/`. `--src`, `--json`. 0 = pass **or no source root**, 1 = violations, 2 = usage. Enforces `shared → infra → domains → api` + no cross-domain imports, via ast |
+| `check_docs_sync.py` | `agents/review.md` §5 | argv: files, or whole tree. `--env`, `--all`, `--json`. 0 = pass **or no env template**, 1 = env vars read by code but absent from `.env.example` |
+
+Both new checks exit 0 when they do not apply — DLD itself has no `src/` and no
+`.env.example`. A gate that fails where it is inapplicable gets switched off everywhere,
+which is worse than not having it.
+
+### When changing API, check
+
+- [ ] The calling prompt in **both** trees (`.claude/agents/…` and `template/.claude/agents/…`)
+- [ ] `tests/unit/test_check_domain_imports.py`, `tests/unit/test_check_docs_sync.py`
+- [ ] `template/scripts/` copy stays in sync — the prompts in both trees name the same path
+
+---
+
 ## Last Update
 
 История изменений (changelog) вынесена в `docs/dependencies-changelog.md` — этот путь
