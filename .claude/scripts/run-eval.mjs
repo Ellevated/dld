@@ -92,6 +92,29 @@ try {
   process.exit(1);
 }
 
+// A skill under evaluation may commit and push. /spark claims an ID and pushes;
+// /autopilot merges. If --cwd still points at a clone of the real repository,
+// that lands in the real repository. Measured: an eval run committed a spec and
+// attempted `git push` to the origin it was cloned from — it failed only because
+// that origin was a non-bare repo with the branch checked out, which is git
+// refusing, not isolation working.
+if (!args.includes('--allow-push-to-origin')) {
+  let origin = '';
+  try {
+    origin = execFileSync('git', ['remote', 'get-url', 'origin'], {
+      cwd: runCwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch { /* no remote, or not a repo — nothing to protect against */ }
+
+  if (origin) {
+    console.error(`Error: ${runCwd} still has an 'origin' remote (${origin}).`);
+    console.error('A skill that pushes would push there. Detach it first:');
+    console.error(`  git -C "${runCwd}" remote remove origin`);
+    console.error('Or pass --allow-push-to-origin if writing to that remote is genuinely intended.');
+    process.exit(2);
+  }
+}
+
 const resolvedSkillPath = resolve(skillPath);
 const resolvedEvalsPath = resolve(evalsPath);
 
