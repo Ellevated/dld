@@ -41,15 +41,36 @@ Read `ai/diary/index.md` — find all entries with `pending` status.
 **Deduplication:** If `ai/diary/.processed.log` exists, skip entries already listed there.
 This prevents re-processing entries from previous reflect sessions.
 
-### Step 1.5: Read Upstream Signals (v2, NEW)
+### Step 1.5: Read and aggregate upstream signals
 
-If `ai/reflect/upstream-signals.md` exists, read it.
-If `ai/reflect/cross-level-patterns.md` exists, read it.
+If `ai/reflect/upstream-signals.md` exists, read it. Upstream signals are feedback
+travelling up the levels (Autopilot → Spark → Architect → Board), and they are
+additional input alongside diary entries — not a replacement for them.
 
-Upstream signals are feedback from lower levels (Autopilot → Spark → Architect → Board).
-Cross-level patterns are recurring issues detected by the reflect-aggregator.
+Aggregate them here, in this context. This used to be delegated to a
+`reflect-aggregator` subagent that nothing ever dispatched, so its output file
+`cross-level-patterns.md` was never written and this step read a file that could
+not exist. Grouping signals is neither knowledge you lack nor a judgment you need
+kept independent — you are already holding the file.
 
-These provide ADDITIONAL input alongside diary entries.
+For each signal extract source, target, type (gap / contradiction / missing_rule /
+pattern), severity, and the topic it belongs to. Then group by topic, where a topic
+is a bounded context or a cross-cutting concern rather than a wording:
+
+- "float for money" and "decimal for price" → ONE topic (money representation)
+- "auth token expired" and "session not found" → ONE topic (auth strategy)
+
+Grouping takes judgment, so err towards splitting — too many topics is recoverable,
+a merged topic hides a signal. Then apply the same thresholds as the diary patterns
+in Step 3:
+
+| Occurrences | Meaning |
+|---|---|
+| 1 | context only, carry it no further |
+| 2 | worth naming in the findings file |
+| 3+ | escalate to the target level |
+
+Never edit `upstream-signals.md` — it is append-only.
 
 ### Step 2: Read Pending Entries
 
@@ -103,12 +124,11 @@ Compare entries with CLAUDE.md:
 - Rule helped? -> Keep
 - Rule outdated? -> Update or remove
 
-### Step 5: Write Findings to Diary/Reflect
+### Step 5: Write durable reflect artifacts (NOT inbox)
 
-**CRITICAL:** Reflect does NOT write to inbox. Only Hermes writes to inbox.
-Findings are written as durable entries in `ai/reflect/` for later review.
-
-For each pattern found (frequency >= 3):
+**CRITICAL:** Reflect does NOT create TECH specs and does NOT write to inbox.
+It writes durable findings to its own reflect artifacts and diary context.
+Hermes reviews those artifacts later and decides whether to create an inbox item.
 
 **Location:** `ai/reflect/findings-{date}.md` (single file per session, not one per pattern)
 
