@@ -659,14 +659,17 @@ def test_merge_of_unrelated_spec_not_matched(git_repo_with_remote):
 
 class TestBookkeepingPathsAreNotEvidence:
     def test_strips_lifecycle_backlog_and_spec_paths(self):
-        assert strip_bookkeeping_paths(
-            [
-                "ai/lifecycle/BUG-460.yaml",
-                "ai/backlog.md",
-                "ai/features/BUG-460-2026-07-26-x.md",
-                "ai/diary/index.md",
-            ]
-        ) == []
+        assert (
+            strip_bookkeeping_paths(
+                [
+                    "ai/lifecycle/BUG-460.yaml",
+                    "ai/backlog.md",
+                    "ai/features/BUG-460-2026-07-26-x.md",
+                    "ai/diary/index.md",
+                ]
+            )
+            == []
+        )
 
     def test_keeps_implementation_and_docs_paths(self):
         # docs are NOT stripped: a documentation spec's implementation lives there

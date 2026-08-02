@@ -67,7 +67,9 @@ def test_dirty_lifecycle_aborts_orchestrator_startup(tmp_git_repo):
         cwd=str(tmp_git_repo),
         check=True,
     )
-    (tmp_git_repo / "ai" / "lifecycle" / "TECH-400.yaml").write_text("manually corrupted\n", encoding="utf-8")
+    (tmp_git_repo / "ai" / "lifecycle" / "TECH-400.yaml").write_text(
+        "manually corrupted\n", encoding="utf-8"
+    )
     with pytest.raises(RuntimeError, match="Dirty lifecycle"):
         lifecycle.assert_clean_lifecycle_tree(tmp_git_repo)
 

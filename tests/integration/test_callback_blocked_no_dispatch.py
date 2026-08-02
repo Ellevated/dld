@@ -114,8 +114,7 @@ def _make_project(tmp_path: Path, spec_id: str) -> Path:
     )
     (repo / "ai" / "features" / f"{spec_id}.md").write_text(spec_body)
     (repo / "ai" / "backlog.md").write_text(
-        f"| ID | Title | Status | P |\n|---|---|---|-"
-        f"--|\n| {spec_id} | demo | in_progress | P1 |\n"
+        f"| ID | Title | Status | P |\n|---|---|---|---|\n| {spec_id} | demo | in_progress | P1 |\n"
     )
     (repo / "README.md").write_text("init\n")
 
@@ -216,9 +215,7 @@ def test_blocked_skips_dispatch(tmp_path, tmp_db, stub_pueue_bin, stub_event_wri
 
     pueue_log = stub_pueue_bin.read_text() if stub_pueue_bin.exists() else ""
     # pueue add is the dispatch mechanism — must NOT appear for qa or reflect
-    assert "add" not in pueue_log or (
-        "qa-" not in pueue_log and "reflect-" not in pueue_log
-    ), (
+    assert "add" not in pueue_log or ("qa-" not in pueue_log and "reflect-" not in pueue_log), (
         f"Expected NO qa/reflect dispatch, but pueue was called with: {pueue_log!r}"
     )
 
@@ -255,9 +252,7 @@ def test_needs_review_skips_dispatch(
     _run_main(pueue_id, "needs_review", monkeypatch, stub_event_writer)
 
     pueue_log = stub_pueue_bin.read_text() if stub_pueue_bin.exists() else ""
-    assert "add" not in pueue_log or (
-        "qa-" not in pueue_log and "reflect-" not in pueue_log
-    ), (
+    assert "add" not in pueue_log or ("qa-" not in pueue_log and "reflect-" not in pueue_log), (
         f"Expected NO qa/reflect dispatch for needs_review, pueue called with: {pueue_log!r}"
     )
 
@@ -278,9 +273,7 @@ def test_needs_review_skips_dispatch(
 # ---------------------------------------------------------------------------
 
 
-def test_complete_dispatches(
-    tmp_path, tmp_db, stub_pueue_bin, stub_event_writer, monkeypatch
-):
+def test_complete_dispatches(tmp_path, tmp_db, stub_pueue_bin, stub_event_writer, monkeypatch):
     """E2: autopilot exits with task_status=complete → callback dispatches qa AND reflect."""
     spec_id = "TECH-196"
     project_id = "proj3"

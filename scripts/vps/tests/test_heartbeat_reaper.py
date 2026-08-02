@@ -7,15 +7,11 @@ Tests cover: stale detection, grace-period skip, collision disambiguation
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import sys
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import heartbeat_reaper as reaper
@@ -26,6 +22,7 @@ import reaper_pueue
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _write_hb(
     log_dir: Path,
@@ -55,15 +52,17 @@ def _fake_pueue_tasks(tasks: list[dict]) -> list[dict]:
     result = []
     for t in tasks:
         start_dt = t.get("start_dt") or datetime.now(tz=timezone.utc)
-        result.append({
-            "id": t.get("id", 100),
-            "label": t.get("label", f"{t.get('project', 'proj')}:SPEC-1"),
-            "group": "claude-runner",
-            "command": t.get("command", ""),
-            "start_iso": start_dt.isoformat(),
-            "start_dt": start_dt,
-            "project": t.get("project", "proj"),
-        })
+        result.append(
+            {
+                "id": t.get("id", 100),
+                "label": t.get("label", f"{t.get('project', 'proj')}:SPEC-1"),
+                "group": "claude-runner",
+                "command": t.get("command", ""),
+                "start_iso": start_dt.isoformat(),
+                "start_dt": start_dt,
+                "project": t.get("project", "proj"),
+            }
+        )
     return result
 
 
@@ -71,8 +70,8 @@ def _fake_pueue_tasks(tasks: list[dict]) -> list[dict]:
 # find_heartbeat_file tests
 # ---------------------------------------------------------------------------
 
-class TestFindHeartbeatFile:
 
+class TestFindHeartbeatFile:
     def test_single_match_by_started_at(self, tmp_path: Path) -> None:
         """Single heartbeat file matching started_at is returned."""
         now = datetime.now(tz=timezone.utc)
@@ -123,8 +122,8 @@ class TestFindHeartbeatFile:
 # read_heartbeat tests
 # ---------------------------------------------------------------------------
 
-class TestReadHeartbeat:
 
+class TestReadHeartbeat:
     def test_valid_file(self, tmp_path: Path) -> None:
         now = datetime.now(tz=timezone.utc)
         hb = _write_hb(tmp_path, "proj", "20260613-120000", now, now)
@@ -145,8 +144,8 @@ class TestReadHeartbeat:
 # reap_stale_sessions integration tests
 # ---------------------------------------------------------------------------
 
-class TestReapStaleSessions:
 
+class TestReapStaleSessions:
     def test_stale_idle_session_is_killed(self, tmp_path: Path) -> None:
         """Stale + idle session → killed + notified."""
         now = datetime.now(tz=timezone.utc)
@@ -154,11 +153,15 @@ class TestReapStaleSessions:
         updated = now - timedelta(minutes=30)  # 30 min stale > STALE_SECONDS(25min)
         _write_hb(tmp_path, "testproj", "20260613-100000", started, updated)
 
-        tasks = _fake_pueue_tasks([{
-            "id": 574,
-            "project": "testproj",
-            "start_dt": started,
-        }])
+        tasks = _fake_pueue_tasks(
+            [
+                {
+                    "id": 574,
+                    "project": "testproj",
+                    "start_dt": started,
+                }
+            ]
+        )
 
         killed_ids: list[int] = []
         notified: list[dict] = []
@@ -191,11 +194,15 @@ class TestReapStaleSessions:
         updated = now - timedelta(seconds=30)  # very fresh
         _write_hb(tmp_path, "testproj", "20260613-100000", started, updated)
 
-        tasks = _fake_pueue_tasks([{
-            "id": 575,
-            "project": "testproj",
-            "start_dt": started,
-        }])
+        tasks = _fake_pueue_tasks(
+            [
+                {
+                    "id": 575,
+                    "project": "testproj",
+                    "start_dt": started,
+                }
+            ]
+        )
 
         with (
             patch.object(reaper, "LOG_DIR", tmp_path),
@@ -212,11 +219,15 @@ class TestReapStaleSessions:
         now = datetime.now(tz=timezone.utc)
         started = now - timedelta(seconds=60)  # 1 min < GRACE(5min)
 
-        tasks = _fake_pueue_tasks([{
-            "id": 576,
-            "project": "testproj",
-            "start_dt": started,
-        }])
+        tasks = _fake_pueue_tasks(
+            [
+                {
+                    "id": 576,
+                    "project": "testproj",
+                    "start_dt": started,
+                }
+            ]
+        )
 
         with (
             patch.object(reaper, "LOG_DIR", tmp_path),
@@ -235,11 +246,15 @@ class TestReapStaleSessions:
         updated = now - timedelta(minutes=30)  # stale
         _write_hb(tmp_path, "testproj", "20260613-100000", started, updated)
 
-        tasks = _fake_pueue_tasks([{
-            "id": 577,
-            "project": "testproj",
-            "start_dt": started,
-        }])
+        tasks = _fake_pueue_tasks(
+            [
+                {
+                    "id": 577,
+                    "project": "testproj",
+                    "start_dt": started,
+                }
+            ]
+        )
 
         with (
             patch.object(reaper, "LOG_DIR", tmp_path),
@@ -259,11 +274,15 @@ class TestReapStaleSessions:
         updated = now - timedelta(minutes=30)
         _write_hb(tmp_path, "testproj", "20260613-100000", started, updated)
 
-        tasks = _fake_pueue_tasks([{
-            "id": 578,
-            "project": "testproj",
-            "start_dt": started,
-        }])
+        tasks = _fake_pueue_tasks(
+            [
+                {
+                    "id": 578,
+                    "project": "testproj",
+                    "start_dt": started,
+                }
+            ]
+        )
 
         with (
             patch.object(reaper, "LOG_DIR", tmp_path),
@@ -290,8 +309,8 @@ class TestReapStaleSessions:
 # _parse_iso tests
 # ---------------------------------------------------------------------------
 
-class TestParseIso:
 
+class TestParseIso:
     def test_standard_iso(self) -> None:
         dt = reaper_pueue._parse_iso("2026-06-13T12:00:00+00:00")
         assert dt is not None
@@ -315,8 +334,8 @@ class TestParseIso:
 # _project_from_command tests
 # ---------------------------------------------------------------------------
 
-class TestProjectFromCommand:
 
+class TestProjectFromCommand:
     def test_extracts_project_name(self) -> None:
         cmd = "bash run-agent.sh /home/dld/projects/awardybot claude autopilot FTR-1185"
         assert reaper_pueue._project_from_command(cmd) == "awardybot"

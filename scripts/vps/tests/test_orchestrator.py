@@ -1172,7 +1172,9 @@ class TestSpecReadinessGate:
         spec_id = "FTR-0081"
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True)
-        (features / f"{spec_id}-2026-07-26-console-scaffold.md").write_text("# Spec\n", encoding="utf-8")
+        (features / f"{spec_id}-2026-07-26-console-scaffold.md").write_text(
+            "# Spec\n", encoding="utf-8"
+        )
         mock_add = MagicMock(return_value=42)
 
         with (

@@ -16,12 +16,13 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-log = logging.getLogger("heartbeat-reaper")   # то же имя — вывод не меняется
+log = logging.getLogger("heartbeat-reaper")  # то же имя — вывод не меняется
 
 
 # ---------------------------------------------------------------------------
 # Pueue helpers
 # ---------------------------------------------------------------------------
+
 
 def get_running_claude_tasks() -> list[dict]:
     """Return Running tasks in the claude-runner group with parsed metadata.
@@ -32,7 +33,9 @@ def get_running_claude_tasks() -> list[dict]:
     try:
         r = subprocess.run(
             ["pueue", "status", "--json"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if r.returncode != 0:
             log.warning("pueue status exit %d: %s", r.returncode, r.stderr[:200])
@@ -74,15 +77,17 @@ def get_running_claude_tasks() -> list[dict]:
             cmd = task.get("command", "") or task.get("original_command", "")
             project = _project_from_command(cmd)
 
-        tasks.append({
-            "id": int(tid_str),
-            "label": label,
-            "group": group,
-            "command": task.get("command", ""),
-            "start_iso": start_iso,
-            "start_dt": start_dt,
-            "project": project,
-        })
+        tasks.append(
+            {
+                "id": int(tid_str),
+                "label": label,
+                "group": group,
+                "command": task.get("command", ""),
+                "start_iso": start_iso,
+                "start_dt": start_dt,
+                "project": project,
+            }
+        )
     return tasks
 
 

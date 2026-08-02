@@ -600,7 +600,10 @@ def _make_false_reconciled(repo, spec_id, *, subject, extra_file=None):
     _git(repo, "commit", "--allow-empty", "-m", subject)
     sha = _git(repo, "rev-parse", "HEAD")
     lifecycle.write_lifecycle(
-        repo, spec_id, "done", by="orchestrator",
+        repo,
+        spec_id,
+        "done",
+        by="orchestrator",
         reason=f"already_implemented_on_develop:{sha[:12]}",
     )
     return sha
@@ -621,7 +624,8 @@ def test_recovers_spec_closed_by_its_own_birth_commit(tmp_git_repo):
 def test_refuses_when_cited_commit_is_real_work(tmp_git_repo):
     """The guard that makes this safe: a real implementation commit stays done."""
     _make_false_reconciled(
-        tmp_git_repo, "BUG-461",
+        tmp_git_repo,
+        "BUG-461",
         subject="fix(BUG-461): escape first_name",
         extra_file="src/copy.py",
     )
@@ -644,6 +648,4 @@ def test_refuses_a_spec_that_actually_ran(tmp_git_repo):
 def test_rejects_unknown_writer_identity(tmp_git_repo):
     _make_false_reconciled(tmp_git_repo, "BUG-462", subject="lifecycle(BUG-462): queued")
     with pytest.raises(ValueError):
-        lifecycle.recover_false_reconciliation(
-            tmp_git_repo, "BUG-462", reason="x", by="autopilot"
-        )
+        lifecycle.recover_false_reconciliation(tmp_git_repo, "BUG-462", reason="x", by="autopilot")

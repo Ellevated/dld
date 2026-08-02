@@ -28,8 +28,7 @@ def repo(tmp_path):
     r.mkdir()
 
     def git(*args):
-        subprocess.run(["git"] + list(args), cwd=str(r), check=True,
-                       capture_output=True, text=True)
+        subprocess.run(["git"] + list(args), cwd=str(r), check=True, capture_output=True, text=True)
 
     git("init", "-b", "main")
     git("config", "user.email", "test@example.com")
@@ -52,8 +51,9 @@ def _of(findings, category):
 
 
 def _git(repo_path, *args):
-    return subprocess.run(["git"] + list(args), cwd=str(repo_path), check=True,
-                          capture_output=True, text=True).stdout.strip()
+    return subprocess.run(
+        ["git"] + list(args), cwd=str(repo_path), check=True, capture_output=True, text=True
+    ).stdout.strip()
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -65,9 +65,7 @@ def test_category_orphan_spec_md(repo):
     spec = repo / "ai" / "features" / "TECH-666-x.md"
     spec.write_text("# TECH-666\n**Status:** queued\n", encoding="utf-8")
     hits = _of(lifecycle_audit.audit_project(str(repo)), "orphan_spec_md")
-    assert [(h["spec_id"], h["detail"]) for h in hits] == [
-        ("TECH-666", "TECH-666-x.md")
-    ]
+    assert [(h["spec_id"], h["detail"]) for h in hits] == [("TECH-666", "TECH-666-x.md")]
 
 
 def test_category_orphan_yaml(repo):
@@ -95,9 +93,7 @@ def test_category_markdown_status_mismatch(repo):
     spec = repo / "ai" / "features" / "TECH-557-x.md"
     spec.write_text("# TECH-557\n**Status:** done\n", encoding="utf-8")
     hits = _of(lifecycle_audit.audit_project(str(repo)), "markdown_status_mismatch")
-    assert [(h["spec_id"], h["detail"]) for h in hits] == [
-        ("TECH-557", "md=done yaml=queued")
-    ]
+    assert [(h["spec_id"], h["detail"]) for h in hits] == [("TECH-557", "md=done yaml=queued")]
 
 
 def test_category_backlog_status_mismatch(repo):
@@ -106,9 +102,7 @@ def test_category_backlog_status_mismatch(repo):
         "| ID | status |\n|---|---|\n| TECH-558 | done |\n", encoding="utf-8"
     )
     hits = _of(lifecycle_audit.audit_project(str(repo)), "backlog_status_mismatch")
-    assert [(h["spec_id"], h["detail"]) for h in hits] == [
-        ("TECH-558", "backlog=done yaml=queued")
-    ]
+    assert [(h["spec_id"], h["detail"]) for h in hits] == [("TECH-558", "backlog=done yaml=queued")]
 
 
 def test_category_backlog_format_unparsed(repo):
@@ -158,25 +152,40 @@ def test_category_unauthorized_writer(repo):
         "  - {from: queued, to: in_progress, at: '2026-05-26T10:00:00Z', by: spark, pueue_id: null}\n",
         encoding="utf-8",
     )
-    subprocess.run(["git", "add", "ai/lifecycle/TECH-777.yaml"], cwd=str(repo), check=True,
-                   capture_output=True, text=True)
-    subprocess.run(["git", "commit", "-m", "test: inject unauthorized writer"], cwd=str(repo),
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "add", "ai/lifecycle/TECH-777.yaml"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "test: inject unauthorized writer"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     hits = _of(lifecycle_audit.audit_project(str(repo)), "unauthorized_writer")
-    assert [(h["spec_id"], h["detail"]) for h in hits] == [
-        ("TECH-777", "by=['spark']")
-    ]
+    assert [(h["spec_id"], h["detail"]) for h in hits] == [("TECH-777", "by=['spark']")]
 
 
 def test_category_git_divergence(repo):
     base = _git(repo, "rev-parse", "HEAD")
     (repo / "README.md").write_text("x", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=str(repo), check=True,
-                   capture_output=True, text=True)
-    subprocess.run(["git", "commit", "-m", "second"], cwd=str(repo), check=True,
-                   capture_output=True, text=True)
-    subprocess.run(["git", "update-ref", "refs/remotes/origin/develop", base], cwd=str(repo),
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "add", "README.md"], cwd=str(repo), check=True, capture_output=True, text=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "second"], cwd=str(repo), check=True, capture_output=True, text=True
+    )
+    subprocess.run(
+        ["git", "update-ref", "refs/remotes/origin/develop", base],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
     hits = _of(lifecycle_audit.audit_project(str(repo)), "git_divergence")
     assert [(h["spec_id"], h["detail"]) for h in hits] == [("-", "ahead=1 behind=0")]
@@ -221,9 +230,7 @@ def test_all_fourteen_categories_golden(repo):
     )
     # backlog_status_mismatch
     lifecycle.create_initial(repo, "TECH-558", "p1", "tech", status="queued")
-    (repo / "ai" / "features" / "TECH-558-x.md").write_text(
-        "# TECH-558\n", encoding="utf-8"
-    )
+    (repo / "ai" / "features" / "TECH-558-x.md").write_text("# TECH-558\n", encoding="utf-8")
     # backlog: TECH-558 mismatched status, TECH-559 unparsed row
     (repo / "ai" / "backlog.md").write_text(
         "| ID | status |\n|---|---|\n"
@@ -250,10 +257,20 @@ def test_all_fourteen_categories_golden(repo):
         "  - {from: queued, to: in_progress, at: '2026-05-26T10:00:00Z', by: spark, pueue_id: null}\n",
         encoding="utf-8",
     )
-    subprocess.run(["git", "add", "ai/lifecycle/TECH-777.yaml"], cwd=str(repo), check=True,
-                   capture_output=True, text=True)
-    subprocess.run(["git", "commit", "-m", "test: inject unauthorized writer"], cwd=str(repo),
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "add", "ai/lifecycle/TECH-777.yaml"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "test: inject unauthorized writer"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
     # counters
     (repo / "ai" / ".lifecycle-push-failures").write_text("7", encoding="utf-8")
@@ -263,20 +280,28 @@ def test_all_fourteen_categories_golden(repo):
     # git_divergence
     base = _git(repo, "rev-parse", "HEAD")
     (repo / "README.md").write_text("x", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=str(repo), check=True,
-                   capture_output=True, text=True)
-    subprocess.run(["git", "commit", "-m", "second"], cwd=str(repo), check=True,
-                   capture_output=True, text=True)
-    subprocess.run(["git", "update-ref", "refs/remotes/origin/develop", base], cwd=str(repo),
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "add", "README.md"], cwd=str(repo), check=True, capture_output=True, text=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "second"], cwd=str(repo), check=True, capture_output=True, text=True
+    )
+    subprocess.run(
+        ["git", "update-ref", "refs/remotes/origin/develop", base],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
     # wt_lifecycle_dirty / wt_features_dirty — uncommitted, added last so they
     # do not interfere with the other categories' commits above.
     (repo / "ai" / "lifecycle" / "DIRTY.yaml").write_text("x: 1\n", encoding="utf-8")
     (repo / "ai" / "features" / "TECH-700-x.md").write_text("# TECH-700\n", encoding="utf-8")
 
-    actual = [(f["category"], f["spec_id"], f["detail"])
-              for f in lifecycle_audit.audit_project(str(repo))]
+    actual = [
+        (f["category"], f["spec_id"], f["detail"]) for f in lifecycle_audit.audit_project(str(repo))
+    ]
 
     # EXPECTED recorded by running the CURRENT, unmodified lifecycle_audit.py
     # against this exact repo setup (Feathers characterization — not invented).
@@ -290,7 +315,11 @@ def test_all_fourteen_categories_golden(repo):
         ("missing_from_backlog", "TECH-555", "no row"),
         ("missing_from_backlog", "TECH-557", "no row"),
         ("missing_from_backlog", "TECH-777", "no row"),
-        ("bootstrap_as_done", "TECH-1082", "status=done, no transitions, no pueue_id, no finished_at"),
+        (
+            "bootstrap_as_done",
+            "TECH-1082",
+            "status=done, no transitions, no pueue_id, no finished_at",
+        ),
         ("markdown_status_mismatch", "TECH-557", "md=done yaml=queued"),
         ("backlog_status_mismatch", "TECH-558", "backlog=done yaml=queued"),
         ("backlog_format_unparsed", "TECH-559", "row found but status not extracted"),
@@ -330,8 +359,11 @@ def test_run_json_shape(repo, tmp_path, capsys):
     pj = tmp_path / "projects.json"
     pj.write_text(json.dumps([{"project_id": "tmp", "path": str(repo)}]), encoding="utf-8")
     rc = lifecycle_audit.run(
-        project_filter=None, projects_json=str(pj), json_output=True,
-        category_filter=None, quiet=False,
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=True,
+        category_filter=None,
+        quiet=False,
     )
     assert rc == 1
     payload = json.loads(capsys.readouterr().out)
@@ -343,8 +375,11 @@ def test_run_quiet_shape(repo, tmp_path, capsys):
     pj = tmp_path / "projects.json"
     pj.write_text(json.dumps([{"project_id": "tmp", "path": str(repo)}]), encoding="utf-8")
     rc = lifecycle_audit.run(
-        project_filter=None, projects_json=str(pj), json_output=False,
-        category_filter=None, quiet=True,
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=False,
+        category_filter=None,
+        quiet=True,
     )
     assert rc == 0
     out = capsys.readouterr().out
@@ -356,8 +391,11 @@ def test_run_text_shape(repo, tmp_path, capsys):
     pj = tmp_path / "projects.json"
     pj.write_text(json.dumps([{"project_id": "tmp", "path": str(repo)}]), encoding="utf-8")
     rc = lifecycle_audit.run(
-        project_filter=None, projects_json=str(pj), json_output=False,
-        category_filter=None, quiet=False,
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=False,
+        category_filter=None,
+        quiet=False,
     )
     assert rc == 0
     out = capsys.readouterr().out
@@ -369,8 +407,11 @@ def test_run_unknown_category_rc2(tmp_path):
     pj = tmp_path / "projects.json"
     pj.write_text("[]", encoding="utf-8")
     rc = lifecycle_audit.run(
-        project_filter=None, projects_json=str(pj), json_output=False,
-        category_filter="not_a_real_category", quiet=False,
+        project_filter=None,
+        projects_json=str(pj),
+        json_output=False,
+        category_filter="not_a_real_category",
+        quiet=False,
     )
     assert rc == 2
 
@@ -392,16 +433,23 @@ def test_main_cli_rejects_bad_category():
 
 def test_audit_writes_nothing(repo):
     """Аудитор не смеет менять ни git-состояние, ни файлы."""
+
     def porcelain():
-        return subprocess.run(["git", "status", "--porcelain"], cwd=str(repo),
-                              capture_output=True, text=True).stdout
+        return subprocess.run(
+            ["git", "status", "--porcelain"], cwd=str(repo), capture_output=True, text=True
+        ).stdout
 
     lifecycle.create_initial(repo, "TECH-1082", "p2", "tech", status="done")
     (repo / "ai" / ".bootstrap-anomaly-count").write_text("1", encoding="utf-8")
-    before_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(repo),
-                                 capture_output=True, text=True).stdout
+    before_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=str(repo), capture_output=True, text=True
+    ).stdout
     before = porcelain()
     lifecycle_audit.audit_project(str(repo))
     assert porcelain() == before
-    assert subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(repo),
-                          capture_output=True, text=True).stdout == before_head
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=str(repo), capture_output=True, text=True
+        ).stdout
+        == before_head
+    )

@@ -111,9 +111,7 @@ def test_wt_synced_after_write_lifecycle(tmp_git_repo):
     head_content = _git_show(repo, yaml_path)
     wt_content = wt_file.read_text(encoding="utf-8")
     assert wt_content == head_content, (
-        f"WT content diverged from HEAD:\n"
-        f"HEAD:\n{head_content}\n"
-        f"WT:\n{wt_content}"
+        f"WT content diverged from HEAD:\nHEAD:\n{head_content}\nWT:\n{wt_content}"
     )
 
     # git status must show clean lifecycle dir
@@ -158,8 +156,7 @@ def test_wt_created_after_create_initial(tmp_git_repo):
     # git status must show clean lifecycle dir
     status = _git_status_lifecycle(repo)
     assert status == "", (
-        f"Dirty lifecycle after create_initial: {status!r}\n"
-        f"(expected empty — no ' D' entries)"
+        f"Dirty lifecycle after create_initial: {status!r}\n(expected empty — no ' D' entries)"
     )
 
 
@@ -179,9 +176,7 @@ def test_wt_synced_after_write_file_atomic(tmp_git_repo):
     rel_path = "ai/backlog.md"
     content = "# Backlog\n\ntest content for WT sync\n"
 
-    result = lifecycle.write_file_atomic(
-        repo, rel_path, content, "chore: test backlog write"
-    )
+    result = lifecycle.write_file_atomic(repo, rel_path, content, "chore: test backlog write")
     assert result is True, "write_file_atomic returned False — write failed"
 
     wt_file = repo / rel_path
@@ -206,6 +201,4 @@ def test_wt_synced_after_write_file_atomic(tmp_git_repo):
         text=True,
         check=True,
     )
-    assert r.stdout.strip() == "", (
-        f"Dirty WT after write_file_atomic: {r.stdout.strip()!r}"
-    )
+    assert r.stdout.strip() == "", f"Dirty WT after write_file_atomic: {r.stdout.strip()!r}"

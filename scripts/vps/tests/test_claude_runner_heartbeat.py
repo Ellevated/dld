@@ -9,16 +9,13 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
 
 # Import the function under test
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from importlib import import_module
 
 # claude-runner has a hyphen in the name — can't import directly
 import importlib.util
@@ -153,17 +150,27 @@ class TestWriteHeartbeat:
 
         # AssistantMessage with tool use → last_tool = "Bash"
         _write_heartbeat(
-            log_dir=tmp_path, project_name="testproj", ts_label="20260613-120000",
-            turn=1, elapsed_s=10, last_tool="Bash",
-            started_at_iso="2026-06-13T12:00:00+00:00", model="claude-opus-4-8",
+            log_dir=tmp_path,
+            project_name="testproj",
+            ts_label="20260613-120000",
+            turn=1,
+            elapsed_s=10,
+            last_tool="Bash",
+            started_at_iso="2026-06-13T12:00:00+00:00",
+            model="claude-opus-4-8",
         )
 
         # Tool-result messages — caller passes the SAME last_tool (unchanged)
         for elapsed in [15, 20, 25]:
             _write_heartbeat(
-                log_dir=tmp_path, project_name="testproj", ts_label="20260613-120000",
-                turn=1, elapsed_s=elapsed, last_tool="Bash",
-                started_at_iso="2026-06-13T12:00:00+00:00", model="claude-opus-4-8",
+                log_dir=tmp_path,
+                project_name="testproj",
+                ts_label="20260613-120000",
+                turn=1,
+                elapsed_s=elapsed,
+                last_tool="Bash",
+                started_at_iso="2026-06-13T12:00:00+00:00",
+                model="claude-opus-4-8",
             )
 
         data = json.loads(hb_file.read_text(encoding="utf-8"))
@@ -173,9 +180,14 @@ class TestWriteHeartbeat:
     def test_atomic_write_no_partial(self, tmp_path: Path) -> None:
         """Heartbeat uses tmp + os.replace for atomicity — no .tmp leftover."""
         _write_heartbeat(
-            log_dir=tmp_path, project_name="testproj", ts_label="20260613-120000",
-            turn=1, elapsed_s=5, last_tool=None,
-            started_at_iso="2026-06-13T12:00:00+00:00", model="claude-opus-4-8",
+            log_dir=tmp_path,
+            project_name="testproj",
+            ts_label="20260613-120000",
+            turn=1,
+            elapsed_s=5,
+            last_tool=None,
+            started_at_iso="2026-06-13T12:00:00+00:00",
+            model="claude-opus-4-8",
         )
         # No .tmp files should remain
         tmp_files = list(tmp_path.glob("*.tmp"))
