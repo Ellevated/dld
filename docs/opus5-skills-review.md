@@ -188,6 +188,22 @@ of context.
 - [x] **5. Ablation** — done 2026-07-30. The first measurement on the *quality* axis
       rather than the cost axis. `planner.md` cut 77%, measured against its golden
       dataset by two independent instruments. See "Step 5 result" below.
+- [x] **11. The skill sweep was run** — 2026-08-02..03. It produced no quality number
+      and four defects in the instrument, plus the finding that ends this approach:
+      **a skill that reads a codebase cannot be measured against a repository that has
+      none.** See "Step 11 result" below. Follow-ups it created:
+      - [ ] Re-point the spark eval set at a real project. The AwardyBot clone is proven
+            (`BUG-1415`, cited lines verified by hand); the four remaining tasks need
+            checking for applicability there before a full two-arm run.
+      - [ ] `ai/board/` and `ai/architect/` were only checked for Morning Briefing
+            leftovers with a PowerShell glob — the same tool that missed `ai/blueprint/`
+            on the first pass. Re-check properly.
+      - [ ] `lifecycle.py` calls `backlog.md` "a human-authored view" in a comment;
+            `callback.py` calls it "a render". Behaviour is right, the comments disagree.
+      - [ ] Worked examples in `review`, `debugger`, `codebase`, `coroner`,
+            `cartographer` still carry another product's domains. Editing an example
+            changes what it anchors — Step 6 measured that, so this one is measured, not
+            guessed.
 
 ### Step 2 result — Spark, 2026-07-27
 
@@ -700,6 +716,116 @@ since. One commit left two stale artefacts behind: that test, and the Spark prom
 Step 9. And `ruff` was failing repo-wide (13 lint errors, 17 unformatted files, 13 of
 which nothing in this work had touched), meaning CI's `python-lint` job was already red.
 
+### Step 11 result — the ablation finally ran, and measured the harness instead, 2026-08-02..03
+
+Step 8 ended with "not run: a sweep is a paid, hours-long operation and the founder makes
+that call". The call was made. The sweep did not produce a quality number, and the reason it
+did not is worth more than the number would have been.
+
+**Four defects in the instrument, each of which silently invalidated a run.** In order of
+discovery:
+
+| Defect | What it did |
+| --- | --- |
+| Timeout discarded all output | `execFileSync` gives `stdout: null` on ETIMEDOUT, so `err.stdout \|\| err.message` always reduced to the message. A run killed at exactly 900000 ms wrote a **26-byte** file reading `spawnSync claude ETIMEDOUT` — while the 29849-byte spec it had produced sat in the clone |
+| The harness scored the wrong artifact | It judged stdout. Every deterministic assertion in spark's `evals.json` (`allowlist-parses`, `no-status-field`, `min-eval-criteria`) is a property of the **written spec**. `--print` prints only at the end, so the file exists long before any output does |
+| `900s` was recorded as "the working floor" | It is the number the first baseline died at. Corrected to 2700000 |
+| A clone could still push home | An eval run committed a spec and ran `git push` against the repo it was cloned from. It failed **only** because that origin was a non-bare repo with the branch checked out — git refusing, not isolation working |
+
+Then a fifth, in the fix for the second: artifact capture read `git status --porcelain`, which
+shows nothing committed. `/spark` commits every spec and lifecycle record it writes, so the
+harness reported `artifacts: 1` for a run that had just produced **nine specs** in twelve
+commits — the one file it found was an uncommitted counter. Same defect shape as the one it
+was written to repair. It now captures the union of the working tree and `baseRef..HEAD`, and
+lives in `.claude/scripts/lib/capture-artifacts.mjs` with five tests, because the first
+version shipped unverified and was wrong.
+
+**The finding that ends this line of work as designed: the eval set cannot be run here.**
+Its five tasks — rate limiting on a public REST API, replacing an auth stack, a Wednesday
+discount, a payment webhook — presuppose a product. DLD has no `src/`, no users, no orders.
+Spark correctly refused all five, in every arm, with `blocked / PREMISE_UNVERIFIED`.
+
+That is not a null result, it is an unusable instrument: the assertions are written assuming
+a spec gets created, so **the set rewards the arm that invents itself a task and penalises
+the one that refuses honestly.** Both behaviours appeared. On the same prompt, a 16.5 KB
+CLAUDE.md arm wrote nine specs by redefining the task; a 7.3 KB arm returned `blocked` with
+three options and a reason. By the set's own scoring the first wins.
+
+**What the refusing arm found instead.** `ai/blueprint/` did not describe DLD. Seven of its
+eight files were **Morning Briefing Agent** — Clerk auth, Fly.io, Turso,
+`/api/v1/workspaces/{workspaceId}`, $99/month — a product designed as a dogfooding exercise
+on 2026-05-23 and never built. And `ai/blueprint/` is not an archive:
+
+```
+feature-mode.md:216 — If ai/blueprint/system-blueprint/ exists, ALL scouts receive it as CONSTRAINT.
+feature-mode.md:258 — All approaches must respect blueprint.
+feature-mode.md:794 — gate: "No contradictions with system blueprint?"
+```
+
+So every `/spark` run in this repository handed three scouts another product's architecture
+as a binding constraint, then checked its own output for agreement with it. The prediction
+one run wrote down — *"a run that trusted it would produce a confident, well-formed spec
+against Clerk middleware, pass Gate 3 and Gate 6, and hand autopilot a 90-minute session
+that merges zero lines"* — was fulfilled by the other arm on the next eval, which wrote
+`FTR-221 — Identity store: expand-only clerk_user_id binding`, R0, `status: queued`. Its
+blocking precondition was in the spec body; the dispatcher reads the YAML.
+
+Seven files moved to `examples/morning-briefing-blueprint/`. The eighth,
+`callback-lifecycle-contour.md`, was genuinely ours and is now in `docs/orchestrator/`.
+**A blanket delete would have destroyed it** — the reason to read before removing.
+
+**Two defect classes closed tree-wide rather than instance by instance.**
+
+*A document promising what does not exist.* `ai/glossary/` and `.claude/contexts/` are
+per-project artifacts this repo does not have, named unconditionally in coder, documenter and
+context-updater. Worse, three **instruction** tables were pinned to one product's domains —
+`billing`, `campaigns`, `seller`, `buyer`, `outreach`, down to `buyer/states.py`. Not
+examples: `tester.md` selected which tests to run from that list, and `documenter` runs at
+Step 3.5 of *every* autopilot spec. Rewritten positionally.
+
+*Instructions arguing inside one prompt.* `coder.md` includes `minimal-code` ("don't add
+docstrings to code you didn't change") and then required, under MANDATORY, "Header empty? →
+Fill before working". Made conditional, **not cut** — Step 6 measured a regression when the
+section was removed, and Step 7's own counts say the convention is conditional (18/18 in one
+directory, 0/74 and 0/75 in two others). The rest of that axis is clean: all 57 agents
+include `output-conventions`, none demands the self-verification it forbids.
+
+Also swept: `{minimum 5 sources}` in six board directors and the spark research scout,
+against the `search-cascade.md` they all include, which says answering from knowledge is
+valid and **never to invent a URL**. A required count of URLs in the output schema rewards
+producing URLs. Same class as the `NO RESEARCH = INVALID VERDICT` line Step 7 removed from
+the architect personas and left in the four council experts.
+
+**A field report, and the two defects behind it.** From awardybot: `completion.md` demanded a
+hand-written row in `ai/backlog.md` and warned "Autopilot reads ONLY backlog — orphan spec
+files are invisible to it". Both false since ARCH-186: `orchestrator.scan_queued` reads
+`ai/lifecycle/*.yaml` and says so in its own docstring, and
+`callback._render_and_commit_backlog` re-renders the file after every lifecycle write, so a
+hand-written row races the renderer.
+
+Digging for why an agent would do that found the cause two steps up. The ID protocol tells
+Spark to `sys.path.insert(0, 'scripts/vps'); import lifecycle` — a module that ships **in
+this repository only**, while `claude-runner.py:520` starts the agent with `cwd=project_path`.
+awardybot has 471 lifecycle records and no `lifecycle.py` anywhere. So the import fails on
+the step that claims the ID, two lines later the prompt says a backlog entry is MANDATORY and
+its absence is DATA LOSS, and the agent does the only thing left. **Two defects, one path.**
+Nothing was broken underneath — `bootstrap_new_specs` creates the record for any spec lacking
+one — the prompt just never said so.
+
+**Where the measurement moves.** Evaluating a skill against the framework repository measures
+an empty kitchen. A clone of AwardyBot (origin detached, DLD's spark prompts laid over the
+real code) was given the money-precision task and produced
+`BUG-1415 — Копилка в миниаппе теряет копейки`, 23 KB, in 9.2 minutes. Verified by hand, not
+by judge: `miniapp/src/lib/format.ts:25` `formatKopecks()` carries `maximumFractionDigits: 0`
+exactly as cited, `kopecks_to_rub` is real. The root cause is arithmetic rather than restated
+symptom — the balance is rounded once from the sum, history per row, so
+`Σ round(aᵢ) ≠ round(Σ aᵢ)`. And it did not touch `ai/backlog.md`.
+
+**The generalisation.** Steps 5–8 assumed the subject of measurement is the prompt. It is the
+prompt *plus the repository it runs against*. A skill that reads a codebase cannot be
+evaluated where there is no codebase — and the framework repo is exactly that place. Skill
+evals belong in a clone of a real project; DLD is the harness, not the workload.
+
 ## How it stays honest
 
 Measured, not tasted. The eval harness works: `test/agents/review/` scored ADR-029 at
@@ -707,3 +833,13 @@ opus/low **0.883** against sonnet/xhigh **0.767** on defect recall. Rewriting pr
 by feel is the reliable way to make them worse without noticing.
 
 Every step that changes a prompt gets a golden dataset before the change, not after.
+
+**And check the instrument before trusting the reading.** Step 11 spent a paid sweep
+discovering that the harness discarded output on timeout, scored stdout instead of the
+files, and ran against a repository the tasks could not apply to. None of that failed
+loudly: every run reported a status, wrote files, and exited 0. A green run from a broken
+instrument is indistinguishable from a real result until someone opens the artifacts.
+
+The corollary is about *where*, not just *what*: a skill that reads a codebase is measured
+against a codebase. This repository is the harness. The workload lives in the projects it
+drives.
