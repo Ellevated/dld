@@ -2,7 +2,7 @@
   "skill_name": "spark",
   "notes": [
     "Run with: node .claude/scripts/run-eval.mjs --skill-path .claude/skills/spark --evals-path .claude/skills/spark/evals/evals.json --cwd <throwaway-clone> --timeout 900000",
-    "ISOLATION IS MANDATORY. Spark claims an ID through lifecycle CAS, writes ai/features/<ID>-*.md, writes ai/lifecycle/<ID>.yaml and edits ai/backlog.md. Against a live repo an eval run leaves real specs in the real queue.",
+    "ISOLATION IS MANDATORY. Spark claims an ID through lifecycle CAS, writes ai/features/<ID>-*.md and ai/lifecycle/<ID>.yaml. Against a live repo an eval run leaves real specs in the real queue. (This line used to say Spark edits ai/backlog.md — it must not; the backlog is a render.)",
     "Every prompt is written in headless form ([headless] + Source:) because Mode A asks 5-7 questions one at a time and would stall on --print. Mode H is also what the orchestrator dispatches, so it is the path worth measuring.",
     "Assertions marked deterministic are checkable without a judge: run node .claude/scripts/validate-allowlist.mjs on the produced spec, grep the spec, count rows.",
     "Score the artifacts, not stdout. Every deterministic assertion here is a property of the written spec, which run-eval.mjs copies into eval-N-artifacts/. stdout is Spark's report about the run.",

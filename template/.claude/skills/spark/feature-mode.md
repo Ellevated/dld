@@ -402,7 +402,8 @@ Instead of "scan backlog → pick max+1 → write spec", use atomic CAS:
 
 3. **On `LifecycleWriteRaceError`** → re-read HEAD, increment candidate, retry (max 3 attempts — `MAX_CAS_RETRIES`).
 
-4. **On success** → ID is yours. Write `ai/features/<ID>-<date>-<title>.md` and backlog row.
+4. **On success** → ID is yours. Write `ai/features/<ID>-<date>-<title>.md`. Nothing else —
+   `ai/backlog.md` is rendered from the lifecycle records and is never edited by hand.
 
 5. **On exhausted retries** → surface error to user; do NOT write spec with an unclaimed ID.
 
