@@ -155,7 +155,10 @@ export default {
     requireTestsInSpec: true,
     requireEvalCriteria: true,
     requireIntegrationTests: true,
-    requireAcceptanceVerification: false,
+    // On since 2026-08-04. Gate 6 in feature-mode.md has always required this section,
+    // and the check below has always existed — it was simply never switched on, so the
+    // gate had no machine behind it. Safe to enforce: the check accepts `N/A: {reason}`.
+    requireAcceptanceVerification: true,
     minTestCases: 3,
     minEvalCriteria: 3,
     minResearchFiles: 2,
