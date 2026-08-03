@@ -15,7 +15,7 @@ Execute this protocol AFTER completing work that changes project knowledge.
 | Established new pattern | Add to domain "Patterns" |
 | Discovered forbidden action | Add to domain "Forbidden" |
 | Changed existing API signature | Update dependents list |
-| Added new term | Add to ai/glossary/{domain}.md |
+| Added new term | Add to `ai/glossary/{domain}.md` — **only if the project keeps a glossary** |
 
 ---
 
@@ -47,6 +47,10 @@ In `.claude/rules/domains/{domain}.md`, section "History":
 ```
 
 ### Adding glossary term
+
+Only where `ai/glossary/` already exists — it is created by `/bootstrap` per project, and
+some repositories (this one included) have none. Do not create the directory to satisfy
+this step.
 
 In `ai/glossary/{domain}.md`:
 

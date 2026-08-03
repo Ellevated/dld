@@ -189,28 +189,23 @@ responsibility. Autopilot does NOT have `force-done` permission. Operator runs:
 - Edit existing prompt versions
 - Mocking DB result shapes in unit tests (ADR-014)
 
-## Module Headers Workflow (MANDATORY)
+## Module Headers
 
-When working with a file:
+**Follow the convention where the surrounding files already use it.** Check the directory
+you are editing: if its files carry a module header, a file you add or substantially change
+gets one too, and one you touch gets its `Uses` / `Used by` kept accurate. If they do not,
+adding one imports a convention the file does not use — which `@_shared/minimal-code.md`
+tells you not to do.
 
-```
-1. OPENED file
-   └── Read module header (if exists)
+It is genuinely conditional, not politeness: measured across one real repository, its
+`_shared/content/*.ts` carried headers 18 times out of 18, while `migrations/*.sql` had 0
+of 74 and `tests/*.ts` 0 of 75.
 
-2. CHECKED consistency
-   ├── Header empty? → Fill before working
-   ├── Uses/Used by up to date?
-   └── Glossary references valid?
+Two things this does **not** license, both from `@_shared/minimal-code.md`: filling in a
+header on a file you were not otherwise changing, and documenting code you did not touch.
 
-3. MADE changes to code
-
-4. RE-READ module header
-   ├── Added new dependencies to Uses?
-   ├── Role changed?
-   └── Need to update Used by? (grep who uses it)
-
-5. SAVED file
-```
+When you do change a module's dependencies or role, update its header in the same edit —
+`Used by` is the half that rots, so grep for callers rather than guessing.
 
 ### Module Header Format
 
@@ -227,10 +222,11 @@ Uses:
 Used by:
   - {caller}:{function}
   - {caller}:{function}
-
-Glossary: ai/glossary/{domain}.md
 """
 ```
+
+A `Glossary:` line pointing at `ai/glossary/{domain}.md` belongs in projects that keep a
+glossary. Omit it where there is none rather than writing a path that resolves nowhere.
 
 ---
 

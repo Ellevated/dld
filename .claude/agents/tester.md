@@ -54,13 +54,17 @@ with no failures in it — which sends the reader hunting for failures that neve
 
 ### Domain Tests
 
+Selection is positional — run the tests that live with the code you changed:
+
 | Changed file | Tests to run |
 |--------------|--------------|
-| `src/domains/billing/*` | `pytest src/domains/billing/ -v -n auto` |
-| `src/domains/campaigns/*` | `pytest src/domains/campaigns/ -v -n auto` |
-| `src/domains/seller/*` (not prompts/) | `pytest src/domains/seller/ -v -n auto --ignore=src/domains/seller/prompts` |
-| `src/domains/buyer/*` | `pytest src/domains/buyer/ -v -n auto` |
-| `src/domains/outreach/*` | `pytest src/domains/outreach/ -v -n auto` |
+| `src/domains/{domain}/*` | `pytest src/domains/{domain}/ -v -n auto` |
+| A domain that keeps non-code assets (prompts, fixtures) | same, with `--ignore=` on that subdirectory — it holds no tests |
+
+**Read the repository for its domain names.** This table used to enumerate `billing`,
+`campaigns`, `seller`, `buyer` and `outreach` — one product's domains. In any other project
+those paths do not exist, and `pytest` against a missing path exits non-zero for a reason
+that has nothing to do with the code under test.
 
 ### Infrastructure Tests
 
@@ -76,9 +80,9 @@ with no failures in it — which sends the reader hunting for failures that neve
 
 | Changed file | Tests to run |
 |--------------|--------------|
-| `src/domains/seller/prompts/*` | `./test llm -- -k "seller"` |
-| `src/domains/seller/tools/*` | `./test llm -- -k "seller"` |
-| `src/config/prompts/*` | `./test llm` |
+| `src/domains/{domain}/prompts/*` | LLM suite, filtered to that domain (`-k "{domain}"`) |
+| `src/domains/{domain}/tools/*` | LLM suite, filtered to that domain |
+| `src/config/prompts/*` | Full LLM suite |
 
 ### E2E Tests
 
