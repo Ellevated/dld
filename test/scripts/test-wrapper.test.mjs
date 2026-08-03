@@ -129,18 +129,26 @@ function testRealFailureStillReportsFail() {
   console.log('  PASS: testRealFailureStillReportsFail');
 }
 
-function testExistingPathThatFailsIsStillAFailure() {
-  // The path check keys on existence, not on shape. `process.execPath` is an
-  // absolute path that exists — and on Windows it contains a space, so this
-  // also pins that the first token is read with its quotes rather than split
-  // on whitespace into `"C:\Program`.
-  const result = runWrapper(`"${process.execPath}" -e "console.log('FAILED one'); process.exit(1)"`);
-  assert.equal(result.exitCode, 1, 'An existing command that fails keeps exit 1');
+function testExistingPathWithASpaceIsNotMissing() {
+  // The path check keys on existence, not on shape — and the path may contain a
+  // space, because `main` rebuilds the command with `args.join(' ')` and the
+  // caller's quoting does not survive that. Splitting on whitespace would stat
+  // the first fragment and call a command that exists missing.
+  //
+  // A directory is the portable way to say "this path exists and running it
+  // fails": every shell refuses it, with a message none of the not-found
+  // patterns match, on every platform. No quotes, no metacharacters — the two
+  // things this wrapper is known to mangle.
+  const spaced = join(TEST_DIR, 'dir with space');
+  mkdirSync(spaced, { recursive: true });
+
+  const result = runWrapper(spaced);
+  assert.notEqual(result.exitCode, 0, 'Running a directory does not succeed');
   assert.ok(
     !result.output.includes('TEST_COMMAND_UNAVAILABLE'),
-    `A command that exists is never "unavailable": got "${result.output}"`
+    `A path that exists is never "unavailable": got "${result.output}"`
   );
-  console.log('  PASS: testExistingPathThatFailsIsStillAFailure');
+  console.log('  PASS: testExistingPathWithASpaceIsNotMissing');
 }
 
 // --- Runner ---
@@ -156,7 +164,7 @@ function main() {
     testFullOutputSavedOnFailure();
     testMissingCommandIsNotAFailure();
     testRealFailureStillReportsFail();
-    testExistingPathThatFailsIsStillAFailure();
+    testExistingPathWithASpaceIsNotMissing();
     console.log(`\n8/8 tests passed`);
   } finally {
     cleanup();

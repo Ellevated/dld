@@ -41,18 +41,23 @@ const EXIT_COMMAND_UNAVAILABLE = 2;
  */
 const PATH_SHAPED = /^(?:\.{1,2}[\\/]|[\\/]|[A-Za-z]:[\\/])/;
 
-function commandPathMissing(command) {
+/**
+ * Tri-state, because "the filesystem has no opinion" is not the same answer as
+ * "the path is there": true = names a path that is absent, false = the path is
+ * present, null = not path-shaped, so only the shell's output can tell us.
+ */
+function commandPathState(command) {
   const trimmed = command.trim();
 
   const quoted = trimmed.match(/^"([^"]+)"/);
-  if (quoted) return PATH_SHAPED.test(quoted[1]) && !existsSync(quoted[1]);
+  if (quoted) return PATH_SHAPED.test(quoted[1]) ? !existsSync(quoted[1]) : null;
 
   const tokens = trimmed.split(/\s+/);
-  if (!tokens.length || !PATH_SHAPED.test(tokens[0])) return false;
+  if (!tokens.length || !PATH_SHAPED.test(tokens[0])) return null;
 
   // The path may contain spaces and arrive unquoted — `main` rebuilds the
   // command with `args.join(' ')`, which drops the quoting the caller wrote.
-  // So "missing" means no prefix of the tokens resolves to a file; otherwise
+  // So "absent" means no prefix of the tokens resolves to a file; otherwise
   // `C:\Program Files\nodejs\node.exe -e …` would be reported as unavailable.
   for (let i = 1; i <= tokens.length; i++) {
     if (existsSync(tokens.slice(0, i).join(' '))) return false;
@@ -89,7 +94,15 @@ function main() {
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-  if (exitCode !== 0 && (commandPathMissing(command) || looksLikeMissingCommand(exitCode, stdout))) {
+  // When the command names a path, the filesystem is the answer — the shell's
+  // exit code and wording are not consulted at all. A path that exists but
+  // could not be launched is a failed run, not an absent test command, and on
+  // POSIX that case still exits 127.
+  const pathState = commandPathState(command);
+  const commandUnavailable =
+    pathState === null ? looksLikeMissingCommand(exitCode, stdout) : pathState;
+
+  if (exitCode !== 0 && commandUnavailable) {
     console.log(`TEST_COMMAND_UNAVAILABLE: ${command}`);
     console.log('No test command at this path — nothing ran. This is not a test failure.');
     process.exit(EXIT_COMMAND_UNAVAILABLE);
