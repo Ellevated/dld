@@ -191,8 +191,9 @@ Task tool:
 5. [ ] Allowed Files exact (no placeholders)
 6. [ ] Regression test in DoD
 7. [ ] ID determined by protocol (completion.md)
-8. [ ] Spec file created (status: queued)
-9. [ ] Backlog entry added (status: queued)
+8. [ ] Spec file created
+9. [ ] Lifecycle record `ai/lifecycle/{ID}.yaml` exists with `status: queued`
+   (never edit `ai/backlog.md` — it is rendered from these records)
 10. [ ] Auto-commit + push done
 
 ---

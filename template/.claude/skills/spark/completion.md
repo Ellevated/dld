@@ -34,7 +34,8 @@ even with concurrent spark sessions on multiple machines (multi-master).
    same ID): if `LifecycleWriteRaceError` → re-read HEAD, recompute `NEXT = MAX + 1`,
    retry. Cap at **5 attempts**.
 4. **On success** → lifecycle yaml is in HEAD with `by: spark`. Write
-   `ai/features/{CANDIDATE}-YYYY-MM-DD-name.md` and append the backlog row.
+   `ai/features/{CANDIDATE}-YYYY-MM-DD-name.md`. **Do not touch `ai/backlog.md`** —
+   see "The backlog is a render" below.
 5. **On exhausted retries** → log WARNING `SPARK_ID_CAS_EXHAUSTED`, bump
    `ai/.spark-cas-exhausted-count`, fall back to `MAX + 5` with `cas-fallback`
    in transitions[0].reason.
@@ -48,10 +49,10 @@ even with concurrent spark sessions on multiple machines (multi-master).
 ⛔ **DO NOT COMPLETE SPARK** without checking ALL items:
 
 1. [ ] **ID determined by protocol** — not guessed!
-2. [ ] **Uniqueness check** — grep backlog didn't find this ID
+2. [ ] **Uniqueness check** — `git ls-tree HEAD:ai/lifecycle/` did not already contain this ID
 3. [ ] **Spec file created** — ai/features/TYPE-XXX-YYYY-MM-DD-name.md
-4. [ ] **Entry added to backlog** — in active tasks table
-5. [ ] **Status = queued** — spec ready for orchestrator pickup!
+4. [ ] **Lifecycle YAML exists** — `ai/lifecycle/{TASK_ID}.yaml`, written by `create_initial`
+5. [ ] **Status = queued** in that YAML — spec ready for orchestrator pickup!
 6. [ ] **Allowlist Linter passed** (Phase 5.5) — `grep '<!-- callback-allowlist v1' ai/features/{TASK_ID}*.md` returns ≥1 line and `## Allowed Files` heading exists exactly once
 7. [ ] **Function overlap check** — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
@@ -61,47 +62,38 @@ If any item not done — **STOP and do it**.
 
 ---
 
-## Post-Write Verification (MANDATORY — BUG-358)
+## Post-Write Verification (MANDATORY)
 
-After BOTH spec file and backlog entry are written, verify consistency:
+After the spec file is written, verify the two things the pipeline actually reads:
 
 ```bash
-# 1. Verify backlog entry exists
-grep "{TASK_ID}" ai/backlog.md
+# 1. The lifecycle record exists in HEAD and says queued
+git show HEAD:ai/lifecycle/{TASK_ID}.yaml | grep -E '^status:'
+# → status: queued
 
-# 2. If NOT found → ADD NOW (don't proceed!)
-# Edit ai/backlog.md → add entry to active tasks table
-
-# 3. Re-verify
-grep "{TASK_ID}" ai/backlog.md
-# Must show the entry!
-
-# 4. Only then → continue to auto-commit
+# 2. The spec file exists at the path the record implies
+ls ai/features/{TASK_ID}-*.md
 ```
 
-⛔ **Spark without backlog entry = DATA LOSS!**
-Autopilot reads ONLY backlog — orphan spec files are invisible to it.
+If the YAML is missing, `create_initial` did not succeed — go back to the ID protocol.
+Do not "fix" it by editing files by hand: lifecycle writes are CAS-guarded, and a
+hand-written YAML staged into the index is rejected by the pre-commit guard.
 
 ---
 
-## Status Sync Self-Check (SAY OUT LOUD — BUG-358)
+## The backlog is a render — never edit it
 
-When setting status in spec, **verbally confirm**:
+Where an orchestrator dispatches specs, it reads the lifecycle records, and `ai/backlog.md`
+is rendered from those same records after every lifecycle write. A spec with a lifecycle
+record and no backlog row is dispatched normally, and its row appears on the next render.
+A hand-written row is racing a renderer that rebuilds the file from the YAMLs.
 
-```
-"Setting spec file: Status → queued"        [Write/Edit spec]
-"Setting backlog entry: Status → queued"    [Edit backlog]
-"Both set? ✓"                               [Verify match]
-```
+This section used to say the opposite — *"Spark without backlog entry = DATA LOSS! Autopilot
+reads ONLY backlog"* — and instructed Spark to edit the table by hand. That was true when
+the backlog was the source of truth, and false once per-spec lifecycle YAML replaced it.
 
-⛔ **One place only = desync = orchestrator won't find the task!**
-
-### Backlog entry format:
-```
-| ID | Task | Status | Priority | Risk | Feature.md |
-|----|------|--------|----------|------|------------|
-| FTR-XXX | Task name | queued | P1 | R2 | [FTR-XXX](features/FTR-XXX-YYYY-MM-DD-name.md) |
-```
+**Status lives in exactly one place**, the lifecycle YAML. There is no second copy to keep
+in sync, and nothing to "say out loud" — that ritual existed because there were two.
 
 ### Status on Spark exit:
 | Situation | Status | Reason |
@@ -120,18 +112,13 @@ are made, and its only status is `queued`.
 
 ---
 
-## Backlog Format (STRICT)
+## Backlog format
 
-**When adding entry:**
-1. Open `ai/backlog.md`
-2. Find the ACTIVE tasks table (above the `## DONE` section)
-3. Add row to **end** of active table (last row before `---` or `## DONE`)
-4. DO NOT create new sections or tables
+Not your concern — the renderer owns the layout (sections by priority, sort order, spec
+links) and rebuilds it from the lifecycle YAMLs. What determines how your spec appears is
+what you passed to `create_initial`: `priority` and `kind`.
 
-**FORBIDDEN:**
-- Creating new sections/tables
-- Grouping tasks by categories
-- Adding headers like "## Tests" or "## Legacy"
+If a row looks wrong, fix the YAML field it came from, not the rendered table.
 
 ---
 
@@ -167,13 +154,9 @@ File naming: `BUG-XXX-bughunt.md` (the XXX is the report ID, not a task ID).
 
 ### Grouped Specs (IN Backlog)
 
-Each group gets its OWN sequential ID and its OWN backlog entry:
-
-```
-| BUG-085 | Hook safety fixes | queued | P0 | [BUG-085](features/BUG-085.md) |
-| BUG-086 | Missing references | queued | P1 | [BUG-086](features/BUG-086.md) |
-| BUG-087 | Prompt injection | queued | P1 | [BUG-087](features/BUG-087.md) |
-```
+Each group claims its OWN sequential ID through `create_initial`, and therefore gets its own
+lifecycle record — which is what makes it dispatchable, and what puts it in the rendered
+backlog. Three groups means three `create_initial` calls, not one record with three rows.
 
 ### ID Protocol for Grouped Specs
 
@@ -201,7 +184,7 @@ After spec file is created and backlog updated — commit and push:
 
 ```bash
 # 1. Stage spec-related changes only (explicit paths, not entire ai/ directory)
-git add "ai/features/${TASK_ID}"* ai/backlog.md 2>/dev/null
+git add "ai/features/${TASK_ID}"* 2>/dev/null
 
 # 2. Commit
 # Note: If ai/ is in .gitignore, git add is a no-op (expected)
@@ -214,7 +197,7 @@ git push origin develop
 **Why push:** Orchestrator runs on VPS — needs specs on remote to pull and process.
 
 **Why `git add ai/` (not `-A`):**
-- Only commits spec, backlog, diary — controlled files
+- Only commits the spec — a controlled, explicitly named path
 - Protects from accidental credential commits
 - .gitignore is defense-in-depth, not primary protection
 
@@ -288,7 +271,8 @@ Spec is queued. Orchestrator will hand it to autopilot.
 
 ### If running as subagent (Task tool — no user interaction):
 ⛔ **MUST use Write tool to create spec file BEFORE returning!**
-⛔ **MUST use Edit tool to add backlog entry BEFORE returning!**
+⛔ **MUST have claimed the ID via `create_initial` BEFORE returning** — that record, not a
+backlog row, is what an orchestrator dispatches from.
 <GATE>
 After Write/Edit, MUST run `## Auto-Commit + Push (MANDATORY)` via Bash tool BEFORE returning.
 Returning without push = spec invisible to orchestrator (reads from remote HEAD on next cycle).

@@ -957,7 +957,7 @@ DO NOT proceed to Phase 8 until:
 
 After spec is created and validated → read `completion.md` for:
 - ID determination protocol (sequential across ALL types)
-- Backlog entry format
+- Why `ai/backlog.md` is never edited by hand
 - Auto-commit rules
 - Handoff to autopilot
 
