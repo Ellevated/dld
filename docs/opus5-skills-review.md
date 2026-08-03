@@ -826,6 +826,82 @@ prompt *plus the repository it runs against*. A skill that reads a codebase cann
 evaluated where there is no codebase — and the framework repo is exactly that place. Skill
 evals belong in a clone of a real project; DLD is the harness, not the workload.
 
+### Step 12 result — the Spark ablation ran, and came out a draw, 2026-08-04
+
+The first ablation to produce a number. Two arms of `/spark`, four tasks each, against two
+isolated clones of AwardyBot differing in exactly four files.
+
+**The eval set had to be rebuilt, and the reason is the mirror of Step 11's.** There the
+five generic tasks presupposed a product the framework repo does not have, and Spark
+correctly refused all five. Here they presuppose the *absence* of things AwardyBot already
+has: two rate limiters exist, the payment webhook is fully implemented, cookies and refresh
+tokens are already in place, and there is no order or clearance category to discount. The
+webhook task was the worst of them — its assertion demands the spec require signature
+verification, while the code records that the provider offers none, so the assertion
+punishes the correct answer. A generic eval set does not port to a real repository in
+either direction. The four replacements were each verified by grep before being written
+down.
+
+**Arm B is a good-faith cut, not a straw man.** 61.7 KB → 21.4 KB, −66%. Removed: the
+`state.json` phase tracking, the cost estimate, the degraded-mode table, the `<GATE>`
+checklist after every phase, the eight validation gates as a ritual, and the 310-line
+`{placeholder}` spec template. Kept verbatim: every machine-read marker and format, the ID
+CAS protocol, the session-budget numbers, the Impact × Risk matrix, and the reason the three
+scouts are independent.
+
+**Two prompt defects surfaced from reading the files end to end**, both of the class this
+document keeps closing. `feature-mode.md:405` still ordered a backlog row written — a
+survivor of the 2026-08-02 fix, 560 lines above the same file's own explanation of why the
+backlog is never hand-edited. And `completion.md` ordered the spec **deleted** on a failed
+allowlist lint while `feature-mode.md` ordered it **repaired**, with the reason: the id was
+already claimed, so deleting orphans the lifecycle record. The second was fixed **in Arm A
+as well as Arm B** — otherwise the cut arm would have won by carrying a bug fix, which is
+the entanglement Step 5 had to confess to.
+
+**The result.**
+
+| | Arm A (full) | Arm B (−66%) |
+|---|---|---|
+| Specs produced | 4/4 | 4/4 |
+| `validate-allowlist` exit 0 | 4/4 | 4/4 |
+| Markers, no `**Status:**`, backlog untouched | ✓ | ✓ |
+| Allowed Files entries, total | 44 (6/12/**22**/4) | 22 (9/5/3/5) |
+| Paths neither real nor marked NEW | 1 | 0 |
+| Wall clock | **59.7 min** | **69.1 min** (+16%) |
+| Blind comparator wins | **2** (limiter, webhook) | **2** (kopecks, locale) |
+| Mean score, normalised to 5 | 4.14 | 3.93 |
+
+**What is settled: the contracts do not depend on the procedure.** Cutting two thirds of the
+prompt broke none of them — eight specs, eight clean allowlist parses, every marker present,
+no status in any body, the backlog untouched every time. They hold because they are named and
+because a linter stands behind them, not because 300 lines of process surround them.
+
+**What is not settled: quality.** 2–2, with means inside the noise at n=4. This is a draw,
+not a win for either side, and reporting it as anything else would be the same
+tasting-not-measuring the whole document exists to avoid.
+
+**Two findings worth more than the score.**
+
+*Scope creep is not a function of prompt length.* Both arms lost one round to it, and lost it
+the same way. Arm B bundled an unrequested HTTP 200 → 503 change into a storage fix, citing a
+provider retry schedule found in no file. Arm A answered a kopeck-sized bug report with 22
+files across three bundled surfaces — past its own hard block of 15 — after its own
+reproduction showed a ≈1093 ₽ discrepancy it then had to argue down to "a few kopecks". Each
+arm's excursion was a real finding filed in the wrong place.
+
+*The gates check what the template does not tell the model to write.* Both arms' bug specs
+came out with no Acceptance Verification, and Arm A's with no Historical Risks either — not
+because either arm skipped a step, but because the spec template in `bug-mode.md` contains
+neither section, while Gates 1b, 6 and 7 live only in `feature-mode.md`, which the bug path
+never enters. Both arms sit under this equally, so the comparison stays clean; as a defect in
+DLD it outlives the experiment that found it.
+
+**The practical read.** −66% of the prompt buys roughly 10k tokens per Spark dispatch at no
+measured cost in quality, and costs 16% more wall clock — which matters against a fixed
+`TIMEOUT_SECONDS = 5400`. Neither number alone decides it; the honest position is that the
+cut is affordable and unproven, and the next thing to measure is whether the time penalty
+holds on a larger n.
+
 ## How it stays honest
 
 Measured, not tasted. The eval harness works: `test/agents/review/` scored ADR-029 at
