@@ -51,7 +51,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install ruff
+      # Pinned deliberately: `ruff format` output is version-dependent by design, and an
+      # unpinned bump silently widened its file set (0.15 added Markdown), putting the
+      # prompt tree and frozen test fixtures under a formatter. Printing the version keeps
+      # the instrument visible in the log when local and CI disagree again.
+      - run: pip install ruff==0.16.1 && ruff --version
       - run: ruff check .
       - run: ruff format --check .
 

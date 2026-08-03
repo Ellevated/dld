@@ -125,7 +125,7 @@ def test_pre_result_exception_marks_failure(monkeypatch, tmp_path):
 
     async def fake_query(prompt, options):
         raise Exception("init failure")
-        yield  # make it an async generator  # noqa: unreachable
+        yield  # make it an async generator
 
     log_data = _run(fake_query, tmp_path, monkeypatch, tmp_path)
 
@@ -160,7 +160,7 @@ def test_timeout_exception_uses_exit_124(monkeypatch, tmp_path):
 
     async def fake_query(prompt, options):
         raise Exception("Control request timeout: initialize")
-        yield  # make it an async generator  # noqa: unreachable
+        yield  # make it an async generator
 
     log_data = _run(fake_query, tmp_path, monkeypatch, tmp_path)
 
@@ -196,7 +196,7 @@ def test_stderr_callback_captures_lines(monkeypatch, tmp_path):
         cb("CLI fatal: rate limit exceeded\n")
         cb("see https://example.com\n")
         raise Exception("Command failed with exit code 1")
-        yield  # make this an async generator  # noqa: unreachable
+        yield  # make this an async generator
 
     monkeypatch.setattr(claude_runner, "query", fake_query)
     log_data = asyncio.run(claude_runner.run_task(str(tmp_path), "/autopilot demo", "autopilot"))
@@ -239,7 +239,7 @@ def test_process_error_stderr_takes_precedence(monkeypatch, tmp_path):
         # Raise ProcessError with its own stderr attribute
         err = ProcessError("boom", exit_code=1, stderr="real-stderr-from-exc")
         raise err
-        yield  # make this an async generator  # noqa: unreachable
+        yield  # make this an async generator
 
     monkeypatch.setattr(claude_runner, "query", fake_query)
     log_data = asyncio.run(claude_runner.run_task(str(tmp_path), "/autopilot demo", "autopilot"))
