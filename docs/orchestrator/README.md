@@ -13,6 +13,7 @@
 | [components.md](components.md) | Покомпонентный справочник + инварианты диспатча |
 | [runbook.md](runbook.md) | Операционка: старт/стоп, инцидент-восстановление, drift-инструменты |
 | [verification.md](verification.md) | Протокол ручной верификации спеки |
+| [callback-lifecycle-contour-to-be.md](callback-lifecycle-contour-to-be.md) | **TO-BE, не AS-IS.** Retrofit-дизайн контура `scripts/vps/` (Alternative C, 2026-05-23). Переехал сюда 2026-08-03 из `ai/blueprint/`, где лежал вперемешку с блюпринтом чужого продукта и раздавался скаутам как constraint. Читать как проект, а не как описание текущего состояния — актуальное состояние в `status-model.md` и `components.md` |
 
 ---
 
