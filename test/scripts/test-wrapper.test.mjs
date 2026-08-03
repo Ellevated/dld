@@ -103,6 +103,11 @@ function testMissingCommandIsNotAFailure() {
   // This assertion used to read `exitCode !== undefined`, which `err.status || 1`
   // can never violate — so it passed while the wrapper reported a missing ./test
   // as `FAIL: 0 failure(s)`, i.e. a broken suite with no failures in it.
+  //
+  // It then failed on a Russian Windows, where cmd.exe returns exit 1 and an
+  // OEM-codepage message Node decodes as mojibake: the guard was reading the
+  // shell's wording, so it only worked in English. The wrapper now stats the
+  // path instead.
   const result = runWrapper('./definitely-not-a-real-test-command');
   assert.equal(result.exitCode, 2, `Missing command should exit 2, got ${result.exitCode}`);
   assert.ok(
@@ -124,6 +129,20 @@ function testRealFailureStillReportsFail() {
   console.log('  PASS: testRealFailureStillReportsFail');
 }
 
+function testExistingPathThatFailsIsStillAFailure() {
+  // The path check keys on existence, not on shape. `process.execPath` is an
+  // absolute path that exists — and on Windows it contains a space, so this
+  // also pins that the first token is read with its quotes rather than split
+  // on whitespace into `"C:\Program`.
+  const result = runWrapper(`"${process.execPath}" -e "console.log('FAILED one'); process.exit(1)"`);
+  assert.equal(result.exitCode, 1, 'An existing command that fails keeps exit 1');
+  assert.ok(
+    !result.output.includes('TEST_COMMAND_UNAVAILABLE'),
+    `A command that exists is never "unavailable": got "${result.output}"`
+  );
+  console.log('  PASS: testExistingPathThatFailsIsStillAFailure');
+}
+
 // --- Runner ---
 
 function main() {
@@ -137,7 +156,8 @@ function main() {
     testFullOutputSavedOnFailure();
     testMissingCommandIsNotAFailure();
     testRealFailureStillReportsFail();
-    console.log(`\n7/7 tests passed`);
+    testExistingPathThatFailsIsStillAFailure();
+    console.log(`\n8/8 tests passed`);
   } finally {
     cleanup();
   }

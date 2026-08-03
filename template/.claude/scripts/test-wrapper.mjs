@@ -13,7 +13,7 @@
  */
 
 import { execSync } from 'child_process';
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
 const MAX_TRACE_LINES = 5;
@@ -31,7 +31,35 @@ const EXIT_COMMAND_UNAVAILABLE = 2;
  * failures" — because no failure pattern matches a shell's not-found message.
  * That reads as a broken test suite and sends the caller hunting for failures
  * that were never run.
+ *
+ * The default command is `./test fast` — a path — so ask the filesystem rather
+ * than the shell. Reading the shell's wording is locale-dependent: a Russian
+ * Windows returns exit 1 with an OEM-codepage message that Node decodes as
+ * mojibake, so the English patterns below match nothing and the guard silently
+ * stops guarding. The text check stays as a fallback for bare commands
+ * (`pytest`, `npm test`), where there is no path to stat.
  */
+const PATH_SHAPED = /^(?:\.{1,2}[\\/]|[\\/]|[A-Za-z]:[\\/])/;
+
+function commandPathMissing(command) {
+  const trimmed = command.trim();
+
+  const quoted = trimmed.match(/^"([^"]+)"/);
+  if (quoted) return PATH_SHAPED.test(quoted[1]) && !existsSync(quoted[1]);
+
+  const tokens = trimmed.split(/\s+/);
+  if (!tokens.length || !PATH_SHAPED.test(tokens[0])) return false;
+
+  // The path may contain spaces and arrive unquoted — `main` rebuilds the
+  // command with `args.join(' ')`, which drops the quoting the caller wrote.
+  // So "missing" means no prefix of the tokens resolves to a file; otherwise
+  // `C:\Program Files\nodejs\node.exe -e …` would be reported as unavailable.
+  for (let i = 1; i <= tokens.length; i++) {
+    if (existsSync(tokens.slice(0, i).join(' '))) return false;
+  }
+  return true;
+}
+
 function looksLikeMissingCommand(exitCode, output) {
   // POSIX shells use 127 for not-found; cmd.exe returns 1 with its own wording.
   if (exitCode === 127) return true;
@@ -61,7 +89,7 @@ function main() {
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-  if (exitCode !== 0 && looksLikeMissingCommand(exitCode, stdout)) {
+  if (exitCode !== 0 && (commandPathMissing(command) || looksLikeMissingCommand(exitCode, stdout))) {
     console.log(`TEST_COMMAND_UNAVAILABLE: ${command}`);
     console.log('No test command at this path — nothing ran. This is not a test failure.');
     process.exit(EXIT_COMMAND_UNAVAILABLE);
