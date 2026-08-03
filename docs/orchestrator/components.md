@@ -49,8 +49,9 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 
 `run-agent.sh <project_dir> <provider> <skill> <task...>` (`:12-16`). Шаги:
 
-1. **RAM floor gate** (`:29-43`): `/proc/meminfo` MemAvailable; `< 3GB` → JSON error `insufficient_ram`
-   + `exit 78` (EX_CONFIG). Запуск под памятью = OOM на полпути = потраченные токены.
+1. **RAM floor gate** (`:29-43`): `/proc/meminfo` MemAvailable; `< 3GB` → JSON error
+   `insufficient_ram` + `exit 78` (EX_CONFIG). Запуск под памятью = OOM на полпути =
+   потраченные токены.
 2. `SKIP` env (TECH-178): bypass косметических pre-commit fixers.
 3. Dispatch (case по provider): `claude` → `venv/bin/python3 claude-runner.py <dir> <task> <skill>`;
    `codex` → `codex-runner.sh`; `gemini` → `gemini-runner.sh`. Unknown → error exit 1.
@@ -130,8 +131,9 @@ in `db.py`), **decisions** (`record_decision`/`count_demotes_since`/`clear_decis
 `{project}/ai/openclaw/pending-events/{ts}-{skill}.json` + будит Hermes (`wake_hermes`, `:62-92`).
 `notify_circuit_event(action, count, window)` — события circuit-breaker (TECH-169).
 
-> ⚠️ **АКТИВНЫЙ blind spot алертинга.** `wake_hermes` спавнит бинарь `hermes`; если его нет → `log.debug`
-> + `return False`, а `notify()` **игнорирует возврат** (`:104`) — no fallback, ошибка не всплывает.
+> ⚠️ **АКТИВНЫЙ blind spot алертинга.** `wake_hermes` спавнит бинарь `hermes`; если его нет →
+> `log.debug` + `return False`, а `notify()` **игнорирует возврат** (`:104`) — no fallback,
+> ошибка не всплывает.
 > Per memory `openclaw-gateway-down`: gateway снесён ~25 дней, Hermes/Telegram-алерты молча не доходят.
 > Через `notify()` идут ВСЕ алерты: night-review, `CIRCUIT_OPEN`, reap. **Перед запуском оркестратора —
 > проверить, что транспорт алертов жив** (см. [runbook.md](runbook.md#проверка-перед-запуском)).

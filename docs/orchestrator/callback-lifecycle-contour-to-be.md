@@ -109,7 +109,7 @@ This is a SINGLE-FILE blueprint (vs the 6-file Greenfield template) because retr
 | **gate** | The single decision: "is spec done on origin/develop?". Lives in gate-daemon. NO "guard", "rule", "check", "verify" synonyms going forward (those were 6 names for the same thing). |
 | **dispatch** | "Tell pueue to run a task". Lives in orchestrator + dispatcher. NOT "send", "submit", "enqueue" — only "dispatch". |
 | **writer** | Code that calls `lifecycle.write_lifecycle`. Identified by `by=` field. Allowed writers: gate-daemon, orchestrator (for create_initial only), spec_operator. Pre-Wave-3 callback is a writer; post-Wave-3 it is NOT. |
-| **verdict** | gate-daemon's structured output: `GateResult{verdict: done|in_progress|blocked, reason: GateReason, evidence: [commits]}`. Replaces `_emit_audit(12 positional args)`. |
+| **verdict** | gate-daemon's structured output: `GateResult{verdict: done\|in_progress\|blocked, reason: GateReason, evidence: [commits]}`. Replaces `_emit_audit(12 positional args)`. |
 | **decision** | Audit entry written to JSONL. Permanent record. Distinct from gate-daemon's in-memory `verdict`. |
 | **bootstrap** | DELETED. Word should not appear in code post-Wave 4. Spec creation is "Spark writes lifecycle". |
 | **lifecycle** | The state machine + its yaml representation. NOT "spec status", NOT "task state" — those are subsets. |
@@ -183,7 +183,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 | Subcommand | Args | Output | Side effects |
 |---|---|---|---|
 | `vps-orch status SPEC-ID [--project P]` | spec_id, optional project | `{spec_id, status, blocked_reason, dispatched_at, ...}` | none (read) |
-| `vps-orch health` | none | `{circuit: closed|open, slots: {...}, queue_depth: N, gate_daemon: {last_poll_at, cycle_count}, heartbeat: {last_seen}}` | none |
+| `vps-orch health` | none | `{circuit: closed\|open, slots: {...}, queue_depth: N, gate_daemon: {last_poll_at, cycle_count}, heartbeat: {last_seen}}` | none |
 | `vps-orch gate-check SPEC-ID --project P` | spec_id, project | `{verdict, evidence: [{sha, subject, date}], reason}` | none (dry-run) |
 | `vps-orch audit SPEC-ID --since DURATION` | spec_id, duration | `[{ts, event, ...}]` (JSONL parsed) | none (read) |
 | `vps-orch gate-history SPEC-ID` | spec_id | `[{ts, verdict, reason}]` | none |
@@ -296,7 +296,7 @@ class ProcessTokenMissingError(VPSOrchError): ...
 | FF-06 | CHANGELOG.md entry for each incident-driven fix references test file | manual review enforced |
 | FF-07 | `_subject_implements` / gate matches both canonical scope AND trailer conventions (golden dataset) | PR fails on regression |
 | FF-08 | `_SPEC_ID_RE` defined in exactly one place (common.py) | PR fails on duplicates |
-| FF-09 | `grep -E "(import callback|from callback)" scripts/vps/gate-daemon.py` returns empty | PR fails on violation (temporal decoupling invariant) |
+| FF-09 | `grep -E "(import callback\|from callback)" scripts/vps/gate-daemon.py` returns empty | PR fails on violation (temporal decoupling invariant) |
 
 ---
 

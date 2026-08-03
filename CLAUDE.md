@@ -306,8 +306,8 @@ Implementation guard проверяет коммиты в Allowed Files. См. `
 
 ## DLD Orchestrator Reference
 
-VPS daemon координирующий multi-project AI execution через pueue + SQLite (рантайм)
-+ git per-spec YAML (статус SoT, ADR-023). Critical path:
+VPS daemon координирующий multi-project AI execution через pueue + SQLite (рантайм) + git
+per-spec YAML (статус SoT, ADR-023). Critical path:
 pueue completion → callback.py → guard → lifecycle.write_lifecycle (CAS) → push.
 
 **Канонические доки (in-repo, версионируются с кодом):** `docs/orchestrator/`
