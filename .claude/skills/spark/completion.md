@@ -274,13 +274,18 @@ on:
 
 ## Linter Failure → Do Not Commit (MANDATORY)
 
-If Phase 5.5 (Allowlist Linter) returned a failure code (E001..E006):
+If Phase 5.5 (Allowlist Linter) still fails after the repairs described in
+`feature-mode.md` ("On failure — fix the section, do not delete the spec"):
 
-1. Spec file MUST already be deleted by facilitator (if not — delete now via
-   `rm -f ai/features/{TASK_ID}*.md`).
-2. Backlog row for `{TASK_ID}` MUST be removed (use Edit tool).
-3. **DO NOT run `git add` / `git commit` / `git push`** for this task.
-4. Return final status:
+1. **Leave the spec file on disk.** The id was claimed through `create_initial`
+   before the spec was written, so deleting the file leaves its lifecycle record
+   behind as an orphan and burns the id — and a human needs to see what failed.
+   This step used to read "delete now via `rm -f`", contradicting `feature-mode.md`
+   in the same breath, and told you to hand-edit a backlog row out of a file that
+   is rendered.
+2. **DO NOT run `git add` / `git commit` / `git push`** for this task. An unpushed
+   spec is invisible to the orchestrator, which is the outcome you want here.
+3. Return final status:
    ```yaml
    status: blocked
    spec_path: null
