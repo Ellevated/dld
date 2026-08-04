@@ -274,16 +274,18 @@ If Phase 5.5 (Allowlist Linter) still fails after the repairs described in
    you to hand-edit a backlog row out of a file that is rendered.
 2. **DO NOT run `git add` / `git commit` / `git push`** for this task. An unpushed
    spec is invisible to the orchestrator, which is the outcome you want here.
-3. Return final status:
+3. Return final status. `spec_path: null` reports what the pipeline received, not what is
+   on disk — nothing was handed off. Name the file in `error_message` so the human can
+   find it:
    ```yaml
    status: blocked
    spec_path: null
    spec_status: not_created
    pushed: false
    error_code: ALLOWLIST_E00X
-   error_message: "<human-readable description>"
+   error_message: "<description> — unpushed spec left at ai/features/{TASK_ID}-*.md"
    ```
-5. The orchestrator/operator surfaces the error to the founder via Telegram —
+4. The orchestrator/operator surfaces the error to the founder via Telegram —
    no auto-recovery.
 
 ⛔ Pushing a spec that fails the linter defeats the point of the canonical format.
