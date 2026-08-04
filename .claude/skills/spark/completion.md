@@ -37,10 +37,24 @@ even with concurrent spark sessions on multiple machines (multi-master).
 
    - Do **not** hand-write the YAML. `write_lifecycle` is CAS-guarded, and the
      pre-commit hook rejects any staged `ai/lifecycle/*.yaml`.
-   - Do **not** fall back to editing `ai/backlog.md` — see "The backlog is a render".
-   - Write the spec file with the candidate ID and stop. The orchestrator's
-     `bootstrap_new_specs` creates the lifecycle record for any spec that lacks one,
-     on its next cycle, and dispatch proceeds from there.
+   - **Do add a row for the spec to `ai/backlog.md`.** This is the one case where the
+     backlog is written by hand, and it is not optional:
+     `orchestrator_backlog.bootstrap_new_specs` reads `git show HEAD:ai/backlog.md`
+     and **skips any spec whose id is absent** — `if spec_id not in backlog_ids:
+     continue`, commented "Orphan spec.md (not in backlog) — skip. Historical
+     artifact." With no module to claim the id and no row to be found, the spec is
+     never bootstrapped, never dispatched, and never reported as anything: it simply
+     sits in `ai/features/` forever.
+   - Then the orchestrator creates the lifecycle record on its next cycle, dispatch
+     proceeds, and from that point the row is maintained by the renderer rather than
+     by you.
+
+   *This paragraph said the opposite between 2026-08-02 and 2026-08-04* — "do not
+   fall back to editing the backlog, bootstrap creates the record for any spec that
+   lacks one". The second half is false: bootstrap creates it only for specs already
+   named in the backlog. The correction that removed the hand-written row was right
+   about DLD, where the module exists and the CAS claims the id, and wrong about every
+   project DLD manages, where it is the only path a spec has.
 
    Know what this costs: the spec-first CAS exists to stop two machines claiming the
    same ID. Without the module, that protection is not in play — which is why
@@ -98,7 +112,7 @@ do not write the YAML or the backlog by hand.
 
 ---
 
-## The backlog is a render — never edit it
+## The backlog is a render — with exactly one exception
 
 `ai/backlog.md` opens with `AUTO-GENERATED from ai/lifecycle/*.yaml — do not edit
 manually`, and that is accurate:
@@ -118,7 +132,20 @@ ARCH-186/ADR-023 moved the source of truth into per-spec YAML, and false afterwa
 `orchestrator.scan_queued`'s own docstring has said so since: *"reads ai/lifecycle/*.yaml
 (HEAD-based), not ai/backlog.md (which is now an auto-rendered read-only view)"*.
 Reported from awardybot by an agent that declined to follow the checklist and raised a
-signal instead — the right call.
+signal instead — the right call, and half right. `scan_queued` does read the YAMLs. But
+`bootstrap_new_specs` runs before it every cycle and refuses to create a YAML for a spec
+the backlog does not name, so in a project where Spark cannot claim the id itself, the
+hand-written row is not redundant bookkeeping — it is the whole handshake.
+
+**The exception, stated once:** write a backlog row if and only if `create_initial` was
+unavailable, i.e. `scripts/vps/lifecycle.py` does not ship in this repository. If the
+module is there, the id is already claimed and the row is the renderer's business.
+
+There is a known race under that exception: `callback._render_and_commit_backlog`
+rewrites the file from the YAMLs after any lifecycle write, so a row added by hand can be
+erased before the next bootstrap sees it. The window is one orchestrator cycle and closes
+as soon as the record exists. It predates this note; it is recorded here rather than
+discovered again.
 
 **Status lives in exactly one place**, the lifecycle YAML. There is no second copy to keep
 in sync, and nothing to "say out loud" — that ritual existed because there were two.

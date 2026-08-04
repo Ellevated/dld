@@ -403,7 +403,12 @@ Instead of "scan backlog → pick max+1 → write spec", use atomic CAS:
 3. **On `LifecycleWriteRaceError`** → re-read HEAD, increment candidate, retry (max 3 attempts — `MAX_CAS_RETRIES`).
 
 4. **On success** → ID is yours. Write `ai/features/<ID>-<date>-<title>.md`. Nothing else —
-   `ai/backlog.md` is rendered from the lifecycle records and is never edited by hand.
+   `ai/backlog.md` is rendered from the lifecycle records.
+5. **If `create_initial` was unavailable** (no `scripts/vps/lifecycle.py` here — every
+   project DLD manages), write the spec **and** a backlog row for it. The orchestrator's
+   bootstrap skips any spec the backlog does not name, so without the row the spec is
+   never dispatched. See `completion.md`, "The backlog is a render — with exactly one
+   exception".
 
 5. **On exhausted retries** → surface error to user; do NOT write spec with an unclaimed ID.
 

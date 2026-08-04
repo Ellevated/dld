@@ -37,9 +37,13 @@ even with concurrent spark sessions on multiple machines (multi-master).
 
    - Do **not** hand-write the YAML. Lifecycle writes are CAS-guarded, and a pre-commit
      hook rejects any staged `ai/lifecycle/*.yaml`.
-   - Do **not** fall back to editing `ai/backlog.md` — see "The backlog is a render".
-   - Write the spec file with the candidate ID and stop. Where an orchestrator runs, it
-     creates the lifecycle record for any spec that lacks one on its next cycle.
+   - **Do add a row for the spec to `ai/backlog.md`.** This is the one case where the
+     backlog is written by hand, and it is not optional. An orchestrator bootstraps the
+     missing lifecycle record only for specs the backlog already names — a spec file it
+     cannot find a row for is treated as a historical artifact and skipped. With no
+     module to claim the id and no row to be found, the spec is never dispatched and
+     nothing reports it: it sits in `ai/features/` forever.
+   - After that first cycle the record exists, and the row belongs to the renderer again.
 
    Know what this costs: the spec-first CAS exists to stop two machines claiming the
    same ID. Without the module that protection is not in play — which is why interactive
@@ -92,20 +96,32 @@ git show HEAD:ai/lifecycle/{TASK_ID}.yaml | grep -E '^status:'
 
 A missing YAML is only a failure **if the module was available and you ran it**. Where it
 does not ship — the common case, see step 2 of the ID protocol — the spec file alone is the
-correct end state. Either way, do not write the YAML or the backlog by hand.
+correct end state — with the backlog row described above, which is what lets the
+orchestrator find it. Never write the YAML by hand either way.
 
 ---
 
-## The backlog is a render — never edit it
+## The backlog is a render — with exactly one exception
 
 Where an orchestrator dispatches specs, it reads the lifecycle records, and `ai/backlog.md`
-is rendered from those same records after every lifecycle write. A spec with a lifecycle
-record and no backlog row is dispatched normally, and its row appears on the next render.
-A hand-written row is racing a renderer that rebuilds the file from the YAMLs.
+is rendered from those same records after every lifecycle write. A spec **that has a
+lifecycle record** and no backlog row is dispatched normally, and its row appears on the
+next render.
 
-This section used to say the opposite — *"Spark without backlog entry = DATA LOSS! Autopilot
-reads ONLY backlog"* — and instructed Spark to edit the table by hand. That was true when
-the backlog was the source of truth, and false once per-spec lifecycle YAML replaced it.
+**The exception, stated once:** write a backlog row if and only if the lifecycle module was
+unavailable, so the id could not be claimed. The orchestrator bootstraps a missing record
+only for specs the backlog already names, so in that case the row is not bookkeeping — it
+is the only thing that makes the spec visible. Where the module exists, leave the file
+alone.
+
+This section used to say *"Spark without backlog entry = DATA LOSS! Autopilot reads ONLY
+backlog"*, which was true when the backlog was the source of truth and false once per-spec
+lifecycle YAML replaced it. It then said never to touch the backlog at all, which is false
+in the other direction for any project without the module. Both halves matter.
+
+Under the exception there is a known race: the renderer rebuilds the file from the YAMLs
+after any lifecycle write, so a hand-written row can be erased before the next bootstrap
+sees it. The window is one orchestrator cycle and closes once the record exists.
 
 **Status lives in exactly one place**, the lifecycle YAML. There is no second copy to keep
 in sync, and nothing to "say out loud" — that ritual existed because there were two.

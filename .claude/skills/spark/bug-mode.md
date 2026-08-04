@@ -236,7 +236,8 @@ Task tool:
 10. [ ] ID determined by protocol (completion.md)
 11. [ ] Spec file created
 12. [ ] Lifecycle record `ai/lifecycle/{ID}.yaml` exists with `status: queued`
-    (never edit `ai/backlog.md` — it is rendered from these records)
+    (or, where `create_initial` was unavailable, the spec plus a backlog row —
+    `completion.md`, "The backlog is a render — with exactly one exception")
 13. [ ] Auto-commit + push done
 
 ---
