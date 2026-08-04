@@ -137,6 +137,23 @@ Only after root cause is found → create BUG-XXX spec:
 Write "none" explicitly when the lessons bank holds nothing for this area, or when
 `ai/lessons/` does not exist here. A placeholder left in place reads as researched.
 
+## Implementation Plan
+
+### Task 1: [Name]
+**Type:** code | test | migrate
+**Files:**
+  - modify: `path/to/file.py`
+**Acceptance:** [how to verify this task is done]
+
+### Task 2: Regression test
+**Type:** test
+**Files:**
+  - create: `tests/test_name.py`
+**Acceptance:** fails on the commit before the fix, passes after
+
+### Execution Order
+1 → 2
+
 ## Eval Criteria
 
 | ID | Scenario | Input | Expected | Type | Priority |
@@ -229,16 +246,18 @@ Task tool:
 3. [ ] Scout research done
 4. [ ] Impact Tree Analysis complete
 5. [ ] Allowed Files exact (no placeholders), and inside the size ceiling above
-6. [ ] Eval Criteria: ≥3 EC rows and a Coverage Summary — the pre-commit hook blocks without them
-7. [ ] Acceptance Verification: ≥1 AV-S and ≥1 AV-F, or `N/A: {reason}`
-8. [ ] Historical Risks filled from the lessons bank, or "none" written explicitly
-9. [ ] Regression test in DoD
-10. [ ] ID determined by protocol (completion.md)
-11. [ ] Spec file created (status: queued)
-12. [ ] `git cat-file -e HEAD:ai/lifecycle/{ID}.yaml` succeeds and the record says
+6. [ ] Implementation Plan: ≥1 `### Task N` with Type / Files / Acceptance — a one-line
+   fix is still one task, and `requirePlanBeforeCode` denies the commit without it
+7. [ ] Eval Criteria: ≥3 EC rows and a Coverage Summary — the pre-commit hook blocks without them
+8. [ ] Acceptance Verification: ≥1 AV-S and ≥1 AV-F, or `N/A: {reason}`
+9. [ ] Historical Risks filled from the lessons bank, or "none" written explicitly
+10. [ ] Regression test in DoD
+11. [ ] ID determined by protocol (completion.md)
+12. [ ] Spec file created (status: queued)
+13. [ ] `git cat-file -e HEAD:ai/lifecycle/{ID}.yaml` succeeds and the record says
     `status: queued` — or it does not, and the spec ships with a backlog row instead
     (`completion.md`, "The backlog is a render — with exactly one exception")
-13. [ ] Auto-commit + push done
+14. [ ] Auto-commit + push done
 
 ---
 
