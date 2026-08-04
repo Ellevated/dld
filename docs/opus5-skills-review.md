@@ -902,6 +902,68 @@ measured cost in quality, and costs 16% more wall clock — which matters agains
 cut is affordable and unproven, and the next thing to measure is whether the time penalty
 holds on a larger n.
 
+### Step 13 result — the first rollout, and two of my own fixes that were wrong, 2026-08-04
+
+The ablation's leftover finding — *"the gates check what the template does not tell the model
+to write"* — turned out to understate it. Rolling the corrected Spark prompts to the first
+managed project (awardybot) meant reading its gates rather than DLD's, and that produced a
+sharper claim: **a bug spec written strictly to `bug-mode.md` could not be committed at all**,
+in either repository.
+
+Three gates reject it, and the template failed all three:
+
+| Gate | What it wants | What the template shipped |
+|---|---|---|
+| `requirePlanBeforeCode` (Check 2) | `## Implementation Plan` with ≥1 `### Task N` | no such section |
+| `requireEvalCriteria` (Check 4) | `## Eval Criteria` ≥3 rows + Coverage Summary, or `## Tests` | neither |
+| Phase 5.5 allowlist linter | `<!-- callback-allowlist v1 -->` + bullet+backtick rows | numbered list, no marker |
+
+Check 2 fires first, so the fix made on 2026-08-03 — which added Eval Criteria and Acceptance
+Verification — never reached its own gate. **A partial fix to a gated path is indistinguishable
+from no fix**, and it read as complete because the sections it added were the ones being
+discussed at the time.
+
+Verified by running: render the template into a filled spec, stage it in a throwaway repo
+carrying the target's real `hooks.config.mjs`, pipe a `git commit` payload into
+`validate-spec-complete.mjs`. Deny before, allow after, deny again when the plan section is
+removed — the last step being the one that proves the gate is live rather than merely satisfied.
+
+**Two of my own corrections were wrong, both from predicting instead of asking.**
+
+*First*, `be8bc2a` removed the hand-written backlog row on the strength of `scan_queued`
+reading the lifecycle YAMLs. True, but `bootstrap_new_specs` runs before it and refuses to
+create a record for a spec the backlog does not name — so in a project where Spark cannot claim
+the id, the row is the entire handshake. The correction was right about DLD and would have made
+specs permanently invisible in all seven managed projects.
+
+*Second*, the fix for that keyed the fallback on whether `scripts/vps/lifecycle.py` ships in the
+repository. Also wrong: awardybot ships no such file, and `ai/lifecycle/TECH-1414.yaml` was
+still written `updated_by: spark` on 2026-08-03, eight minutes ahead of the spec commit, then
+dispatched as pueue_id 1041 with no backlog row in any ref. It reached the module over SSH,
+through an escape hatch its own `feature-mode.md` documents.
+
+Both versions asked *"what does this repository contain?"* when the answerable question is
+*"did the claim land?"* — one command, `git cat-file -e HEAD:ai/lifecycle/{ID}.yaml`, correct in
+every case. **A predicate over repository contents is a guess about the environment; a predicate
+over HEAD is an observation.** That is the transferable part, and it is worth more than either
+defect it replaced.
+
+**On rolling out at all.** The survey said 0 of 4 Spark files matched the template in any of the
+eight clones, which reads as pure drift and argues for a full sync. It is not: awardybot's
+divergences include the SSH claim path above, a 4-scout configuration, and a caller-tests rule
+in the Impact Tree earned from a real incident. A template-wide overwrite would have deleted all
+three — which is what auto-`upgrade` did in May before it was removed. **Whole-file drift counts
+are a measure of distance, not of value.** The patch was applied defect-by-defect instead
+(`d3b50f305`), and the customizations were named in the commit message so the next reader knows
+they were kept deliberately.
+
+Not yet done: the end-to-end `/spark` run in awardybot, blocked on an unrelated local hazard —
+`pre-commit` stashes unstaged changes and restores them with `git checkout -- .`, which fails on
+a Cyrillic-named `.docx` held open by Word and leaves the restore half-finished. It silently
+reverted three of the founder's uncommitted files twice before the pattern was clear; recovered
+from pre-commit's own patch file, and the commit was then made from a detached worktree. Six
+projects remain unpatched pending that verification.
+
 ## How it stays honest
 
 Measured, not tasted. The eval harness works: `test/agents/review/` scored ADR-029 at
