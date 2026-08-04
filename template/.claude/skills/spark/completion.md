@@ -31,9 +31,16 @@ even with concurrent spark sessions on multiple machines (multi-master).
    "
    ```
 
-   **Most projects do not ship this module.** It belongs to the orchestrator, and an
-   agent runs with `cwd` set to the project, so the import simply fails there. If it
-   does:
+   **Most projects do not ship this module** — it belongs to the orchestrator, and an
+   agent runs with `cwd` set to the project, so the import usually fails there. Usually,
+   not always: a headless run can reach it by another path. So ask HEAD what happened
+   rather than predicting it from the file list:
+
+   ```bash
+   git cat-file -e HEAD:ai/lifecycle/$CANDIDATE.yaml 2>/dev/null && echo claimed || echo unclaimed
+   ```
+
+   `claimed` → go to step 4. `unclaimed` → the id is not yours, and:
 
    - Do **not** hand-write the YAML. Lifecycle writes are CAS-guarded, and a pre-commit
      hook rejects any staged `ai/lifecycle/*.yaml`.
@@ -41,8 +48,8 @@ even with concurrent spark sessions on multiple machines (multi-master).
      backlog is written by hand, and it is not optional. An orchestrator bootstraps the
      missing lifecycle record only for specs the backlog already names — a spec file it
      cannot find a row for is treated as a historical artifact and skipped. With no
-     module to claim the id and no row to be found, the spec is never dispatched and
-     nothing reports it: it sits in `ai/features/` forever.
+     record and no row, the spec is never dispatched and nothing reports it: it sits in
+     `ai/features/` forever.
    - After that first cycle the record exists, and the row belongs to the renderer again.
 
    Know what this costs: the spec-first CAS exists to stop two machines claiming the
@@ -69,8 +76,8 @@ even with concurrent spark sessions on multiple machines (multi-master).
 1. [ ] **ID determined by protocol** — not guessed!
 2. [ ] **Uniqueness check** — `git ls-tree HEAD:ai/lifecycle/` did not already contain this ID
 3. [ ] **Spec file created** — ai/features/TYPE-XXX-YYYY-MM-DD-name.md
-4. [ ] **Lifecycle record accounted for** — either `ai/lifecycle/{TASK_ID}.yaml` exists
-   (`create_initial` ran), or the module does not ship here and an orchestrator will create it
+4. [ ] **Lifecycle record accounted for** — `git cat-file -e HEAD:ai/lifecycle/{TASK_ID}.yaml`
+   succeeds, or it does not and you wrote the backlog row that lets an orchestrator create it
 5. [ ] **Status = queued** wherever that record ends up — never a second copy elsewhere
 6. [ ] **Allowlist Linter passed** (Phase 5.5) — `grep '<!-- callback-allowlist v1' ai/features/{TASK_ID}*.md` returns ≥1 line and `## Allowed Files` heading exists exactly once
 7. [ ] **Function overlap check** — grep other queued specs for same function names
@@ -89,15 +96,15 @@ After the spec file is written, verify the two things the pipeline actually read
 # 1. The spec file exists
 ls ai/features/{TASK_ID}-*.md
 
-# 2. Where the lifecycle module was available, the record is in HEAD and says queued
+# 2. If the claim landed, the record is in HEAD and says queued
 git show HEAD:ai/lifecycle/{TASK_ID}.yaml | grep -E '^status:'
 # → status: queued
 ```
 
-A missing YAML is only a failure **if the module was available and you ran it**. Where it
-does not ship — the common case, see step 2 of the ID protocol — the spec file alone is the
-correct end state — with the backlog row described above, which is what lets the
-orchestrator find it. Never write the YAML by hand either way.
+No record in HEAD is **not** a failure by itself — it means the claim did not land, which
+is the common case, and the spec file plus the backlog row from step 2 is then the correct
+end state. It *is* a failure if the record is there and says anything but `queued`. Never
+write the YAML by hand in either case: it is the one file with a CAS protocol around it.
 
 ---
 
@@ -108,11 +115,16 @@ is rendered from those same records after every lifecycle write. A spec **that h
 lifecycle record** and no backlog row is dispatched normally, and its row appears on the
 next render.
 
-**The exception, stated once:** write a backlog row if and only if the lifecycle module was
-unavailable, so the id could not be claimed. The orchestrator bootstraps a missing record
-only for specs the backlog already names, so in that case the row is not bookkeeping — it
-is the only thing that makes the spec visible. Where the module exists, leave the file
-alone.
+**The exception, stated once:** write a backlog row if and only if
+`git cat-file -e HEAD:ai/lifecycle/{TASK_ID}.yaml` fails after your claim attempt. An
+orchestrator bootstraps a missing record only for specs the backlog already names, so in
+that case the row is not bookkeeping — it is the only thing that makes the spec visible.
+If the record is there, leave the file alone.
+
+**Test the outcome, not the repository.** Keying this on whether the module ships here
+reads as equivalent and is not: a headless run can import it by a path the working tree
+does not show, and then the hand-written row is racing the renderer for no reason. One
+command against HEAD is right in both cases.
 
 This section used to say *"Spark without backlog entry = DATA LOSS! Autopilot reads ONLY
 backlog"*, which was true when the backlog was the source of truth and false once per-spec

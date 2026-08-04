@@ -404,12 +404,13 @@ Instead of "scan backlog → pick max+1 → write spec", use atomic CAS:
 
 4. **On success** → ID is yours. Write `ai/features/<ID>-<date>-<title>.md`. Nothing else —
    `ai/backlog.md` is rendered from the lifecycle records.
-5. **If the lifecycle module was unavailable**, write the spec **and** a backlog row for
-   it. An orchestrator bootstraps a missing lifecycle record only for specs the backlog
-   already names, so without the row the spec is never dispatched. See `completion.md`,
-   "The backlog is a render — with exactly one exception".
+5. **If `git cat-file -e HEAD:ai/lifecycle/<ID>.yaml` fails** after the attempt, the claim
+   did not land — write the spec **and** a backlog row for it. An orchestrator bootstraps a
+   missing lifecycle record only for specs the backlog already names, so without the row the
+   spec is never dispatched. See `completion.md`, "The backlog is a render — with exactly
+   one exception".
 
-5. **On exhausted retries** → surface error to user; do NOT write spec with an unclaimed ID.
+6. **On exhausted retries** → surface error to user; do NOT write spec with an unclaimed ID.
 
 Write spec using selected approach from Phase 4:
 

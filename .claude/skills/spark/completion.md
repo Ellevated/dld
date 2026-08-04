@@ -31,9 +31,13 @@ even with concurrent spark sessions on multiple machines (multi-master).
    "
    ```
 
-   **`scripts/vps/lifecycle.py` ships in the DLD repository only.** An orchestrated
-   project has `ai/lifecycle/` full of records but no module to write them with — the
-   agent runs with `cwd` set to the project, so the import fails there. If it does:
+   **Ask HEAD whether the claim landed — do not predict it from the file list:**
+
+   ```bash
+   git cat-file -e HEAD:ai/lifecycle/$CANDIDATE.yaml 2>/dev/null && echo claimed || echo unclaimed
+   ```
+
+   `claimed` → go to step 4. `unclaimed` → the id is not yours, and:
 
    - Do **not** hand-write the YAML. `write_lifecycle` is CAS-guarded, and the
      pre-commit hook rejects any staged `ai/lifecycle/*.yaml`.
@@ -42,19 +46,23 @@ even with concurrent spark sessions on multiple machines (multi-master).
      `orchestrator_backlog.bootstrap_new_specs` reads `git show HEAD:ai/backlog.md`
      and **skips any spec whose id is absent** — `if spec_id not in backlog_ids:
      continue`, commented "Orphan spec.md (not in backlog) — skip. Historical
-     artifact." With no module to claim the id and no row to be found, the spec is
-     never bootstrapped, never dispatched, and never reported as anything: it simply
-     sits in `ai/features/` forever.
+     artifact." With no record and no row, the spec is never bootstrapped, never
+     dispatched, and never reported as anything: it simply sits in `ai/features/`
+     forever.
    - Then the orchestrator creates the lifecycle record on its next cycle, dispatch
      proceeds, and from that point the row is maintained by the renderer rather than
      by you.
 
-   *This paragraph said the opposite between 2026-08-02 and 2026-08-04* — "do not
-   fall back to editing the backlog, bootstrap creates the record for any spec that
-   lacks one". The second half is false: bootstrap creates it only for specs already
-   named in the backlog. The correction that removed the hand-written row was right
-   about DLD, where the module exists and the CAS claims the id, and wrong about every
-   project DLD manages, where it is the only path a spec has.
+   **Two wrong versions of this paragraph, both from guessing instead of asking HEAD.**
+   Between 2026-08-02 and 2026-08-04 it said "do not fall back to editing the backlog,
+   bootstrap creates the record for any spec that lacks one" — false, bootstrap creates
+   it only for specs the backlog already names. The fix then keyed the fallback on
+   *"`scripts/vps/lifecycle.py` ships in the DLD repository only"*, which is equally
+   unreliable in the other direction: awardybot ships no such file, and
+   `ai/lifecycle/TECH-1414.yaml` was still written `updated_by: spark` on 2026-08-03,
+   eight minutes ahead of the spec commit — a headless run reached the module by another
+   path. One command against HEAD answers correctly in both cases; a claim about which
+   files a repository contains answers correctly in neither.
 
    Know what this costs: the spec-first CAS exists to stop two machines claiming the
    same ID. Without the module, that protection is not in play — which is why
@@ -80,8 +88,8 @@ even with concurrent spark sessions on multiple machines (multi-master).
 1. [ ] **ID determined by protocol** — not guessed!
 2. [ ] **Uniqueness check** — `git ls-tree HEAD:ai/lifecycle/` did not already contain this ID
 3. [ ] **Spec file created** — ai/features/TYPE-XXX-YYYY-MM-DD-name.md
-4. [ ] **Lifecycle record accounted for** — either `ai/lifecycle/{TASK_ID}.yaml` exists
-   (`create_initial` ran), or the module does not ship here and bootstrap will create it
+4. [ ] **Lifecycle record accounted for** — `git cat-file -e HEAD:ai/lifecycle/{TASK_ID}.yaml`
+   succeeds, or it does not and you wrote the backlog row that lets bootstrap create it
 5. [ ] **Status = queued** wherever that record ends up — never a second copy elsewhere
 6. [ ] **Allowlist Linter passed** (Phase 5.5) — `grep '<!-- callback-allowlist v1' ai/features/{TASK_ID}*.md` returns ≥1 line and `## Allowed Files` heading exists exactly once
 7. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
@@ -100,15 +108,16 @@ After the spec file is written, verify the two things the pipeline actually read
 # 1. The spec file exists
 ls ai/features/{TASK_ID}-*.md
 
-# 2. Where the lifecycle module was available, the record is in HEAD and says queued
+# 2. If the claim landed, the record is in HEAD and says queued
 git show HEAD:ai/lifecycle/{TASK_ID}.yaml | grep -E '^status:'
 # → status: queued
 ```
 
-A missing YAML is only a failure **if `create_initial` was available and you ran it**.
-Where the module does not ship (any orchestrated project — see step 2 of the ID protocol),
-the spec file alone is the correct end state; bootstrap creates the record. Either way,
-do not write the YAML or the backlog by hand.
+No record in HEAD is **not** a failure by itself — it means the claim did not land, and
+the spec file plus the backlog row is then the correct end state (see "The backlog is a
+render" below). It *is* a failure if the record is there and says anything but `queued`.
+Never write the YAML by hand in either case: it is the one file with a CAS protocol
+around it.
 
 ---
 
@@ -137,9 +146,9 @@ signal instead — the right call, and half right. `scan_queued` does read the Y
 the backlog does not name, so in a project where Spark cannot claim the id itself, the
 hand-written row is not redundant bookkeeping — it is the whole handshake.
 
-**The exception, stated once:** write a backlog row if and only if `create_initial` was
-unavailable, i.e. `scripts/vps/lifecycle.py` does not ship in this repository. If the
-module is there, the id is already claimed and the row is the renderer's business.
+**The exception, stated once:** write a backlog row if and only if
+`git cat-file -e HEAD:ai/lifecycle/{TASK_ID}.yaml` fails after your claim attempt. If it
+succeeds, the id is already claimed and the row is the renderer's business.
 
 There is a known race under that exception: `callback._render_and_commit_backlog`
 rewrites the file from the YAMLs after any lifecycle write, so a row added by hand can be

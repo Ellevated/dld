@@ -235,9 +235,9 @@ Task tool:
 9. [ ] Regression test in DoD
 10. [ ] ID determined by protocol (completion.md)
 11. [ ] Spec file created (status: queued)
-12. [ ] Lifecycle record `ai/lifecycle/{ID}.yaml` exists with `status: queued`
-    (or, where the lifecycle module was unavailable, the spec plus a backlog row —
-    `completion.md`, "The backlog is a render — with exactly one exception")
+12. [ ] `git cat-file -e HEAD:ai/lifecycle/{ID}.yaml` succeeds and the record says
+    `status: queued` — or it does not, and the spec ships with a backlog row instead
+    (`completion.md`, "The backlog is a render — with exactly one exception")
 13. [ ] Auto-commit + push done
 
 ---
