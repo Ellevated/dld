@@ -390,3 +390,38 @@ DEPLOY_URL=local-only
 ---
 
 ## Autopilot Log
+
+### 2026-08-07 — operator: previous attempt is stale, do not reuse or force-done
+
+Cycle 1 (2026-07-28 11:44) produced real, working code in worktree `.worktrees/TECH-213`
+(branch `tech/TECH-213`, pushed to origin, HEAD `4eddf296`): all four `runner_*.py`
+modules created, `claude-runner.py` cut to 399 LOC, tests rewritten. The 42
+`claude_runner`-scoped tests pass in isolation (`pytest -q -k claude_runner` → 42 passed).
+Final commit `wip(TECH-213): salvaged after timeout — not reviewed, not tested` landed at
+13:18:52, ~94 minutes after dispatch — matches the known 90-minute `claude-runner`
+timeout pattern (`TIMEOUT_SECONDS=5400`), not a deliberate stop.
+
+**Do not `force-done` this.** Verified with `git merge-tree --write-tree develop
+tech/TECH-213`: **CONFLICT** in `claude-runner.py`, `test_claude_runner_heartbeat.py`,
+`test_claude_runner_timeout.py`. Develop moved on since the branch point
+(`787af5d5`, 2026-07-28 11:44):
+
+- `90086204` (2026-07-30) — classifier-refusal detection, +158 LOC directly inside
+  `claude-runner.py` (`_refusal_from_message`, `_REFUSAL_*` constants, new exit code 4).
+  This is a **safety-relevant feature the branch predates entirely** — it exists on
+  neither `runner_result.py` nor anywhere else on `tech/TECH-213`.
+- `5a8bff42` (2026-08-02) — lint/format sweep touching both conflicting test files.
+
+`claude-runner.py` is 875 LOC on develop now, not the spec's baseline 717 — the §Context
+line-number map and Impact Tree in this spec are stale for the same reason.
+
+**Verdict:** the split *shape* (four sibling modules, `run_task` decomposed) is still the
+right design and the isolated test pass is encouraging, but merging the branch as-is would
+either silently drop the refusal-detection safety code or require a real conflict
+resolution I have not attempted. Redispatching instead of force-done: a fresh
+Impact Tree Analysis against current develop must account for `90086204`'s addition
+(where does refusal detection land in the new module map — most likely `runner_result.py`
+alongside `_extract_task_status`, but that's a planner decision, not made here).
+`tech/TECH-213` is pushed to origin, so the worktree-setup sweep will reclaim
+`.worktrees/TECH-213` automatically on next dispatch (already-pushed branch condition) —
+no manual cleanup needed. Recovery reference if ever wanted: commit `4eddf296`.
