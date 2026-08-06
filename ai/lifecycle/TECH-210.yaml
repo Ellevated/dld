@@ -4,10 +4,10 @@ blocked_reason: owner approved Allowed Files expansion (5 integration test files
 finished_at: null
 kind: tech
 priority: p1
-pueue_id: 1032
+pueue_id: 1044
 spec_id: TECH-210
-started_at: null
-status: queued
+started_at: '2026-08-06T23:09:57Z'
+status: in_progress
 transitions:
 - at: '2026-07-27T19:52:57Z'
   by: callback
@@ -29,6 +29,11 @@ transitions:
   from: blocked
   pueue_id: null
   to: queued
-updated_at: '2026-08-06T23:06:06Z'
-updated_by: operator
-version: 5
+- at: '2026-08-06T23:09:57Z'
+  by: orchestrator
+  from: queued
+  pueue_id: 1044
+  to: in_progress
+updated_at: '2026-08-06T23:09:57Z'
+updated_by: orchestrator
+version: 6
