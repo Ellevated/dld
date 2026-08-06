@@ -35,7 +35,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
 import event_writer  # noqa: E402
-import gate_logic  # noqa: E402  — shared gate helpers, keep the two copies in sync
+import gate_logic  # noqa: E402 — single source of gate logic (TECH-210)
 import lifecycle  # noqa: E402  — atomic YAML writer (ADR-023)
 
 log = logging.getLogger("callback")
@@ -728,7 +728,7 @@ def _detect_out_of_scope_files(
         if "\x00" in line:
             # New commit header: hash\x00subject
             _, _, current_subject = line.partition("\x00")
-            is_spec_commit = _subject_implements(current_subject, spec_id)
+            is_spec_commit = gate_logic.match_subject(current_subject, spec_id)
         elif line.strip() and is_spec_commit:
             # File path from --name-only
             rel_path = line.strip()
@@ -1214,7 +1214,7 @@ def verify_status_sync(
 
     # Allowed files (used by gate + telemetry)
     spec_file = next(iter(Path(project_path).glob(f"ai/features/{spec_id}*.md")), None)
-    allowed = _parse_allowed_files(spec_file) if spec_file else None
+    allowed = gate_logic.parse_allowed_files(spec_file) if spec_file else None
     started_at = _get_started_at(int(pueue_id)) if pueue_id else None
     code_loc, test_loc, code_commits = _commit_stats(project_path, allowed, started_at)
 
@@ -1511,7 +1511,7 @@ def _step6_dispatch_qa_reflect(
                 iter(Path(project_path).glob(f"ai/features/{spec_id}*.md")),
                 None,
             )
-            allowed = _parse_allowed_files(spec_file) if spec_file else None
+            allowed = gate_logic.parse_allowed_files(spec_file) if spec_file else None
             if not allowed:
                 log.info(
                     "skip QA+reflect merge fallback: no allowed_files for %s",
