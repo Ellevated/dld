@@ -37,6 +37,7 @@ venv/
 
 # Локальные базы и секреты VPS-оркестратора
 scripts/vps/.env
+scripts/vps/.env.bak-*
 scripts/vps/*.db
 scripts/vps/.notified-drafts-*
 scripts/vps/.task-cmd-*.txt
@@ -45,6 +46,8 @@ scripts/vps/.orchestrator-heartbeat
 scripts/vps/.gate-daemon.pid
 scripts/vps/.gate-daemon-heartbeat
 scripts/vps/callback-audit.jsonl
+scripts/vps/gate-daemon-shadow.jsonl
+scripts/vps/logs/
 scripts/vps/ai/
 
 # Runtime артефакты (не коммитятся)

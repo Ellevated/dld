@@ -1,0 +1,606 @@
+persona: qa-engineer
+findings:
+
+  - id: QA-001
+    severity: high
+    category: coverage-gap
+    file: "scripts/vps/tests/test_lifecycle.py"
+    line: 397
+    title: "CAS race test allows both-success outcome without verifying content correctness"
+    description: |
+      test_create_initial_cas_collision_retry correctly checks that exactly 1 ARCH-999.yaml
+      exists in HEAD (arch_999_count == 1) and that at least one worker succeeded. However,
+      it accepts ("success", "success") as a valid outcome with the comment "or both success
+      if git CAS serialized perfectly (both commits landed on different HEAD SHAs)".
+
+      This is incorrect semantics for a CAS test. If both processes return "success", it means
+      two sequential git update-ref operations both landed — which is actually fine (no race
+      condition occurred, one serialized after the other, and the second one wrote over the
+      first). But the test then asserts arch_999_count == 1, which will still pass.
+
+      The problem is: the test does NOT assert the CONTENT of the winning YAML is valid.
+      If both succeed sequentially, the final YAML at HEAD is from the second writer — but
+      the test never validates that the YAML is parseable, has status="queued", and has the
+      correct spec_id field.
+    test_case: |
+      Input: Both processes succeed (sequential CAS, no actual race).
+      Expected: HEAD ARCH-999.yaml is parseable with status="queued", spec_id="ARCH-999".
+      Actual: Test passes without validating YAML content — a corrupt/empty YAML blob
+              committed by a buggy _build_yaml_content would go undetected.
+    fix_suggestion: |
+      After the arch_999_count == 1 assertion, add:
+        from lifecycle import read_lifecycle
+        data = read_lifecycle(repo_dir, "ARCH-999")
+        assert data is not None, "ARCH-999.yaml in HEAD must be parseable YAML"
+        assert data["spec_id"] == "ARCH-999"
+        assert data["status"] == "queued"
+        assert data["version"] >= 1
+
+  - id: QA-002
+    severity: high
+    category: coverage-gap
+    file: "scripts/vps/tests/test_lifecycle.py"
+    line: 430
+    title: "CAS race test has no barrier timeout — hung worker causes test to silently pass with 0 results"
+    description: |
+      Both processes are joined with p1.join(timeout=30) / p2.join(timeout=30), and then
+      checked with p1.is_alive() / p2.is_alive(). If a process hangs (e.g. git deadlock
+      or barrier never reached by one process), the join times out and is_alive() asserts.
+      Good so far.
+
+      However, the multiprocessing.Barrier has no timeout itself:
+        barrier = mp.Barrier(2)
+        barrier.wait()  # in worker — blocks indefinitely if the other process crashes before reaching it
+
+      If one process crashes BEFORE calling barrier.wait() (e.g. during import of lifecycle
+      in the worker, which could fail if sys.path isn't set up correctly in the subprocess),
+      the second process will block forever at barrier.wait(). The outer join(timeout=30)
+      will then correctly catch this, assert is_alive() fails, and the test fails with
+      "Process 1 hung (timeout)" — which is CORRECT behavior.
+
+      But there's a subtler issue: if a process crashes AFTER barrier.wait() but BEFORE
+      putting to result_queue (e.g. an unexpected exception in create_initial that is not
+      LifecycleWriteRaceError or Exception), the result_queue will have only 1 result.
+      The test then fails at:
+        assert len(results) == 2, f"Expected 2 results from workers, got {len(results)}"
+      This is correct — but the error message "Expected 2 results from workers" is
+      misleading and won't hint that a worker crashed between barrier and queue.put().
+
+      More critically: the worker catches `except Exception as exc` broadly, so a crash
+      would be caught and put as ("other_error", ...). The test then fails at:
+        assert outcome in ("success", "race_error")
+      So the test does catch this. But the assertion message gives no clue about WHICH
+      worker crashed or WHY — making CI failures hard to diagnose.
+    test_case: |
+      Input: Worker process crashes with unexpected ImportError inside create_initial
+             (e.g. missing yaml dependency in subprocess environment).
+      Expected: Test fails with a clear diagnostic message.
+      Actual: Test fails with "Unexpected outcome 'other_error': ImportError: No module named 'yaml'"
+              — no indication which process crashed or at what point.
+    fix_suggestion: |
+      1. Add barrier timeout: barrier = mp.Barrier(2, timeout=10)
+         (Barrier constructor accepts timeout in Python 3.8+)
+      2. Improve diagnostic: in the outcome assertion loop, include process names/PIDs.
+      3. Add explicit check: assert "other_error" not in outcomes, f"Worker crashed: {results}"
+
+  - id: QA-003
+    severity: high
+    category: coverage-gap
+    file: "scripts/vps/tests/test_lifecycle.py"
+    line: 397
+    title: "No test for create_initial(by='autopilot') raising ValueError — ADR-027 security invariant untested"
+    description: |
+      ADR-027 and ARCH-196 CR-7 define a critical security invariant:
+        - "spark" IS in _ALLOWED_WRITERS_FOR_CREATE (can claim IDs)
+        - "spark" is NOT in _ALLOWED_WRITERS (cannot mutate status)
+        - "autopilot" is NOT in either set (cannot call create_initial)
+
+      The test suite (test_lifecycle.py) has NO test that:
+        1. Verifies create_initial(by="autopilot") raises ValueError
+        2. Verifies create_initial(by="unknown") raises ValueError
+        3. Asserts the constant membership: "spark" in _ALLOWED_WRITERS_FOR_CREATE
+        4. Asserts the separation: "spark" not in _ALLOWED_WRITERS
+
+      The CAS race test (test_create_initial_cas_collision_retry) calls
+      create_initial(by="spark") successfully, which incidentally tests the happy
+      path for spark. But the rejection path for unauthorized writers has zero coverage.
+
+      This matters because if someone adds "autopilot" to _ALLOWED_WRITERS_FOR_CREATE
+      by mistake (e.g. during a merge conflict resolution), no test would catch it.
+    test_case: |
+      Input: lifecycle.create_initial(repo, "ARCH-001", "p1", "tech", by="autopilot")
+      Expected: raises ValueError
+      Actual: UNTESTED — would silently succeed if "autopilot" were accidentally added
+              to _ALLOWED_WRITERS_FOR_CREATE.
+
+      Input: "spark" in lifecycle._ALLOWED_WRITERS_FOR_CREATE
+      Expected: True
+      Actual: UNTESTED
+
+      Input: "spark" in lifecycle._ALLOWED_WRITERS
+      Expected: False
+      Actual: UNTESTED
+    fix_suggestion: |
+      Add to test_lifecycle.py:
+
+      def test_create_initial_rejects_unauthorized_writer(tmp_git_repo):
+          """ADR-027: create_initial only allows _ALLOWED_WRITERS_FOR_CREATE."""
+          with pytest.raises(ValueError, match="invalid by="):
+              lifecycle.create_initial(tmp_git_repo, "ARCH-001", "p1", "tech", by="autopilot")
+          with pytest.raises(ValueError, match="invalid by="):
+              lifecycle.create_initial(tmp_git_repo, "ARCH-001", "p1", "tech", by="unknown")
+
+      def test_allowed_writers_for_create_invariant():
+          """ADR-027: spark in _ALLOWED_WRITERS_FOR_CREATE but NOT in _ALLOWED_WRITERS."""
+          assert "spark" in lifecycle._ALLOWED_WRITERS_FOR_CREATE
+          assert "spark" not in lifecycle._ALLOWED_WRITERS
+          assert "autopilot" not in lifecycle._ALLOWED_WRITERS_FOR_CREATE
+          assert "autopilot" not in lifecycle._ALLOWED_WRITERS
+
+  - id: QA-004
+    severity: high
+    category: coverage-gap
+    file: "scripts/vps/orchestrator.py"
+    line: 487
+    title: "cleanup_stale_stashes has zero test coverage"
+    description: |
+      cleanup_stale_stashes() (lines 487-542) was introduced in ARCH-196 CR-12.
+      It is called from startup_reconcile() (line 557) on every daemon boot.
+      Despite being on the critical path of daemon startup, it has NO tests.
+
+      Untested edge cases:
+        1. No stashes exist → returns 0 immediately (line 503: `if not output: return 0`)
+           This is the normal case but even the happy path is untested.
+        2. git stash list fails → CalledProcessError caught by bare `except Exception` (line 540)
+           → returns 0. Silent failure masks a broken git repo.
+        3. git stash list returns non-autopilot stashes → should be skipped (line 515).
+           The filter condition is: "autopilot-temp-" not in msg_and_date AND
+           "autopilot-phase3" not in msg_and_date → skip. Untested.
+        4. git stash drop fails mid-loop → CalledProcessError caught (line 538) → skips
+           that stash but continues. The dropped count does NOT include the failed drop.
+           If index shifts after a failed drop, subsequent drop refs may hit wrong stashes.
+        5. Date parsing with unusual timezone offset formats. The code does:
+             date_str = msg_and_date.rsplit(" ", 2)[-2] + " " + msg_and_date.rsplit(" ", 2)[-1]
+           This extracts "YYYY-MM-DD" + "HH:MM:SS" but MISSES the timezone "+HHMM" which
+           is the 3rd-to-last token. The actual %ci format is:
+             "YYYY-MM-DD HH:MM:SS +TZOFFSET"
+           rsplit(" ", 2) on "On main: msg 2026-05-01 10:00:00 +0000" gives:
+             [-2] = "10:00:00" and [-1] = "+0000"
+           So date_str = "10:00:00 +0000" → ValueError: time data does not match.
+           This is a SILENT bug — the ValueError is caught (line 525) and the stash is
+           skipped rather than dropped. All stashes with valid timestamps would be silently
+           skipped on timezone parsing failure!
+        6. Drop in reverse order: the `reversed(to_drop)` logic is correct only if stash
+           refs are "stash@{0}", "stash@{1}", etc in ascending order. Untested.
+    test_case: |
+      Input: git repo with stash message "autopilot-temp-2026-05-01" committed
+             more than 24h ago, with %ci format "2026-05-01 10:00:00 +0000".
+      Expected: stash is detected and dropped, cleanup_stale_stashes returns 1.
+      Actual: date_str = "10:00:00 +0000" → fromisoformat raises ValueError →
+              stash silently skipped → returns 0. Bug in date parsing.
+    fix_suggestion: |
+      1. Fix the date parsing bug:
+           # The %ci format adds DATE TIME OFFSET as three space-separated tokens at end.
+           # Need last three tokens: date + time + offset.
+           tokens = msg_and_date.rsplit(" ", 3)
+           if len(tokens) >= 3:
+               date_str = tokens[-3] + " " + tokens[-2] + " " + tokens[-1]
+               # or use simpler git log approach: --format="%gd %gs %aI" (ISO8601 strict)
+      2. Add tests covering:
+           - No stashes: subprocess.check_output returns ""
+           - Non-autopilot stashes are skipped
+           - Old autopilot stash is dropped
+           - Fresh autopilot stash is kept
+           - subprocess failure returns 0 without crashing
+
+  - id: QA-005
+    severity: medium
+    category: coverage-gap
+    file: "scripts/vps/tests/test_orchestrator_lifecycle.py"
+    line: 113
+    title: "test_bootstrap_idempotent_when_lifecycle_exists skips HEAD commit — false pass risk"
+    description: |
+      test_bootstrap_idempotent_when_lifecycle_exists (line 109) calls
+      orchestrator.bootstrap_new_specs(str(tmp_git_repo)) WITHOUT committing ai/backlog.md
+      to HEAD first. Since bootstrap_new_specs now reads backlog via
+      `git show HEAD:ai/backlog.md` (CR-5), and there is no backlog.md in HEAD,
+      the CalledProcessError fallback at line 399-400 (orchestrator.py) triggers:
+        backlog_text = ""  # new project / no HEAD yet
+      This means backlog_ids is an empty set, and the spec TECH-501 is skipped
+      (it's not in backlog_ids), so bootstrap IS a no-op — but for the WRONG reason.
+
+      The test passes because the yaml is not overwritten, but it's not because of the
+      idempotency guard (lifecycle.read_lifecycle returns not None → skip) — it's because
+      the spec isn't in the backlog at all. If bootstrap_new_specs had a bug in the
+      idempotency check but the backlog check worked, this test would still pass.
+
+      Compare with test_bootstrap_idempotent_after_refactor (test_orchestrator_bootstrap.py
+      line 259) which correctly commits the backlog first. The test in
+      test_orchestrator_lifecycle.py is the OLD version that predates CR-5 and was NOT
+      updated with _git_add_commit.
+    test_case: |
+      Input: TECH-501 has lifecycle.yaml in HEAD. backlog.md has TECH-501 but is NOT committed.
+      Expected: bootstrap_new_specs is a no-op because lifecycle exists (idempotency).
+      Actual (current): bootstrap_new_specs is a no-op because backlog_text="" means
+                        backlog_ids is empty and spec is skipped before the idempotency check.
+                        The idempotency guard itself (line 418: read_lifecycle != None → skip)
+                        is NOT exercised by this test.
+    fix_suggestion: |
+      In test_orchestrator_lifecycle.py, test_bootstrap_idempotent_when_lifecycle_exists:
+      add a backlog.md write + git commit before calling bootstrap_new_specs,
+      matching the pattern of test_bootstrap_idempotent_after_refactor in
+      test_orchestrator_bootstrap.py. This ensures the idempotency guard is the
+      actual reason the test passes.
+
+  - id: QA-006
+    severity: medium
+    category: coverage-gap
+    file: "scripts/vps/tests/test_orchestrator.py"
+    line: 473
+    title: "TestBootstrapAnomaly._make_project uses raw backlog format that may not match _parse_backlog header detection"
+    description: |
+      TestBootstrapAnomaly._make_project (line 427) writes a backlog.md WITHOUT a proper
+      markdown header+divider row:
+
+        rows = "\n".join(f"| {sid} | desc | queued | P0 | [spec]({sid}.md) |" for sid in spec_ids)
+        backlog.write_text(rows)
+
+      There is no `| ID | description | status | priority | spec |` header row and no
+      `|---|---|---|---|---|` divider row before the data rows.
+
+      _parse_backlog (orchestrator.py line 291) attempts header detection by looking for
+      a divider line (regex `^\|[\s\-:|]+\|$`). Without a divider, col_map is empty,
+      and the parser falls back to "scan all columns for first valid status".
+
+      In the fallback, it scans parts[1:-1] for a valid status. For the row:
+        | TECH-991 | desc | queued | P0 | [spec](TECH-991.md) |
+      parts[1] = "TECH-991" (not a valid status), parts[2] = "desc" (not valid),
+      parts[3] = "queued" (VALID!) — so it works.
+
+      However, the TECH-189 anomaly test patches `lifecycle.read_lifecycle` to return None
+      (line 481: patch.object(orchestrator.lifecycle, "read_lifecycle", return_value=None))
+      which means bootstrap ALWAYS tries to create lifecycle for every spec. This is correct
+      for testing the anomaly threshold. But the test_no_anomaly_for_normal_count also
+      patches create_initial — meaning the actual lifecycle.create_initial call is mocked,
+      so it never executes the real git CAS. This means the anomaly test is a UNIT test
+      with mocks, not an integration test.
+
+      ADR-013 says: "Never mock in integration tests". If these are classified as
+      integration tests (they use real git repos via _make_project), the mock usage
+      violates ADR-013.
+    test_case: |
+      Input: TestBootstrapAnomaly test with real git repo + patched create_initial/read_lifecycle.
+      Expected: Test is a unit test (correct), classified as such, with mocks allowed.
+      Actual: Test creates a real git repo (integration test behavior) but mocks lifecycle
+              calls (unit test behavior) — classification is ambiguous. If pytest
+              categories enforce ADR-013, these tests may violate the rule.
+    fix_suggestion: |
+      Either:
+      1. Move TestBootstrapAnomaly to a unit test file (no real git repo) and use tmp_path
+         without git init.
+      2. Or document explicitly that these are "unit tests using a real repo only for
+         the HEAD read path" and the mock is on the lifecycle write layer only.
+      ADR-013 says integration tests use real dependencies — if lifecycle write is mocked,
+      it's not a true integration test.
+
+  - id: QA-007
+    severity: medium
+    category: boundary
+    file: "scripts/vps/orchestrator.py"
+    line: 519
+    title: "cleanup_stale_stashes date parsing extracts wrong tokens for %ci format"
+    description: |
+      Already flagged in QA-004. Isolating as a standalone severity finding because
+      this is a concrete bug with a specific input/output mismatch, not just missing coverage.
+
+      The --format=%gd %gs %ci for git stash list produces output like:
+        stash@{0} On branch: autopilot-temp-TECH-123 2026-05-01 10:00:00 +0000
+
+      parts = line.split(" ", 2) → ["stash@{0}", "On", "branch: autopilot-temp-TECH-123 2026-05-01 10:00:00 +0000"]
+      msg_and_date = parts[2] = "branch: autopilot-temp-TECH-123 2026-05-01 10:00:00 +0000"
+
+      Then:
+        msg_and_date.rsplit(" ", 2) = ["branch: autopilot-temp-TECH-123 2026-05-01", "10:00:00", "+0000"]
+        [-2] = "10:00:00"
+        [-1] = "+0000"
+        date_str = "10:00:00 +0000"
+
+      datetime.fromisoformat("10:00:00 +0000") → ValueError on Python < 3.11
+      (fromisoformat requires full datetime, not time-only, before Python 3.11).
+      Even on Python 3.11+, a time-only string with offset raises ValueError.
+
+      Result: ALL stale autopilot stashes are silently skipped. cleanup_stale_stashes
+      never drops anything. The entire CR-12 feature is effectively a no-op at runtime.
+    test_case: |
+      Input: project_dir with git stash containing message "autopilot-temp-TECH-123",
+             created 48 hours ago. cleanup_stale_stashes(project_dir, age_hours=24).
+      Expected: returns 1 (stash dropped).
+      Actual: returns 0 (date_str = "10:00:00 +0000" → fromisoformat ValueError → skipped).
+    fix_suggestion: |
+      Use git log --format="%aI" (strict ISO 8601) or change the git stash list format:
+        ["git", "stash", "list", "--format=%gd\t%gs\t%ai"]
+      Then split on tab to cleanly separate ref, message, date.
+      Alternatively, use:
+        date_tokens = msg_and_date.rsplit(" ", 3)
+        date_str = " ".join(date_tokens[-3:])  # "YYYY-MM-DD HH:MM:SS +OFFSET"
+
+  - id: QA-008
+    severity: medium
+    category: coverage-gap
+    file: "scripts/vps/tests/test_lifecycle.py"
+    line: 16
+    title: "ADR-013 violation: test_dirty_wt_does_not_revert_callback_write uses MagicMock on subprocess.run"
+    description: |
+      test_dirty_wt_does_not_revert_callback_write (line 129) patches
+      `orchestrator.subprocess.run` with MagicMock. This is in test_lifecycle.py which
+      tests the lifecycle module integration. The test calls orchestrator.git_pull() with
+      a mock, which means git_pull's actual behavior (including error paths) is not tested.
+
+      ADR-013: "Never mock in integration tests (ADR-013). Hook hard-blocks mock patterns
+      in tests/integration/." These are in tests/vps/tests/, not tests/integration/, but
+      the spirit of ADR-013 applies to any test that exercises real git repos (which this
+      test does via tmp_git_repo fixture).
+
+      The mock on subprocess.run makes the git_pull test vacuous — the test effectively
+      only checks that lifecycle.list_by_status correctly excludes a "done" spec from
+      "queued" results, which is already covered by test_list_by_status_filters.
+    test_case: |
+      Input: test_dirty_wt_does_not_revert_callback_write runs with actual git_pull
+             (no mock) against a local repo with no remote.
+      Expected: git_pull logs a warning about no remote and proceeds.
+      Actual: test would fail because git pull origin develop fails with "no remote 'origin'"
+              — the mock was added precisely to hide this. But it means git_pull is not
+              really tested.
+    fix_suggestion: |
+      Either:
+      1. Remove the git_pull call from this test entirely — it doesn't test the lifecycle
+         invariant being described (the test comment says "No autostash dance").
+      2. Or set up a bare git remote in tmp_git_repo and call the real git_pull.
+
+  - id: QA-009
+    severity: medium
+    category: coverage-gap
+    file: "scripts/vps/tests/test_lifecycle.py"
+    line: 397
+    title: "CAS race test does not assert the LOSER got LifecycleWriteRaceError (outcome='race_error')"
+    description: |
+      The test comment at line 440-441 says:
+        "Exactly one success and one race_error — or both success if git CAS
+        serialized perfectly"
+
+      Then it only asserts:
+        1. arch_999_count == 1 (content check)
+        2. "success" in outcomes (at least one winner)
+        3. Each outcome is in ("success", "race_error") (no other_error)
+
+      It does NOT assert that when there IS a race (one success + one race_error),
+      the race_error came from LifecycleWriteRaceError specifically (not some other
+      error that happens to be named "race_error" — though in this case the worker
+      categorizes it as "race_error" in the except clause).
+
+      More importantly: if git on this specific platform is slow and both processes
+      run sequentially (both succeed), there is NO test that the LifecycleWriteRaceError
+      mechanism actually works at all. The race_error path is only exercised when git
+      is fast enough to create a true CAS collision.
+
+      A dedicated unit test for LifecycleWriteRaceError (mocking _atomic_write to always
+      return False) would guarantee the error is raised after MAX_CAS_RETRIES regardless
+      of platform timing. That test already exists in test_cas_loop_treats_timeout_as_retry
+      (line 317) which patches _atomic_write — but that test uses TimeoutExpired, not
+      the False-return CAS failure path. There is no test that patches _atomic_write to
+      return False every time and asserts LifecycleWriteRaceError.
+    test_case: |
+      Input: _atomic_write always returns False (CAS always loses).
+      Expected: write_lifecycle raises LifecycleWriteRaceError after MAX_CAS_RETRIES.
+      Actual: UNTESTED (the timeout test patches with TimeoutExpired, not False return).
+    fix_suggestion: |
+      Add:
+        def test_cas_loop_raises_after_max_retries(tmp_git_repo):
+            lifecycle.create_initial(tmp_git_repo, "TECH-999", "p1", "tech")
+            with patch.object(lifecycle, "_atomic_write", return_value=False):
+                with pytest.raises(lifecycle.LifecycleWriteRaceError) as exc_info:
+                    lifecycle.write_lifecycle(tmp_git_repo, "TECH-999", "in_progress")
+            assert exc_info.value.attempts == lifecycle.MAX_CAS_RETRIES
+
+  - id: QA-010
+    severity: medium
+    category: combination
+    file: "scripts/vps/orchestrator.py"
+    line: 393
+    title: "bootstrap_new_specs silent no-op when git show HEAD:ai/backlog.md fails for non-new-repo reasons"
+    description: |
+      bootstrap_new_specs (line 392-400) catches CalledProcessError from
+      `git show HEAD:ai/backlog.md` and sets backlog_text = "". The comment says
+      "new project / no HEAD yet". But CalledProcessError is also raised when:
+
+        1. HEAD exists but ai/backlog.md was never committed (git show returns rc=128)
+        2. The git repo is corrupted (object not found)
+        3. The git timeout fires (subprocess.TimeoutExpired — but that's not CalledProcessError,
+           it propagates uncaught!)
+
+      Case 3 is a bug: subprocess.TimeoutExpired is NOT a subclass of CalledProcessError.
+      If `git show HEAD:ai/backlog.md` hangs (e.g. git object store is locked),
+      TimeoutExpired propagates up and crashes the entire daemon's bootstrap_new_specs
+      call, causing startup_reconcile() to crash, killing the orchestrator daemon.
+
+      Case 1 silently returns empty backlog, which is correct for new repos but wrong
+      for established repos where backlog.md exists in WT but was never committed
+      (e.g. operator forgot to commit, or a merge conflict left backlog.md unstaged).
+      All specs would be silently skipped (not bootstrapped) with no log warning.
+    test_case: |
+      Input: Established repo where ai/backlog.md exists in WT but NOT in HEAD
+             (git show HEAD:ai/backlog.md → CalledProcessError rc=128).
+      Expected: Warning logged "backlog.md not in HEAD — skipping bootstrap for <project>"
+      Actual: backlog_text = "", no warning, all specs silently skipped.
+
+      Input: git show HEAD:ai/backlog.md hangs for 11 seconds.
+      Expected: Timeout caught, backlog_text = "", warning logged.
+      Actual: subprocess.TimeoutExpired propagates uncaught, crashes orchestrator.
+    fix_suggestion: |
+      Change the except clause to catch both errors:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            backlog_text = ""
+            log.warning("BOOTSTRAP: could not read HEAD:ai/backlog.md for %s — "
+                        "skipping (new repo or git error)", project_dir)
+
+  - id: QA-011
+    severity: low
+    category: coverage-gap
+    file: "scripts/vps/tests/test_orchestrator_bootstrap.py"
+    line: 289
+    title: "test_bootstrap_reads_head_not_working_tree does not commit the spec file TECH-888 initially — test is fragile"
+    description: |
+      test_bootstrap_reads_head_not_working_tree (line 289) commits both
+      ai/backlog.md AND ai/features/TECH-888-test-head-read.md to HEAD via
+      _git_add_commit (line 300). This is correct.
+
+      However, the spec file path is:
+        spec_file = tmp_git_repo / "ai" / "features" / "TECH-888-test-head-read.md"
+      And bootstrap_new_specs scans `features_dir.glob("*.md")` from the WORKING TREE
+      (line 408: `for spec_md in features_dir.glob("*.md")`).
+
+      bootstrap_new_specs reads backlog from HEAD but reads spec.md files from the WT.
+      This means: if TECH-888-test-head-read.md is committed to HEAD but not synced
+      to WT (e.g. after a fresh clone without checkout), bootstrap_new_specs would
+      NOT find the spec and would not bootstrap TECH-888. The test passes because
+      _git_add_commit uses `git add` which stages the WT file, and git commit writes
+      it to HEAD but leaves the WT file in place.
+
+      The test does NOT verify the asymmetry: it doesn't test that a spec.md in HEAD
+      but not in WT is missed. But more relevantly, it also doesn't document the
+      design assumption that spec.md WT must match HEAD for bootstrap to work.
+    test_case: |
+      Input: ai/features/TECH-888.md in HEAD but NOT in WT (git rm'd without commit).
+      Expected: bootstrap_new_specs does NOT bootstrap TECH-888 (spec not in WT).
+      Actual: Untested — the design explicitly scans WT for spec files, not HEAD.
+              If this is intentional, it should be documented. If not, it's a TOCTOU gap.
+    fix_suggestion: |
+      Add a comment to bootstrap_new_specs explaining that spec.md files are intentionally
+      read from WT (fast filesystem glob) while backlog is read from HEAD (CAS safety).
+      Add a test: spec.md removed from WT but still in HEAD → not bootstrapped.
+
+  - id: QA-012
+    severity: low
+    category: boundary
+    file: "scripts/vps/lifecycle.py"
+    line: 434
+    title: "create_initial does not guard against already-existing spec_id in HEAD"
+    description: |
+      create_initial() (line 434) is documented as "Bootstrap a new lifecycle.yaml".
+      It calls _cas_loop → _atomic_write → _build_yaml_content with existing=None.
+
+      _build_yaml_content with existing=None builds a fresh version=1 YAML.
+      If a spec_id already has a YAML in HEAD (e.g. TECH-500 already bootstrapped),
+      _atomic_write will read-tree HEAD (which includes TECH-500.yaml), then overwrite
+      it with a fresh version=1 YAML. The CAS update-ref succeeds (no one else moved HEAD).
+
+      Result: create_initial silently OVERWRITES an existing lifecycle, resetting it to
+      version=1 with status=queued and empty transitions. This destroys state history.
+
+      bootstrap_new_specs checks lifecycle.read_lifecycle before calling create_initial
+      (line 418), so normal use is safe. But anyone calling create_initial directly
+      without checking first (e.g. spark in ARCH-196 flow, or a test) can silently
+      reset a spec.
+
+      The test suite has test_bootstrap_idempotent_after_refactor which checks that
+      bootstrap does NOT overwrite — but it tests via bootstrap_new_specs, not
+      create_initial directly. Direct create_initial overwrite is untested.
+    test_case: |
+      Input: TECH-500 in HEAD with status="in_progress", version=3.
+             lifecycle.create_initial(repo, "TECH-500", "p1", "tech", by="spark")
+      Expected: ValueError or LifecycleAlreadyExistsError (spec already bootstrapped)
+      Actual: TECH-500 silently reset to version=1, status="queued", transitions=[] —
+              in_progress state destroyed with no error.
+    fix_suggestion: |
+      Add an existence check in create_initial:
+        existing = _read_yaml_from_head(repo_dir, spec_id)
+        if existing is not None:
+            raise ValueError(
+                f"create_initial({spec_id}): spec already exists in HEAD "
+                f"(status={existing.get('status')!r}); use write_lifecycle to update"
+            )
+      Add test:
+        def test_create_initial_raises_if_already_exists(tmp_git_repo):
+            lifecycle.create_initial(tmp_git_repo, "TECH-001", "p1", "tech")
+            with pytest.raises(ValueError, match="already exists"):
+                lifecycle.create_initial(tmp_git_repo, "TECH-001", "p1", "tech")
+
+  - id: QA-013
+    severity: low
+    category: coverage-gap
+    file: "scripts/vps/tests/test_orchestrator_bootstrap.py"
+    line: 1
+    title: "No test for bootstrap_new_specs with spec.md that has no spec_id in filename"
+    description: |
+      bootstrap_new_specs scans features_dir.glob("*.md") and applies:
+        m = re.search(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*", spec_md.name)
+        if not m: continue
+
+      There is no test for a spec.md that has NO spec_id pattern in its filename
+      (e.g. "README.md", "template.md", "SPIKE-planning.md"). These should be silently
+      skipped. The code correctly skips them via `continue`, but there is no test
+      asserting this behavior. A regression that accidentally processes README.md
+      would match r"(TECH|...)" patterns in README content... wait, no — it matches
+      the FILENAME only (spec_md.name), not the file content. So README.md would be
+      correctly skipped. But SPIKE-123-planning.md would also be skipped (SPIKE not
+      in the regex). If someone adds SPIKE to the regex without a test, this breaks.
+    test_case: |
+      Input: ai/features/README.md, ai/features/template.md, ai/features/SPIKE-123.md
+      Expected: All silently skipped (no lifecycle created).
+      Actual: Untested — if regex accidentally expanded to match README content,
+              or SPIKE was added to regex without care, no test would catch it.
+    fix_suggestion: |
+      Add:
+        def test_bootstrap_skips_non_spec_filenames(tmp_git_repo):
+            (tmp_git_repo / "ai" / "features" / "README.md").write_text("# Readme\n")
+            (tmp_git_repo / "ai" / "features" / "SPIKE-001-planning.md").write_text("# Spike\n")
+            _git_add_commit(tmp_git_repo, "ai/backlog.md")  # empty backlog
+            orchestrator.bootstrap_new_specs(str(tmp_git_repo))
+            assert lifecycle.read_lifecycle(tmp_git_repo, "README") is None
+            assert lifecycle.read_lifecycle(tmp_git_repo, "SPIKE-001") is None
+
+summary:
+  total: 13
+  critical: 0
+  high: 4
+  medium: 5
+  low: 4
+
+  notes: |
+    Test count check (checklist item 9): The task summary says +2 tests (baseline 212 → 214).
+    From reading the code:
+      - test_create_initial_cas_collision_retry: 1 new test (QA-001/002/009 context)
+      - test_bootstrap_reads_head_not_working_tree: 1 new test
+    Total = 2. This matches the claimed +2 delta. PASS on test count.
+
+    ADR-013 compliance check (checklist item 5):
+      - test_orchestrator_bootstrap.py: no mocks in integration tests. PASS.
+      - test_orchestrator.py::TestBootstrapAnomaly: uses patch.object on lifecycle.create_initial
+        and lifecycle.read_lifecycle inside a test that creates a real git repo. This is a
+        boundary case (QA-006). Flagged as medium.
+      - test_lifecycle.py::test_dirty_wt_does_not_revert_callback_write: uses MagicMock
+        on subprocess.run. Flagged as QA-008.
+
+    HEAD-read test check (checklist item 2):
+      - test_bootstrap_reads_head_not_working_tree correctly:
+        (a) commits TECH-888 to HEAD via _git_add_commit
+        (b) overwrites WT backlog with TECH-999 WITHOUT committing
+        (c) asserts TECH-888 IS found (from HEAD)
+        (d) asserts TECH-999 is NOT found (only in WT)
+      PASS on all four criteria.
+
+    Updated existing tests (checklist item 3):
+      - test_orchestrator_lifecycle.py::test_bootstrap_creates_lifecycle_for_new_spec:
+        UPDATED with explicit git add + commit block (lines 87-98). PASS.
+      - test_orchestrator_lifecycle.py::test_bootstrap_idempotent_when_lifecycle_exists:
+        NOT UPDATED — missing _git_add_commit. Flagged as QA-005.
+      - test_orchestrator.py::TestBootstrapAnomaly::_make_project: UPDATED with full git init
+        + commit block (lines 446-470). PASS.
+      - All tests in test_orchestrator_bootstrap.py: use _git_add_commit. PASS.
+
+    Integration stitching (checklist item 8):
+      There is NO end-to-end test covering spark→create_initial(by="spark")→
+      callback→write_lifecycle(status="done") as a single flow. Each piece is unit-tested
+      in isolation. The CAS race test covers the spark→create_initial path. Callback tests
+      (test_callback.py) cover write_lifecycle. But the hand-off from spark claiming an ID
+      to callback completing it is not covered in a single integration test.

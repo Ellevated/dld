@@ -1,0 +1,414 @@
+persona: software-architect
+review_context: "ARCH-196 post-delivery production-readiness review: lifecycle.py, callback.py, orchestrator.py"
+findings:
+
+  - id: ARCH-001
+    severity: high
+    category: atomicity
+    file: "scripts/vps/lifecycle.py"
+    line: 731
+    title: "recover_bootstrap_artifact: make_yaml() does not re-validate 4-criteria against head_now — can demote legitimate done"
+    description: |
+      `recover_bootstrap_artifact` validates the 4-criteria bootstrap signature
+      BEFORE entering `_cas_loop`. Inside `_cas_loop`, `make_yaml()` re-reads
+      `head_now` on every retry (line 733) but does NOT re-check the 4 criteria
+      against it. If callback legitimately transitions the spec from its bootstrap-as-done
+      state through queued → in_progress → done (a real run) between the pre-check
+      and the CAS attempt, `make_yaml()` uses `head_now` (now a legitimate done with
+      transitions and finished_at) as `base` but still writes status=queued — demoting
+      a legitimately finished spec. `_cas_loop` bypasses `write_lifecycle` (and its
+      Rule 7 guard) by design, so the Rule 7 structural protection does not fire here.
+
+      The comment at line 734 ("If the artifact was already recovered between our
+      pre-check and the CAS attempt, the 4-criteria check will fail again here")
+      is correct only for a concurrent second `recover_bootstrap_artifact` call, NOT
+      for callback transitioning the spec legitimately.
+    failure_scenario: |
+      1. Operator calls recover_bootstrap_artifact("TECH-X") on a bootstrap-as-done
+         artifact — passes all 4 criteria at lines 712-726.
+      2. Concurrently, orchestrator bootstraps TECH-X (race: it creates it as queued
+         via a second code path or stale state), autopilot runs it, callback writes
+         done with transitions=[...] and finished_at=<ts>.
+      3. recover_bootstrap_artifact enters first CAS retry. HEAD now shows a
+         legitimate done. make_yaml() reads head_now (legitimate done), does NOT
+         re-validate, builds yaml with status=queued.
+      4. CAS succeeds — TECH-X is now queued again, transitions contain a bogus
+         entry, finished_at is cleared (not in the update since _build_yaml_content
+         only sets finished_at on status=done).
+      5. TECH-X re-dispatches, burns compute.
+    affected_components:
+      - "lifecycle.py: recover_bootstrap_artifact (make_yaml closure)"
+      - "lifecycle.py: _cas_loop"
+    fix_suggestion: |
+      Re-validate all 4 criteria inside make_yaml() against head_now before
+      building the yaml. If any criterion fails, raise NotBootstrapArtifactError
+      inside make_yaml() — it will propagate through _cas_loop as an unhandled
+      exception and abort the recovery cleanly:
+
+        def make_yaml():
+            head_now = _read_yaml_from_head(repo_dir, spec_id)
+            base = head_now if head_now is not None else existing
+            # Re-validate: if head_now no longer matches bootstrap signature,
+            # a legitimate write occurred — abort recovery.
+            if head_now is not None:
+                if head_now.get("transitions"):
+                    raise NotBootstrapArtifactError(
+                        spec_id=spec_id, criterion="transitions",
+                        value=head_now.get("transitions"))
+                if head_now.get("finished_at") is not None:
+                    raise NotBootstrapArtifactError(
+                        spec_id=spec_id, criterion="finished_at",
+                        value=head_now.get("finished_at"))
+            return _build_yaml_content(...)
+
+  - id: ARCH-002
+    severity: high
+    category: state-machine
+    file: "scripts/vps/lifecycle.py"
+    line: 434
+    title: "create_initial has no Rule 7 guard — spark or migration can overwrite a done lifecycle yaml"
+    description: |
+      `write_lifecycle` (line 390) enforces Rule 7: if existing HEAD yaml has
+      status=done and target status is not done, raises LifecycleAlreadyDoneError.
+      `create_initial` (line 434) does NOT have this guard. It calls `_cas_loop`
+      which invokes `make_yaml()` which calls `_build_yaml_content`. When the
+      spec_id already exists in HEAD with status=done, `_read_yaml_from_head`
+      inside `make_yaml()` returns the done yaml as `existing`, and
+      `_build_yaml_content` updates it to whatever status was passed to
+      `create_initial` (e.g., "queued"). The done yaml is overwritten.
+
+      ARCH-196 CR-7 added "spark" to `_ALLOWED_WRITERS_FOR_CREATE` specifically
+      to allow spark to claim a new ID. But if spark calls create_initial on an
+      already-done spec_id (e.g., ID collision from sequential numbering), it
+      silently demotes the done spec. The orchestrator guards against this at line
+      418 (`lifecycle.read_lifecycle(...) is not None → skip`), but spark agents
+      have no such guard — they call lifecycle directly.
+
+      Additionally, the `migrate_backlog_to_lifecycle.py` caller uses
+      `lifecycle.create_initial(...)` for bulk migration — if run on an already
+      partially-migrated project, it would overwrite existing done yamls.
+    failure_scenario: |
+      1. ARCH-196 is merged. Spec TECH-200 is status=done in lifecycle.
+      2. Operator runs a fresh spark session that claims "TECH-200" as the next ID
+         (ID collision — CAS is supposed to prevent this but if the spark agent
+         doesn't retry on LifecycleWriteRaceError correctly, it might use a
+         stale number).
+      3. Spark calls lifecycle.create_initial("TECH-200", ..., status="queued",
+         by="spark").
+      4. No Rule 7 check in create_initial. CAS succeeds. TECH-200 is now queued.
+      5. Autopilot re-runs TECH-200. Work is duplicated. Done state lost.
+    affected_components:
+      - "lifecycle.py: create_initial"
+      - "lifecycle.py: _cas_loop / make_yaml"
+    fix_suggestion: |
+      Add a Rule 7 guard inside create_initial, mirroring write_lifecycle:
+
+        # In create_initial, before _cas_loop:
+        existing_head = _read_yaml_from_head(str(repo_dir), spec_id)
+        if existing_head and existing_head.get("status") == "done":
+            raise LifecycleAlreadyDoneError(
+                spec_id=spec_id, attempted=status, by=by)
+
+      This is the same pattern as write_lifecycle lines 412-415. The only
+      caller that legitimately overwrites done via create_initial is
+      recover_bootstrap_artifact — but that function calls _cas_loop directly
+      and should remain the single Rule 7 escape.
+
+  - id: ARCH-003
+    severity: medium
+    category: atomicity
+    file: "scripts/vps/lifecycle.py"
+    line: 283
+    title: "CAS update-ref to git-checkout WT sync crash window leaves default index stale — blocks orchestrator restart"
+    description: |
+      `_atomic_write` performs the CAS using a private GIT_INDEX_FILE. After
+      `git update-ref` succeeds (line 283 — HEAD now points to new commit),
+      it calls `git checkout HEAD -- ai/lifecycle/{spec_id}.yaml` (line 297)
+      to sync the default .git/index and working tree.
+
+      Between `update-ref` returning successfully and `git checkout` completing,
+      the default .git/index still reflects the OLD HEAD. If the process is
+      killed (SIGKILL, OOM) in this window:
+        - HEAD = new commit (new yaml in HEAD)
+        - Default index = old entry (stale blob or deletion marker)
+        - WT file = old content (not yet updated)
+
+      When orchestrator restarts, `assert_clean_lifecycle_tree` calls
+      `git status --porcelain ai/lifecycle/` which compares WT to default
+      index. The index-WT divergence (or index-HEAD divergence) produces
+      output → RuntimeError → orchestrator refuses to start.
+
+      Operator must manually run `cleanup-lifecycle-drift.sh` to recover.
+      The frequency of this crash window is low (milliseconds), but on a
+      busy VPS with multiple callbacks running simultaneously it is non-zero.
+    failure_scenario: |
+      1. callback writes lifecycle(TECH-X): done — update-ref succeeds.
+      2. OOM kill or SIGKILL between update-ref and checkout.
+      3. Default index has stale blob; WT has old file content.
+      4. Orchestrator restarts (systemd RestartSec=5).
+      5. assert_clean_lifecycle_tree: git status shows "M ai/lifecycle/TECH-X.yaml".
+      6. RuntimeError → orchestrator aborts startup → all dispatch stops.
+      7. Operator must SSH in and run cleanup-lifecycle-drift.sh.
+    affected_components:
+      - "lifecycle.py: _atomic_write"
+      - "lifecycle.py: assert_clean_lifecycle_tree"
+      - "orchestrator.py: startup_reconcile"
+    fix_suggestion: |
+      Make assert_clean_lifecycle_tree smarter: for any M-type dirty entry
+      (modified, not deleted), check if WT content == HEAD blob. If so,
+      auto-fix by running `git checkout HEAD -- ai/lifecycle/` and re-check.
+      Only raise RuntimeError on D-type (deleted files) or content divergence.
+      This handles the exact crash-window case without requiring operator
+      intervention:
+
+        r = _run(["git", "status", "--porcelain", LIFECYCLE_DIR], cwd=repo_dir)
+        if r.stdout.strip():
+            # Attempt auto-fix of M-type only
+            fix = _run(["git", "checkout", "HEAD", "--", LIFECYCLE_DIR], cwd=repo_dir)
+            if fix.returncode == 0:
+                r2 = _run(["git", "status", "--porcelain", LIFECYCLE_DIR], cwd=repo_dir)
+                if not r2.stdout.strip():
+                    log.warning("assert_clean_lifecycle_tree: auto-fixed WT sync drift")
+                    return
+            raise RuntimeError(...)
+
+  - id: ARCH-004
+    severity: medium
+    category: state-machine
+    file: "scripts/vps/orchestrator.py"
+    line: 557
+    title: "startup_reconcile: cleanup_stale_stashes runs BEFORE assert_clean_lifecycle_tree — wrong order"
+    description: |
+      In `startup_reconcile` (lines 545-566):
+
+        cleanup_stale_stashes(pdir)               # line 557
+        lifecycle.assert_clean_lifecycle_tree(pdir)  # line 558
+
+      The lifecycle integrity assertion should be the FIRST thing checked at
+      startup — before any potentially WT-touching operation. `git stash drop`
+      does not touch the working tree, but this ordering violates the principle
+      that integrity checks must precede cleanup actions. More concretely:
+
+      If `cleanup_stale_stashes` raises an unexpected exception (the outer
+      `except Exception` at line 540 catches most, but a bare `except Exception`
+      with `pass` means the function returns 0 silently — the caller at line 557
+      sees `cleanup_stale_stashes` return 0 even on error), then
+      `assert_clean_lifecycle_tree` still runs (correct). But if the orchestrator
+      is modified to make cleanup_stale_stashes raise (e.g., removing the bare
+      except), it would abort startup_reconcile before the lifecycle check.
+
+      The actual risk today: the outer `try/except Exception` in startup_reconcile
+      (line 835-837 in main) catches any exception from startup_reconcile and
+      aborts the daemon. If cleanup_stale_stashes somehow made the WT dirty (git
+      bug, hook side-effect), assert_clean_lifecycle_tree would correctly catch
+      it — but only if the order is reversed.
+    failure_scenario: |
+      1. cleanup_stale_stashes runs, a git hook side-effect adds an untracked
+         file in ai/lifecycle/ (unlikely but possible).
+      2. assert_clean_lifecycle_tree catches the dirty state.
+      3. Raises RuntimeError — correct behavior.
+      4. If order were reversed: cleanup obscures the pre-existing dirty state,
+         assert passes when it should fail.
+    affected_components:
+      - "orchestrator.py: startup_reconcile"
+      - "orchestrator.py: cleanup_stale_stashes"
+    fix_suggestion: |
+      Swap the call order in startup_reconcile:
+        lifecycle.assert_clean_lifecycle_tree(pdir)  # first: integrity gate
+        cleanup_stale_stashes(pdir)                   # then: cleanup
+
+  - id: ARCH-005
+    severity: medium
+    category: consistency
+    file: "scripts/vps/callback.py"
+    line: 1361
+    title: "Step 6 dispatch gate uses blocklist not allowlist — dispatches QA+reflect on unexpected task_status values"
+    description: |
+      The Step 6 gate (lines 1361-1381):
+
+        if skill == "autopilot" and status == "done":
+            if task_status in ("blocked", "needs_review"):
+                # skip dispatch
+            else:
+                # dispatch QA + reflect
+
+      The `else` branch fires for task_status = "" (no log file — common after
+      SIGKILL'd runners), "complete" (intended success), and any future
+      undocumented value. When autopilot is SIGKILL'd (OOM or pueue timeout),
+      pueue reports "Success" (exit_code=0 per ADR-024), but claude-runner
+      never writes the log file — extract_agent_output returns task_status="".
+      Step 6 sees task_status="" → else branch → dispatches QA+reflect on
+      an incomplete run. This is the exact $2.50/task burn that TECH-194 Layer
+      E targeted but only fixed for runs where task_status IS available.
+
+      The guard at Step 7 (verify_status_sync) correctly uses `_is_done_on_develop`
+      to gate the done transition on a merged commit — so the lifecycle state
+      stays correct. But the QA dispatch is unconditional for task_status="".
+    failure_scenario: |
+      1. Autopilot task runs 28 of 30 turns, pueue timeout fires (SIGKILL).
+      2. claude-runner finally-clause may not execute (SIGKILL), log file absent.
+      3. pueue reports Success (ADR-024: exit_code=0 from runner's last known state).
+      4. callback Step 4: extract_agent_output returns skill="autopilot", task_status="".
+      5. Step 6: task_status="" not in ("blocked", "needs_review") → dispatch QA+reflect.
+      6. QA runs on an incomplete implementation, produces misleading results.
+      7. ~$2.50 burned on unnecessary dispatch.
+    affected_components:
+      - "callback.py: main() Step 6"
+      - "callback.py: dispatch_qa / dispatch_reflect"
+    fix_suggestion: |
+      Switch to an explicit allowlist for dispatch:
+
+        DISPATCH_ON_TASK_STATUS = frozenset({"complete", ""})
+        if task_status not in DISPATCH_ON_TASK_STATUS:
+            log.info("skip QA+reflect: unexpected task_status=%s", task_status)
+        else:
+            # dispatch
+
+      Or add a check: if task_status="" AND pueue_skill was not resolved
+      (extract failed entirely), treat as ambiguous and skip with WARNING.
+      The conservative default is: only dispatch if task_status is known-good.
+
+  - id: ARCH-006
+    severity: medium
+    category: consistency
+    file: "scripts/vps/orchestrator.py"
+    line: 519
+    title: "cleanup_stale_stashes: timestamp parsing uses fragile rsplit — silently fails to drop stashes when message contains unexpected spacing"
+    description: |
+      The timestamp extraction at line 521:
+
+        date_str = msg_and_date.rsplit(" ", 2)[-2] + " " + msg_and_date.rsplit(" ", 2)[-1]
+
+      `msg_and_date` is parts[2] from splitting the git stash list line on the
+      first 2 spaces: `stash_ref`, `%gs` (short message), `%ci + message rest`.
+      The `%ci` committer date format produces "YYYY-MM-DD HH:MM:SS +OFFSET"
+      (3 tokens: date, time, offset). The code rsplits by 2 to get the last 2
+      tokens (time and offset) and concatenates them as "HH:MM:SS +OFFSET".
+      But the git stash list output interleaves `%gs` and `%ci` in the same
+      column (format `%gd %gs %ci`), not separated cleanly.
+
+      Actual git output line:
+        stash@{0} WIP on develop: abc1234 autopilot-temp-TECH-100 2026-05-27 14:30:00 +0000
+
+      `line.split(" ", 2)` → ["stash@{0}", "WIP", "on develop: abc1234 autopilot-temp-TECH-100 2026-05-27 14:30:00 +0000"]
+
+      `msg_and_date.rsplit(" ", 2)` → ["on develop: abc1234 autopilot-temp-TECH-100 2026-05-27", "14:30:00", "+0000"]
+
+      date_str = "14:30:00 +0000" — this is NOT a valid ISO datetime (missing date).
+      `datetime.fromisoformat("14:30:00 +0000")` raises ValueError → stash skipped.
+      Result: old autopilot stashes are NEVER dropped.
+    failure_scenario: |
+      1. Autopilot creates stash "WIP on develop: abc123 autopilot-temp-TECH-100".
+      2. cleanup_stale_stashes parses the line using split(" ", 2).
+      3. msg_and_date = "on develop: abc123 autopilot-temp-TECH-100 2026-05-27 14:30:00 +0000".
+      4. rsplit(" ", 2)[-2] = "14:30:00", rsplit[-1] = "+0000".
+      5. date_str = "14:30:00 +0000" — invalid ISO, ValueError raised.
+      6. Stash not dropped. After hundreds of runs, git stash list grows to
+         hundreds of entries; git stash operations degrade in performance.
+    affected_components:
+      - "orchestrator.py: cleanup_stale_stashes"
+    fix_suggestion: |
+      Use a format string that makes the date unambiguous by separating it:
+
+        git stash list --format="%gd|SEP|%gs|SEP|%ci"
+
+      Then split on "|SEP|" to get exactly 3 fields. Or use a separate git log
+      command per stash ref to get the date:
+
+        git log -1 --format="%ci" stash@{N}
+
+      Alternatively, correct the rsplit to take the last 3 tokens (date + time +
+      offset) and concatenate them:
+
+        tokens = msg_and_date.rsplit(" ", 3)
+        if len(tokens) >= 4:
+            date_str = tokens[-3] + " " + tokens[-2] + " " + tokens[-1]
+
+  - id: ARCH-007
+    severity: low
+    category: consistency
+    file: "scripts/vps/lifecycle.py"
+    line: 788
+    title: "build_initial_yaml docstring lists 'spark' as valid by= value but spark is not in _ALLOWED_WRITERS"
+    description: |
+      `build_initial_yaml` (line 761) checks `by not in _ALLOWED_WRITERS` (line 788).
+      `_ALLOWED_WRITERS` (line 55) does NOT include "spark". However, the function's
+      docstring at line 781 states: "Other callers: 'callback', 'spark', 'manual'."
+      This is misleading — calling `build_initial_yaml(by="spark")` raises ValueError.
+
+      With ARCH-196 adding spark to `_ALLOWED_WRITERS_FOR_CREATE`, a future maintainer
+      may assume spark can call build_initial_yaml too (it's the "build" primitive).
+      The function is used only by migrate_backlog_to_lifecycle.py (by="migration")
+      and potentially operator tooling, so the actual risk is low — but the
+      documentation inconsistency in a security-critical allowlist is concerning.
+    failure_scenario: |
+      1. Developer adds operator tooling that calls build_initial_yaml(by="spark")
+         based on docstring.
+      2. ValueError raised. If called from bare-except context, silently swallowed.
+      3. Lifecycle yaml not created.
+    affected_components:
+      - "lifecycle.py: build_initial_yaml"
+    fix_suggestion: |
+      Fix the docstring: remove "spark" from the list of valid by= values.
+      The correct writers for build_initial_yaml are: "migration", "callback",
+      "operator". Or, if spark should be able to call it, change the guard to
+      use _ALLOWED_WRITERS_FOR_CREATE.
+
+  - id: ARCH-008
+    severity: low
+    category: consistency
+    file: "scripts/vps/orchestrator.py"
+    line: 311
+    title: "_parse_backlog: divider regex matches single-pipe-column 'decorative' separators"
+    description: |
+      The divider pattern (line 311):
+
+        divider_re = re.compile(r"^\|[\s\-:|]+\|$")
+
+      Matches any line `| --- |` (single-column table or decorative separator)
+      as a markdown table divider. If such a line appears in backlog.md
+      (e.g., under a section heading), the algorithm treats the preceding line
+      as the header row and builds a wrong col_map. The col_map then has
+      incorrect column names, "status" key is absent, parser falls back to
+      scan-all-columns mode. The scan-all-columns mode can produce false-positive
+      status values: a spec row with "blocked" appearing in a non-status column
+      (e.g., a description like "previously blocked") would be bootstrapped as
+      status=blocked instead of queued.
+    failure_scenario: |
+      1. Operator formats backlog.md with a decorative single-cell separator row
+         like `| --- |` below a non-table heading.
+      2. _parse_backlog picks this as a table divider; the heading line becomes
+         the "header". col_map has wrong column names.
+      3. scan-all-columns fallback for all spec rows.
+      4. TECH-100 row contains "blocked" in description: "Fix blocked pipeline".
+      5. spec_100 is bootstrapped with status=blocked instead of queued.
+      6. TECH-100 is never dispatched (blocked lifecycle entries are skipped by
+         scan_queued).
+    affected_components:
+      - "orchestrator.py: _parse_backlog"
+      - "orchestrator.py: bootstrap_new_specs"
+    fix_suggestion: |
+      Require at least 3 pipe characters in the divider (2+ cells):
+        divider_re = re.compile(r"^\|(?:[\s\-:|]+\|){2,}$")
+      A real markdown table divider for a 2+ column table will always have
+      at least 2 `---` segments separated by `|`.
+
+checklist_summary:
+  "1_ALLOWED_WRITERS_FOR_CREATE_syntax": "PASS — frozenset({'spark'}) | _ALLOWED_WRITERS is valid Python. spark is ONLY in _ALLOWED_WRITERS_FOR_CREATE."
+  "2_create_initial_by_compat": "PASS — default by='orchestrator'; 'orchestrator' is in _ALLOWED_WRITERS. Single callsite in orchestrator.py:436 uses default."
+  "3_Rule7_via_create_initial": "FAIL — create_initial has no Rule 7 guard. spark can call create_initial on an existing done spec and overwrite it. See ARCH-002."
+  "4_LifecycleWriteRaceError_graceful": "PASS (with note) — MAX_CAS_RETRIES=3 (not 5 as spec states). orchestrator.py:444 bare-except catches LifecycleWriteRaceError from bootstrap. Spark agent retry logic is external to this codebase."
+  "5_render_backlog_callsite_removal": "PASS — grep confirms only one occurrence: function definition at line 975. No callers remain. Comment at line 1223-1225 is correct."
+  "6_step6_dispatch_gate": "PARTIAL FAIL — gate correctly skips 'blocked'/'needs_review' but dispatches on task_status='' (SIGKILL'd runs). See ARCH-005."
+  "7_bootstrap_HEAD_read_new_project": "PASS (with note) — CalledProcessError is caught and backlog_text=''. orphan-skip guard at line 413 correctly skips all specs when backlog_ids=empty. But CalledProcessError is too broad; see ARCH-009 note below."
+  "8_cleanup_stale_stashes_parsing": "FAIL — rsplit produces 'HH:MM:SS +OFFSET' not 'YYYY-MM-DD HH:MM:SS +OFFSET'. stashes are never dropped. See ARCH-006."
+  "8b_cleanup_stale_stashes_reverse_drop": "PASS — reversed(to_drop) is correct for index preservation assuming single-process access."
+  "9_startup_reconcile_order": "FAIL — cleanup_stale_stashes called before assert_clean_lifecycle_tree. See ARCH-004."
+  "10_atomic_git_plumbing_WT_sync": "PASS (with residual risk) — git checkout HEAD -- <path> correctly updates both default index and WT. Crash window between update-ref and checkout remains; see ARCH-003."
+
+summary:
+  total: 8
+  critical: 0
+  high: 2
+  medium: 4
+  low: 2
