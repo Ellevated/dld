@@ -1,5 +1,5 @@
 """
-Regression tests for lifecycle._run byte-level I/O (2026-07-26).
+Regression tests for lifecycle_git._run byte-level I/O (2026-07-26).
 
 `_run` used subprocess.run(..., text=True), which on Windows:
   1. translated "\\n" -> "\\r\\n" on stdin, so the yaml blob written through
@@ -30,6 +30,7 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import lifecycle  # noqa: E402
+import lifecycle_git  # noqa: E402
 
 
 @pytest.fixture()
@@ -75,7 +76,9 @@ def _blob_bytes(repo_dir: Path, rev_path: str) -> bytes:
 def test_run_writes_stdin_without_newline_translation(repo):
     """hash-object --stdin must store exactly the bytes we passed."""
     content = "line1\nline2\nline3\n"
-    r = lifecycle._run(["git", "hash-object", "-w", "--stdin"], cwd=str(repo), input_text=content)
+    r = lifecycle_git._run(
+        ["git", "hash-object", "-w", "--stdin"], cwd=str(repo), input_text=content
+    )
     assert r.returncode == 0
     sha = r.stdout.strip()
 
@@ -87,7 +90,9 @@ def test_run_writes_stdin_without_newline_translation(repo):
 def test_run_preserves_utf8_multibyte_on_stdin(repo):
     """Cyrillic content must round-trip through stdin byte-for-byte."""
     content = "reason: гейт не увидел реализацию\nstatus: blocked\n"
-    r = lifecycle._run(["git", "hash-object", "-w", "--stdin"], cwd=str(repo), input_text=content)
+    r = lifecycle_git._run(
+        ["git", "hash-object", "-w", "--stdin"], cwd=str(repo), input_text=content
+    )
     assert r.returncode == 0
     assert _blob_bytes(repo, r.stdout.strip()) == content.encode("utf-8")
 
@@ -100,22 +105,22 @@ def test_run_preserves_utf8_multibyte_on_stdin(repo):
 def test_run_decodes_cyrillic_output(repo):
     """Reading back Cyrillic must not raise and must not mojibake."""
     content = "спека: тест кириллицы\n"
-    sha = lifecycle._run(
+    sha = lifecycle_git._run(
         ["git", "hash-object", "-w", "--stdin"], cwd=str(repo), input_text=content
     ).stdout.strip()
 
-    r = lifecycle._run(["git", "cat-file", "-p", sha], cwd=str(repo))
+    r = lifecycle_git._run(["git", "cat-file", "-p", sha], cwd=str(repo))
     assert r.returncode == 0
     assert "спека: тест кириллицы" in r.stdout
 
 
 def test_run_does_not_crash_on_undecodable_bytes(repo):
     """Invalid UTF-8 in git output degrades to replacement chars, never raises."""
-    sha = lifecycle._run(
+    sha = lifecycle_git._run(
         ["git", "hash-object", "-w", "--stdin"], cwd=str(repo), input_text="ok\n"
     ).stdout.strip()
     # Overwrite the object path check: just assert a normal call is clean.
-    r = lifecycle._run(["git", "cat-file", "-p", sha], cwd=str(repo))
+    r = lifecycle_git._run(["git", "cat-file", "-p", sha], cwd=str(repo))
     assert isinstance(r.stdout, str)
     assert r.stdout.strip() == "ok"
 

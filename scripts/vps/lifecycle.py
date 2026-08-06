@@ -33,11 +33,11 @@ import re
 import subprocess
 import tempfile
 import time
-from datetime import datetime, timezone
 from glob import glob
 from pathlib import Path
 from typing import Optional
 
+import lifecycle_git
 import yaml
 from lifecycle_const import (  # noqa: F401 — re-export: read via lifecycle.<NAME>
     _ALLOWED_WRITERS,
@@ -54,6 +54,7 @@ from lifecycle_errors import (  # noqa: F401 — re-export
     NotBootstrapArtifactError,
     NotFalseReconciliationError,
 )
+from lifecycle_git import run_git  # noqa: F401 — public alias (salvage.py:35)
 
 log = logging.getLogger(__name__)
 
@@ -61,137 +62,6 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _now_iso() -> str:
-    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _run(
-    cmd: list,
-    *,
-    cwd: str,
-    env: Optional[dict] = None,
-    input_text: Optional[str] = None,
-    timeout: int = 30,
-) -> subprocess.CompletedProcess:
-    """Run git with byte-level I/O and explicit UTF-8. Never `text=True`.
-
-    `text=True` breaks this module on Windows in two separate ways:
-
-    1. stdin is wrapped in a TextIOWrapper with universal newlines, so every "\\n"
-       becomes "\\r\\n". The lifecycle yaml is fed to `git hash-object --stdin`, so
-       the blob lands in git with CRLF despite `.gitattributes` (*.yaml eol=lf).
-       `ai/lifecycle/` is then permanently dirty, and `assert_clean_lifecycle_tree`
-       aborts orchestrator startup — for every project, not just the affected one.
-    2. stdout is decoded with the locale encoding (cp1251 on a Russian Windows),
-       so any Cyrillic spec title raises UnicodeDecodeError and `render_backlog`
-       silently skips the yaml as malformed.
-
-    Output keeps the newline normalization `text=True` used to provide, so the
-    ~40 existing call sites are unaffected.
-    """
-    raw_input = input_text.encode("utf-8") if input_text is not None else None
-    p = subprocess.run(
-        cmd,
-        cwd=cwd,
-        env=env,
-        input=raw_input,
-        capture_output=True,
-        check=False,
-        timeout=timeout,
-    )
-
-    def _decode(b: bytes) -> str:
-        return b.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
-
-    return subprocess.CompletedProcess(p.args, p.returncode, _decode(p.stdout), _decode(p.stderr))
-
-
-# Public alias. Other VPS modules that shell out to git must not re-derive the
-# byte-level I/O rules above — re-deriving them is how the CRLF/cp1251 bug got
-# written twice. Import this, not `_run`.
-run_git = _run
-
-
-def _current_branch(repo_dir: str) -> str:
-    r = _run(["git", "symbolic-ref", "--short", "HEAD"], cwd=repo_dir)
-    if r.returncode == 0:
-        return r.stdout.strip()
-    return _run(["git", "rev-parse", "HEAD"], cwd=repo_dir).stdout.strip()
-
-
-def _read_yaml_from_head(repo_dir: str, spec_id: str) -> Optional[dict]:
-    r = _run(["git", "show", f"HEAD:{LIFECYCLE_DIR}/{spec_id}.yaml"], cwd=repo_dir)
-    if r.returncode != 0:
-        return None
-    try:
-        return yaml.safe_load(r.stdout)
-    except yaml.YAMLError:
-        return None
-
-
-def _build_yaml_content(
-    spec_id: str,
-    status: str,
-    *,
-    existing: Optional[dict],
-    reason: Optional[str],
-    by: str,
-    pueue_id: Optional[int],
-    allowed_files_hash: Optional[str],
-    priority: Optional[str] = None,
-    kind: Optional[str] = None,
-) -> str:
-    now = _now_iso()
-    if existing is None:
-        data: dict = {
-            "spec_id": spec_id,
-            "status": status,
-            "priority": priority or "p1",
-            "kind": kind or "tech",
-            "blocked_reason": None,
-            "started_at": None,
-            "finished_at": None,
-            "allowed_files_hash": allowed_files_hash,
-            "updated_at": now,
-            "updated_by": by,
-            "version": 1,
-            "pueue_id": pueue_id,
-            "transitions": [],
-        }
-        return yaml.safe_dump(data, default_flow_style=False, allow_unicode=True)
-
-    data = dict(existing)
-    old_status = data.get("status", "unknown")
-    data.update(
-        {
-            "status": status,
-            "updated_at": now,
-            "updated_by": by,
-            "version": int(data.get("version", 0)) + 1,
-        }
-    )
-    if reason is not None:
-        data["blocked_reason"] = reason
-    if allowed_files_hash is not None:
-        data["allowed_files_hash"] = allowed_files_hash
-    if pueue_id is not None:
-        data["pueue_id"] = pueue_id
-    if (
-        old_status in ("queued", "resumed")
-        and status == "in_progress"
-        and not data.get("started_at")
-    ):
-        data["started_at"] = now
-    if status == "done" and not data.get("finished_at"):
-        data["finished_at"] = now
-    transitions = list(data.get("transitions") or [])
-    transitions.append(
-        {"from": old_status, "to": status, "at": now, "by": by, "pueue_id": pueue_id}
-    )
-    data["transitions"] = transitions
-    return yaml.safe_dump(data, default_flow_style=False, allow_unicode=True)
 
 
 def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -> bool:
@@ -210,15 +80,18 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
         # concurrent push land between them — the tree snapshotted the OLD HEAD
         # while the parent was the NEW HEAD; the CAS only guards parent==branch,
         # so it committed a stale tree that silently reverted everything in between.
-        hr = _run(["git", "rev-parse", "HEAD"], cwd=repo_dir)
+        hr = lifecycle_git._run(["git", "rev-parse", "HEAD"], cwd=repo_dir)
         if hr.returncode != 0:
             return False
         head_sha = hr.stdout.strip()
 
-        if _run(["git", "read-tree", head_sha], cwd=repo_dir, env=env).returncode != 0:
+        if (
+            lifecycle_git._run(["git", "read-tree", head_sha], cwd=repo_dir, env=env).returncode
+            != 0
+        ):
             return False
 
-        r = _run(
+        r = lifecycle_git._run(
             ["git", "hash-object", "-w", "--stdin"], cwd=repo_dir, env=env, input_text=yaml_content
         )
         if r.returncode != 0:
@@ -227,7 +100,7 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
 
         path_in_repo = f"{LIFECYCLE_DIR}/{spec_id}.yaml"
         if (
-            _run(
+            lifecycle_git._run(
                 [
                     "git",
                     "update-index",
@@ -252,20 +125,20 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
         try:
             import render_backlog
 
-            bl = _run(["git", "show", f"{head_sha}:ai/backlog.md"], cwd=repo_dir)
+            bl = lifecycle_git._run(["git", "show", f"{head_sha}:ai/backlog.md"], cwd=repo_dir)
             if bl.returncode == 0:
                 m_status = re.search(r"status:\s*(\S+)", yaml_content)
                 override = {spec_id: m_status.group(1)} if m_status else None
                 synced = render_backlog.sync_status(repo_dir, bl.stdout, overrides=override)
                 if synced != bl.stdout:
-                    blob = _run(
+                    blob = lifecycle_git._run(
                         ["git", "hash-object", "-w", "--stdin"],
                         cwd=repo_dir,
                         env=env,
                         input_text=synced,
                     )
                     if blob.returncode == 0:
-                        _run(
+                        lifecycle_git._run(
                             [
                                 "git",
                                 "update-index",
@@ -279,7 +152,7 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
         except Exception as exc:  # noqa: BLE001 — render must never break the write
             log.warning("backlog sync skipped for %s: %s", spec_id, exc)
 
-        r = _run(["git", "write-tree"], cwd=repo_dir, env=env)
+        r = lifecycle_git._run(["git", "write-tree"], cwd=repo_dir, env=env)
         if r.returncode != 0:
             return False
         tree_sha = r.stdout.strip()
@@ -288,12 +161,16 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
         status_str = m.group(1) if m else "update"
         msg = f"lifecycle({spec_id}): {status_str}"
 
-        r = _run(["git", "commit-tree", tree_sha, "-p", head_sha, "-m", msg], cwd=repo_dir, env=env)
+        r = lifecycle_git._run(
+            ["git", "commit-tree", tree_sha, "-p", head_sha, "-m", msg], cwd=repo_dir, env=env
+        )
         if r.returncode != 0:
             return False
         new_commit = r.stdout.strip()
 
-        r = _run(["git", "update-ref", f"refs/heads/{branch}", new_commit, head_sha], cwd=repo_dir)
+        r = lifecycle_git._run(
+            ["git", "update-ref", f"refs/heads/{branch}", new_commit, head_sha], cwd=repo_dir
+        )
         if r.returncode != 0:
             log.debug("CAS lost for %s (branch %s)", spec_id, branch)
             return False
@@ -306,7 +183,7 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
         # default index with a staged deletion (`D  `) — fixed in TECH-194.
         # Best-effort: log on failure but don't fail the write
         # (assert_clean_lifecycle_tree at orchestrator boot is the backstop).
-        sync_result = _run(
+        sync_result = lifecycle_git._run(
             ["git", "checkout", "HEAD", "--", f"{LIFECYCLE_DIR}/{spec_id}.yaml"],
             cwd=repo_dir,
         )
@@ -320,7 +197,7 @@ def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -
         # Sync WT for backlog.md too (it was folded into the commit above). Best-
         # effort + separate: backlog.md may not exist in some projects, and a miss
         # here must not fail the lifecycle write.
-        _run(["git", "checkout", "HEAD", "--", "ai/backlog.md"], cwd=repo_dir)
+        lifecycle_git._run(["git", "checkout", "HEAD", "--", "ai/backlog.md"], cwd=repo_dir)
 
         return True
 
@@ -370,7 +247,7 @@ def _push_best_effort(repo_dir: str, branch: str) -> None:
 def _try_push(repo_dir: str, branch: str) -> bool:
     """Single `git push origin <branch>`. True on success, False on any failure."""
     try:
-        r = _run(["git", "push", "origin", branch], cwd=repo_dir, timeout=60)
+        r = lifecycle_git._run(["git", "push", "origin", branch], cwd=repo_dir, timeout=60)
     except subprocess.TimeoutExpired as exc:
         log.warning("lifecycle push timeout: branch=%s cmd=%s", branch, exc.cmd)
         return False
@@ -392,7 +269,7 @@ def _local_ahead_is_lifecycle_only(repo_dir: str, branch: str) -> bool:
     commits never touch those paths, so replaying lifecycle-only commits onto
     origin is conflict-free by construction. Any other ahead-commit → bail.
     """
-    rev = _run(["git", "rev-list", f"origin/{branch}..HEAD"], cwd=repo_dir)
+    rev = lifecycle_git._run(["git", "rev-list", f"origin/{branch}..HEAD"], cwd=repo_dir)
     if rev.returncode != 0:
         return False
     commits = rev.stdout.split()
@@ -401,7 +278,7 @@ def _local_ahead_is_lifecycle_only(repo_dir: str, branch: str) -> bool:
         # (a plain behind-only state is not our recovery case).
         return False
     for sha in commits:
-        files = _run(
+        files = lifecycle_git._run(
             ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", sha],
             cwd=repo_dir,
         )
@@ -425,7 +302,9 @@ def _rebase_onto_origin(repo_dir: str, branch: str) -> bool:
     caller falls back to the legacy counter — never worse than the old behavior.
     """
     try:
-        fetch = _run(["git", "fetch", "--quiet", "origin", branch], cwd=repo_dir, timeout=60)
+        fetch = lifecycle_git._run(
+            ["git", "fetch", "--quiet", "origin", branch], cwd=repo_dir, timeout=60
+        )
     except subprocess.TimeoutExpired:
         log.warning("lifecycle rebase: fetch timeout branch=%s", branch)
         return False
@@ -440,7 +319,7 @@ def _rebase_onto_origin(repo_dir: str, branch: str) -> bool:
     # Guard 1: WT must be clean. rebase refuses on a dirty tree, and we must
     # never disturb uncommitted work. In the stuck case the WT is clean (just
     # behind origin) because _atomic_write synced only the yaml+backlog paths.
-    status = _run(["git", "status", "--porcelain"], cwd=repo_dir)
+    status = lifecycle_git._run(["git", "status", "--porcelain"], cwd=repo_dir)
     if status.returncode != 0 or status.stdout.strip():
         log.warning("lifecycle rebase: WT not clean, skipping auto-rebase branch=%s", branch)
         return False
@@ -455,10 +334,10 @@ def _rebase_onto_origin(repo_dir: str, branch: str) -> bool:
         return False
 
     try:
-        rebase = _run(["git", "rebase", f"origin/{branch}"], cwd=repo_dir, timeout=60)
+        rebase = lifecycle_git._run(["git", "rebase", f"origin/{branch}"], cwd=repo_dir, timeout=60)
     except subprocess.TimeoutExpired:
         log.warning("lifecycle rebase: timeout branch=%s — aborting", branch)
-        _run(["git", "rebase", "--abort"], cwd=repo_dir)
+        lifecycle_git._run(["git", "rebase", "--abort"], cwd=repo_dir)
         return False
     if rebase.returncode != 0:
         log.warning(
@@ -466,7 +345,7 @@ def _rebase_onto_origin(repo_dir: str, branch: str) -> bool:
             branch,
             rebase.stderr.strip()[:200],
         )
-        _run(["git", "rebase", "--abort"], cwd=repo_dir)
+        lifecycle_git._run(["git", "rebase", "--abort"], cwd=repo_dir)
         return False
     return True
 
@@ -522,7 +401,7 @@ def read_lifecycle(repo_dir, spec_id: str) -> Optional[dict]:
     even when working tree is not yet synced (e.g. in tests without a remote).
     Falls back to working tree file if HEAD doesn't have a git repo context.
     """
-    return _read_yaml_from_head(str(repo_dir), spec_id)
+    return lifecycle_git._read_yaml_from_head(str(repo_dir), spec_id)
 
 
 def write_lifecycle(
@@ -548,15 +427,15 @@ def write_lifecycle(
     # write primitive — protects ALL callers (callback, operator, qa, audit,
     # migration, orchestrator).
     if status != "done":
-        _existing_head = _read_yaml_from_head(str(repo_dir), spec_id)
+        _existing_head = lifecycle_git._read_yaml_from_head(str(repo_dir), spec_id)
         if _existing_head and _existing_head.get("status") == "done":
             raise LifecycleAlreadyDoneError(spec_id=spec_id, attempted=status, by=by)
     repo_dir = str(repo_dir)
-    branch = _current_branch(repo_dir)
+    branch = lifecycle_git._current_branch(repo_dir)
 
     def make_yaml():
-        existing = _read_yaml_from_head(repo_dir, spec_id)
-        return _build_yaml_content(
+        existing = lifecycle_git._read_yaml_from_head(repo_dir, spec_id)
+        return lifecycle_git._build_yaml_content(
             spec_id,
             status,
             existing=existing,
@@ -609,16 +488,16 @@ def create_initial(
         )
         priority = "p1"
     repo_dir = str(repo_dir)
-    branch = _current_branch(repo_dir)
+    branch = lifecycle_git._current_branch(repo_dir)
 
     # Rule 7: done is terminal — even create_initial cannot overwrite a done lifecycle.
     # write_lifecycle has the same guard; mirroring here closes the spark CAS path.
-    _existing_head = _read_yaml_from_head(repo_dir, spec_id)
+    _existing_head = lifecycle_git._read_yaml_from_head(repo_dir, spec_id)
     if _existing_head and _existing_head.get("status") == "done":
         raise LifecycleAlreadyDoneError(spec_id=spec_id, attempted=status, by=by)
 
     def make_yaml():
-        return _build_yaml_content(
+        return lifecycle_git._build_yaml_content(
             spec_id,
             status,
             existing=None,
@@ -646,13 +525,13 @@ def list_by_status(repo_dir, status) -> list:
     repo_dir = str(repo_dir)
 
     # Get file list from HEAD object store
-    r = _run(["git", "ls-tree", "--name-only", f"HEAD:{LIFECYCLE_DIR}"], cwd=repo_dir)
+    r = lifecycle_git._run(["git", "ls-tree", "--name-only", f"HEAD:{LIFECYCLE_DIR}"], cwd=repo_dir)
     if r.returncode == 0:
         names = sorted(n for n in r.stdout.splitlines() if n.endswith(".yaml"))
         results = []
         for name in names:
             spec_id = name[:-5]  # strip .yaml
-            data = _read_yaml_from_head(repo_dir, spec_id)
+            data = lifecycle_git._read_yaml_from_head(repo_dir, spec_id)
             if data and data.get("status") in status:
                 results.append(data)
         return results
@@ -677,7 +556,7 @@ def assert_clean_lifecycle_tree(repo_dir) -> None:
     Raises RuntimeError if dirty. Called at orchestrator boot.
     """
     repo_dir = str(repo_dir)
-    r = _run(["git", "status", "--porcelain", LIFECYCLE_DIR], cwd=repo_dir)
+    r = lifecycle_git._run(["git", "status", "--porcelain", LIFECYCLE_DIR], cwd=repo_dir)
     output = r.stdout.strip()
     if output:
         raise RuntimeError(f"Dirty lifecycle tree in {repo_dir}: {output}")
@@ -707,12 +586,12 @@ def write_file_atomic(
             f"write_file_atomic: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS)}"
         )
     repo_dir = str(repo_dir)
-    branch = _current_branch(repo_dir)
+    branch = lifecycle_git._current_branch(repo_dir)
 
     with _write_lock:
         for attempt in range(1, MAX_CAS_RETRIES + 1):
             # Check if content already matches HEAD — skip the commit then.
-            head_content = _run(["git", "show", f"HEAD:{rel_path}"], cwd=repo_dir)
+            head_content = lifecycle_git._run(["git", "show", f"HEAD:{rel_path}"], cwd=repo_dir)
             if head_content.returncode == 0 and head_content.stdout == content:
                 return True
             if _atomic_write_file(repo_dir, rel_path, content, commit_message, branch):
@@ -746,13 +625,16 @@ def _atomic_write_file(
         # TOCTOU fix (FTR-1270 wipe): pin HEAD once — tree, parent, CAS all on the
         # same commit (see _atomic_write). Reading HEAD twice raced a concurrent
         # push and silently reverted in-between commits.
-        hr = _run(["git", "rev-parse", "HEAD"], cwd=repo_dir)
+        hr = lifecycle_git._run(["git", "rev-parse", "HEAD"], cwd=repo_dir)
         if hr.returncode != 0:
             return False
         head_sha = hr.stdout.strip()
-        if _run(["git", "read-tree", head_sha], cwd=repo_dir, env=env).returncode != 0:
+        if (
+            lifecycle_git._run(["git", "read-tree", head_sha], cwd=repo_dir, env=env).returncode
+            != 0
+        ):
             return False
-        r = _run(
+        r = lifecycle_git._run(
             ["git", "hash-object", "-w", "--stdin"],
             cwd=repo_dir,
             env=env,
@@ -762,7 +644,7 @@ def _atomic_write_file(
             return False
         blob_sha = r.stdout.strip()
         if (
-            _run(
+            lifecycle_git._run(
                 ["git", "update-index", "--add", "--cacheinfo", f"100644,{blob_sha},{rel_path}"],
                 cwd=repo_dir,
                 env=env,
@@ -770,11 +652,11 @@ def _atomic_write_file(
             != 0
         ):
             return False
-        r = _run(["git", "write-tree"], cwd=repo_dir, env=env)
+        r = lifecycle_git._run(["git", "write-tree"], cwd=repo_dir, env=env)
         if r.returncode != 0:
             return False
         tree_sha = r.stdout.strip()
-        r = _run(
+        r = lifecycle_git._run(
             ["git", "commit-tree", tree_sha, "-p", head_sha, "-m", commit_message],
             cwd=repo_dir,
             env=env,
@@ -782,7 +664,7 @@ def _atomic_write_file(
         if r.returncode != 0:
             return False
         new_commit = r.stdout.strip()
-        r = _run(
+        r = lifecycle_git._run(
             ["git", "update-ref", f"refs/heads/{branch}", new_commit, head_sha],
             cwd=repo_dir,
         )
@@ -792,7 +674,7 @@ def _atomic_write_file(
         # Uses `git checkout HEAD -- <path>` (not checkout-index) to update both
         # default .git/index and WT. checkout-index with private GIT_INDEX_FILE
         # only writes WT, leaving default index with staged deletion — TECH-194.
-        sync = _run(["git", "checkout", "HEAD", "--", rel_path], cwd=repo_dir)
+        sync = lifecycle_git._run(["git", "checkout", "HEAD", "--", rel_path], cwd=repo_dir)
         if sync.returncode != 0:
             log.warning("write_file_atomic WT sync failed: %s", sync.stderr.strip()[:200])
         return True
@@ -865,7 +747,7 @@ def recover_bootstrap_artifact(
         )
 
     repo_dir = str(repo_dir)
-    existing = _read_yaml_from_head(repo_dir, spec_id)
+    existing = lifecycle_git._read_yaml_from_head(repo_dir, spec_id)
     if existing is None:
         raise FileNotFoundError(
             f"recover_bootstrap_artifact({spec_id}): no HEAD yaml in {repo_dir}"
@@ -889,17 +771,17 @@ def recover_bootstrap_artifact(
             spec_id=spec_id, criterion="finished_at", value=existing.get("finished_at")
         )
 
-    branch = _current_branch(repo_dir)
+    branch = lifecycle_git._current_branch(repo_dir)
 
     def make_yaml():
         # Re-read HEAD inside CAS loop in case of concurrent writes.
-        head_now = _read_yaml_from_head(repo_dir, spec_id)
+        head_now = lifecycle_git._read_yaml_from_head(repo_dir, spec_id)
         # If the artifact was already recovered between our pre-check and the
         # CAS attempt, the 4-criteria check will fail again here — but we want
         # the build to proceed once with the originally-validated `existing`.
         # Use head_now if present (for version+transitions) else fall back.
         base = head_now if head_now is not None else existing
-        return _build_yaml_content(
+        return lifecycle_git._build_yaml_content(
             spec_id,
             "queued",
             existing=base,
@@ -967,7 +849,7 @@ def recover_false_reconciliation(
         )
 
     repo_dir = str(repo_dir)
-    existing = _read_yaml_from_head(repo_dir, spec_id)
+    existing = lifecycle_git._read_yaml_from_head(repo_dir, spec_id)
     if existing is None:
         raise FileNotFoundError(
             f"recover_false_reconciliation({spec_id}): no HEAD yaml in {repo_dir}"
@@ -996,10 +878,12 @@ def recover_false_reconciliation(
     if not sha:
         raise NotFalseReconciliationError(spec_id=spec_id, criterion="cited_sha", value=sha)
 
-    subject = _run(["git", "log", "-1", "--format=%s", sha], cwd=repo_dir).stdout.strip()
+    subject = lifecycle_git._run(
+        ["git", "log", "-1", "--format=%s", sha], cwd=repo_dir
+    ).stdout.strip()
     files = [
         ln.strip()
-        for ln in _run(
+        for ln in lifecycle_git._run(
             ["git", "show", "--name-only", "--format=", sha], cwd=repo_dir
         ).stdout.splitlines()
         if ln.strip()
@@ -1021,12 +905,12 @@ def recover_false_reconciliation(
         # legitimately-reconciled specs as recoverable too.
         return
 
-    branch = _current_branch(repo_dir)
+    branch = lifecycle_git._current_branch(repo_dir)
 
     def make_yaml():
-        head_now = _read_yaml_from_head(repo_dir, spec_id)
+        head_now = lifecycle_git._read_yaml_from_head(repo_dir, spec_id)
         base = head_now if head_now is not None else existing
-        return _build_yaml_content(
+        return lifecycle_git._build_yaml_content(
             spec_id,
             "queued",
             existing=base,
@@ -1042,8 +926,8 @@ def recover_false_reconciliation(
 
 
 def now_iso() -> str:
-    """Public alias for _now_iso(). Returns current UTC time as ISO-8601 string."""
-    return _now_iso()
+    """Public alias for lifecycle_git._now_iso(). Returns current UTC time as ISO-8601 string."""
+    return lifecycle_git._now_iso()
 
 
 def build_initial_yaml(
@@ -1077,7 +961,7 @@ def build_initial_yaml(
         raise ValueError(
             f"build_initial_yaml: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS)}"
         )
-    return _build_yaml_content(
+    return lifecycle_git._build_yaml_content(
         spec_id,
         status,
         existing=None,

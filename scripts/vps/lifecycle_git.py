@@ -1,0 +1,154 @@
+"""
+Module: lifecycle_git
+Role: Git primitives — byte-level subprocess I/O, current branch lookup,
+      HEAD yaml read, and lifecycle yaml content builder.
+
+Uses:
+  - subprocess: run (git plumbing commands)
+  - yaml: safe_load, safe_dump
+  - datetime: now, timezone
+  - lifecycle_const: LIFECYCLE_DIR
+
+Used by:
+  - lifecycle.py: facade re-exports run_git, delegates all internal calls
+  - lifecycle_cas.py, lifecycle_push.py, lifecycle_recovery.py (Task 3/4)
+  - salvage.py: run_git() — public alias of _run
+"""
+
+import subprocess
+from datetime import datetime, timezone
+from typing import Optional
+
+import yaml
+from lifecycle_const import LIFECYCLE_DIR
+
+
+def _now_iso() -> str:
+    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _run(
+    cmd: list,
+    *,
+    cwd: str,
+    env: Optional[dict] = None,
+    input_text: Optional[str] = None,
+    timeout: int = 30,
+) -> subprocess.CompletedProcess:
+    """Run git with byte-level I/O and explicit UTF-8. Never `text=True`.
+
+    `text=True` breaks this module on Windows in two separate ways:
+
+    1. stdin is wrapped in a TextIOWrapper with universal newlines, so every "\\n"
+       becomes "\\r\\n". The lifecycle yaml is fed to `git hash-object --stdin`, so
+       the blob lands in git with CRLF despite `.gitattributes` (*.yaml eol=lf).
+       `ai/lifecycle/` is then permanently dirty, and `assert_clean_lifecycle_tree`
+       aborts orchestrator startup — for every project, not just the affected one.
+    2. stdout is decoded with the locale encoding (cp1251 on a Russian Windows),
+       so any Cyrillic spec title raises UnicodeDecodeError and `render_backlog`
+       silently skips the yaml as malformed.
+
+    Output keeps the newline normalization `text=True` used to provide, so the
+    ~40 existing call sites are unaffected.
+    """
+    raw_input = input_text.encode("utf-8") if input_text is not None else None
+    p = subprocess.run(
+        cmd,
+        cwd=cwd,
+        env=env,
+        input=raw_input,
+        capture_output=True,
+        check=False,
+        timeout=timeout,
+    )
+
+    def _decode(b: bytes) -> str:
+        return b.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+
+    return subprocess.CompletedProcess(p.args, p.returncode, _decode(p.stdout), _decode(p.stderr))
+
+
+# Public alias. Other VPS modules that shell out to git must not re-derive the
+# byte-level I/O rules above — re-deriving them is how the CRLF/cp1251 bug got
+# written twice. Import this, not `_run`.
+run_git = _run
+
+
+def _current_branch(repo_dir: str) -> str:
+    r = _run(["git", "symbolic-ref", "--short", "HEAD"], cwd=repo_dir)
+    if r.returncode == 0:
+        return r.stdout.strip()
+    return _run(["git", "rev-parse", "HEAD"], cwd=repo_dir).stdout.strip()
+
+
+def _read_yaml_from_head(repo_dir: str, spec_id: str) -> Optional[dict]:
+    r = _run(["git", "show", f"HEAD:{LIFECYCLE_DIR}/{spec_id}.yaml"], cwd=repo_dir)
+    if r.returncode != 0:
+        return None
+    try:
+        return yaml.safe_load(r.stdout)
+    except yaml.YAMLError:
+        return None
+
+
+def _build_yaml_content(
+    spec_id: str,
+    status: str,
+    *,
+    existing: Optional[dict],
+    reason: Optional[str],
+    by: str,
+    pueue_id: Optional[int],
+    allowed_files_hash: Optional[str],
+    priority: Optional[str] = None,
+    kind: Optional[str] = None,
+) -> str:
+    now = _now_iso()
+    if existing is None:
+        data: dict = {
+            "spec_id": spec_id,
+            "status": status,
+            "priority": priority or "p1",
+            "kind": kind or "tech",
+            "blocked_reason": None,
+            "started_at": None,
+            "finished_at": None,
+            "allowed_files_hash": allowed_files_hash,
+            "updated_at": now,
+            "updated_by": by,
+            "version": 1,
+            "pueue_id": pueue_id,
+            "transitions": [],
+        }
+        return yaml.safe_dump(data, default_flow_style=False, allow_unicode=True)
+
+    data = dict(existing)
+    old_status = data.get("status", "unknown")
+    data.update(
+        {
+            "status": status,
+            "updated_at": now,
+            "updated_by": by,
+            "version": int(data.get("version", 0)) + 1,
+        }
+    )
+    if reason is not None:
+        data["blocked_reason"] = reason
+    if allowed_files_hash is not None:
+        data["allowed_files_hash"] = allowed_files_hash
+    if pueue_id is not None:
+        data["pueue_id"] = pueue_id
+    if (
+        old_status in ("queued", "resumed")
+        and status == "in_progress"
+        and not data.get("started_at")
+    ):
+        data["started_at"] = now
+    if status == "done" and not data.get("finished_at"):
+        data["finished_at"] = now
+    transitions = list(data.get("transitions") or [])
+    transitions.append(
+        {"from": old_status, "to": status, "at": now, "by": by, "pueue_id": pueue_id}
+    )
+    data["transitions"] = transitions
+    return yaml.safe_dump(data, default_flow_style=False, allow_unicode=True)
