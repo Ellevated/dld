@@ -689,3 +689,42 @@ def test_rejects_unknown_writer_identity(tmp_git_repo):
     _make_false_reconciled(tmp_git_repo, "BUG-462", subject="lifecycle(BUG-462): queued")
     with pytest.raises(ValueError):
         lifecycle.recover_false_reconciliation(tmp_git_repo, "BUG-462", reason="x", by="autopilot")
+
+
+class TestSplitContract:
+    """Structural invariants of the TECH-214 split (EC-1, EC-7, EC-10, EC-11)."""
+
+    def test_write_lock_is_a_single_instance(self):
+        import lifecycle_const
+
+        assert lifecycle._write_lock is lifecycle_const._write_lock
+        assert lifecycle_cas._write_lock is lifecycle_const._write_lock
+
+    def test_bound_imports_still_resolve(self):
+        import migrate_backlog_to_lifecycle
+        import render_backlog
+        import salvage
+
+        assert salvage._git is lifecycle.run_git
+        assert render_backlog.LIFECYCLE_DIR == lifecycle.LIFECYCLE_DIR
+        assert migrate_backlog_to_lifecycle.build_initial_yaml is lifecycle.build_initial_yaml
+
+    def test_no_sibling_imports_the_facade(self):
+        siblings = ["const", "errors", "git", "cas", "push", "recovery"]
+        for name in siblings:
+            src = (Path(lifecycle.__file__).parent / f"lifecycle_{name}.py").read_text(
+                encoding="utf-8"
+            )
+            for line in src.splitlines():
+                stripped = line.strip()
+                assert not stripped.startswith("from lifecycle import"), f"{name}: {line}"
+                assert stripped != "import lifecycle", f"{name}: {line}"
+
+    def test_every_module_under_the_loc_limit(self):
+        vps = Path(lifecycle.__file__).parent
+        names = ["lifecycle.py"] + [
+            f"lifecycle_{n}.py" for n in ["const", "errors", "git", "cas", "push", "recovery"]
+        ]
+        for name in names:
+            loc = len((vps / name).read_text(encoding="utf-8").splitlines())
+            assert loc <= 400, f"{name}: {loc} LOC > 400"

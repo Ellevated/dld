@@ -1,20 +1,38 @@
 """
 Module: lifecycle
-Role: Atomic git-plumbing writer for per-spec lifecycle YAML state files.
-      Stores state in ai/lifecycle/{spec_id}.yaml via private GIT_INDEX_FILE.
-      CAS update-ref prevents race conditions. After each write, syncs the
-      working tree via `git checkout HEAD -- <path>` (TECH-194 Layer D fix).
-      Identity enforcement: only _ALLOWED_WRITERS may call write functions (ADR-025).
-      Rule 7 structural: done is terminal — LifecycleAlreadyDoneError raised on
-      any non-done transition when HEAD yaml already shows status="done" (ARCH-193).
+Role: Facade over the lifecycle module group (TECH-214 split). Holds the public
+      API — read_lifecycle, write_lifecycle, create_initial, list_by_status,
+      assert_clean_lifecycle_tree, write_file_atomic, reconcile_orphans, now_iso,
+      build_initial_yaml — and delegates every git/CAS/push/recovery mechanic to
+      the siblings below. State lives in ai/lifecycle/{spec_id}.yaml.
+      Rule 7 (ADR-025, ARCH-193) stays HERE, structurally inside write_lifecycle
+      and mirrored in create_initial: done is terminal, so any non-done transition
+      over a HEAD yaml already showing status="done" raises
+      LifecycleAlreadyDoneError. It does not move to a sibling — moving it would
+      reopen the question of whether every write path still passes it.
+      Identity enforcement: only _ALLOWED_WRITERS may call write functions.
+      Also re-exports the names three consumers bind at import time (see И-2):
+      run_git (salvage.py), LIFECYCLE_DIR (render_backlog.py) and
+      build_initial_yaml, defined here (migrate_backlog_to_lifecycle.py).
+      Private mechanics are NOT re-exported — an alias here would turn
+      patch.object(lifecycle, "_run", ...) into a silent no-op.
 
 Uses:
+  - lifecycle_const: LIFECYCLE_DIR, MAX_CAS_RETRIES, _ALLOWED_WRITERS,
+    _ALLOWED_WRITERS_FOR_CREATE, _VALID_PRIORITIES, _write_lock — leaf of the
+    graph, so the write lock exists exactly once per process
+  - lifecycle_errors: the four lifecycle exception types
+  - lifecycle_git: git primitives + YAML assembly (_run/run_git, _now_iso,
+    _current_branch, _read_yaml_from_head, _build_yaml_content)
+  - lifecycle_cas: atomic plumbing writes and the CAS retry loop
+  - lifecycle_push: push, rebase-onto-origin, push-failure counter
+  - lifecycle_recovery: the two narrow Rule 7 escapes (bootstrap artifact,
+    false reconciliation)
+  - logging, random, time: retry backoff and diagnostics in write_file_atomic
+  - glob: glob — working-tree fallback in list_by_status
   - pathlib: Path
-  - subprocess: run (git plumbing commands)
-  - yaml: safe_load, safe_dump
-  - tempfile: NamedTemporaryFile
-  - os: environ, unlink
-  - datetime: now, timezone
+  - typing: Optional
+  - yaml: safe_load — parsing the working-tree fallback
 
 Used by:
   - callback.py: write_lifecycle(), read_lifecycle()
@@ -22,6 +40,7 @@ Used by:
                      assert_clean_lifecycle_tree(), reconcile_orphans()
   - render_backlog.py: read_lifecycle(), list_by_status()
   - migrate_backlog_to_lifecycle.py: create_initial(), write_lifecycle()
+  - salvage.py: run_git
 
 Glossary: ai/glossary/orchestrator.md
 """
