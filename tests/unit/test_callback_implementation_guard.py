@@ -158,8 +158,8 @@ def test_ec7_trailing_parens_subject(dev_repo):
 
 def test_ec8_trailing_parens_free_text_rejected():
     """`(see SPEC-ID)` cross-reference stays rejected (TECH-177 discipline)."""
-    assert callback._subject_implements("fix: adjust helper (see BUG-339)", "BUG-339") is False
-    assert callback._subject_implements("fix: revert (BUG-339) partial now", "BUG-339") is False
+    assert gate_logic.match_subject("fix: adjust helper (see BUG-339)", "BUG-339") is False
+    assert gate_logic.match_subject("fix: revert (BUG-339) partial now", "BUG-339") is False
 
 
 def test_ec9_merge_commit_found_via_first_parent(dev_repo):
