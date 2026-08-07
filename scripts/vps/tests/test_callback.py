@@ -23,6 +23,7 @@ if VPS_DIR not in sys.path:
 
 import callback  # noqa: E402
 import db  # noqa: E402
+import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 
 
@@ -76,6 +77,50 @@ def git_repo(tmp_path):
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
+
+
+# ---------------------------------------------------------------------------
+# EC-5 (devil DA-4): monkeypatch on gate_logic module attribute must intercept
+# the call callback.verify_status_sync makes. This is the guard on the whole
+# TECH-210 approach — if `from gate_logic import find_implementation_commit`
+# is ever reintroduced in callback.py, this test fails because the name is
+# bound at import time and monkeypatching gate_logic.find_implementation_commit
+# no longer reaches the bound reference callback.py would be using.
+# ---------------------------------------------------------------------------
+
+
+class TestGateLogicModuleAttributePatchIntercepted:
+    def test_find_implementation_commit_patch_is_used_not_real_function(
+        self, git_repo, monkeypatch
+    ):
+        """Real git_repo has NO implementation commit — the real
+        `gate_logic.find_implementation_commit` would return None here, giving
+        `blocked`. If callback.py called it via `from gate_logic import
+        find_implementation_commit` (a name bound at import time), this
+        monkeypatch of the gate_logic module attribute would NOT be seen and
+        the real function would run, giving `blocked` — this assertion would
+        fail. Seeing `done` proves the module-attribute call form is in effect.
+        """
+        lifecycle.write_lifecycle(str(git_repo), "TECH-EC5", "in_progress")
+        (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
+        (git_repo / "ai" / "features" / "TECH-EC5-spec.md").write_text(
+            "# TECH-EC5\n\n## Allowed Files\n\n- `scripts/vps/callback.py`\n"
+        )
+
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a, **kw: "deadbee")
+
+        callback.verify_status_sync(str(git_repo), "TECH-EC5", target="done", pueue_id=5)
+
+        data = lifecycle.read_lifecycle(str(git_repo), "TECH-EC5")
+        assert data is not None
+        assert data["status"] == "done", (
+            "monkeypatch.setattr(gate_logic, 'find_implementation_commit', fake) "
+            "must be what verify_status_sync sees — status did not reflect the fake, "
+            "the real function ran instead (DA-4 trap: a `from gate_logic import ...` "
+            "in callback.py would bind the name at import time and this patch would "
+            "silently miss it)"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -171,8 +216,8 @@ class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
         lifecycle.write_lifecycle(str(git_repo), "TECH-X", "in_progress")
 
         # Gate stubs
-        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: "deadbee")
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
 
         # Need spec file with ## Allowed Files so gate branch is entered
@@ -211,8 +256,8 @@ class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
         """Rule 1 gate returns False → lifecycle demoted to blocked."""
         lifecycle.write_lifecycle(str(git_repo), "TECH-Y", "in_progress")
 
-        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
 
         (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
@@ -540,7 +585,7 @@ class TestPushLocalBeforeGate:
 
         # Stub _commit_stats — no pueue_id so started_at=None anyway
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
-        # Do NOT stub _fetch_develop or _is_done_on_develop — let them run real
+        # Do NOT stub gate_logic.fetch_develop or find_implementation_commit — let them run real
 
         # autopilot_signaled=False, target=blocked → push-local should flush
         callback.verify_status_sync(
@@ -686,12 +731,12 @@ class TestGraceRetry:
 
         # Simulate: push impl to origin on the "second" fetch check
         call_count = {"n": 0}
-        original_is_done = callback._is_done_on_develop
+        original_is_done = gate_logic.find_implementation_commit
 
         def _delayed_is_done(pp, sid, af):
             call_count["n"] += 1
             if call_count["n"] == 1:
-                return False  # first check: not visible yet
+                return None  # first check: not visible yet
             # Push impl BEFORE second check (simulates network lag)
             (repo / "src").mkdir(exist_ok=True)
             (repo / "src" / "g.py").write_text("# impl\n", encoding="utf-8")
@@ -700,7 +745,7 @@ class TestGraceRetry:
             _git(repo, "push", "origin", "develop")
             return original_is_done(pp, sid, af)
 
-        monkeypatch.setattr(callback, "_is_done_on_develop", _delayed_is_done)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", _delayed_is_done)
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
         monkeypatch.setattr(callback.time, "sleep", lambda s: None)
 
@@ -796,8 +841,8 @@ class TestAutopilotSignaledOverride:
         lifecycle.write_lifecycle(str(repo), "ARCH-DEP", "in_progress")
 
         # Gate is FALSE (no impl on origin) + autopilot explicitly blocked.
-        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0

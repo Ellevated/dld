@@ -29,6 +29,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import callback  # noqa: E402
 import db  # noqa: E402
+import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 
 
@@ -147,8 +148,8 @@ def test_ec1_gate_true_becomes_done(tmp_path, tmp_db, monkeypatch):
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=871)
     _seed_lifecycle_yaml(repo, spec_id)
 
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: "deadbee")
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=871)
 
@@ -166,8 +167,8 @@ def test_ec2_gate_false_becomes_blocked(tmp_path, tmp_db, monkeypatch):
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=872)
     _seed_lifecycle_yaml(repo, spec_id)
 
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=872)
 
@@ -190,8 +191,8 @@ def test_ec3_missing_allowed_files_blocks(tmp_path, tmp_db, monkeypatch):
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=873)
     _seed_lifecycle_yaml(repo, spec_id)
 
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=873)
 
@@ -216,8 +217,8 @@ def test_ec4_done_is_terminal_noop(tmp_path, tmp_db, monkeypatch):
         ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True
     ).stdout.strip()
 
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=874)
 
@@ -239,8 +240,8 @@ def test_ec5_done_verdict_not_counted_as_demote(tmp_path, tmp_db, monkeypatch):
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=875)
     _seed_lifecycle_yaml(repo, spec_id)
 
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: "deadbee")
 
     demotes_before = db.count_demotes_since(callback.CIRCUIT_WINDOW_MIN)
 

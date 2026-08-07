@@ -1252,9 +1252,9 @@ def verify_status_sync(
         log.warning("GATE: %s — %s, blocking", spec_id, reason)
     else:
         # Rule 4: fetch before evaluating the gate
-        _fetch_develop(project_path)
+        gate_logic.fetch_develop(project_path)
         # Rule 1: THE gate
-        if _is_done_on_develop(project_path, spec_id, allowed):
+        if gate_logic.find_implementation_commit(project_path, spec_id, allowed):
             new_status = "done"
             reason = ""
         else:
@@ -1269,8 +1269,8 @@ def verify_status_sync(
             if not autopilot_signaled:
                 for attempt in range(1, 4):  # up to 3 retries
                     time.sleep(5)
-                    _fetch_develop(project_path)
-                    if _is_done_on_develop(project_path, spec_id, allowed):
+                    gate_logic.fetch_develop(project_path)
+                    if gate_logic.find_implementation_commit(project_path, spec_id, allowed):
                         new_status = "done"
                         reason = ""
                         log.info("GRACE_RETRY: %s — resolved on attempt %d", spec_id, attempt)
@@ -1519,8 +1519,8 @@ def _step6_dispatch_qa_reflect(
                 )
                 return
 
-            _fetch_develop(project_path)
-            if _is_done_on_develop(project_path, spec_id, allowed):
+            gate_logic.fetch_develop(project_path)
+            if gate_logic.find_implementation_commit(project_path, spec_id, allowed):
                 dispatch_via = "QA_DISPATCH_MERGE_FALLBACK"
                 log.info(
                     "QA_DISPATCH_MERGE_FALLBACK: task_status=%r but impl confirmed "
