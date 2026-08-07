@@ -4,10 +4,10 @@ blocked_reason: verified plan landed on develop from tech/TECH-214 cycle 1; redi
 finished_at: null
 kind: tech
 priority: p1
-pueue_id: 1034
+pueue_id: 1055
 spec_id: TECH-214
-started_at: null
-status: queued
+started_at: '2026-08-07T03:05:46Z'
+status: in_progress
 transitions:
 - at: '2026-07-28T11:04:49Z'
   by: callback
@@ -19,6 +19,11 @@ transitions:
   from: blocked
   pueue_id: null
   to: queued
-updated_at: '2026-08-06T23:06:45Z'
-updated_by: operator
-version: 3
+- at: '2026-08-07T03:05:46Z'
+  by: orchestrator
+  from: queued
+  pueue_id: 1055
+  to: in_progress
+updated_at: '2026-08-07T03:05:46Z'
+updated_by: orchestrator
+version: 4
