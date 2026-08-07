@@ -1,13 +1,14 @@
 allowed_files_hash: null
-blocked_reason: owner approved Allowed Files expansion (5 integration test files)
-  — cycle-2 ACTION REQUIRED resolved
+blocked_reason: 'no_merged_implementation — if implementation IS real, run: python3
+  scripts/vps/spec_operator.py force-done dld TECH-210 ''gate regex bug, verified
+  manually'' --by=operator'
 finished_at: null
 kind: tech
 priority: p1
 pueue_id: 1044
 spec_id: TECH-210
 started_at: '2026-08-06T23:09:57Z'
-status: in_progress
+status: blocked
 transitions:
 - at: '2026-07-27T19:52:57Z'
   by: callback
@@ -34,6 +35,11 @@ transitions:
   from: queued
   pueue_id: 1044
   to: in_progress
-updated_at: '2026-08-06T23:09:57Z'
-updated_by: orchestrator
-version: 6
+- at: '2026-08-07T00:40:43Z'
+  by: callback
+  from: in_progress
+  pueue_id: 1044
+  to: blocked
+updated_at: '2026-08-07T00:40:43Z'
+updated_by: callback
+version: 7
