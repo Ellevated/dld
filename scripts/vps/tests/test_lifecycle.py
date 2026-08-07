@@ -23,7 +23,9 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import lifecycle  # noqa: E402
+import lifecycle_cas  # noqa: E402
 import lifecycle_git  # noqa: E402
+import lifecycle_push  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -351,8 +353,8 @@ def test_push_best_effort_warns_on_failure(tmp_git_repo, caplog):
         args=["git", "push"], returncode=1, stdout="", stderr="No such remote 'origin'"
     )
     with patch.object(lifecycle_git, "_run", return_value=fail):
-        with caplog.at_level(logging.WARNING, logger="lifecycle"):
-            lifecycle._push_best_effort(str(tmp_git_repo), "develop")
+        with caplog.at_level(logging.WARNING, logger="lifecycle_push"):
+            lifecycle_push._push_best_effort(str(tmp_git_repo), "develop")
 
     assert any("lifecycle push failed" in r.message for r in caplog.records)
     counter = Path(tmp_git_repo) / "ai" / ".lifecycle-push-failures"
@@ -361,7 +363,7 @@ def test_push_best_effort_warns_on_failure(tmp_git_repo, caplog):
 
     # Second failure increments
     with patch.object(lifecycle_git, "_run", return_value=fail):
-        lifecycle._push_best_effort(str(tmp_git_repo), "develop")
+        lifecycle_push._push_best_effort(str(tmp_git_repo), "develop")
     assert counter.read_text(encoding="utf-8").strip() == "2"
 
 
@@ -376,7 +378,7 @@ def test_cas_loop_treats_timeout_as_retry(tmp_git_repo):
     lifecycle.create_initial(tmp_git_repo, "TECH-560", "p1", "tech")
     # Patch _atomic_write to raise TimeoutExpired on every call.
     with patch.object(
-        lifecycle,
+        lifecycle_cas,
         "_atomic_write",
         side_effect=subprocess.TimeoutExpired(cmd=["git", "write-tree"], timeout=30),
     ):
@@ -386,6 +388,43 @@ def test_cas_loop_treats_timeout_as_retry(tmp_git_repo):
     lifecycle.write_lifecycle(tmp_git_repo, "TECH-560", "in_progress")
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-560")
     assert data["status"] == "in_progress"
+
+
+def test_backlog_fold_survives_the_split(tmp_git_repo, caplog):
+    """_atomic_write imports render_backlog lazily and swallows any failure.
+
+    After the split that import crosses a module boundary; a breakage would only
+    surface as a WARNING nobody reads. Assert the fold actually happened.
+    """
+    import logging
+
+    backlog = tmp_git_repo / "ai" / "backlog.md"
+    backlog.write_text(
+        "| ID | Status | Kind | Updated | Spec |\n"
+        "|----|--------|------|---------|------|\n"
+        "| TECH-777 | queued | tech | 2026-07-28 | x |\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "ai/backlog.md"], cwd=str(tmp_git_repo), check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "seed backlog"],
+        cwd=str(tmp_git_repo),
+        check=True,
+        capture_output=True,
+    )
+
+    with caplog.at_level(logging.WARNING, logger="lifecycle_cas"):
+        lifecycle.write_lifecycle(tmp_git_repo, "TECH-777", "done", by="callback")
+
+    assert not [r for r in caplog.records if "backlog sync skipped" in r.message]
+    head = subprocess.run(
+        ["git", "show", "HEAD:ai/backlog.md"],
+        cwd=str(tmp_git_repo),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert "| TECH-777 | done |" in head
 
 
 def test_run_has_default_timeout(tmp_git_repo):

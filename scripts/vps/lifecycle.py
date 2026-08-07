@@ -27,22 +27,19 @@ Glossary: ai/glossary/orchestrator.md
 """
 
 import logging
-import os
 import random
-import re
-import subprocess
-import tempfile
 import time
 from glob import glob
 from pathlib import Path
 from typing import Optional
 
+import lifecycle_cas
 import lifecycle_git
+import lifecycle_push
 import yaml
 from lifecycle_const import (  # noqa: F401 — re-export: read via lifecycle.<NAME>
     _ALLOWED_WRITERS,
     _ALLOWED_WRITERS_FOR_CREATE,
-    _PUSH_REBASE_RETRIES,
     _VALID_PRIORITIES,
     LIFECYCLE_DIR,
     MAX_CAS_RETRIES,
@@ -57,336 +54,6 @@ from lifecycle_errors import (  # noqa: F401 — re-export
 from lifecycle_git import run_git  # noqa: F401 — public alias (salvage.py:35)
 
 log = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _atomic_write(repo_dir: str, spec_id: str, yaml_content: str, branch: str) -> bool:
-    """One CAS attempt. Returns True on success, False on race (HEAD moved)."""
-    git_dir = os.path.join(repo_dir, ".git")
-
-    with tempfile.NamedTemporaryFile(dir=git_dir, delete=False) as f:
-        idx_path = f.name
-
-    try:
-        env = {**os.environ, "GIT_INDEX_FILE": idx_path}
-
-        # TOCTOU fix (FTR-1270 wipe, 2026-06-22): pin HEAD once so the tree
-        # snapshot, the commit parent, and the CAS all reference the SAME commit.
-        # Reading HEAD twice (read-tree HEAD ... later rev-parse HEAD) let a
-        # concurrent push land between them — the tree snapshotted the OLD HEAD
-        # while the parent was the NEW HEAD; the CAS only guards parent==branch,
-        # so it committed a stale tree that silently reverted everything in between.
-        hr = lifecycle_git._run(["git", "rev-parse", "HEAD"], cwd=repo_dir)
-        if hr.returncode != 0:
-            return False
-        head_sha = hr.stdout.strip()
-
-        if (
-            lifecycle_git._run(["git", "read-tree", head_sha], cwd=repo_dir, env=env).returncode
-            != 0
-        ):
-            return False
-
-        r = lifecycle_git._run(
-            ["git", "hash-object", "-w", "--stdin"], cwd=repo_dir, env=env, input_text=yaml_content
-        )
-        if r.returncode != 0:
-            return False
-        blob_sha = r.stdout.strip()
-
-        path_in_repo = f"{LIFECYCLE_DIR}/{spec_id}.yaml"
-        if (
-            lifecycle_git._run(
-                [
-                    "git",
-                    "update-index",
-                    "--add",
-                    "--cacheinfo",
-                    f"100644,{blob_sha},{path_in_repo}",
-                ],
-                cwd=repo_dir,
-                env=env,
-            ).returncode
-            != 0
-        ):
-            return False
-
-        # backlog.md status sync (re-enabled, status-only). lifecycle.yaml stays
-        # the SoT; backlog.md is a human-authored view. The OLD plain-table render
-        # was disabled 2026-05-16 because it destroyed founder descriptions /
-        # section structure. render_backlog.sync_status rewrites ONLY the Status
-        # cell of existing rows (override carries THIS spec's new status, which is
-        # not in HEAD yet) and is folded into the SAME atomic commit as the YAML —
-        # no second commit, no WT race. Best-effort: never break the status write.
-        try:
-            import render_backlog
-
-            bl = lifecycle_git._run(["git", "show", f"{head_sha}:ai/backlog.md"], cwd=repo_dir)
-            if bl.returncode == 0:
-                m_status = re.search(r"status:\s*(\S+)", yaml_content)
-                override = {spec_id: m_status.group(1)} if m_status else None
-                synced = render_backlog.sync_status(repo_dir, bl.stdout, overrides=override)
-                if synced != bl.stdout:
-                    blob = lifecycle_git._run(
-                        ["git", "hash-object", "-w", "--stdin"],
-                        cwd=repo_dir,
-                        env=env,
-                        input_text=synced,
-                    )
-                    if blob.returncode == 0:
-                        lifecycle_git._run(
-                            [
-                                "git",
-                                "update-index",
-                                "--add",
-                                "--cacheinfo",
-                                f"100644,{blob.stdout.strip()},ai/backlog.md",
-                            ],
-                            cwd=repo_dir,
-                            env=env,
-                        )
-        except Exception as exc:  # noqa: BLE001 — render must never break the write
-            log.warning("backlog sync skipped for %s: %s", spec_id, exc)
-
-        r = lifecycle_git._run(["git", "write-tree"], cwd=repo_dir, env=env)
-        if r.returncode != 0:
-            return False
-        tree_sha = r.stdout.strip()
-
-        m = re.search(r"status:\s*(\S+)", yaml_content)
-        status_str = m.group(1) if m else "update"
-        msg = f"lifecycle({spec_id}): {status_str}"
-
-        r = lifecycle_git._run(
-            ["git", "commit-tree", tree_sha, "-p", head_sha, "-m", msg], cwd=repo_dir, env=env
-        )
-        if r.returncode != 0:
-            return False
-        new_commit = r.stdout.strip()
-
-        r = lifecycle_git._run(
-            ["git", "update-ref", f"refs/heads/{branch}", new_commit, head_sha], cwd=repo_dir
-        )
-        if r.returncode != 0:
-            log.debug("CAS lost for %s (branch %s)", spec_id, branch)
-            return False
-
-        # Layer 3 (ARCH-187 / ADR-024 / TECH-194): sync WT to new HEAD blob so
-        # subsequent `git add .` from any agent cannot smuggle a stale yaml into
-        # a commit. Uses `git checkout HEAD -- <path>` (not checkout-index) so
-        # both the default .git/index and WT are updated atomically. checkout-index
-        # with a private GIT_INDEX_FILE only writes the WT file but leaves the
-        # default index with a staged deletion (`D  `) — fixed in TECH-194.
-        # Best-effort: log on failure but don't fail the write
-        # (assert_clean_lifecycle_tree at orchestrator boot is the backstop).
-        sync_result = lifecycle_git._run(
-            ["git", "checkout", "HEAD", "--", f"{LIFECYCLE_DIR}/{spec_id}.yaml"],
-            cwd=repo_dir,
-        )
-        if sync_result.returncode != 0:
-            log.warning(
-                "WT sync after write_lifecycle failed (best-effort): rc=%d stderr=%s",
-                sync_result.returncode,
-                sync_result.stderr.strip(),
-            )
-
-        # Sync WT for backlog.md too (it was folded into the commit above). Best-
-        # effort + separate: backlog.md may not exist in some projects, and a miss
-        # here must not fail the lifecycle write.
-        lifecycle_git._run(["git", "checkout", "HEAD", "--", "ai/backlog.md"], cwd=repo_dir)
-
-        return True
-
-    finally:
-        try:
-            os.unlink(idx_path)
-        except OSError:
-            pass
-
-
-def _push_best_effort(repo_dir: str, branch: str) -> None:
-    """Push the lifecycle commit to origin; self-heal a non-fast-forward reject.
-
-    Failure mode (push-race divergence): while an agent runs, orchestrator skips
-    git pull, so callback commits status on a STALE local develop. Meanwhile the
-    agent's code commits land on origin. The plain push is then rejected
-    non-fast-forward and the branches diverge — orchestrator's `merge --ff-only`
-    can never heal it, so the done-commit is trapped locally and the status looks
-    stuck at queued (9 manual rebases/day on awardybot, 2026-06-21).
-
-    Recovery: fetch origin, verify the local-ahead commits touch ONLY lifecycle/
-    backlog paths (callback is their sole writer → conflict-free by construction),
-    rebase them onto origin/<branch> and retry the push. Bounded; on any surprise
-    (dirty WT, a non-lifecycle local commit, rebase conflict) abort cleanly and
-    fall back to the legacy best-effort counter — never worse than before.
-    """
-    if _try_push(repo_dir, branch):
-        return
-    for attempt in range(1, _PUSH_REBASE_RETRIES + 1):
-        if not _rebase_onto_origin(repo_dir, branch):
-            break
-        if _try_push(repo_dir, branch):
-            log.info(
-                "lifecycle push recovered via rebase onto origin/%s (attempt %d)",
-                branch,
-                attempt,
-            )
-            return
-        # push raced again (origin moved between fetch and push) — retry
-    log.warning(
-        "lifecycle push failed after rebase recovery (best-effort, not fatal): branch=%s",
-        branch,
-    )
-    _bump_push_failure_counter(repo_dir)
-
-
-def _try_push(repo_dir: str, branch: str) -> bool:
-    """Single `git push origin <branch>`. True on success, False on any failure."""
-    try:
-        r = lifecycle_git._run(["git", "push", "origin", branch], cwd=repo_dir, timeout=60)
-    except subprocess.TimeoutExpired as exc:
-        log.warning("lifecycle push timeout: branch=%s cmd=%s", branch, exc.cmd)
-        return False
-    if r.returncode != 0:
-        log.info(
-            "lifecycle push rejected (will attempt rebase recovery): branch=%s stderr=%s",
-            branch,
-            r.stderr.strip()[:200],
-        )
-        return False
-    return True
-
-
-def _local_ahead_is_lifecycle_only(repo_dir: str, branch: str) -> bool:
-    """True iff every commit in origin/<branch>..HEAD touches only lifecycle/backlog.
-
-    This is the safety gate that makes auto-rebase sound: callback is the sole
-    writer of ai/lifecycle/*.yaml (+ the folded ai/backlog.md render), and code
-    commits never touch those paths, so replaying lifecycle-only commits onto
-    origin is conflict-free by construction. Any other ahead-commit → bail.
-    """
-    rev = lifecycle_git._run(["git", "rev-list", f"origin/{branch}..HEAD"], cwd=repo_dir)
-    if rev.returncode != 0:
-        return False
-    commits = rev.stdout.split()
-    if not commits:
-        # Nothing ahead — the rejection wasn't a divergence we created. Bail
-        # (a plain behind-only state is not our recovery case).
-        return False
-    for sha in commits:
-        files = lifecycle_git._run(
-            ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", sha],
-            cwd=repo_dir,
-        )
-        if files.returncode != 0:
-            return False
-        for path in files.stdout.splitlines():
-            path = path.strip()
-            if not path:
-                continue
-            if not (path.startswith(f"{LIFECYCLE_DIR}/") or path == "ai/backlog.md"):
-                return False
-    return True
-
-
-def _rebase_onto_origin(repo_dir: str, branch: str) -> bool:
-    """Fetch origin/<branch> and rebase local lifecycle-only commits onto it.
-
-    Returns True only if the rebase succeeded and left a clean WT. Returns False
-    (state restored) on any guard failure: fetch error, dirty WT, a non-lifecycle
-    local-ahead commit, or a rebase conflict (which is aborted). On False the
-    caller falls back to the legacy counter — never worse than the old behavior.
-    """
-    try:
-        fetch = lifecycle_git._run(
-            ["git", "fetch", "--quiet", "origin", branch], cwd=repo_dir, timeout=60
-        )
-    except subprocess.TimeoutExpired:
-        log.warning("lifecycle rebase: fetch timeout branch=%s", branch)
-        return False
-    if fetch.returncode != 0:
-        log.warning(
-            "lifecycle rebase: fetch failed branch=%s stderr=%s",
-            branch,
-            fetch.stderr.strip()[:200],
-        )
-        return False
-
-    # Guard 1: WT must be clean. rebase refuses on a dirty tree, and we must
-    # never disturb uncommitted work. In the stuck case the WT is clean (just
-    # behind origin) because _atomic_write synced only the yaml+backlog paths.
-    status = lifecycle_git._run(["git", "status", "--porcelain"], cwd=repo_dir)
-    if status.returncode != 0 or status.stdout.strip():
-        log.warning("lifecycle rebase: WT not clean, skipping auto-rebase branch=%s", branch)
-        return False
-
-    # Guard 2: only auto-rebase when every ahead-commit is lifecycle/backlog-only.
-    if not _local_ahead_is_lifecycle_only(repo_dir, branch):
-        log.warning(
-            "lifecycle rebase: local-ahead commits touch non-lifecycle files — "
-            "refusing auto-rebase (manual heal) branch=%s",
-            branch,
-        )
-        return False
-
-    try:
-        rebase = lifecycle_git._run(["git", "rebase", f"origin/{branch}"], cwd=repo_dir, timeout=60)
-    except subprocess.TimeoutExpired:
-        log.warning("lifecycle rebase: timeout branch=%s — aborting", branch)
-        lifecycle_git._run(["git", "rebase", "--abort"], cwd=repo_dir)
-        return False
-    if rebase.returncode != 0:
-        log.warning(
-            "lifecycle rebase: conflict/failure, aborting branch=%s stderr=%s",
-            branch,
-            rebase.stderr.strip()[:200],
-        )
-        lifecycle_git._run(["git", "rebase", "--abort"], cwd=repo_dir)
-        return False
-    return True
-
-
-def _bump_push_failure_counter(repo_dir: str) -> None:
-    """Increment ai/.lifecycle-push-failures counter (best-effort)."""
-    counter = Path(repo_dir) / "ai" / ".lifecycle-push-failures"
-    try:
-        prev = int(counter.read_text().strip()) if counter.is_file() else 0
-        counter.write_text(str(prev + 1))
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def _cas_loop(repo_dir: str, spec_id: str, branch: str, yaml_fn) -> None:
-    """Run CAS retry loop with in-process lock + jitter.
-
-    In-process lock (_write_lock) serializes writes within one Python process,
-    eliminating intra-process CAS stampede while preserving multi-machine CAS
-    safety via git update-ref.
-    """
-    with _write_lock:
-        for attempt in range(1, MAX_CAS_RETRIES + 1):
-            yaml_content = yaml_fn()
-            try:
-                wrote = _atomic_write(repo_dir, spec_id, yaml_content, branch)
-            except subprocess.TimeoutExpired as exc:
-                log.warning(
-                    "lifecycle git plumbing timeout (spec=%s cmd=%s); treating as CAS failure",
-                    spec_id,
-                    exc.cmd,
-                )
-                wrote = False
-            if wrote:
-                _push_best_effort(repo_dir, branch)
-                return
-            log.warning("CAS attempt %d/%d failed for %s", attempt, MAX_CAS_RETRIES, spec_id)
-            if attempt < MAX_CAS_RETRIES:
-                # Jitter: spread retries to reduce multi-machine CAS stampede (0–50ms)
-                time.sleep(random.uniform(0, 0.05))
-        raise LifecycleWriteRaceError(spec_id, MAX_CAS_RETRIES)
 
 
 # ---------------------------------------------------------------------------
@@ -445,7 +112,7 @@ def write_lifecycle(
             allowed_files_hash=allowed_files_hash,
         )
 
-    _cas_loop(repo_dir, spec_id, branch, make_yaml)
+    lifecycle_cas._cas_loop(repo_dir, spec_id, branch, make_yaml)
 
 
 def create_initial(
@@ -509,7 +176,7 @@ def create_initial(
             kind=kind,
         )
 
-    _cas_loop(repo_dir, spec_id, branch, make_yaml)
+    lifecycle_cas._cas_loop(repo_dir, spec_id, branch, make_yaml)
 
 
 def list_by_status(repo_dir, status) -> list:
@@ -594,8 +261,10 @@ def write_file_atomic(
             head_content = lifecycle_git._run(["git", "show", f"HEAD:{rel_path}"], cwd=repo_dir)
             if head_content.returncode == 0 and head_content.stdout == content:
                 return True
-            if _atomic_write_file(repo_dir, rel_path, content, commit_message, branch):
-                _push_best_effort(repo_dir, branch)
+            if lifecycle_cas._atomic_write_file(
+                repo_dir, rel_path, content, commit_message, branch
+            ):
+                lifecycle_push._push_best_effort(repo_dir, branch)
                 return True
             log.warning(
                 "write_file_atomic CAS attempt %d/%d failed for %s",
@@ -607,84 +276,6 @@ def write_file_atomic(
                 time.sleep(random.uniform(0, 0.05))
     log.warning("write_file_atomic: gave up after %d attempts for %s", MAX_CAS_RETRIES, rel_path)
     return False
-
-
-def _atomic_write_file(
-    repo_dir: str,
-    rel_path: str,
-    content: str,
-    commit_message: str,
-    branch: str,
-) -> bool:
-    """One CAS attempt for arbitrary file path. Mirrors _atomic_write but generic."""
-    git_dir = os.path.join(repo_dir, ".git")
-    with tempfile.NamedTemporaryFile(dir=git_dir, delete=False) as f:
-        idx_path = f.name
-    try:
-        env = {**os.environ, "GIT_INDEX_FILE": idx_path}
-        # TOCTOU fix (FTR-1270 wipe): pin HEAD once — tree, parent, CAS all on the
-        # same commit (see _atomic_write). Reading HEAD twice raced a concurrent
-        # push and silently reverted in-between commits.
-        hr = lifecycle_git._run(["git", "rev-parse", "HEAD"], cwd=repo_dir)
-        if hr.returncode != 0:
-            return False
-        head_sha = hr.stdout.strip()
-        if (
-            lifecycle_git._run(["git", "read-tree", head_sha], cwd=repo_dir, env=env).returncode
-            != 0
-        ):
-            return False
-        r = lifecycle_git._run(
-            ["git", "hash-object", "-w", "--stdin"],
-            cwd=repo_dir,
-            env=env,
-            input_text=content,
-        )
-        if r.returncode != 0:
-            return False
-        blob_sha = r.stdout.strip()
-        if (
-            lifecycle_git._run(
-                ["git", "update-index", "--add", "--cacheinfo", f"100644,{blob_sha},{rel_path}"],
-                cwd=repo_dir,
-                env=env,
-            ).returncode
-            != 0
-        ):
-            return False
-        r = lifecycle_git._run(["git", "write-tree"], cwd=repo_dir, env=env)
-        if r.returncode != 0:
-            return False
-        tree_sha = r.stdout.strip()
-        r = lifecycle_git._run(
-            ["git", "commit-tree", tree_sha, "-p", head_sha, "-m", commit_message],
-            cwd=repo_dir,
-            env=env,
-        )
-        if r.returncode != 0:
-            return False
-        new_commit = r.stdout.strip()
-        r = lifecycle_git._run(
-            ["git", "update-ref", f"refs/heads/{branch}", new_commit, head_sha],
-            cwd=repo_dir,
-        )
-        if r.returncode != 0:
-            return False
-        # Sync WT (best-effort; backlog.md is a render so stale WT is recoverable).
-        # Uses `git checkout HEAD -- <path>` (not checkout-index) to update both
-        # default .git/index and WT. checkout-index with private GIT_INDEX_FILE
-        # only writes WT, leaving default index with staged deletion — TECH-194.
-        sync = lifecycle_git._run(["git", "checkout", "HEAD", "--", rel_path], cwd=repo_dir)
-        if sync.returncode != 0:
-            log.warning("write_file_atomic WT sync failed: %s", sync.stderr.strip()[:200])
-        return True
-    finally:
-        try:
-            os.unlink(idx_path)
-        except OSError:
-            pass
-
-
 def reconcile_orphans(repo_dir, pueue_alive_ids: set) -> list:
     """
     Demote in_progress specs whose pueue task is no longer alive.
@@ -795,7 +386,7 @@ def recover_bootstrap_artifact(
     # have *just* validated the bootstrap-as-done signature above, which is
     # the narrow operator-escape ADR-025 always envisioned (see
     # recover_bootstrap_as_done.py docstring).
-    _cas_loop(repo_dir, spec_id, branch, make_yaml)
+    lifecycle_cas._cas_loop(repo_dir, spec_id, branch, make_yaml)
 
 
 def recover_false_reconciliation(
@@ -922,7 +513,7 @@ def recover_false_reconciliation(
 
     # Deliberately bypassing Rule 7, exactly as recover_bootstrap_artifact does:
     # the signature above has just proven this `done` was never earned.
-    _cas_loop(repo_dir, spec_id, branch, make_yaml)
+    lifecycle_cas._cas_loop(repo_dir, spec_id, branch, make_yaml)
 
 
 def now_iso() -> str:
