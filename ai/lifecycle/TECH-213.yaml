@@ -5,10 +5,10 @@ blocked_reason: cycle-1 branch (tech/TECH-213) predates 90086204 classifier-refu
 finished_at: null
 kind: tech
 priority: p1
-pueue_id: 1033
+pueue_id: 1049
 spec_id: TECH-213
-started_at: null
-status: queued
+started_at: '2026-08-07T01:10:25Z'
+status: in_progress
 transitions:
 - at: '2026-07-28T10:18:47Z'
   by: callback
@@ -20,6 +20,11 @@ transitions:
   from: blocked
   pueue_id: null
   to: queued
-updated_at: '2026-08-06T23:09:52Z'
-updated_by: operator
-version: 3
+- at: '2026-08-07T01:10:25Z'
+  by: orchestrator
+  from: queued
+  pueue_id: 1049
+  to: in_progress
+updated_at: '2026-08-07T01:10:25Z'
+updated_by: orchestrator
+version: 4

@@ -24,7 +24,7 @@
 | TECH-210 | blocked | tech | 2026-07-27 | [spec](features/TECH-210-2026-07-27-gate-dedup-single-source.md) |
 | TECH-211 | done | tech | 2026-07-27 | [spec](features/TECH-211-2026-07-27-split-reaper-and-audit.md) |
 | TECH-212 | done | tech | 2026-07-27 | [spec](features/TECH-212-2026-07-27-split-db-module.md) |
-| TECH-213 | queued | tech | 2026-07-27 | [spec](features/TECH-213-2026-07-27-split-claude-runner.md) |
+| TECH-213 | in_progress | tech | 2026-07-27 | [spec](features/TECH-213-2026-07-27-split-claude-runner.md) |
 | TECH-214 | queued | tech | 2026-07-27 | [spec](features/TECH-214-2026-07-27-split-lifecycle-module.md) |
 | TECH-215 | done | tech | 2026-07-27 | [spec](features/TECH-215-2026-07-27-split-orchestrator.md) — AFTER BUG-218 |
 | TECH-216 | queued | tech | 2026-07-27 | [spec](features/TECH-216-2026-07-27-split-callback.md) — AFTER TECH-210 |
