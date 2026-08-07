@@ -8,7 +8,7 @@ Role: Operator-facing automated heuristic helper for the manual spec
 Steps 4–6 (tests, migrations, acceptance) remain manual — see
 `~/.claude/projects/-root/memory/spec-verification-protocol.md`.
 
-Uses: scripts.vps.callback._parse_allowed_files (TECH-167 canonical parser).
+Uses: scripts.vps.gate_logic.parse_allowed_files (TECH-167 canonical parser).
 Used by: operators (CLI), `/qa` skill, post-circuit triage.
 
 Usage:
@@ -29,7 +29,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Reuse the canonical allowlist parser from callback.py — single source of truth.
+# Reuse the canonical allowlist parser from gate_logic.py — single source of truth.
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
@@ -37,9 +37,9 @@ if str(_HERE) not in sys.path:
 import console_safe  # noqa: E402
 
 try:
-    from callback import _parse_allowed_files  # type: ignore
+    from gate_logic import parse_allowed_files  # type: ignore
 except Exception as exc:  # noqa: BLE001
-    print(f"spec_verify: cannot import callback._parse_allowed_files: {exc}", file=sys.stderr)
+    print(f"spec_verify: cannot import gate_logic.parse_allowed_files: {exc}", file=sys.stderr)
     sys.exit(2)
 
 
@@ -227,7 +227,7 @@ def build_report(project: Path, spec_id: str) -> Report:
         raise FileNotFoundError(f"spec not found: {project}/ai/features/{spec_id}*.md")
 
     spec_text = spec_path.read_text(errors="replace")
-    allowed = _parse_allowed_files(spec_path)
+    allowed = parse_allowed_files(spec_path)
 
     rep = Report(spec_id=spec_id, spec_path=spec_path, project=project, allowed=allowed)
 
