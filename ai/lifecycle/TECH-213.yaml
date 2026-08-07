@@ -1,14 +1,12 @@
 allowed_files_hash: null
-blocked_reason: cycle-1 branch (tech/TECH-213) predates 90086204 classifier-refusal
-  feature and conflicts with develop — force-done rejected, redispatching for fresh
-  Impact Tree
+blocked_reason: autopilot_signaled_blocked
 finished_at: null
 kind: tech
 priority: p1
 pueue_id: 1049
 spec_id: TECH-213
 started_at: '2026-08-07T01:10:25Z'
-status: in_progress
+status: blocked
 transitions:
 - at: '2026-07-28T10:18:47Z'
   by: callback
@@ -25,6 +23,11 @@ transitions:
   from: queued
   pueue_id: 1049
   to: in_progress
-updated_at: '2026-08-07T01:10:25Z'
-updated_by: orchestrator
-version: 4
+- at: '2026-08-07T01:34:49Z'
+  by: callback
+  from: in_progress
+  pueue_id: 1049
+  to: blocked
+updated_at: '2026-08-07T01:34:49Z'
+updated_by: callback
+version: 5
