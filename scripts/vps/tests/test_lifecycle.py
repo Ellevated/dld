@@ -23,6 +23,9 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import lifecycle  # noqa: E402
+import lifecycle_cas  # noqa: E402
+import lifecycle_git  # noqa: E402
+import lifecycle_push  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +106,7 @@ def test_concurrent_commit_during_write_not_reverted(tmp_git_repo):
     runs after the tree snapshot is taken. With the fix the retry picks up
     concurrent.txt; without it the file vanishes from HEAD.
     """
-    real_run = lifecycle._run
+    real_run = lifecycle_git._run
     state = {"injected": False}
 
     def injecting_run(cmd, **kwargs):
@@ -120,7 +123,7 @@ def test_concurrent_commit_during_write_not_reverted(tmp_git_repo):
             )
         return real_run(cmd, **kwargs)
 
-    with patch.object(lifecycle, "_run", injecting_run):
+    with patch.object(lifecycle_git, "_run", injecting_run):
         lifecycle.write_lifecycle(tmp_git_repo, "TECH-700", "queued")
 
     # 1) The lifecycle write itself landed.
@@ -349,9 +352,9 @@ def test_push_best_effort_warns_on_failure(tmp_git_repo, caplog):
     fail = subprocess.CompletedProcess(
         args=["git", "push"], returncode=1, stdout="", stderr="No such remote 'origin'"
     )
-    with patch.object(lifecycle, "_run", return_value=fail):
-        with caplog.at_level(logging.WARNING, logger="lifecycle"):
-            lifecycle._push_best_effort(str(tmp_git_repo), "develop")
+    with patch.object(lifecycle_git, "_run", return_value=fail):
+        with caplog.at_level(logging.WARNING, logger="lifecycle_push"):
+            lifecycle_push._push_best_effort(str(tmp_git_repo), "develop")
 
     assert any("lifecycle push failed" in r.message for r in caplog.records)
     counter = Path(tmp_git_repo) / "ai" / ".lifecycle-push-failures"
@@ -359,8 +362,8 @@ def test_push_best_effort_warns_on_failure(tmp_git_repo, caplog):
     assert counter.read_text(encoding="utf-8").strip() == "1"
 
     # Second failure increments
-    with patch.object(lifecycle, "_run", return_value=fail):
-        lifecycle._push_best_effort(str(tmp_git_repo), "develop")
+    with patch.object(lifecycle_git, "_run", return_value=fail):
+        lifecycle_push._push_best_effort(str(tmp_git_repo), "develop")
     assert counter.read_text(encoding="utf-8").strip() == "2"
 
 
@@ -375,7 +378,7 @@ def test_cas_loop_treats_timeout_as_retry(tmp_git_repo):
     lifecycle.create_initial(tmp_git_repo, "TECH-560", "p1", "tech")
     # Patch _atomic_write to raise TimeoutExpired on every call.
     with patch.object(
-        lifecycle,
+        lifecycle_cas,
         "_atomic_write",
         side_effect=subprocess.TimeoutExpired(cmd=["git", "write-tree"], timeout=30),
     ):
@@ -387,6 +390,43 @@ def test_cas_loop_treats_timeout_as_retry(tmp_git_repo):
     assert data["status"] == "in_progress"
 
 
+def test_backlog_fold_survives_the_split(tmp_git_repo, caplog):
+    """_atomic_write imports render_backlog lazily and swallows any failure.
+
+    After the split that import crosses a module boundary; a breakage would only
+    surface as a WARNING nobody reads. Assert the fold actually happened.
+    """
+    import logging
+
+    backlog = tmp_git_repo / "ai" / "backlog.md"
+    backlog.write_text(
+        "| ID | Status | Kind | Updated | Spec |\n"
+        "|----|--------|------|---------|------|\n"
+        "| TECH-777 | queued | tech | 2026-07-28 | x |\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "ai/backlog.md"], cwd=str(tmp_git_repo), check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "seed backlog"],
+        cwd=str(tmp_git_repo),
+        check=True,
+        capture_output=True,
+    )
+
+    with caplog.at_level(logging.WARNING, logger="lifecycle_cas"):
+        lifecycle.write_lifecycle(tmp_git_repo, "TECH-777", "done", by="callback")
+
+    assert not [r for r in caplog.records if "backlog sync skipped" in r.message]
+    head = subprocess.run(
+        ["git", "show", "HEAD:ai/backlog.md"],
+        cwd=str(tmp_git_repo),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert "| TECH-777 | done |" in head
+
+
 def test_run_has_default_timeout(tmp_git_repo):
     """TECH-189 Task 7: _run() includes timeout=30 by default.
 
@@ -396,7 +436,7 @@ def test_run_has_default_timeout(tmp_git_repo):
     """
     import inspect
 
-    sig = inspect.signature(lifecycle._run)
+    sig = inspect.signature(lifecycle_git._run)
     assert sig.parameters["timeout"].default == 30
 
 
@@ -649,3 +689,42 @@ def test_rejects_unknown_writer_identity(tmp_git_repo):
     _make_false_reconciled(tmp_git_repo, "BUG-462", subject="lifecycle(BUG-462): queued")
     with pytest.raises(ValueError):
         lifecycle.recover_false_reconciliation(tmp_git_repo, "BUG-462", reason="x", by="autopilot")
+
+
+class TestSplitContract:
+    """Structural invariants of the TECH-214 split (EC-1, EC-7, EC-10, EC-11)."""
+
+    def test_write_lock_is_a_single_instance(self):
+        import lifecycle_const
+
+        assert lifecycle._write_lock is lifecycle_const._write_lock
+        assert lifecycle_cas._write_lock is lifecycle_const._write_lock
+
+    def test_bound_imports_still_resolve(self):
+        import migrate_backlog_to_lifecycle
+        import render_backlog
+        import salvage
+
+        assert salvage._git is lifecycle.run_git
+        assert render_backlog.LIFECYCLE_DIR == lifecycle.LIFECYCLE_DIR
+        assert migrate_backlog_to_lifecycle.build_initial_yaml is lifecycle.build_initial_yaml
+
+    def test_no_sibling_imports_the_facade(self):
+        siblings = ["const", "errors", "git", "cas", "push", "recovery"]
+        for name in siblings:
+            src = (Path(lifecycle.__file__).parent / f"lifecycle_{name}.py").read_text(
+                encoding="utf-8"
+            )
+            for line in src.splitlines():
+                stripped = line.strip()
+                assert not stripped.startswith("from lifecycle import"), f"{name}: {line}"
+                assert stripped != "import lifecycle", f"{name}: {line}"
+
+    def test_every_module_under_the_loc_limit(self):
+        vps = Path(lifecycle.__file__).parent
+        names = ["lifecycle.py"] + [
+            f"lifecycle_{n}.py" for n in ["const", "errors", "git", "cas", "push", "recovery"]
+        ]
+        for name in names:
+            loc = len((vps / name).read_text(encoding="utf-8").splitlines())
+            assert loc <= 400, f"{name}: {loc} LOC > 400"

@@ -27,7 +27,7 @@ VPS_DIR = str(Path(__file__).resolve().parent.parent)
 if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
-import lifecycle  # noqa: E402
+import lifecycle_push  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ def test_push_succeeds_without_divergence(repos):
     origin, local, _other = repos
     _commit_file(local, "ai/lifecycle/TEST-1.yaml", "status: done\n", "lifecycle(TEST-1): done")
 
-    lifecycle._push_best_effort(str(local), "main")
+    lifecycle_push._push_best_effort(str(local), "main")
 
     assert "ai/lifecycle/TEST-1.yaml" in _origin_files(origin)
     assert _push_failures(local) == 0
@@ -148,7 +148,7 @@ def test_push_race_divergence_recovered(repos):
     # ref in `local` is still the seed commit — orchestrator skipped the pull).
     _commit_file(local, "ai/lifecycle/BUG-1.yaml", "status: done\n", "lifecycle(BUG-1): done")
 
-    lifecycle._push_best_effort(str(local), "main")
+    lifecycle_push._push_best_effort(str(local), "main")
 
     # Both the agent's code AND the lifecycle status must be on origin now.
     files = _origin_files(origin)
@@ -179,7 +179,7 @@ def test_backlog_ahead_commit_is_rebased(repos):
     _git(local, "add", "ai/lifecycle/BUG-2.yaml", "ai/backlog.md")
     _git(local, "commit", "-m", "lifecycle(BUG-2): done")
 
-    lifecycle._push_best_effort(str(local), "main")
+    lifecycle_push._push_best_effort(str(local), "main")
 
     files = _origin_files(origin)
     assert "ai/lifecycle/BUG-2.yaml" in files
@@ -202,7 +202,7 @@ def test_non_lifecycle_ahead_commit_bails(repos):
     # Local is ahead by a CODE commit (not lifecycle) → divergence we must not touch.
     _commit_file(local, "other.py", "y = 2\n", "feat: unexpected local code")
 
-    lifecycle._push_best_effort(str(local), "main")
+    lifecycle_push._push_best_effort(str(local), "main")
 
     # The unexpected local commit must NOT have been force-rebased onto origin.
     assert "other.py" not in _origin_files(origin)
@@ -226,7 +226,7 @@ def test_dirty_wt_blocks_rebase(repos):
     # Make the WT dirty — rebase must refuse.
     (local / "src.py").write_text("x = DIRTY\n", encoding="utf-8")
 
-    ok = lifecycle._rebase_onto_origin(str(local), "main")
+    ok = lifecycle_push._rebase_onto_origin(str(local), "main")
     assert ok is False
     # WT untouched, no rebase-in-progress left behind.
     assert (local / "src.py").read_text(encoding="utf-8") == "x = DIRTY\n"
@@ -244,12 +244,12 @@ def test_local_ahead_classification(repos):
 
     # Nothing ahead → False
     _git(local, "fetch", "origin", "main")
-    assert lifecycle._local_ahead_is_lifecycle_only(str(local), "main") is False
+    assert lifecycle_push._local_ahead_is_lifecycle_only(str(local), "main") is False
 
     # Lifecycle-only ahead → True
     _commit_file(local, "ai/lifecycle/BUG-9.yaml", "status: done\n", "lifecycle(BUG-9): done")
-    assert lifecycle._local_ahead_is_lifecycle_only(str(local), "main") is True
+    assert lifecycle_push._local_ahead_is_lifecycle_only(str(local), "main") is True
 
     # Add a code commit on top → mixed → False
     _commit_file(local, "src.py", "x = 2\n", "fix: code on top")
-    assert lifecycle._local_ahead_is_lifecycle_only(str(local), "main") is False
+    assert lifecycle_push._local_ahead_is_lifecycle_only(str(local), "main") is False
