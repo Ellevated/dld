@@ -112,11 +112,6 @@ ai/architect/architecture-agenda.md
 
 **Total input:** 17 files to synthesize
 
-The LLM Architect's two files were missing from this list while the skill
-dispatched, wrote and gate-counted them — eight personas researched, seven were
-read. Erik's context budgets and tool-description grading reached the blueprint
-through the Phase 7 gate only, never through synthesis.
-
 ## Architecture Alternative Template
 
 Each alternative you produce follows this structure:
@@ -292,7 +287,7 @@ components:
 # Pre-commit hook: check dependency direction
 # Fails if any import violates: shared ← infra ← domains ← api
 
-./scripts/check-dependencies.sh || exit 1
+python scripts/check_domain_imports.py || exit 1
 ```
 
 ---

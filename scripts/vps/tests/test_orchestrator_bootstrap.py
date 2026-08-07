@@ -296,7 +296,9 @@ def test_bootstrap_reads_head_not_working_tree(tmp_git_repo):
     )
     (tmp_git_repo / "ai" / "backlog.md").write_text(head_backlog, encoding="utf-8")
     spec_file = tmp_git_repo / "ai" / "features" / "TECH-888-test-head-read.md"
-    spec_file.write_text("# Feature: TECH-888\n\n## Allowed Files\n\n- `src/foo.py`\n", encoding="utf-8")
+    spec_file.write_text(
+        "# Feature: TECH-888\n\n## Allowed Files\n\n- `src/foo.py`\n", encoding="utf-8"
+    )
     _git_add_commit(tmp_git_repo, "ai/backlog.md", "ai/features/TECH-888-test-head-read.md")
 
     # Now overwrite WT backlog with TECH-999 (not committed) — simulates callback

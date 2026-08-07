@@ -48,9 +48,15 @@ no auto-migration (see TECH-181).
    - QA writes reports to `ai/qa/*.md`.
    - Hermes reviews those artifacts later and **may** create an inbox item from them
      — but never as `queued` without an explicit Oleg sign-off.
-3. **Autopilot does not write to `ai/inbox/` at all.**
+3. **Council and architect write `draft` directly.**
+   Unlike reflect and QA, they create the inbox item themselves — `Source: council` /
+   `Source: architect`, with `Context:` pointing at the session artifact
+   (`ai/.council/*/synthesis.md`, `ai/architect/*.md`). Still `draft`: invariant 1 has no
+   exceptions, so the item waits for Hermes exactly like any other source.
+   See `.claude/skills/{council,architect}/SKILL.md` § Inbox Output.
+4. **Autopilot does not write to `ai/inbox/` at all.**
    Post-mortems and learnings go to `ai/diary/` or feed reflect via `ai/reflect/`.
-4. **Orchestrator does not change semantic status.**
+5. **Orchestrator does not change semantic status.**
    `scan_inbox` flips `queued → processing` and moves the file to
    `ai/inbox/done/` — purely a state machine of the file itself, not a
    business decision.
@@ -63,7 +69,7 @@ no auto-migration (see TECH-181).
 # Title — one line
 
 **Status:** draft
-**Source:** telegram | qa | reflect | autopilot | manual
+**Source:** telegram | council | architect | qa | reflect | autopilot | manual
 **Route:** spark            # optional, defaults to spark
 **Provider:** claude | codex # optional
 **Context:** TECH-NNN        # optional
@@ -80,9 +86,11 @@ The orchestrator parses these fields via `_parse_inbox_file` in
 
 ```
                 ┌────────────┐
- Telegram ─────▶│            │
- reflect  ─────▶│   draft    │──── Hermes asks ────▶  clarifying
- QA       ─────▶│            │                              │
+ Telegram  ────▶│            │
+ council   ────▶│            │
+ architect ────▶│   draft    │──── Hermes asks ────▶  clarifying
+ reflect   ────▶│            │                              │
+ QA        ────▶│            │                              │
                 └─────┬──────┘                              │
                       │                                     ▼
                       │                          (Oleg answers / silence)

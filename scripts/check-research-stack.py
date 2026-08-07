@@ -38,6 +38,29 @@ if not sys.stdout.isatty():
 
 problems: list[str] = []
 warnings: list[str] = []
+skipped: list[str] = []
+
+
+def _make_console_safe() -> None:
+    """Reconfigure stdout/stderr so an unencodable character degrades instead of
+    crashing this script before it prints anything useful.
+
+    Same technique as scripts/vps/console_safe.py, duplicated rather than
+    imported: this script is mirrored into template/scripts/, which has no
+    scripts/vps/ tree, so an import here would work in this repo and break in
+    every downstream project built from the template. On Windows, sys.stdout
+    defaults to the ANSI code page (cp1251 on a Russian install), and the arrows
+    and checkmarks this script prints (❯, ✔, ✗) are unencodable there — the
+    crash used to happen before Context7 or Exa were even reached.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            continue
 
 
 def ok(msg: str) -> None:
@@ -52,6 +75,14 @@ def bad(msg: str) -> None:
 def warn(msg: str) -> None:
     print(f"  {YELLOW}warn{RESET}  {msg}")
     warnings.append(msg)
+
+
+def skip(msg: str) -> None:
+    """A check that could not run at all — distinct from a check that ran and
+    found nothing wrong. Must never be silently indistinguishable from "no
+    output for this section" (see the exit-code logic in main())."""
+    print(f"  {YELLOW}SKIP{RESET}  {msg}")
+    skipped.append(msg)
 
 
 def run(cmd: list[str], timeout: int = 60) -> tuple[int, str]:
@@ -254,6 +285,7 @@ def check_mcp_health(cli: str) -> None:
 
 
 def main() -> int:
+    _make_console_safe()
     print(f"{DIM}research stack check — {REPO_ROOT}{RESET}")
     cli = check_cli()
     if not cli:
@@ -263,6 +295,14 @@ def main() -> int:
     live = probe_exa()
     if live:
         check_drift(live)
+    else:
+        print("\nPrompt/server agreement")
+        skip(
+            "Exa was unreachable above, so mcp__exa__* tool names in the prompts "
+            "were NOT checked against what the server serves. This is the check "
+            'this script exists for — treat this run as unverified, not as "no '
+            'drift found". Re-run once Exa is reachable.'
+        )
     check_mcp_health(cli)
 
     print()
@@ -273,6 +313,13 @@ def main() -> int:
         for p in problems:
             print(f"  - {p}")
         return 1
+    if skipped:
+        print(f"{YELLOW}{len(skipped)} check(s) skipped{RESET} — not confirmed clean:")
+        for s in skipped:
+            print(f"  - {s}")
+        for w in warnings:
+            print(f"  - {w}")
+        return 2
     if warnings:
         print(f"{YELLOW}{len(warnings)} warning(s){RESET}, nothing broken:")
         for w in warnings:

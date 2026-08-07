@@ -1,6 +1,6 @@
 ---
 name: bughunt
-description: Deep multi-agent bug analysis. 6 personas × N zones → findings report + inbox items for Spark. Triggers on keywords: bug hunt, deep analysis, охота на баги, баг-хант, командный аудит багов
+description: Deep multi-agent bug analysis. 6 personas × N zones → findings report for Hermes review. Triggers on keywords: bug hunt, deep analysis, охота на баги, баг-хант, командный аудит багов
 ---
 
 # Bug Hunt — Standalone Deep Analysis Skill
@@ -23,7 +23,7 @@ Multi-agent pipeline for systematic bug detection across codebase zones.
 Bughunt manages ALL pipeline steps directly at Task nesting Level 1.
 Reuses existing agents from `.claude/agents/bug-hunt/`.
 
-**Output:** Report + N inbox files (NOT backlog entries — Spark creates specs).
+**Output:** Report only (NOT backlog entries, NOT inbox items directly — Hermes reviews the report and decides whether to create inbox items).
 
 ```
 Step 0: scope-decomposer → zones.yaml
@@ -32,7 +32,7 @@ Step 2: findings-collector → summary.yaml
 Step 3: spec-assembler → umbrella report
 Step 4: validator → grouped findings
 Step 5: report-updater → final report
-Step 6: Create N inbox files (one per finding group)
+Step 6: Save durable report (completion.md) — Hermes reviews and decides on inbox items
 ```
 
 ## Modules
@@ -40,7 +40,7 @@ Step 6: Create N inbox files (one per finding group)
 | Module | Content |
 |--------|---------|
 | `pipeline.md` | Full 7-step pipeline with file gates and ADR compliance |
-| `completion.md` | Inbox output format, commit + push, cleanup |
+| `completion.md` | Report output format, commit + push, cleanup |
 
 **Flow:** `SKILL.md → pipeline.md → completion.md`
 
@@ -49,8 +49,8 @@ Step 6: Create N inbox files (one per finding group)
 ## STRICT RULES
 
 - **READ-ONLY for source code** — Bughunt NEVER modifies application files
-- **No backlog entries** — Bughunt writes to inbox, Spark creates specs
-- **No autopilot handoff** — Bughunt finishes after inbox + push
+- **No backlog entries, no inbox items** — Bughunt writes a report only; Hermes reviews it and decides whether to create inbox items
+- **No autopilot handoff** — Bughunt finishes after report + push
 - **All agents background** — ADR-009 compliance
 - **File gates** — Each step verifies previous step's output before proceeding
 

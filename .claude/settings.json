@@ -14,9 +14,7 @@
       "Task",
       "TodoWrite",
       "NotebookEdit",
-      "mcp__*",
-      "Edit(.claude/**)",
-      "Write(.claude/**)"
+      "mcp__*"
     ]
   },
   "hooks": {

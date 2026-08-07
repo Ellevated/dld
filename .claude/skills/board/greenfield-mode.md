@@ -1,6 +1,6 @@
 # Board — Greenfield Mode (8-Phase Protocol)
 
-Self-contained protocol for Greenfield Mode. Extracted from SKILL.md.
+Self-contained protocol for Greenfield Mode.
 
 ---
 

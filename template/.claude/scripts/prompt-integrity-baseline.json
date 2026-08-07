@@ -1,0 +1,11 @@
+{
+  "note": "Findings that are decisions, not rot. Everything here must carry a reason a stranger can check. A finding suppressed without one is how a real defect hides in a green run — prefer fixing over adding a row.",
+  "allow": [
+    {
+      "kind": "unreachable_agent",
+      "file": ".claude/agents/diary-recorder.md",
+      "match": "diary-recorder",
+      "reason": "Deliberately retired — diary entries are written inline by autopilot. The file is kept as the only written spec of the diary format; deleting it loses that."
+    }
+  ]
+}

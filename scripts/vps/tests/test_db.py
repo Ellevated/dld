@@ -425,7 +425,7 @@ import pytest
 VPS = Path(VPS_DIR)
 LEAF_MODULES = ["db_decisions.py", "db_findings.py", "db_cli.py"]
 
-# EC-1: every name a consumer resolves through `db.` (25 names — connection/slots/
+# EC-1: every name a consumer resolves through `db.` (26 names — connection/slots/
 # projects/tasklog that stayed in db.py, plus the delegates to db_decisions/db_findings).
 PUBLIC_SURFACE = [
     "get_db",
@@ -447,6 +447,7 @@ PUBLIC_SURFACE = [
     "log_sdk_post_result_error",
     "log_gate_cycle",
     "get_gate_health",
+    "log_classifier_refusal",
     "save_finding",
     "get_new_findings",
     "update_finding_status",
@@ -459,7 +460,7 @@ PUBLIC_SURFACE = [
 class TestSplitContract:
     def test_public_surface_intact_and_callable(self):
         """EC-1: every name the five consumers bind is present on `db` and callable."""
-        assert len(PUBLIC_SURFACE) == 25
+        assert len(PUBLIC_SURFACE) == 26
         missing = [n for n in PUBLIC_SURFACE if not hasattr(db, n)]
         assert missing == [], f"db lost public names: {missing}"
         not_callable = [n for n in PUBLIC_SURFACE if not callable(getattr(db, n))]
@@ -566,3 +567,195 @@ class TestDelegatedBehaviourRoundtrip:
         db.update_finding_status(fid, "reviewed")
         new_after = db.get_new_findings("testproject")
         assert all(f["id"] != fid for f in new_after)
+
+    def test_classifier_refusal_roundtrip(self, seed_project, isolated_db):
+        """The refusal counter has to survive the delegate, or the signal is lost.
+
+        A classifier decline is an HTTP 200, so this row is the only place a
+        refused security review is ever counted.
+        """
+        import sqlite3
+
+        row_id = db.log_classifier_refusal(
+            project_id="testproject",
+            task="/autopilot TECH-1",
+            skill="autopilot",
+            model="claude-opus-5",
+            category="cyber",
+            declines=2,
+            fallbacks_served=1,
+            unrecovered=1,
+            exit_code=4,
+            detail='[{"source": "AssistantMessage"}]',
+        )
+        assert row_id > 0
+
+        conn = sqlite3.connect(str(isolated_db))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM classifier_refusals WHERE id = ?", (row_id,)).fetchone()
+        conn.close()
+        assert row["project_id"] == "testproject"
+        assert row["category"] == "cyber"
+        assert row["declines"] == 2
+        assert row["fallbacks_served"] == 1
+        assert row["unrecovered"] == 1
+        assert row["exit_code"] == 4
+        assert row["ts"]
+
+    def test_classifier_refusals_table_created_by_migration(self, isolated_db, monkeypatch):
+        """A pre-existing VPS database has no such table — _ensure_migrations adds it.
+
+        The fixture applies schema.sql, so drop the table first to simulate a
+        deployed DB created before this change, then force migrations to re-run.
+        """
+        import sqlite3
+
+        conn = sqlite3.connect(str(isolated_db))
+        conn.execute("DROP TABLE IF EXISTS classifier_refusals")
+        conn.commit()
+        conn.close()
+
+        monkeypatch.setattr(db, "_MIGRATIONS_APPLIED", False)
+        db.log_classifier_refusal(
+            project_id="p",
+            task="t",
+            skill=None,
+            model=None,
+            category=None,
+            declines=1,
+            fallbacks_served=0,
+            unrecovered=1,
+            exit_code=4,
+            detail=None,
+        )
+        conn = sqlite3.connect(str(isolated_db))
+        cnt = conn.execute("SELECT COUNT(*) FROM classifier_refusals").fetchone()[0]
+        conn.close()
+        assert cnt == 1
+
+
+class TestMigrationTable:
+    """`_ensure_migrations` is a loop over `_MIGRATIONS` — lock what that must do.
+
+    The hand-written version was four near-identical try/except blocks and had
+    grown db.py to 391 of its 400 permitted LOC. Folding it into data must not
+    change what a deployed database ends up with, so these assert the outcome
+    rather than the shape.
+    """
+
+    def _bare_db(self, tmp_path):
+        """A database old enough to predate every migration below."""
+        import sqlite3
+
+        p = tmp_path / "bare.db"
+        conn = sqlite3.connect(str(p))
+        conn.execute("CREATE TABLE task_log (id INTEGER PRIMARY KEY, pueue_id INTEGER)")
+        conn.commit()
+        conn.close()
+        return p
+
+    def _objects(self, path):
+        import sqlite3
+
+        conn = sqlite3.connect(str(path))
+        rows = {(r[0], r[1]) for r in conn.execute("SELECT type, name FROM sqlite_master")}
+        conn.close()
+        return rows
+
+    def test_every_step_lands_on_a_legacy_db(self, tmp_path, monkeypatch):
+        import sqlite3
+
+        p = self._bare_db(tmp_path)
+        monkeypatch.setattr(db, "_MIGRATIONS_APPLIED", False)
+        conn = sqlite3.connect(str(p))
+        db._ensure_migrations(conn)
+        conn.commit()
+        conn.close()
+
+        objects = self._objects(p)
+        for table in (
+            "callback_decisions",
+            "sdk_post_result_errors",
+            "gate_health",
+            "classifier_refusals",
+        ):
+            assert ("table", table) in objects, f"{table} not created"
+        for index in (
+            "idx_callback_decisions_ts",
+            "idx_callback_decisions_demoted_ts",
+            "idx_sdk_post_result_errors_ts",
+            "idx_gate_health_ts",
+            "idx_classifier_refusals_ts",
+        ):
+            assert ("index", index) in objects, f"{index} not created"
+
+    def test_branch_column_still_added(self, tmp_path, monkeypatch):
+        """TECH-170: the ALTER has no IF NOT EXISTS and stays hand-written."""
+        import sqlite3
+
+        p = self._bare_db(tmp_path)
+        monkeypatch.setattr(db, "_MIGRATIONS_APPLIED", False)
+        conn = sqlite3.connect(str(p))
+        db._ensure_migrations(conn)
+        conn.commit()
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(task_log)").fetchall()}
+        conn.close()
+        assert "branch" in cols
+
+    def test_rerun_is_idempotent(self, tmp_path, monkeypatch):
+        import sqlite3
+
+        p = self._bare_db(tmp_path)
+        conn = sqlite3.connect(str(p))
+        for _ in range(3):
+            monkeypatch.setattr(db, "_MIGRATIONS_APPLIED", False)
+            db._ensure_migrations(conn)
+        conn.commit()
+        conn.close()
+        assert ("table", "gate_health") in self._objects(p)
+
+    def test_a_failing_step_does_not_abort_the_later_ones(self, tmp_path, monkeypatch):
+        """Per-step try/except, as before: one broken step must not cost the rest.
+
+        Simulated by wedging a step that raises OperationalError in front of the
+        real list — a lock table would be the production cause.
+        """
+        import sqlite3
+
+        p = self._bare_db(tmp_path)
+        monkeypatch.setattr(
+            db,
+            "_MIGRATIONS",
+            (("CREATE TABLE this is not valid sql",), *db._MIGRATIONS),
+        )
+        monkeypatch.setattr(db, "_MIGRATIONS_APPLIED", False)
+        conn = sqlite3.connect(str(p))
+        db._ensure_migrations(conn)  # must not raise
+        conn.commit()
+        conn.close()
+        assert ("table", "classifier_refusals") in self._objects(p)
+
+    def test_a_step_lands_whole_or_not_at_all(self, tmp_path, monkeypatch):
+        """Table and its indexes share one try/except — same grouping as before."""
+        import sqlite3
+
+        p = self._bare_db(tmp_path)
+        monkeypatch.setattr(
+            db,
+            "_MIGRATIONS",
+            (
+                (
+                    "CREATE TABLE IF NOT EXISTS partial_step (id INTEGER)",
+                    "CREATE INDEX IF NOT EXISTS bad_idx ON no_such_table(nope)",
+                    "CREATE TABLE IF NOT EXISTS never_reached (id INTEGER)",
+                ),
+            ),
+        )
+        monkeypatch.setattr(db, "_MIGRATIONS_APPLIED", False)
+        conn = sqlite3.connect(str(p))
+        db._ensure_migrations(conn)
+        conn.commit()
+        conn.close()
+        objects = self._objects(p)
+        assert ("table", "partial_step") in objects
+        assert ("table", "never_reached") not in objects

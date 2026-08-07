@@ -369,7 +369,7 @@ Runbook:   `~/.claude/projects/-root/memory/orchestrator-runbook.md`
 - **Prefixes:** BUG, FTR, TECH, ARCH only (4 types)
 - **Numbering:** Sequential across all types
 - **Archive:** Weekly check, if >50 → archive to 30
-- **Bug Hunt:** Creates a READ-ONLY report (`BUG-XXX-bughunt.md`, not in backlog) + standalone grouped specs (each with own sequential ID and own backlog entry).
+- **Bug Hunt:** Saves a read-only report to `ai/bughunt/{YYYY-MM-DD}-report.md`. It creates **no** specs, **no** inbox items and **no** backlog rows — the report is reviewed first, and only then does anything become work. `skills/bughunt/completion.md` is the contract.
 
 ---
 

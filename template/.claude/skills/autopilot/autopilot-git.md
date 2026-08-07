@@ -65,7 +65,7 @@ esac
 ### 2.1 CI Health Check (FIRST!)
 
 ```bash
-./scripts/ci-status.sh
+./scripts/ci-status.sh   # per-project artifact — not every repo ships one
 ```
 
 | Exit | Meaning | Action |
@@ -73,6 +73,11 @@ esac
 | 0 | Green (all CI checks pass) | Continue |
 | 0 | CI-only red (lint, spec compliance, file size — not deploy) | Continue in **REGRESSION-ONLY mode**: record baseline red set. Merge gate (§5.4) requires no NEW failures vs this baseline. Log `CI_BASELINE_RED: {failing checks}`. |
 | 2 | Deploy failure | DEPLOY ERROR PROTOCOL |
+| 127 / "No such file or directory" | The project has no `scripts/ci-status.sh`. It is a **per-project** artifact (awardybot has one, dld does not) and its absence is an expected state, not a signal about CI | Log `CI_STATUS_UNAVAILABLE` and continue. **Not** a deploy failure: do not open the DEPLOY ERROR PROTOCOL, do not block the spec, do not create a BUG. The §5.4 merge gate still applies |
+
+Never substitute a stub that prints OK for a missing script. A stub cannot return 2, so
+it converts "no CI signal" into "CI is green" on the one path that exists to catch a
+broken deploy.
 
 **Deploy failure → BLOCKING:**
 1. Create BUG spec inline (next BUG-XXX)
@@ -115,7 +120,7 @@ git fetch origin develop
 #   improvisation) — the new branch inherits main and PHASE 3 merge into
 #   develop drags unrelated main-only commits (dependabot bumps, release
 #   merge-backs). Pin to origin/develop to guarantee base regardless of
-#   CWD state. Reference: awardybot TECH-1063 incident, commit 833e5994.
+#   CWD state. This has bitten a real run — do not skip the check.
 git worktree add "$WORKTREE_PATH" -b "${BRANCH_PREFIX}/${TASK_ID}" origin/develop
 cd "$WORKTREE_PATH"
 ```
@@ -132,7 +137,7 @@ cp "${MAIN_REPO}/.env" .env 2>/dev/null || true
 
 ```bash
 ./test fast
-# FAIL → STOP. Quick smoke only — CI-parity gate is `./test ci` (§5.1, TECH-206).
+# FAIL → STOP. Quick smoke only — CI-parity gate is `./test ci` (§5.1).
 ```
 
 ### Skip Worktree (rare)
@@ -184,7 +189,7 @@ Creates explicit checkpoint in conversation.
 
 ---
 
-## 4. Push Strategy (TECH-085)
+## 4. Push Strategy
 
 **Rule:** Minimize pushes. ONE push per spec = 80% CI cost reduction.
 
@@ -201,13 +206,13 @@ End of spec: Push feature → Merge develop → Push develop
 
 ```bash
 ./test ci
-# FAIL → STOP, fix first. Mirrors project's GitHub CI exactly (TECH-206).
+# FAIL → STOP, fix first. Mirrors project's GitHub CI exactly.
 # No `./test ci` case? → see §5.6 CI_PARITY_UNAVAILABLE fallback.
 ```
 
-### 5.2 Update Status — REMOVED (ARCH-187 / ADR-024 / ADR-025)
+### 5.2 Update Status — REMOVED
 
-Status writes are exclusive to `callback.py` (ADR-023). Do **NOT** commit
+Status writes are exclusive to `callback.py`. Do **NOT** commit
 spec / backlog / lifecycle status changes manually. Callback fires on
 pueue task completion and atomically updates `ai/lifecycle/{spec}.yaml`
 via git plumbing. See `finishing.md`.
@@ -219,7 +224,7 @@ may then run:
 ```
 python3 scripts/vps/spec_operator.py force-done <project> <SPEC_ID> "<reason>" --by=operator
 ```
-#### task_status JSON contract (TECH-194 Layer E)
+#### task_status JSON contract
 
 Autopilot's final JSON output MUST include `task_status`. Callback gates the
 post-autopilot dispatch of QA + reflect on this field — without it (or with
@@ -243,7 +248,7 @@ Final JSON shape:
 ```
 
 
-The `--by=autopilot` and `--by=spark` choices have been REMOVED (ADR-025).
+The `--by=autopilot` and `--by=spark` choices have been REMOVED.
 
 NEVER `git add ai/lifecycle/*.yaml` — direct commits to lifecycle yaml are HARD-BLOCKED by
 `.claude/hooks/pre-commit-lifecycle-guard.mjs` (no subject-allowlist exception).
@@ -273,7 +278,7 @@ git pull --rebase origin develop
 # Fast-forward merge
 git merge --ff-only ${BRANCH_PREFIX}/${TASK_ID}
 
-# CI-parity merge gate (TECH-206): red → abort, no push, needs_review.
+# CI-parity merge gate: red → abort, no push, needs_review.
 # REGRESSION-ONLY mode: only NEW failures vs PHASE-0 baseline count.
 if ! ./test ci; then
   git reset --hard origin/develop   # abort: develop stays at origin state
@@ -281,7 +286,7 @@ if ! ./test ci; then
   # Set task_status="needs_review" in final JSON. Do NOT push.
 fi
 
-# Push with retry — TECH-197: track success for push guard
+# Push with retry — track success for push guard
 PUSH_OK=false
 git push origin develop && PUSH_OK=true || {
   git pull --rebase origin develop
@@ -291,7 +296,7 @@ git push origin develop && PUSH_OK=true || {
 # Restore stash
 [ "$STASHED" = true ] && git stash pop
 
-# TECH-197 PUSH GUARD: if develop push failed after retry,
+# PUSH GUARD: if develop push failed after retry,
 # emit "needs_review" instead of "complete" in final JSON.
 # Work is merged locally; callback push-local will attempt recovery.
 if [ "$PUSH_OK" = false ]; then
@@ -309,7 +314,7 @@ git branch -d ${BRANCH_PREFIX}/${TASK_ID}  # safe delete (-d not -D)
 git worktree prune
 ```
 
-### 5.6 CI-Parity Fallback (TECH-206)
+### 5.6 CI-Parity Fallback
 
 If `./test ci` is absent (exit 127): log `CI_PARITY_UNAVAILABLE`, run `./test`
 (full suite) or `./test fast`, emit `needs_review` on any red. **NEVER** silently

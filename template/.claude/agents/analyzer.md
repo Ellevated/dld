@@ -2,6 +2,7 @@
 name: analyzer
 description: Benchmark pattern analysis. Surfaces insights that aggregate metrics hide — non-discriminating assertions, high-variance evals, time/token tradeoffs.
 model: sonnet
+effort: high
 tools: Read, Glob, Grep
 ---
 

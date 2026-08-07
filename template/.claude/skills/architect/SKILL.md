@@ -50,7 +50,7 @@ System architecture: domains, data, APIs, cross-cutting rules, agent architectur
 Before launching, inform user (non-blocking):
 
 ```
-Greenfield: "Architect: {project} — 19 agents (8 opus × 2 phases + 1 opus synthesizer + validation), est. ~$5-12. Running..."
+Greenfield: "Architect: {project} — 19 agents (8 sonnet × 2 phases + 1 opus synthesizer + validation), est. ~$5-12. Running..."
 Retrofit:   "Architect retrofit: {project} — 19 agents + audit input, est. ~$5-12. Running..."
 ```
 
@@ -114,14 +114,20 @@ Retrofit   → Next: /board for business strategy (with architecture context)
 
 ## Inbox Output (Orchestrator Integration)
 
-After blueprint is written, create inbox file(s) for each actionable architecture decision:
+Only useful if this project is scanned by the DLD orchestrator. Without one, `ai/inbox/`
+is a durable queue a human reads — harmless, but the blueprint under
+`ai/blueprint/system-blueprint/` is the real artifact either way.
+
+After the blueprint is written, create inbox file(s) for each actionable architecture decision:
 
 ```markdown
-# Idea: {timestamp}
+# Architecture decision — {one line}
+
+**Status:** draft
 **Source:** architect
 **Route:** spark
-**Status:** new
 **Context:** ai/architect/{session}.md
+
 ---
 Architecture decision: {brief description of task for implementation}
 Domain: {affected domain}
@@ -129,13 +135,21 @@ Priority: {P0/P1/P2}
 ```
 
 **Rules:**
-- One inbox file per actionable decision (not one for entire session)
+- `Status: draft` — never `queued`. The orchestrator dispatches `queued` and nothing else,
+  and only the intake supervisor (Hermes) promotes a file to it. A draft therefore waits for
+  a human decision instead of firing Spark on an unreviewed brief. Any other value is inert:
+  the scan ignores it and the file is never picked up by anything.
+- Create `ai/inbox/` if it does not exist yet
+- One inbox file per actionable decision (not one for the entire session)
 - Only create for decisions that need implementation (not documentation-only)
 - Context links to the full architect session document
-- Commit + push after creating inbox files
+- Commit + push after creating inbox files — the supervisor reads the repo, not your working tree
 
 ```bash
 git add ai/blueprint/ ai/architect/ ai/inbox/ 2>/dev/null
 git diff --cached --quiet || git commit -m "docs: architect blueprint + inbox"
-git push origin develop 2>/dev/null || true
+git push origin develop || echo "push failed — the inbox items are committed locally only; they will not be seen until they are pushed"
 ```
+
+> Never `git add ai/lifecycle/` — the pre-commit hook rejects it; spec status has a single
+> writer and it is not this skill.

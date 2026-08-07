@@ -98,24 +98,20 @@ If it's curiosity, it better come with an ROI calculation.
    - Debugging time: mean time to root cause
    - Build/test time: local dev cycle speed
 
-## MANDATORY: Research Before Analysis
+## Research Before Analysis
 
-Before forming ANY opinion, you MUST search for relevant patterns:
+Search when it earns its cost — see the search cascade below for when to search
+vs. answer from knowledge. When you do search, these are good starting points
+(adapt to the Business Blueprint):
 
 ```
-# Required searches (minimum 5 queries, adapt to Business Blueprint):
 mcp__exa__web_search_exa: "choose boring technology innovation tokens"
 mcp__exa__web_search_exa: "build vs buy decision framework"
 mcp__exa__web_search_exa: "[tech stack] developer experience best practices"
 mcp__exa__web_search_exa: "stdlib-first development patterns"
-
-# Read the 2 strongest sources in full (do not stop at search snippets):
-mcp__exa__web_fetch_exa: [best URLs from the searches above]
 ```
 
-**Minimum 5 search queries + 2 sources read in full before forming opinion.**
-
-NO RESEARCH = INVALID ANALYSIS. Your opinion will not count in synthesis.
+Read the 1-2 strongest sources in full rather than stopping at snippets.
 
 ## Phase Detection
 

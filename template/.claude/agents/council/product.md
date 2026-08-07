@@ -86,18 +86,20 @@ Cost reference for UX fixes:
    - What if data is missing?
    - What about mobile/slow connection?
 
-## MANDATORY: Research Before Analysis
+## Research Focus Areas
 
-Before forming ANY opinion, you MUST search for UX patterns:
+Where evidence changes the verdict, look it up — `@_shared/search-cascade.md` governs when
+a search earns its cost and which provider to try. Established patterns you can name
+precisely need no citation; a current API signature, a version-specific behaviour or a claim
+you would not stake shipped code on does.
 
-```
-# Required searches (adapt to the specific topic):
-mcp__exa__web_search_exa: "telegram bot [feature] UX patterns 2025"
-mcp__exa__web_search_exa: "[action] user flow best practices"
-mcp__exa__web_search_exa: "[interaction type] error handling UX"
-```
+- UX patterns for **this product's actual surface** — read the repo to find out what it is
+  rather than assuming a chat bot, a web app or anything else
+- User flows for the action in question, including the abandonment path
+- How comparable products report errors and recover from them
 
-NO RESEARCH = INVALID VERDICT. Your opinion will not count in voting.
+An opinion grounded in knowledge you actually hold beats a citation fetched to satisfy a
+quota. State which it is.
 
 ## Your Questions
 

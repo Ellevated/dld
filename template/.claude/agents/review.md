@@ -188,13 +188,18 @@ If code changes affect documented areas — verify docs were updated.
 python scripts/check_docs_sync.py
 ```
 
-**Red flags:**
-- Changed `settings.py` but .env.example not updated
+Exit 1 lists environment variables the code reads that no `.env.example` declares —
+the failure that surfaces as a deploy coming up with an unset variable and breaking
+somewhere unrelated. It skips silently when the project has no env template.
+
+**Action:** BLOCK commit on exit 1. Adding the variable to `.env.example`, even
+commented out, resolves it.
+
+**Judge yourself, the script cannot:**
 - Documenter agent skipped without reason
+- A behaviour change described in `docs/` or `README.md` that the diff contradicts
 
-**Action:** BLOCK commit if docs check fails. Require documentation update.
-
-### 6. LLM-Friendly Architecture (ARCH-211)
+### 6. LLM-Friendly Architecture
 
 Prevent codebase degradation. **BLOCK if violations found.**
 

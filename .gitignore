@@ -37,6 +37,7 @@ venv/
 
 # Локальные базы и секреты VPS-оркестратора
 scripts/vps/.env
+scripts/vps/.env.bak-*
 scripts/vps/*.db
 scripts/vps/.notified-drafts-*
 scripts/vps/.task-cmd-*.txt
@@ -45,6 +46,8 @@ scripts/vps/.orchestrator-heartbeat
 scripts/vps/.gate-daemon.pid
 scripts/vps/.gate-daemon-heartbeat
 scripts/vps/callback-audit.jsonl
+scripts/vps/gate-daemon-shadow.jsonl
+scripts/vps/logs/
 scripts/vps/ai/
 
 # Runtime артефакты (не коммитятся)
@@ -56,3 +59,11 @@ ai/.council/
 # Личная инфраструктура — отдельный приватный репо EllevatedAI/infra
 # (DLD публичный, серверы и VPN-документы туда не попадают)
 /infra/
+
+# Harvested golden datasets — NEVER commit (DLD is a PUBLIC repo)
+# scripts/harvest-goldens.py mines subagent transcripts from
+# ~/.claude/projects/*/subagents/, so its output carries verbatim source code,
+# specs and paths from whatever projects were run locally — AwardyBot, Dowry,
+# PLPilot, RIS/MeMyselfAndI. The tool is public; its output is not.
+# Curate a pair by hand into test/agents/<agent>/ before it goes anywhere.
+test/agents-harvested/

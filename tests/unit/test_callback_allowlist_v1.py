@@ -125,8 +125,21 @@ src/bar.py
     assert callback._parse_allowed_files(spec) == []
 
 
-def test_ec3_v1_marker_numbered_list_ignored(tmp_path):
-    """v1 strictly requires `- ` bullets; numbered list does not match."""
+def test_ec3_v1_marker_numbered_list_accepted(tmp_path):
+    """Numbered-list entries parse exactly like dash bullets (TECH-208).
+
+    This asserted the opposite — `== []`, under the name
+    `test_ec3_v1_marker_numbered_list_ignored` — until 2026-08-02. TECH-208
+    taught `_parse_allowed_files_v1` to accept numbered lists and did not update
+    the test, so it had been failing ever since.
+
+    The same commit left Spark's Phase 5.5 prompt still declaring numbered lists
+    invalid, and a prompt-side rejection deleted the spec file. One change, two
+    artefacts left behind: a red test nobody looked at, and a linter that
+    destroyed specs the parser would have accepted. Both are fixed; the parity
+    test in `scripts/vps/tests/test_allowlist_parity.py` now fails if the linter
+    and this parser ever diverge again.
+    """
     spec = _spec(
         tmp_path,
         """\
@@ -140,7 +153,25 @@ def test_ec3_v1_marker_numbered_list_ignored(tmp_path):
 ## Next
 """,
     )
-    assert callback._parse_allowed_files(spec) == []
+    assert callback._parse_allowed_files(spec) == ["foo.py", "bar.py"]
+
+
+def test_ec3_v1_marker_mixed_bullet_and_numbered(tmp_path):
+    """Both entry shapes in one section; order follows the file."""
+    spec = _spec(
+        tmp_path,
+        """\
+## Allowed Files
+
+<!-- callback-allowlist v1 -->
+
+- `first.py` — dash bullet
+2. `second.py` — numbered
+
+## Next
+""",
+    )
+    assert callback._parse_allowed_files(spec) == ["first.py", "second.py"]
 
 
 # --- EC-2: legacy spec without marker → fallback parser ----------------------

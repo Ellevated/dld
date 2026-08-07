@@ -1,13 +1,29 @@
 allowed_files_hash: null
-blocked_reason: null
+blocked_reason: verified plan landed on develop from tech/TECH-214 cycle 1; redispatching
+  to continue from Task 2
 finished_at: null
 kind: tech
 priority: p1
-pueue_id: null
+pueue_id: 1055
 spec_id: TECH-214
-started_at: null
-status: queued
-transitions: []
-updated_at: '2026-07-27T17:39:54Z'
-updated_by: spark
-version: 1
+started_at: '2026-08-07T03:05:46Z'
+status: in_progress
+transitions:
+- at: '2026-07-28T11:04:49Z'
+  by: callback
+  from: queued
+  pueue_id: 1034
+  to: blocked
+- at: '2026-08-06T23:06:45Z'
+  by: operator
+  from: blocked
+  pueue_id: null
+  to: queued
+- at: '2026-08-07T03:05:46Z'
+  by: orchestrator
+  from: queued
+  pueue_id: 1055
+  to: in_progress
+updated_at: '2026-08-07T03:05:46Z'
+updated_by: orchestrator
+version: 4

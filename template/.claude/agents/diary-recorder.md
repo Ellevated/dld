@@ -1,8 +1,7 @@
 ---
 name: diary-recorder
-description: "DEPRECATED: Diary entries are now written inline by autopilot (ADR-007). This file is kept as format reference only."
+description: "DEPRECATED: diary entries are written inline by the autopilot loop. Kept as the format reference only."
 model: haiku
-effort: low
 tools: Read, Write, Edit
 ---
 

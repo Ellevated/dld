@@ -271,9 +271,7 @@ class TestExplicitCompleteUnchanged:
 
 class TestBlockedNeverDispatches:
     @pytest.mark.parametrize("blocked_status", ["blocked", "needs_review"])
-    def test_ec4_blocked_status_skips_dispatch(
-        self, tmp_path, monkeypatch, blocked_status
-    ):
+    def test_ec4_blocked_status_skips_dispatch(self, tmp_path, monkeypatch, blocked_status):
         """Explicit block signal always skips QA + Reflect, even if impl IS merged."""
         _origin, repo = _make_origin_repo(tmp_path)
 
@@ -286,12 +284,8 @@ class TestBlockedNeverDispatches:
         qa_calls = []
         reflect_calls = []
 
-        monkeypatch.setattr(
-            callback, "dispatch_qa", lambda *a, **kw: qa_calls.append(a)
-        )
-        monkeypatch.setattr(
-            callback, "dispatch_reflect", lambda *a, **kw: reflect_calls.append(a)
-        )
+        monkeypatch.setattr(callback, "dispatch_qa", lambda *a, **kw: qa_calls.append(a))
+        monkeypatch.setattr(callback, "dispatch_reflect", lambda *a, **kw: reflect_calls.append(a))
 
         callback._step6_dispatch_qa_reflect(
             skill="autopilot",
@@ -302,9 +296,7 @@ class TestBlockedNeverDispatches:
             preview="",
         )
 
-        assert len(qa_calls) == 0, (
-            f"task_status={blocked_status!r} must prevent QA dispatch"
-        )
+        assert len(qa_calls) == 0, f"task_status={blocked_status!r} must prevent QA dispatch"
         assert len(reflect_calls) == 0, (
             f"task_status={blocked_status!r} must prevent Reflect dispatch"
         )
@@ -323,12 +315,8 @@ class TestBlockedNeverDispatches:
         qa_calls = []
         reflect_calls = []
 
-        monkeypatch.setattr(
-            callback, "dispatch_qa", lambda *a, **kw: qa_calls.append(a)
-        )
-        monkeypatch.setattr(
-            callback, "dispatch_reflect", lambda *a, **kw: reflect_calls.append(a)
-        )
+        monkeypatch.setattr(callback, "dispatch_qa", lambda *a, **kw: qa_calls.append(a))
+        monkeypatch.setattr(callback, "dispatch_reflect", lambda *a, **kw: reflect_calls.append(a))
 
         callback._step6_dispatch_qa_reflect(
             skill="autopilot",

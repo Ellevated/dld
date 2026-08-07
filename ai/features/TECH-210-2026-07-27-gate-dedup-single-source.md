@@ -170,8 +170,24 @@ ONLY the files listed below may be modified during implementation.
 - `tests/unit/test_callback_branch_awareness.py` — BUG-1039 regression по `_is_done_on_develop` (modify)
 - `tests/unit/test_callback_implementation_guard.py` — TECH-166 guard, 14 ассертов (modify)
 - `scripts/vps/tests/test_gate_logic_subject.py` — вынос кейсов матчера, если файл не влезает в 600 (NEW)
+- `tests/integration/test_callback_already_merged.py` — 22 monkeypatch на gate-функции, DA-4 (modify)
+- `tests/integration/test_callback_feature_branch.py` — 22 monkeypatch на gate-функции, DA-4 (modify)
+- `tests/integration/test_callback_status_sync.py` — 22 monkeypatch на gate-функции, DA-4 (modify)
+- `tests/integration/test_callback_no_impl_demote.py` — 22 monkeypatch на gate-функции, DA-4 (modify)
+- `tests/integration/test_callback_blocked_no_dispatch.py` — 22 monkeypatch на gate-функции, DA-4 (modify)
 
 **FORBIDDEN:** All other files. Autopilot must refuse changes outside this list.
+
+---
+
+> ## ✅ РЕШЕНО 2026-08-07 — owner approval for cycle-2 ACTION REQUIRED
+>
+> Владелец одобрил расширение `## Allowed Files` пятью интеграционными тест-файлами
+> ровно как запрошено в блоке ACTION REQUIRED (цикл 2, 2026-07-28): перенацелить их
+> 22 `monkeypatch.setattr(callback, "_fetch_develop"/"_is_done_on_develop", ...)` на
+> `gate_logic.fetch_develop`/`gate_logic.find_implementation_commit`
+> (`True` → строка-SHA, `False` → `None`). Поправки D2/D3/§7 из того же блока —
+> применить вместе. Блокер снят, спека исполнима.
 
 ### Почему здесь `test.yml`
 

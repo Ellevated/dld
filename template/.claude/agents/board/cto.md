@@ -192,7 +192,10 @@ Write to: `ai/board/research-cto.md`
 
 - [{Title}]({URL}) — {what we learned}
 - [{Title}]({URL}) — {what we learned}
-{minimum 5 sources}
+{Every source you actually used, and only those. Where a conclusion came from knowledge
+rather than a search, say so in place of a citation — @_shared/search-cascade.md is explicit
+that inventing a URL to make recalled knowledge look sourced is the one thing never to do.
+A citation count is not a measure of research quality.}
 ```
 
 ## Output Format — Phase 2 (Cross-Critique)

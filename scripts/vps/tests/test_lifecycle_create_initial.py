@@ -65,9 +65,7 @@ def tmp_git_repo(tmp_path):
 
 
 def test_uppercase_priority_normalized(tmp_git_repo):
-    lifecycle.create_initial(
-        tmp_git_repo, "TECH-T1", priority="P0", kind="tech", by="orchestrator"
-    )
+    lifecycle.create_initial(tmp_git_repo, "TECH-T1", priority="P0", kind="tech", by="orchestrator")
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-T1")
     assert data["priority"] == "p0"
 
@@ -110,9 +108,7 @@ def test_unknown_priority_defaults_with_warning(tmp_git_repo, caplog):
 
 
 def test_none_priority_defaults_to_p1(tmp_git_repo):
-    lifecycle.create_initial(
-        tmp_git_repo, "TECH-T4", priority=None, kind="tech", by="orchestrator"
-    )
+    lifecycle.create_initial(tmp_git_repo, "TECH-T4", priority=None, kind="tech", by="orchestrator")
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-T4")
     assert data["priority"] == "p1"
 
@@ -125,10 +121,6 @@ def test_none_priority_defaults_to_p1(tmp_git_repo):
 def test_renders_in_correct_group(tmp_git_repo):
     """Regression: a spec created with uppercase 'P1' must appear in the
     rendered backlog under the P1 group, not silently disappear."""
-    lifecycle.create_initial(
-        tmp_git_repo, "FTR-T5", priority="P1", kind="ftr", by="orchestrator"
-    )
+    lifecycle.create_initial(tmp_git_repo, "FTR-T5", priority="P1", kind="ftr", by="orchestrator")
     output = render_backlog.render_backlog(tmp_git_repo)
-    assert "FTR-T5" in output, (
-        f"Spec FTR-T5 not found in rendered backlog:\n{output}"
-    )
+    assert "FTR-T5" in output, f"Spec FTR-T5 not found in rendered backlog:\n{output}"

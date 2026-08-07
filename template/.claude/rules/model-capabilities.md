@@ -7,7 +7,7 @@ paths:
 # Model Capabilities (Claude Opus 5 / Sonnet 5)
 
 Reference for agents about current model capabilities.
-Last updated: 2026-07-27 — verified against platform.claude.com, not from memory.
+Last updated: 2026-07-31 — verified against platform.claude.com, not from memory.
 
 ---
 
@@ -18,46 +18,26 @@ Last updated: 2026-07-27 — verified against platform.claude.com, not from memo
 | Main loop, deep reasoning, review | `claude-opus-5` | $5 / $25 |
 | Implementation, research, orchestration | `claude-sonnet-5` | **$2 / $10 through 2026-08-31**, then $3 / $15 |
 | Formatting, collection, listing | `claude-haiku-4-5-20251001` | $1 / $5 |
-| **Not routed** — see below | `claude-fable-5` | $10 / $50 |
+| Highest capability, 2× Opus 5 — route deliberately | `claude-fable-5` | $10 / $50 |
 
 **Claude Opus 5** — released 2026-07-24. Step-change over Opus 4.8, not incremental:
-frontier intelligence at half the cost of Fable 5, same price as Opus 4.8. (Both halves
-verified 2026-07-27 against the pricing page.)
+frontier intelligence at half the cost of Fable 5, same price as Opus 4.8.
 
 **Claude Sonnet 5 is on introductory pricing until 2026-08-31** — $2/$10 rather than
 $3/$15. Every sonnet-vs-opus cost comparison made before September is working from a
 number 33% too high. The date is the point: this row expires.
 
+**Claude Fable 5** (GA 2026-06-09) is Anthropic's most capable widely released model:
+1M context, 128k output, adaptive thinking always on and impossible to disable. Three
+facts decide whether it earns 2× Opus 5 in your project: its knowledge cutoff is
+**Jan 2026**, *older* than Opus 5's; its turns run long enough that Anthropic's migration
+guidance is to raise client timeouts before switching; and its claim is first-shot
+correctness, which pays off exactly where your cost sits in retry cycles. Fan-out
+architectures feel the doubled rate hardest, because their spend is the number of contexts
+built. Measure it on one real task against your own baseline rather than routing it by
+reputation.
+
 **Previous:** Opus 4.8 (`claude-opus-4-8`) — superseded, still available for rollback.
-
-### Fable 5 — deliberately not routed
-
-`claude-fable-5` (GA 2026-06-09) is Anthropic's most capable widely released model:
-1M context, 128k output, adaptive thinking always on and impossible to disable. This
-row exists so the decision is visible; an omission reads as "nobody looked yet".
-
-Three reasons it stays unrouted, in order of weight:
-
-1. **2× Opus 5 on both axes against a fan-out architecture.** Bughunt alone is 6
-   personas × 2-4 zones; council and architect are ~10 dispatches each. The place
-   this framework spends money is the number of contexts built, which is exactly
-   where doubling the rate hurts most.
-2. **Its knowledge cutoff is *older* than Opus 5's** — Jan 2026 against May 2026.
-   Item 7 below tells every agent to search only for things after ~May 2026. On
-   Fable 5 that instruction silently under-searches four months of reality.
-3. **Turns run long.** Anthropic's migration guidance is to raise client timeouts
-   before switching. `TIMEOUT_SECONDS` is 5400 and already forced `planner` down
-   from xhigh (BUG-1101).
-
-**The one defensible experiment**, if it is ever wanted: `AUTOPILOT_MODEL=claude-fable-5`
-on a single large spec, measured against the Opus 5 baseline in
-`docs/opus5-skills-review.md`. The lever exists without a code change. Fable 5's claim is
-first-shot correctness, which attacks debugger retry cycles — if it removes them, 2× the
-token price can still be cheaper per completed spec. Raise the timeout first.
-
-> **2026-07-25:** VPS pipeline switched 4.8 → 5. `scripts/vps/claude-runner.py`
-> pins `MODEL = AUTOPILOT_MODEL` env (default `claude-opus-5`). Rollback without
-> code change: `AUTOPILOT_MODEL=claude-opus-4-8`.
 
 ---
 
@@ -78,11 +58,10 @@ token price can still be cheaper per completed spec. Raise the timeout first.
 **Long context:** Opus 5 keeps instruction following, tool calling and reasoning
 consistent across the whole 1M window. No "front-load the important stuff" tricks needed.
 
-**Sonnet 5 also has 1M and 128K** — corrected 2026-07-27; this table said 200K/64K for
-two days. It matters more than a typo: `coder`, `scout`, the spark scouts and all six
-audit personas run on sonnet, and any "fan out because one agent cannot hold the
-codebase" argument was being applied to them on the strength of a number that was wrong.
-Re-check any `max_tokens` sized against 64K.
+**Sonnet 5 also has 1M and 128K**, not the 200K/64K of the previous Sonnet generation.
+This matters beyond the numbers: any "fan out because one agent cannot hold the codebase"
+argument was sized against the old window and is worth re-checking, and so is any
+`max_tokens` tuned against 64K.
 
 **The two cutoffs differ.** Sonnet 5 is Jan 2026, four months behind Opus 5. Item 7 in
 "What Agents Should Know" is written for Opus 5; on a sonnet agent the search threshold
@@ -99,36 +78,33 @@ work. If you carried effort settings over from an earlier model, run a fresh eff
 
 Their level table names `low` as the level for **subagents** specifically.
 
-> **Frontmatter is the SSOT, this table is documentation.** Where they disagreed on
-> 2026-07-27 the table was wrong, not the agents — both disagreements are corrected
-> below. When you change an agent's `model:` or `effort:`, change this row in the same
-> commit, or the next reader routes work from a stale table.
+> **Frontmatter is the SSOT, this table is documentation.** When you change an agent's
+> `model:` or `effort:`, change its row here in the same commit, or the next reader routes
+> work from a stale table. Where the two disagree, the frontmatter is what runs.
 
 | Agent Role | Model | Effort | Rationale |
 |------------|-------|--------|-----------|
-| autopilot main loop (claude-runner) | opus | **high** | Long-horizon agentic coding. **Not xhigh:** `xhigh` is not in the SDK enum (`_VALID_EFFORT` in `claude-runner.py`, ADR-028), so setting it silently falls back to `high`. This row said xhigh and described a config that could not exist |
-| planner | opus | high | Deep analysis. Held at high (not xhigh) for the 90-min TIMEOUT_SECONDS budget (BUG-1101). A harness constraint, not a quality finding — revisit if the timeout rises |
-| review (Code Quality Gate) | **opus** | **low** | Opus 5 finds real bugs at high rate per pass with few false positives, **and accuracy holds at lower effort**. Direct Anthropic recommendation — replaces sonnet/xhigh (ADR-029) |
-| debugger | opus | high | Root cause analysis. Down from max — max causes overthinking on structured tasks |
-| council experts | opus | high | Down from max. Anthropic: reserve max for "genuinely frontier problems" |
-| triz toc-analyst, triz-analyst | opus | high | Down from max, same rationale |
-| architect/synthesizer | opus | high | Down from max |
-| solution-architect (bughunt) | opus | high | Fix design needs careful reasoning |
-| coder | sonnet | high | Sonnet 5 is strong on coding. The note "xhigh only for multi-file refactors" described a switch nothing implements — the only measured effort result in this repo found *lower* effort winning, so raising it needs a golden dataset first (`test/agents/coder/` has 3 pairs) |
+| planner | opus | high | Deep analysis. `xhigh` is available but lengthens turns — hold at `high` if your harness has a wall-clock limit |
+| review (Code Quality Gate) | **opus** | **low** | Opus 5 finds real bugs at high rate per pass with few false positives, **and accuracy holds at lower effort**. Direct Anthropic recommendation |
+| debugger | opus | high | Root cause analysis. Not `max` — max causes overthinking on structured tasks |
+| council experts | opus | high | Anthropic: reserve `max` for "genuinely frontier problems" |
+| triz toc-analyst, triz-analyst | opus | high | Same rationale |
+| architect/synthesizer | opus | high | Same rationale |
+| coder | sonnet | high | Sonnet 5 is strong on coding. Before raising to `xhigh` for multi-file refactors, measure it — the one effort sweep run on this framework found *lower* effort winning |
 | scout, spark-research, spark-codebase | sonnet | high | Exploratory tool calling and detailed search is where Anthropic names higher effort as paying off |
-| spark-devil | sonnet | high | Judgment on a proposal, not tool-heavy — the `scout` rationale does not transfer. Has a golden dataset (`test/agents/devil/`); sweep low/medium/high before assuming high is right |
-| audit personas (6): accountant, archaeologist, cartographer, coroner, geologist, scout | sonnet | high | 7 dispatches per deep-mode run, previously undocumented. Coroner and accountant are defect-finders and are candidates for opus/low by the ADR-029 result; the mapping four are candidates for medium |
-| audit/synthesizer | sonnet | high | Down from xhigh — merge task, not frontier reasoning |
+| spark-devil | sonnet | high | Judgment on a proposal, not tool-heavy — the `scout` rationale does not transfer. Sweep low/medium/high before assuming high is right |
+| audit personas (6): accountant, archaeologist, cartographer, coroner, geologist, scout | sonnet | high | 7 dispatches per deep-mode run. Coroner and accountant are defect-finders, so they are candidates for opus/low by the measurement below; the four that do mapping are candidates for medium |
+| audit/synthesizer | sonnet | high | Merge task, not frontier reasoning |
 | tester | sonnet | medium | Execution-focused |
-| eval-judge | sonnet | high | Rubric-based evaluation. **Do not lower without re-running the golden pairs** — this is the measuring instrument, and moving it breaks comparability with every recorded score |
-| analyzer, comparator | sonnet | *(unset → high)* | Effort is unstated, so the API default applies. An unstated effort is not a decision; set it explicitly either way |
-| bughunt personas (6) | **opus** | **low** | Defect-finding. **Measured:** opus/low scored 0.883 defect recall against sonnet/xhigh at 0.767 (ADR-029 eval). This row said sonnet/medium for two months after the frontmatter changed |
-| bughunt spec-assembler, validator | sonnet | medium | Down from high — structured assembly/triage |
-| board directors, architect personas | sonnet | medium | Down from high — research + structured report |
+| eval-judge | sonnet | high | Rubric-based evaluation. **Do not lower without re-running your golden pairs** — this is the measuring instrument, and moving it breaks comparability with every score recorded before |
+| analyzer, comparator | sonnet | **high** | Stated, deliberately *not* swept. Both are measuring instruments — `comparator` is the blind pairwise judge used to score prompt ablations, `analyzer` reads benchmark output — so moving their level invalidates comparison with every score already recorded, the same caveat that protects `eval-judge`. `high` is what they inherited by omission; writing it down turns an accident into a decision without changing behaviour |
+| bughunt personas (6) | **opus** | **low** | Defect-finding. **Measured:** opus/low scored **0.883** defect recall against sonnet/xhigh at **0.767** on the same eval — the intuitive answer was backwards. Reproduce it before assuming higher effort helps you |
+| bughunt spec-assembler, validator | sonnet | medium | Structured assembly/triage |
+| board directors, architect personas | sonnet | medium | Research + structured report |
 | synthesizers (board, triz) | sonnet | medium | Merge/format |
-| facilitators (architect/board), council-synthesizer | sonnet | **medium** | Down from max. Process keeping is not a reasoning task — max here was pure waste. (`spark-facilitator` was deleted 2026-07-27 — dispatched by nothing) |
+| facilitators (architect/board), council-synthesizer | sonnet | **medium** | Process keeping is not a reasoning task — `max` here is pure waste |
 | triz data-collector | sonnet | medium | Shell + aggregation |
-| documenter | **sonnet** | **high** | Greps the whole tree for stale references and judges BREAKING vs REFACTOR — exploratory tool use, which is where higher effort pays. Was haiku/low while unwired; wired into PHASE 3 on 2026-07-27 |
+| documenter | **sonnet** | **high** | Greps the whole tree for stale references and judges BREAKING vs REFACTOR — exploratory tool use, which is where higher effort pays |
 | bughunt scope-decomposer / findings-collector / report-updater | haiku | — | Format-heavy, clear patterns. **`effort:` has no meaning here** — see below |
 
 **Rule:** effort is a *behavioral signal*, not a token budget. At low effort Claude still
@@ -136,13 +112,17 @@ thinks on genuinely hard problems — it just thinks less on easy ones.
 
 **Haiku 4.5 does not support the `effort` parameter.** The supported list is Fable 5,
 Mythos 5, Opus 5, Opus 4.8, Mythos Preview, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6,
-Opus 4.5 — Haiku is absent, and its adaptive thinking is "No". The `effort: low` in the
-haiku agents' frontmatter is inert. ADR-019's cost saving came entirely from the
-sonnet→haiku swap; the effort half of that decision never did anything.
+Opus 4.5 — Haiku is absent, and its adaptive thinking is "No". An `effort:` line in a
+haiku agent's frontmatter is inert; the saving from routing work to haiku comes entirely
+from the model swap.
+
+The haiku agents here carried one until it was removed. A setting that looks like tuning
+but is inert is worse than no setting: the next reader assumes the level was chosen and
+measured. Do not add it back.
 
 **Anthropic names `low` as the level for subagents specifically** — "simpler tasks that
-need the best speed and lowest costs, such as subagents". Read that against the ADR-029
-result before assuming any `high` in this table was chosen rather than inherited.
+need the best speed and lowest costs, such as subagents". Read that against the 0.883
+result above before assuming any `high` in this table was chosen rather than inherited.
 
 **Caching note:** changing effort mid-conversation invalidates the prompt cache prefix.
 Pick a level per workload and hold it constant within a session.
@@ -164,6 +144,13 @@ measurable loss on their coding evals.
 | Rigid prohibitions ("NEVER write multi-paragraph docstrings") | Over-constrains judgment | Guidance: "write code that reads like the surrounding code — match its comment density, naming, idiom" |
 | Tool usage examples in the prompt | Redundant | Better tool *design*: expressive params, clear enums, instructions in the tool description |
 | "After every N tool calls, summarize progress" | Sonnet 5 already gives good interim updates | Delete |
+
+**Cutting a prompt is a change like any other — measure it.** The same ablation run against
+four agents with golden datasets moved one up sharply, moved one *down*, and produced noise
+on the other two. The prompt everyone was most confident about cutting was the one that
+regressed, because a numbered procedure turned out to encode a project convention. Cut
+procedure and examples; keep knowledge, contracts and independence — and check per agent
+rather than tree-wide.
 
 ### New behaviors that need *adding* guidance
 
@@ -193,7 +180,7 @@ several, and keep spawn counts low.
 
 **Opus 5 and Fable 5 carry safety classifiers that can decline a request.** The decline
 is `stop_reason: "refusal"` in a normal **HTTP 200** response, with a `category` field
-naming the policy area. It is not an error and nothing in this repo looks for it.
+naming the policy area. It is not an error, so nothing detects it unless you look.
 
 The categories, and Anthropic's own caveat on each:
 
@@ -204,17 +191,24 @@ The categories, and Anthropic's own caveat on each:
 | `frontier_llm` | "Benign machine learning work can also trigger this category" |
 | `general_harms` | "Benign work might sometimes trigger this category" |
 
-**Why this is ours and not hypothetical.** Two agents run on opus and are prompted for
-exactly the `cyber` category: `council-security` (OWASP, attack surfaces, vulnerability
-analysis) and `bughunt-security-auditor` (OWASP Top 10, injection, SSRF, auth bypass).
-A refusal from either returns 200 and flows onward as if it were their report — an empty
-security review that reads as a clean one. `architect-security` runs on sonnet, which has
-no classifiers, so it is unaffected today but would be if it were ever moved to opus.
+**Why this is not hypothetical.** Two agents here run on opus and are prompted for exactly
+the `cyber` category: `council-security` (OWASP, attack surfaces, vulnerability analysis)
+and `bughunt-security-auditor` (OWASP Top 10, injection, SSRF, auth bypass). A refusal from
+either returns 200 and flows onward as if it were their report — **an empty security review
+reads exactly like a clean one.** `architect-security` runs on sonnet, which has no
+classifiers, so it is unaffected today but would be if it were ever moved to opus.
 
-Nothing in `scripts/` or `.claude/` matches `stop_reason`, `refusal`, or `fallbacks`.
-Server-side retry exists (`fallbacks: "default"` plus the `server-side-fallback-2026-07-01`
-beta header, which routes by refusal category), and a refused request is not billed. None
-of it is wired up. Treat this as an open gap, not a solved problem.
+The full category list is `cyber`, `bio`, `frontier_llm`, `reasoning_extraction`,
+`general_harms`. `stop_details` is always present on a refusal but `category` and
+`explanation` are `null` when the decline maps to no named area — branch on `stop_reason`,
+never on the inner fields.
+
+**The CLI already retries for you, and that has a cost.** Claude Code arms server-side
+fallback itself (`anthropic-beta: server-side-fallback-2026-07-01`) and re-runs a refused
+request on another model. So a recovered refusal produces a real answer — from a model you
+did not pin. Treat it as model drift, not as a failure. An *unrecovered* refusal is the one
+that silently returns nothing useful. (`--fallback-model` is a different mechanism, for
+overloaded or unavailable models, not classifier routing.)
 
 ### Opus 4.8 → Opus 5
 
@@ -252,7 +246,8 @@ Sonnet 5 @ high ≈ Sonnet 4.6 @ max. Benchmark by observed thinking length, not
    Sonnet agents that assume the May date under-search four months
 8. **A refusal is not an answer** — on opus, `stop_reason: "refusal"` comes back as a
    successful response. If output looks empty or evasive on security, bio, or ML-methods
-   content, suspect a classifier decline rather than a bad prompt
+   content, suspect a classifier decline rather than a bad prompt. Interactively there is
+   no signal beyond the symptom; if you run agents headlessly, log `stop_reason` yourself
 
 ---
 

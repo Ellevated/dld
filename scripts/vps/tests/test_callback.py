@@ -497,7 +497,6 @@ class TestMatchSubjectParityWithCallback:
 
 def _make_origin_repo(tmp_path):
     """Create a bare 'origin' repo and a working repo cloned from it."""
-    import os
 
     origin = tmp_path / "origin.git"
     origin.mkdir()

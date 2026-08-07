@@ -246,7 +246,7 @@ class TestReleaseOrphanSlots:
     def test_pueue_unreachable_no_release(self, seed_project):
         """EC-1: Pueue failure → 0 released, DB unchanged."""
         db.try_acquire_slot("testproject", "claude", pueue_id=50)
-        with patch("orchestrator.get_live_pueue_ids", return_value=None):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value=None):
             released = orchestrator.release_orphan_slots()
         assert released == 0
         assert len(db.get_occupied_slots()) == 1  # slot still occupied
@@ -255,7 +255,7 @@ class TestReleaseOrphanSlots:
         """EC-2: All tasks running → 0 released."""
         db.try_acquire_slot("testproject", "claude", pueue_id=5)
         db.try_acquire_slot("testproject", "claude", pueue_id=6)
-        with patch("orchestrator.get_live_pueue_ids", return_value={5, 6}):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value={5, 6}):
             released = orchestrator.release_orphan_slots()
         assert released == 0
         assert len(db.get_occupied_slots()) == 2
@@ -263,7 +263,7 @@ class TestReleaseOrphanSlots:
     def test_genuine_orphan_released(self, seed_project):
         """EC-3: Orphan slot (pueue_id=99 not in pueue) → released."""
         db.try_acquire_slot("testproject", "claude", pueue_id=99)
-        with patch("orchestrator.get_live_pueue_ids", return_value=set()):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value=set()):
             released = orchestrator.release_orphan_slots()
         assert released == 1
         assert db.get_occupied_slots() == []
@@ -272,13 +272,13 @@ class TestReleaseOrphanSlots:
     def test_empty_pueue_releases_all_orphans(self, seed_project):
         """EC-4: pueue has no tasks, DB has occupied slot → release it."""
         db.try_acquire_slot("testproject", "claude", pueue_id=42)
-        with patch("orchestrator.get_live_pueue_ids", return_value=set()):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value=set()):
             released = orchestrator.release_orphan_slots()
         assert released == 1
 
     def test_no_occupied_slots_noop(self, seed_project):
         """EC-5: No occupied slots → fast no-op."""
-        with patch("orchestrator.get_live_pueue_ids", return_value={1, 2, 3}):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value={1, 2, 3}):
             released = orchestrator.release_orphan_slots()
         assert released == 0
 
@@ -286,7 +286,7 @@ class TestReleaseOrphanSlots:
         """Mix of live and orphan slots — only orphan released."""
         db.try_acquire_slot("testproject", "claude", pueue_id=10)  # live
         db.try_acquire_slot("testproject", "claude", pueue_id=99)  # orphan
-        with patch("orchestrator.get_live_pueue_ids", return_value={10}):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value={10}):
             released = orchestrator.release_orphan_slots()
         assert released == 1
         occupied = db.get_occupied_slots()
@@ -296,7 +296,7 @@ class TestReleaseOrphanSlots:
     def test_release_idempotent(self, seed_project):
         """Double release of same orphan — second call is no-op."""
         db.try_acquire_slot("testproject", "claude", pueue_id=77)
-        with patch("orchestrator.get_live_pueue_ids", return_value=set()):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value=set()):
             orchestrator.release_orphan_slots()
             released = orchestrator.release_orphan_slots()
         assert released == 0
@@ -313,7 +313,7 @@ class TestWatchdogIntegration:
         assert db.get_available_slots("claude") == initial_available - 1
 
         # Simulate pueue returning no tasks (task 555 is gone)
-        with patch("orchestrator.get_live_pueue_ids", return_value=set()):
+        with patch("orchestrator_slots.get_live_pueue_ids", return_value=set()):
             released = orchestrator.release_orphan_slots()
         assert released == 1
         assert db.get_available_slots("claude") == initial_available
@@ -351,8 +351,8 @@ class TestScanInboxStatusGate:
         f = _write_inbox_file(inbox_dir, "20260507-queued.md", "queued")
 
         with (
-            patch("orchestrator._pueue_add", return_value=42) as mock_add,
-            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator_inbox._pueue_add", return_value=42) as mock_add,
+            patch("orchestrator_inbox.pueue_has_active_label", return_value=False),
             patch("orchestrator.db.try_acquire_slot"),
             patch("orchestrator.db.log_task"),
             patch("orchestrator.db.update_project_phase"),
@@ -375,7 +375,7 @@ class TestScanInboxStatusGate:
         f = _write_inbox_file(inbox_dir, "20260507-draft.md", "draft")
         original = f.read_text(encoding="utf-8")
 
-        with patch("orchestrator._pueue_add") as mock_add:
+        with patch("orchestrator_inbox._pueue_add") as mock_add:
             count = orchestrator.scan_inbox("testproject", str(tmp_path))
 
         assert count == 0
@@ -388,7 +388,7 @@ class TestScanInboxStatusGate:
         inbox_dir = tmp_path / "ai" / "inbox"
         f = _write_inbox_file(inbox_dir, f"20260507-{status}.md", status)
 
-        with patch("orchestrator._pueue_add") as mock_add:
+        with patch("orchestrator_inbox._pueue_add") as mock_add:
             count = orchestrator.scan_inbox("testproject", str(tmp_path))
 
         assert count == 0
@@ -401,7 +401,7 @@ class TestScanInboxStatusGate:
         f = _write_inbox_file(inbox_dir, "20260507-legacy.md", "new")
         original = f.read_text(encoding="utf-8")
 
-        with patch("orchestrator._pueue_add") as mock_add:
+        with patch("orchestrator_inbox._pueue_add") as mock_add:
             count = orchestrator.scan_inbox("testproject", str(tmp_path))
 
         assert count == 0
@@ -413,7 +413,7 @@ class TestScanInboxStatusGate:
         inbox_dir = tmp_path / "ai" / "inbox"
         f = _write_inbox_file(inbox_dir, "20260507-nostatus.md", None)
 
-        with patch("orchestrator._pueue_add") as mock_add:
+        with patch("orchestrator_inbox._pueue_add") as mock_add:
             count = orchestrator.scan_inbox("testproject", str(tmp_path))
 
         assert count == 0
@@ -1172,7 +1172,9 @@ class TestSpecReadinessGate:
         spec_id = "FTR-0081"
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True)
-        (features / f"{spec_id}-2026-07-26-console-scaffold.md").write_text("# Spec\n", encoding="utf-8")
+        (features / f"{spec_id}-2026-07-26-console-scaffold.md").write_text(
+            "# Spec\n", encoding="utf-8"
+        )
         mock_add = MagicMock(return_value=42)
 
         with (
@@ -1333,3 +1335,138 @@ class TestNextSleep:
     def test_just_under_floor_clamped(self):
         # Remainder smaller than the floor → clamp up to MIN_CYCLE_SLEEP.
         assert orchestrator._next_sleep(300, 290) == orchestrator.MIN_CYCLE_SLEEP
+
+
+# ---------------------------------------------------------------------------
+# TECH-215: compatibility surface of the orchestrator facade.
+#
+# Every name below is either imported by a bound `from orchestrator import ...`,
+# or is a monkeypatch target in a test file that is NOT in this spec's Allowed
+# Files. Losing one is not a red test somewhere else — it is a SILENT pass:
+# `patch("orchestrator.X")` on a name the split moved away rebinds an attribute
+# nothing reads, and the test then runs against unpatched production code.
+# ---------------------------------------------------------------------------
+
+_FACADE_NAMES = [
+    # module-level state
+    "SCRIPT_DIR",
+    "log",
+    "MIN_CYCLE_SLEEP",
+    # imported modules patched as orchestrator.<mod>.<fn> by other tests
+    "gate_logic",
+    "BOOTSTRAP_ANOMALY_THRESHOLD",
+    # slots / pueue
+    "sync_projects",
+    "get_live_pueue_ids",
+    "pueue_has_active_label",
+    "pueue_has_active_spec",
+    "release_orphan_slots",
+    "is_agent_running",
+    "git_pull",
+    "_pueue_add",
+    # backlog / bootstrap
+    "_parse_backlog",
+    "_bump_unparsable_counter",
+    "_parse_priority_kind",
+    "bootstrap_new_specs",
+    "cleanup_stale_stashes",
+    "startup_reconcile",
+    # inbox
+    "scan_inbox",
+    # queue
+    "_AFTER_DEP_RE",
+    "_backlog_deps",
+    "_unmet_dependencies",
+    "scan_queued",
+    "dispatch_night_review",
+    # main loop
+    "process_project",
+    "_next_sleep",
+    "main",
+]
+
+
+class TestFacadeCompatSurface:
+    """EC-7/EC-13: names the untouchable test files reach through `orchestrator`."""
+
+    @pytest.mark.parametrize("name", _FACADE_NAMES)
+    def test_name_resolves_from_orchestrator(self, name):
+        assert hasattr(orchestrator, name), (
+            f"orchestrator.{name} disappeared — a monkeypatch or bound import "
+            f"in a non-editable test file now silently misses"
+        )
+
+    def test_bound_import_of_adr_026_names(self):
+        """test_orchestrator_bootstrap.py:28 binds both at import time."""
+        from orchestrator import _bump_unparsable_counter, _parse_backlog  # noqa: F401
+
+    def test_scan_queued_body_lives_in_orchestrator_py(self):
+        """test_autopilot_scope_guard.py:87 greps this file's TEXT, not its imports."""
+        src = (Path(orchestrator.__file__)).read_text(encoding="utf-8")
+        assert "def scan_queued" in src
+        body, _, _ = src.partition("def scan_queued")[2].partition("\ndef ")
+        assert "CLAUDE_CURRENT_SPEC_PATH" in body and "pueue_env" in body
+        assert "env=pueue_env" in body
+
+    def test_patched_facade_name_is_seen_by_its_caller(self, tmp_path):
+        """The whole point: patching the facade must still reach the callee.
+
+        git_pull stays in orchestrator.py precisely so that
+        patch("orchestrator.is_agent_running") is observed by it.
+        """
+        # git_pull's first gate is `os.path.isdir(project_dir/.git)`. A real repo
+        # root won't do here: this repo is checked out as a worktree, where
+        # `.git` is a FILE (gitdir pointer), not a directory — isdir() is False
+        # and git_pull would short-circuit before is_agent_running is ever
+        # called, silently passing this test for the wrong reason. A bare
+        # `.git/` directory is the minimal fixture that satisfies the gate.
+        (tmp_path / ".git").mkdir()
+        with (
+            patch("orchestrator.is_agent_running", return_value=True) as spy,
+            patch("orchestrator.subprocess.run") as run_mock,
+        ):
+            orchestrator.git_pull("p", str(tmp_path))
+        spy.assert_called_once()
+        run_mock.assert_not_called()
+
+
+class TestSplitStructuralInvariants:
+    """EC-8, EC-9, EC-12: the shape the split exists to produce."""
+
+    _MODULES = [
+        "orchestrator.py",
+        "orchestrator_slots.py",
+        "orchestrator_backlog.py",
+        "orchestrator_inbox.py",
+        "orchestrator_queue.py",
+    ]
+
+    @pytest.mark.parametrize("name", _MODULES)
+    def test_file_under_loc_limit(self, name):
+        path = Path(orchestrator.__file__).parent / name
+        loc = len(path.read_text(encoding="utf-8").splitlines())
+        assert loc <= 400, f"{name}: {loc} LOC > 400"
+
+    @pytest.mark.parametrize("name", _MODULES[1:])
+    def test_sibling_never_imports_the_facade(self, name):
+        """The invariant TECH-214 states for lifecycle: no cycle, ever."""
+        src = (Path(orchestrator.__file__).parent / name).read_text(encoding="utf-8")
+        for line in src.splitlines():
+            s = line.strip()
+            assert s != "import orchestrator", f"{name}: cycle via `import orchestrator`"
+            assert not s.startswith("from orchestrator import"), f"{name}: cycle"
+
+    def test_no_function_body_over_80_lines(self):
+        """EC-8: the reason the split exists — scan_queued hid a bug at 226 lines."""
+        import ast
+
+        offenders = []
+        for name in self._MODULES:
+            path = Path(orchestrator.__file__).parent / name
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    span = node.end_lineno - node.lineno
+                    if span > 80:
+                        offenders.append(f"{name}:{node.name} ({span})")
+        assert not offenders, f"functions over 80 lines: {offenders}"

@@ -467,14 +467,20 @@ context: "Why Council is needed"
 
 ## Inbox Output (Orchestrator Integration)
 
+Only useful if this project is scanned by the DLD orchestrator. Without one, `ai/inbox/`
+is a durable queue a human reads — harmless, but `{SESSION_DIR}/synthesis.md` is the real
+artifact either way.
+
 After synthesis is complete, create an inbox file for each actionable decision:
 
 ```markdown
-# Idea: {timestamp}
+# Council decision — {one line}
+
+**Status:** draft
 **Source:** council
 **Route:** spark
-**Status:** new
 **Context:** {SESSION_DIR}/synthesis.md
+
 ---
 Council decision: {brief description of decision and recommended actions}
 Votes: {summary of votes}. Confidence: {high/medium/low}.
@@ -482,18 +488,26 @@ Changes required: {list of changes if any}
 ```
 
 **Rules:**
+- `Status: draft` — never `queued`. The orchestrator dispatches `queued` and nothing else,
+  and only the intake supervisor (Hermes) promotes a file to it. A draft therefore waits for
+  a human decision instead of firing Spark on an unreviewed brief. Any other value is inert:
+  the scan ignores it and the file is never picked up by anything.
+- Create `ai/inbox/` if it does not exist yet
 - Create inbox file ONLY if decision = approved or needs_changes
 - Do NOT create inbox file for rejected decisions
 - Do NOT create inbox file in Spark Phase 4 mode — the result feeds back into the running Spark session inline
 - One inbox file per council session (not per expert)
 - Context field links to full synthesis.md
-- Commit + push after creating inbox file
+- Commit + push after creating inbox file — the supervisor reads the repo, not your working tree
 
 ```bash
 git add ai/.council/ ai/inbox/ 2>/dev/null
 git diff --cached --quiet || git commit -m "docs: council synthesis + inbox"
-git push origin develop 2>/dev/null || true
+git push origin develop || echo "push failed — the inbox item is committed locally only; it will not be seen until it is pushed"
 ```
+
+> Never `git add ai/lifecycle/` — the pre-commit hook rejects it; spec status has a single
+> writer and it is not this skill.
 
 ## Limits
 

@@ -10,13 +10,13 @@ Final verification, status update, merge, and cleanup.
 
 ```
 1. Final test: ./test ci
-   └─ must pass! (CI-parity gate, TECH-206)
+   └─ must pass! (CI-parity gate)
    └─ no `./test ci`? → CI_PARITY_UNAVAILABLE fallback (see autopilot-git.md §5.6)
 
 2. Exa Verification (see below)
    └─ warnings only, never block
 
-3. REFLECT (v2, NEW — see below)
+3. REFLECT (see below)
    └─ Write upstream signals if issues found
    └─ Informational only, never blocks
 
@@ -53,7 +53,7 @@ Final verification, status update, merge, and cleanup.
    git pull --rebase origin develop
    git merge --ff-only {type}/{ID}
 
-   CI-parity merge gate (TECH-206) — BEFORE push:
+   CI-parity merge gate — BEFORE push:
    ./test ci on merged tree. Red → git reset --hard origin/develop
    (abort merge), emit needs_review, do NOT push.
    No `./test ci`? → CI_PARITY_UNAVAILABLE fallback (autopilot-git.md §5.6).
@@ -61,7 +61,7 @@ Final verification, status update, merge, and cleanup.
    git push origin develop
    git stash pop (if stashed)
 
-   ⛔ TECH-197 PUSH GUARD: If `git push origin develop` fails (even
+   ⛔ PUSH GUARD: If `git push origin develop` fails (even
    after retry), emit `"task_status": "needs_review"` instead of
    `"complete"` in the final JSON. Work is merged locally but not
    on origin — callback push-local will attempt recovery, but the
@@ -110,7 +110,7 @@ Final verification, status update, merge, and cleanup.
     - Context already managed by orchestrator
 ```
 
-## Reflect (v2, NEW)
+## Reflect
 
 After tests pass, before Pre-Done Checklist:
 
@@ -220,7 +220,7 @@ been denied by the pre-edit hook on its own first edit.
 ⛔ **Before setting status=done, verify ALL items:**
 
 ### Code Quality
-- [ ] `./test ci` passes (CI-parity gate, TECH-206)
+- [ ] `./test ci` passes (CI-parity gate)
 - [ ] No `# TODO` or `# FIXME` in changed files
 - [ ] All tasks from Implementation Plan completed
 
@@ -232,11 +232,6 @@ been denied by the pre-edit hook on its own first edit.
 - [ ] Documenter (Step 3.5) ran, and its result is in the Autopilot Log
 - [ ] If it returned `completed` → its `docs_updated` list is recorded and committed
 - [ ] If it returned `skipped` → the reason is recorded, not just the status
-
-These used to read "changelog entry added / related docs updated" — two checkboxes with
-no one assigned to them. They were ticked by whoever was closing the spec, which is why
-documentation drifted while every box stayed green. The work now has an owner; the
-checklist verifies the owner ran.
 
 ### Autopilot Log Completeness
 For EACH task, verify:
@@ -291,10 +286,10 @@ After tests pass, autopilot emits `task_status` in its final JSON output:
 - `"task_status": "needs_review"` — uncertain, callback marks blocked with reason
 
 Callback (`scripts/vps/callback.py`) reads pueue exit code + `task_status` from agent JSON output
-and writes status to `ai/lifecycle/{spec_id}.yaml` via git plumbing (ADR-023).
+and writes status to `ai/lifecycle/{spec_id}.yaml` via git plumbing.
 
 Migration: in-flight specs may still have legacy autopilot status edits — callback's guard
-re-verifies via implementation guard (ADR-023 / TECH-166).
+re-verifies via implementation guard.
 
 ## Git Safety for Merge
 
@@ -306,7 +301,7 @@ re-verifies via implementation guard (ADR-023 / TECH-166).
 
 ---
 
-## Forbidden — Lifecycle writes (ADR-025 / ARCH-193)
+## Forbidden — Lifecycle writes
 
 - NEVER Edit `**Status:**` in `ai/features/*.md` or status column in `ai/backlog.md`.
 - NEVER Edit `ai/lifecycle/*.yaml` directly.

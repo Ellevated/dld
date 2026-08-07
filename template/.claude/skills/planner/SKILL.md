@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Detailed implementation planning with UltraThink - creates bite-sized tasks with full code examples
+description: Detailed implementation planning - validates a spec against the codebase and creates bite-sized tasks
 agent: .claude/agents/planner.md
 ---
 
@@ -86,7 +86,7 @@ warnings: []
 
 **Note:** Plan does NOT change task status. Status was already `queued` (set by Spark).
 
-## Structure Validation (ARCH-211)
+## Structure Validation
 
 When creating tasks, validate LLM-friendly architecture:
 

@@ -18,13 +18,14 @@ from pathlib import Path
 
 log = logging.getLogger("heartbeat-reaper")
 
-CPU_SAMPLE_SECONDS = 2     # CPU sampling window for idle check
-CPU_IDLE_THRESHOLD = 1.0   # % — below this = idle
+CPU_SAMPLE_SECONDS = 2  # CPU sampling window for idle check
+CPU_IDLE_THRESHOLD = 1.0  # % — below this = idle
 
 
 # ---------------------------------------------------------------------------
 # Process liveness check
 # ---------------------------------------------------------------------------
+
 
 def _find_claude_pid(pueue_task_id: int) -> int | None:
     """Find the PID of the claude process for a pueue task.
@@ -40,8 +41,10 @@ def _find_claude_pid(pueue_task_id: int) -> int | None:
         # for processes whose cmdline matches the claude pattern and whose
         # parent chain includes pueue-managed shell
         r = subprocess.run(
-            ["pgrep", "-f", f"claude.*--max-turns"],
-            capture_output=True, text=True, timeout=5,
+            ["pgrep", "-f", "claude.*--max-turns"],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if r.returncode != 0 or not r.stdout.strip():
             return None
@@ -69,7 +72,9 @@ def is_process_idle(pueue_task_id: int) -> bool | None:
     try:
         r = subprocess.run(
             ["pgrep", "-P", str(claude_pid)],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if r.returncode == 0 and r.stdout.strip():
             # Has children — tool may be running

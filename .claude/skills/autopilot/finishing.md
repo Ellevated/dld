@@ -16,7 +16,7 @@ Final verification, status update, merge, and cleanup.
 2. Exa Verification (see below)
    └─ warnings only, never block
 
-3. REFLECT (v2, NEW — see below)
+3. REFLECT (see below)
    └─ Write upstream signals if issues found
    └─ Informational only, never blocks
 
@@ -110,7 +110,7 @@ Final verification, status update, merge, and cleanup.
     - Context already managed by orchestrator
 ```
 
-## Reflect (v2, NEW)
+## Reflect
 
 After tests pass, before Pre-Done Checklist:
 
@@ -232,11 +232,6 @@ been denied by the pre-edit hook on its own first edit.
 - [ ] Documenter (Step 3.5) ran, and its result is in the Autopilot Log
 - [ ] If it returned `completed` → its `docs_updated` list is recorded and committed
 - [ ] If it returned `skipped` → the reason is recorded, not just the status
-
-These used to read "changelog entry added / related docs updated" — two checkboxes with
-no one assigned to them. They were ticked by whoever was closing the spec, which is why
-documentation drifted while every box stayed green. The work now has an owner; the
-checklist verifies the owner ran.
 
 ### Autopilot Log Completeness
 For EACH task, verify:

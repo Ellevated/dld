@@ -51,7 +51,8 @@ Pin-once закрывает окно.
 
 **WT-sync постфактум (TECH-194 Layer D):** после CAS — `git checkout HEAD -- ai/lifecycle/{spec}.yaml`
 (`:340-343`), не старый `checkout-index --force`. Старый вариант писал только WT-файл, но оставлял в
-дефолтном `.git/index` staged-удаление (`D  `), что ломало `assert_clean_lifecycle_tree` при рестарте.
+дефолтном `.git/index` staged-удаление (porcelain-статус `D` в index-колонке), что ломало
+`assert_clean_lifecycle_tree` при рестарте.
 `checkout HEAD --` атомарно обновляет И index, И WT. Best-effort: fail → WARNING, backstop —
 `assert_clean_lifecycle_tree`.
 
@@ -193,15 +194,17 @@ Fail-closed: ambiguity → `blocked`.
   merge `merge[:] [branch] ['][prefix/]SPEC-ID` (покрывает `merge: feature/SPEC-ID — ...` и
   git-дефолтный `Merge branch 'fix/SPEC-ID-slug'`); trailing `(SPEC-ID)` в конце subject
   (каждый элемент в скобках обязан быть spec-id-shaped — `(see SPEC-ID)` отвергается);
-  legacy `SPEC-ID: `. Расширено 2026-07-02 после ложных demote plpilot BUG-338/339/340/346/347,
+  legacy-префикс `SPEC-ID:` с пробелом. Расширено 2026-07-02 после ложных demote plpilot
+  BUG-338/339/340/346/347,
   TECH-349. Синхронизировано с `gate_logic.match_subject` (L-derived-2).
 - **`_is_done_on_develop` — два прохода `git log`:** обычный path-filtered + `--first-parent`.
   Дефолтная history simplification прячет no-ff merge из path-filtered лога (merge TREESAME
   feature-родителю), поэтому subject `Merge SPEC-ID: ...` раньше никогда не доходил до проверки —
   `--first-parent` считает TREESAME только против первого родителя и merge-коммиты видит
   (2026-07-02, plpilot BUG-338). Зеркально в `gate_logic.find_implementation_commit`.
-- **`_parse_allowed_files`** (`:529-565`, TECH-167): v1 strict (маркер `<!-- callback-allowlist v1 -->`
-  + heading `## Allowed Files`, только канон-буллеты `` - `path.ext` ``) → list (может быть `[]`);
+- **`_parse_allowed_files`** (`:529-565`, TECH-167): v1 strict (маркер
+  `<!-- callback-allowlist v1 -->` + heading `## Allowed Files`, только канон-буллеты
+  `` - `path.ext` ``) → list (может быть `[]`);
   иначе legacy (heading-варианты + любые backtick-пути); секции нет → `None`.
 - **degrade-closed → blocked:** нет секции → reason `missing_allowed_files`; пустой allowlist (`[]`)
   → `empty_allowed_files` (`:1192-1196`). Никогда не `done` без позитивного совпадения.

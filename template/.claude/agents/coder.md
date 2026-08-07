@@ -145,7 +145,7 @@ fix(db): ... (BUG-439)                 # trailing-only spec_id — tolerated by 
 feat: FTR-1076 description             # no scope, no parens — INVISIBLE to gate, guaranteed false demote
 ```
 
-**Why:** the callback gate (DLD `scripts/vps/callback.py:_subject_implements`) matches the SUBJECT LINE only. Scope form is canonical. Since 2026-07-02 the gate also tolerates a pure trailing `(SPEC_ID)` — every element inside the parens must be a spec id; free text like `(FTR-X Task 3)` or `(see BUG-439)` stays rejected (TECH-177 discipline). A subject with NO spec_id anywhere can NEVER match — that commit is invisible to the gate, the spec gets a false `no_merged_implementation` demote and compute burns on re-dispatch (BUG-192 night 2026-05-24/25; plpilot false-blocked wave BUG-338..347 + TECH-349 on 2026-07-01/02).
+**Why:** the callback gate (DLD `scripts/vps/callback.py:_subject_implements`) matches the SUBJECT LINE only. Scope form is canonical. Since 2026-07-02 the gate also tolerates a pure trailing `(SPEC_ID)` — every element inside the parens must be a spec id; free text like `(FTR-X Task 3)` or `(see BUG-439)` stays rejected. A subject with NO spec_id anywhere can NEVER match — that commit is invisible to the gate, the spec gets a false `no_merged_implementation` demote and compute burns on re-dispatch. This has caused repeated false-blocked waves in production.
 
 **Merge commits (PHASE 3):** `Merge feature/SPEC_ID: <description>` (also `Merge autopilot/SPEC_ID …`, `Merge fix/SPEC_ID …`, `merge: feature/SPEC_ID — …`, git-default `Merge branch 'fix/SPEC_ID-slug'`) is accepted; since 2026-07-02 the gate sees merge commits via a `--first-parent` pass (BUG-192 Level 1b + plpilot BUG-338 fix).
 
@@ -168,7 +168,7 @@ When writing tests, follow strict mock boundaries:
 
 **Why:** Mocked row shapes drift from real SQL schema silently. Tests pass, prod breaks.
 
-## Forbidden — Lifecycle writes (ADR-025 / ARCH-193)
+## Forbidden — Lifecycle writes
 
 - NEVER Edit `**Status:**` in `ai/features/*.md` or status column in `ai/backlog.md`.
 - NEVER Edit `ai/lifecycle/*.yaml` directly.
@@ -189,28 +189,23 @@ responsibility. Autopilot does NOT have `force-done` permission. Operator runs:
 - Edit existing prompt versions
 - Mocking DB result shapes in unit tests (ADR-014)
 
-## Module Headers Workflow (MANDATORY)
+## Module Headers
 
-When working with a file:
+**Follow the convention where the surrounding files already use it.** Check the directory
+you are editing: if its files carry a module header, a file you add or substantially change
+gets one too, and one you touch gets its `Uses` / `Used by` kept accurate. If they do not,
+adding one imports a convention the file does not use — which `@_shared/minimal-code.md`
+tells you not to do.
 
-```
-1. OPENED file
-   └── Read module header (if exists)
+It is genuinely conditional, not politeness: measured across one real repository, its
+`_shared/content/*.ts` carried headers 18 times out of 18, while `migrations/*.sql` had 0
+of 74 and `tests/*.ts` 0 of 75.
 
-2. CHECKED consistency
-   ├── Header empty? → Fill before working
-   ├── Uses/Used by up to date?
-   └── Glossary references valid?
+Two things this does **not** license, both from `@_shared/minimal-code.md`: filling in a
+header on a file you were not otherwise changing, and documenting code you did not touch.
 
-3. MADE changes to code
-
-4. RE-READ module header
-   ├── Added new dependencies to Uses?
-   ├── Role changed?
-   └── Need to update Used by? (grep who uses it)
-
-5. SAVED file
-```
+When you do change a module's dependencies or role, update its header in the same edit —
+`Used by` is the half that rots, so grep for callers rather than guessing.
 
 ### Module Header Format
 
@@ -227,10 +222,11 @@ Uses:
 Used by:
   - {caller}:{function}
   - {caller}:{function}
-
-Glossary: ai/glossary/{domain}.md
 """
 ```
+
+A `Glossary:` line pointing at `ai/glossary/{domain}.md` belongs in projects that keep a
+glossary. Omit it where there is none rather than writing a path that resolves nowhere.
 
 ---
 
@@ -252,7 +248,7 @@ If a task can't be done without breaking one of these, that's a spec problem —
 
 ---
 
-## Migration Rules — Git-First (TECH-059)
+## Migration Rules — Git-First
 
 ⛔ **Autopilot NEVER applies migrations! CI is the only source of apply.**
 

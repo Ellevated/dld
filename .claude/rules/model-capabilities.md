@@ -11,7 +11,7 @@ paths:
 # Model Capabilities (Claude Opus 5 / Sonnet 5)
 
 Reference for agents about current model capabilities.
-Last updated: 2026-07-27 — verified against platform.claude.com, not from memory.
+Last updated: 2026-07-30 — verified against platform.claude.com, not from memory.
 
 ---
 
@@ -117,7 +117,6 @@ Their level table names `low` as the level for **subagents** specifically.
 | council experts | opus | high | Down from max. Anthropic: reserve max for "genuinely frontier problems" |
 | triz toc-analyst, triz-analyst | opus | high | Down from max, same rationale |
 | architect/synthesizer | opus | high | Down from max |
-| solution-architect (bughunt) | opus | high | Fix design needs careful reasoning |
 | coder | sonnet | high | Sonnet 5 is strong on coding. The note "xhigh only for multi-file refactors" described a switch nothing implements — the only measured effort result in this repo found *lower* effort winning, so raising it needs a golden dataset first (`test/agents/coder/` has 3 pairs) |
 | scout, spark-research, spark-codebase | sonnet | high | Exploratory tool calling and detailed search is where Anthropic names higher effort as paying off |
 | spark-devil | sonnet | high | Judgment on a proposal, not tool-heavy — the `scout` rationale does not transfer. Has a golden dataset (`test/agents/devil/`); sweep low/medium/high before assuming high is right |
@@ -125,7 +124,7 @@ Their level table names `low` as the level for **subagents** specifically.
 | audit/synthesizer | sonnet | high | Down from xhigh — merge task, not frontier reasoning |
 | tester | sonnet | medium | Execution-focused |
 | eval-judge | sonnet | high | Rubric-based evaluation. **Do not lower without re-running the golden pairs** — this is the measuring instrument, and moving it breaks comparability with every recorded score |
-| analyzer, comparator | sonnet | *(unset → high)* | Effort is unstated, so the API default applies. An unstated effort is not a decision; set it explicitly either way |
+| analyzer, comparator | sonnet | **high** | Stated 2026-08-02, deliberately *not* swept. Both are measuring instruments — `comparator` is the blind pairwise judge used to score prompt ablations, `analyzer` reads benchmark output — so moving their level invalidates comparison with every score already recorded, the same caveat that protects `eval-judge`. `high` is what they inherited by omission; writing it down turns an accident into a decision without changing behaviour |
 | bughunt personas (6) | **opus** | **low** | Defect-finding. **Measured:** opus/low scored 0.883 defect recall against sonnet/xhigh at 0.767 (ADR-029 eval). This row said sonnet/medium for two months after the frontmatter changed |
 | bughunt spec-assembler, validator | sonnet | medium | Down from high — structured assembly/triage |
 | board directors, architect personas | sonnet | medium | Down from high — research + structured report |
@@ -140,9 +139,13 @@ thinks on genuinely hard problems — it just thinks less on easy ones.
 
 **Haiku 4.5 does not support the `effort` parameter.** The supported list is Fable 5,
 Mythos 5, Opus 5, Opus 4.8, Mythos Preview, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6,
-Opus 4.5 — Haiku is absent, and its adaptive thinking is "No". The `effort: low` in the
-haiku agents' frontmatter is inert. ADR-019's cost saving came entirely from the
-sonnet→haiku swap; the effort half of that decision never did anything.
+Opus 4.5 — Haiku is absent, and its adaptive thinking is "No". ADR-019's cost saving came
+entirely from the sonnet→haiku swap; the effort half of that decision never did anything.
+
+The four haiku agents carried `effort: low` in their frontmatter until 2026-08-02, when it
+was removed — it had never been applied to anything, and a setting that looks like tuning
+but is inert is worse than no setting: the next reader assumes the level was chosen and
+measured. Do not add it back.
 
 **Anthropic names `low` as the level for subagents specifically** — "simpler tasks that
 need the best speed and lowest costs, such as subagents". Read that against the ADR-029
@@ -215,10 +218,64 @@ A refusal from either returns 200 and flows onward as if it were their report �
 security review that reads as a clean one. `architect-security` runs on sonnet, which has
 no classifiers, so it is unaffected today but would be if it were ever moved to opus.
 
-Nothing in `scripts/` or `.claude/` matches `stop_reason`, `refusal`, or `fallbacks`.
-Server-side retry exists (`fallbacks: "default"` plus the `server-side-fallback-2026-07-01`
-beta header, which routes by refusal category), and a refused request is not billed. None
-of it is wired up. Treat this as an open gap, not a solved problem.
+The full category list is `cyber`, `bio`, `frontier_llm`, `reasoning_extraction`,
+`general_harms`. `stop_details` is always present on a refusal but `category` and
+`explanation` are `null` when the decline maps to no named area — branch on `stop_reason`,
+never on the inner fields.
+
+#### What `claude-runner` now catches
+
+`scripts/vps/claude-runner.py` inspects every SDK message (`_refusal_from_message`) and
+publishes a `refusal` block in the run log — always present, so an absent key means an
+older runner rather than a clean run:
+
+| Field | Meaning |
+|---|---|
+| `detected` | any decline was seen at all |
+| `declines` | raw declines (`stop_reason == "refusal"`) |
+| `fallbacks_served` | declines the CLI re-ran on another model |
+| `unrecovered` | `declines - fallbacks_served`, floored at 0 |
+| `categories` | refusal categories, when the SDK surfaced any |
+| `events` | up to 10 raw events (source, category, explanation, models) |
+
+**Exit contract:** `unrecovered > 0` → **exit 4** (`classifier_refusal` in `_EXIT_REASONS`),
+only ever upgrading from 0 so a timeout or process error keeps its more specific code.
+Pueue records the failure, callback routes the spec to `blocked`, and salvage still pushes
+whatever the run built. A decline the CLI re-ran on a fallback model produced a real
+answer, so it does **not** fail the run — it is warned and recorded exactly like
+`model_drift`, because that is what it is: output from a model we did not pin. Failing it
+would re-run a finished spec, which is the BUG-188 mistake. ADR-024 is untouched: it
+governs SDK exceptions raised *after* a successful `ResultMessage`; this is an in-stream
+observation, and the BUG-188 branch still assigns no exit code.
+
+Telemetry lands in its own `classifier_refusals` table (`db.log_classifier_refusal`,
+created by `_ensure_migrations` so deployed databases pick it up) — deliberately not
+`sdk_post_result_errors`, which measures post-`ResultMessage` SDK drift and has no columns
+for category or fallback model.
+
+#### What is still not caught
+
+- **The category, on the decline itself.** `claude_agent_sdk` 0.1.81 (what
+  `requirements.txt` resolves to) exposes `stop_reason` on `AssistantMessage` and
+  `ResultMessage`, and drops `stop_details` — the dataclasses have no such field, so the
+  parser discards it. The category survives only on the CLI's
+  `system` / `model_refusal_fallback` message, which the SDK keeps whole as
+  `SystemMessage(subtype=…, data=…)` with `data["apiRefusalCategory"]`. So a *recovered*
+  refusal is categorised and an *unrecovered* one is not. Recovering it would need
+  `include_partial_messages` and reading raw `message_delta` events — a per-token message
+  flood through the heartbeat writer, not worth the category string.
+- **`fallbacks` cannot be passed from here.** It is a Messages API *body* parameter and
+  `ClaudeAgentOptions` has no field for it; `betas` is typed
+  `Literal["context-1m-2025-08-07"]` — one value, not an open list. Nothing is lost: the
+  Claude Code CLI (verified 2.1.220) already arms server-side fallback itself, sending
+  `anthropic-beta: server-side-fallback-2026-07-01` and retrying on refusal. That is why
+  the fallback notice exists to be detected. `--fallback-model` is a different mechanism
+  (overloaded/unavailable model), not classifier routing.
+- **Subagent-scope granularity.** The run log says a decline happened, not which subagent
+  hit it. Anthropic's own guidance is that `fallbacks` does not propagate into model calls
+  made from inside tool execution, so per-agent attribution would need CLI support.
+- **A refused request is not billed** when it arrives before any output, so cost telemetry
+  will not show it either. The `classifier_refusals` row is the only counter.
 
 ### Opus 4.8 → Opus 5
 
@@ -256,7 +313,9 @@ Sonnet 5 @ high ≈ Sonnet 4.6 @ max. Benchmark by observed thinking length, not
    Sonnet agents that assume the May date under-search four months
 8. **A refusal is not an answer** — on opus, `stop_reason: "refusal"` comes back as a
    successful response. If output looks empty or evasive on security, bio, or ML-methods
-   content, suspect a classifier decline rather than a bad prompt
+   content, suspect a classifier decline rather than a bad prompt. On VPS runs the
+   `refusal` block in the run log answers this directly; interactively there is no such
+   signal, so the symptom is all you get
 
 ---
 

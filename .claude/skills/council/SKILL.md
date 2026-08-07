@@ -465,6 +465,47 @@ context: "Why Council is needed"
 | rejected | → spark with new approach |
 | needs_human | ⚠️ Blocker — wait for human input |
 
+## Inbox Output (Orchestrator Integration)
+
+After synthesis is complete, create an inbox file for each actionable decision:
+
+```markdown
+# Council decision — {one line}
+
+**Status:** draft
+**Source:** council
+**Route:** spark
+**Context:** {SESSION_DIR}/synthesis.md
+
+---
+Council decision: {brief description of decision and recommended actions}
+Votes: {summary of votes}. Confidence: {high/medium/low}.
+Changes required: {list of changes if any}
+```
+
+**Rules:**
+- `Status: draft` — never `queued`. Hermes is the only writer of `queued` (ADR-022);
+  an item written straight to `queued` bypasses the business gate and dispatches Spark
+  on an unreviewed brief. `scan_inbox` ignores every status but `queued`, so a draft
+  waits for Hermes rather than firing on its own.
+- Create inbox file ONLY if decision = approved or needs_changes
+- Do NOT create inbox file for rejected decisions
+- Do NOT create inbox file in Spark Phase 4 mode — the result feeds back into the running Spark session inline
+- One inbox file per council session (not per expert)
+- Context field links to full synthesis.md
+- Commit + push after creating inbox file — Hermes reads the repo, not your working tree
+
+```bash
+git add ai/.council/ ai/inbox/ 2>/dev/null
+git diff --cached --quiet || git commit -m "docs: council synthesis + inbox"
+git push origin develop || echo "push failed — the inbox item is committed locally only; Hermes will not see it until it is pushed"
+```
+
+> Never `git add ai/lifecycle/` (ADR-025) — the pre-commit guard blocks it and the
+> callback is the only writer of spec status.
+
+See `ai/inbox/README.md` for the full intake lifecycle.
+
 ## Limits
 
 | Condition | Action |

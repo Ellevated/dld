@@ -1,6 +1,7 @@
 ---
 paths:
   - "scripts/**"
+  - ".claude/scripts/**"
   - "packages/**"
   - "tests/**"
 ---
@@ -78,7 +79,7 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 | What | Where | Function |
 |------|-------|----------|
 | sqlite3 | stdlib | connection, Row, contextmanager |
-| schema.sql | scripts/vps/schema.sql | project_state, compute_slots, task_log, night_findings, callback_decisions |
+| schema.sql | scripts/vps/schema.sql | project_state, compute_slots, task_log, night_findings, callback_decisions, classifier_refusals |
 | db_decisions.py | scripts/vps/db_decisions.py | record_decision, count_demotes_since, clear_decisions, log_sdk_post_result_error, log_gate_cycle, get_gate_health — delegated, `immediate=True` preserved for `clear_decisions` |
 | db_findings.py | scripts/vps/db_findings.py | save_finding, get_new_findings, update_finding_status, get_finding_by_id, get_all_findings, get_projects_for_night_scan — delegated, `immediate=True` preserved for save_finding/update_finding_status |
 | db_cli.py | scripts/vps/db_cli.py | `main(sys.argv, sys.modules[__name__])` — argv dispatcher, deliberately does NOT `import db` (avoids a second module object with its own `DB_PATH` under `python3 db.py`) |
@@ -92,6 +93,7 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 | callback.py | scripts/vps/callback.py | record_decision(), count_demotes_since(), clear_decisions() (TECH-169) |
 | night-reviewer.sh | scripts/vps/night-reviewer.sh (FTR-147 Task 4) | CLI: save-finding, get-new-findings, update-phase |
 | claude-runner.py | scripts/vps/claude-runner.py | log_sdk_post_result_error() (BUG-188 Layer 4, lazy import) |
+| claude-runner.py | scripts/vps/claude-runner.py | log_classifier_refusal() — classifier decline telemetry (lazy import; failure logs WARNING and never fails the run) |
 | gate-daemon.py | scripts/vps/gate-daemon.py | log_gate_cycle(), get_all_projects() (ARCH-190) |
 
 ### When changing API, check
@@ -100,6 +102,7 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 - [ ] callback.py
 - [ ] night-reviewer.sh (CLI: save-finding / get-new-findings / update-phase)
 - [ ] claude-runner.py (log_sdk_post_result_error signature — BUG-188)
+- [ ] claude-runner.py (log_classifier_refusal signature — refusal detect; exit 4 = `classifier_refusal`)
 - [ ] gate-daemon.py (log_gate_cycle signature — ARCH-190)
 - [ ] db_decisions.py / db_findings.py (pure leaves, first param is the sqlite connection — no `import db`; keep it that way)
 - [ ] db_cli.py (`main(argv, api)` — api param must stay the db module, not a fresh import)
@@ -144,6 +147,7 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 | claude CLI | `CLAUDE_CLI_PATH` env, else newest of PATH / `~/.local/bin/claude` / `/usr/local/bin/claude` | `--version` probe then SDK `cli_path=`. Resolution is **by version, not PATH order** — see `_resolve_cli_path` |
 | claude_agent_sdk | pip dep 0.1.63 | query(), ClaudeAgentOptions(stderr=callback) (BUG-188 Layer 2) |
 | db.py | scripts/vps/db.py | log_sdk_post_result_error() — telemetry on post-result SDK exception (BUG-188 Layer 4, lazy import) |
+| db.py | scripts/vps/db.py | log_classifier_refusal() — telemetry on `stop_reason: "refusal"`; the only counter an HTTP-200 decline lands in (it is not billed and raises no exception) |
 | salvage.py | scripts/vps/salvage.py | spec_id_from_path(), salvage_run() — push the worktree on non-zero exit and on SIGTERM (optional import) |
 
 ### Used by (←)
@@ -205,7 +209,32 @@ so the one-push-per-spec rule is untouched.
 
 ## scripts/vps/orchestrator.py
 
-**Path:** `scripts/vps/orchestrator.py`
+**Path:** `scripts/vps/orchestrator.py` (391 LOC — was 1078, TECH-215 split)
+
+Split into four flat siblings; `orchestrator.py` keeps bootstrap (`_load_env`,
+`_setup_logging`, `_write_pid`), `git_pull`, `startup_reconcile`, `scan_queued`,
+`process_project`/`main`, and re-exports every moved name.
+
+| Module | LOC | Holds |
+|---|---|---|
+| `orchestrator_slots.py` | 209 | `sync_projects`, `get_live_pueue_ids`, `pueue_has_active_label/_spec`, `release_orphan_slots`, `is_agent_running`, `_pueue_add` |
+| `orchestrator_backlog.py` | 303 | `_parse_backlog` (ADR-026), `_bump_unparsable_counter`, `bootstrap_new_specs`, `_parse_priority_kind`, `cleanup_stale_stashes` |
+| `orchestrator_inbox.py` | 136 | `_parse_inbox_file`, `scan_inbox` (ADR-021/022) |
+| `orchestrator_queue.py` | 338 | `_backlog_deps`, `_unmet_dependencies`, the decomposed `scan_queued` steps, `dispatch_night_review` |
+
+**Two contracts that look stylistic and are not:**
+
+1. **Re-export direction.** Names patched as `orchestrator.<name>` are imported into
+   `orchestrator.py` with `from X import Y` and called by BARE NAME; the
+   `orchestrator_queue` steps are called as MODULE ATTRIBUTES
+   (`orchestrator_queue.record_dispatch(...)`). Inverting either direction makes a
+   `patch()` silently miss its target — tests still pass, production is unpatched.
+2. **`SCRIPT_DIR` is per-module.** `scan_inbox` and `dispatch_night_review` read their
+   own module's `SCRIPT_DIR`, so `patch("orchestrator.SCRIPT_DIR", tmp_path)` does not
+   reach them. Patch the owning module or the test shells out to the real pueue daemon.
+
+No sibling imports `orchestrator` (enforced by a test). Edges: `orchestrator` →
+{queue, slots, backlog, inbox}; queue/inbox → slots.
 
 ### Uses (→)
 
@@ -344,7 +373,7 @@ so the one-push-per-spec rule is untouched.
 |------|-------|----------|
 | db.py | scripts/vps/db.py | get_project_state() (inline python3 -c), update-phase, save-finding, get-new-findings (CLI) |
 | event_writer.py | scripts/vps/event_writer.py | python3 event_writer.py <project_id> <msg> |
-| claude CLI | $CLAUDE_PATH or PATH | flock --timeout 120 /tmp/claude-oauth.lock claude --print --output-format json --max-turns 30 --cwd <path> -p "/audit night" |
+| claude CLI | $CLAUDE_PATH or PATH | `cd <path> && flock --timeout 120 /tmp/claude-oauth.lock claude --print --output-format json --max-turns 30 -p "/audit night"`. **There is no `--cwd` flag** (checked against CLI 2.1.220); the script uses `cd`, and this row said otherwise until 2026-08-01 |
 | flock | util-linux | serialize claude OAuth token access |
 | jq | PATH | parse claude JSON output (.result field + findings array) |
 
@@ -541,12 +570,14 @@ so the one-push-per-spec rule is untouched.
 | gate-daemon.py | scripts/vps/gate-daemon.py | fetch_develop(), parse_allowed_files(), find_implementation_commit() |
 | orchestrator.py | scripts/vps/orchestrator.py | scan_queued reconciliation gate — parse_allowed_files(), fetch_develop(), find_implementation_commit() before dispatch |
 | callback.py | scripts/vps/callback.py | strip_bookkeeping_paths() — used by `_is_done_on_develop`, the second copy of the gate (L-derived-2) |
+| .claude/scripts/validate-allowlist.mjs | `.claude/scripts/validate-allowlist.mjs` | **Not an import — a reimplementation in JS.** Spark's Phase 5.5 pre-flight check must accept exactly what this module accepts, or it rejects specs the pipeline would run. Enforced by `tests/test_allowlist_parity.py` |
 
 ### When changing API, check
 
 - [ ] gate-daemon.py (_evaluate_project — all three call sites)
 - [ ] orchestrator.py (scan_queued reconciliation gate — same three functions)
 - [ ] tests/test_gate_logic.py (pure-function tests, Wave 1 Task 2)
+- [ ] `.claude/scripts/validate-allowlist.mjs` + `template/.claude/scripts/` copy — the allowlist regexes are duplicated there in JS; `tests/test_allowlist_parity.py` is the tripwire
 
 ---
 
@@ -707,48 +738,65 @@ Used as operator visibility tool and CI smoke gate.
 
 ---
 
+## .claude/scripts/ (skill-invoked gates)
+
+**Path:** `.claude/scripts/*.mjs`
+
+Called from skill prompts by a running agent, not imported by any Python module — so a
+missing file surfaces as an agent improvising around a shell error, and nothing fails
+loudly. Six of these existed only in `template/` while root prompts referenced them
+(ported 2026-07-31). The reverse pointers below are the check: **before deleting or
+renaming one, grep the skill that calls it.**
+
+| Script | Called from | Contract |
+|---|---|---|
+| `validate-audit-report.mjs` | `skills/audit/deep-mode.md`, `skills/retrofit/SKILL.md` | argv: report path. 0 = pass, 1 = fail, 2 = usage |
+| `validate-audit-coverage.mjs` | `skills/audit/deep-mode.md` | argv: inventory.json + reports dir. 0 = ≥80% covered, 1 = below, 2 = usage |
+| `codebase-inventory.mjs` | `skills/audit/deep-mode.md` | argv: target dir. JSON inventory to stdout, feeds the coverage gate |
+| `validate-blueprint-compliance.mjs` | `skills/autopilot/task-loop.md` | argv: spec file [+ blueprint dir]. 0 = pass, 1 = fail, 2 = skip/usage |
+| `validate-allowlist.mjs` | `skills/spark/feature-mode.md` Phase 5.5 | argv: spec file. 0 = pass, 1 = fix required, 2 = unreadable. Prints one JSON object. **Its regexes must equal `callback._parse_allowed_files_v1` + `gate_logic.strip_bookkeeping_paths`** — `scripts/vps/tests/test_allowlist_parity.py` fails if they diverge. Editing the parser without editing this script is the drift that test exists to catch |
+| `run-eval.mjs` | `skills/skill-creator/SKILL.md` | shells out to `claude --print --setting-sources=project -p "/<skill> …"`. Drops `--setting-sources` and every eval silently measures nothing |
+| `aggregate-benchmark.mjs` | `skills/skill-creator/SKILL.md`, `skills/skill-creator/references/schemas.md` | argv: workspace. Consumes `iteration-N/run-summary.json` written by `run-eval.mjs` — the two share that filename as a contract |
+| `eval-agents.mjs` | `skills/eval` | Root-only. Scans `test/agents/` golden datasets; unrelated to `run-eval.mjs` despite the name |
+| `check-prompt-integrity.mjs` | CI (`.github/workflows/ci.yml` → `prompt-integrity`), manual | argv: `--tree <dir> [--root <dir>] [--json]`. 0 = clean, 1 = findings, 2 = usage. Finds agents nothing dispatches, scripts a prompt tells an agent to *run* that do not exist, unresolved `@`-includes, and agents whose `model:`/`effort:` is unstated. Suppressions live in `prompt-integrity-baseline.json` **with a reason** — the whole point is that a green run means something. Reporting, not blocking |
+
+### When changing API, check
+
+- [ ] The calling skill prompt (both `.claude/` and `template/.claude/` copies — they are identical today)
+- [ ] `run-eval.mjs` ↔ `aggregate-benchmark.mjs` workspace layout (`iteration-N/run-summary.json`, `eval-N-timing.json`)
+- [ ] `codebase-inventory.mjs` ↔ `validate-audit-coverage.mjs` (the latter parses the former's `files[].path`)
+
+---
+
+## scripts/ (agent-invoked quality gates)
+
+Plain `scripts/*.py`, run by an agent from a prompt — same failure mode as
+`.claude/scripts/`: a missing file surfaces as the agent improvising around a shell
+error, never as a loud failure. Two of these were referenced by prompts for months
+before they existed (found 2026-08-01 by `check-prompt-integrity.mjs`), which is why
+this section exists at all. **Before renaming or deleting one, grep the prompt that
+calls it.** Each ships in `template/scripts/` too.
+
+| Script | Called from | Contract |
+|---|---|---|
+| `pre-review-check.py` | `skills/autopilot/task-loop.md` Step 3a | argv: changed files (or stdin). 0 = pass, 1 = issues. TODO/FIXME, bare `except`, LOC limits |
+| `check_domain_imports.py` | `agents/review.md` §6, `agents/architect/evolutionary.md`, `agents/architect/synthesizer.md` | argv: files, or whole `src/`. `--src`, `--json`. 0 = pass **or no source root**, 1 = violations, 2 = usage. Enforces `shared → infra → domains → api` + no cross-domain imports, via ast |
+| `check_docs_sync.py` | `agents/review.md` §5 | argv: files, or whole tree. `--env`, `--all`, `--json`. 0 = pass **or no env template**, 1 = env vars read by code but absent from `.env.example` |
+
+Both new checks exit 0 when they do not apply — DLD itself has no `src/` and no
+`.env.example`. A gate that fails where it is inapplicable gets switched off everywhere,
+which is worse than not having it.
+
+### When changing API, check
+
+- [ ] The calling prompt in **both** trees (`.claude/agents/…` and `template/.claude/agents/…`)
+- [ ] `tests/unit/test_check_domain_imports.py`, `tests/unit/test_check_docs_sync.py`
+- [ ] `template/scripts/` copy stays in sync — the prompts in both trees name the same path
+
+---
+
 ## Last Update
 
-| Date | What | Who |
-|------|------|-----|
-| 2026-03-10 | Added scripts/vps/db module (FTR-146 Task 1) | coder |
-| 2026-03-10 | Added run-agent.sh, codex-runner.sh (FTR-146 Task 2) | coder |
-| 2026-03-10 | Added setup-vps.sh, .env.example, projects.json.example (FTR-146 Task 9) | coder |
-| 2026-03-10 | Extended db.py + schema.sql: night_findings table + 6 CRUD functions (FTR-147 Task 1) | coder |
-| 2026-03-10 | Added night-reviewer.sh (FTR-147 Task 4) | coder |
-| 2026-03-10 | Added gemini-runner.sh, nexus-cache-refresh.sh (FTR-148) | coder |
-| 2026-03-18 | Radical rewrite: orchestrator.py, callback.py, event_writer.py replace bash scripts (ARCH-161) | coder |
-| 2026-03-19 | Orphan slot watchdog: get_occupied_slots (db.py), get_live_pueue_ids + release_orphan_slots (orchestrator.py) (BUG-162) | coder |
-| 2026-03-28 | callback.py: QA/Reflect slot+log, phase fix, spark events, resolve_label dedup | manual |
-| 2026-03-28 | callback.py: verify_status_sync — auto-fix spec+backlog status after autopilot | manual |
-| 2026-05-02 | callback circuit-breaker (TECH-169): callback_decisions table, record_decision/count_demotes_since/clear_decisions (db.py), notify_circuit_event (event_writer.py), --reset-circuit CLI (callback.py) | autopilot |
-| 2026-05-04 | Spark spec template: DLD-CALLBACK-MARKER-START/END wraps Status + Allowed Files; Phase 5.5 SSOT extended with DLD_START_RE/DLD_END_RE + E007/E008 (TECH-175 Task 3) | coder |
-| 2026-05-15 | marker_utils.py shared regex/extractor; orchestrator autostash recovery restores callback Status from HEAD post-pop (BUG-185, formerly BUG-974) | autopilot |
-| 2026-05-16 | **ARCH-186 lifecycle SoT migration:** lifecycle.py (new, ~280 LOC) atomic git plumbing; callback.verify_status_sync upgraded to lifecycle.write_lifecycle (no markdown editing); orchestrator scan_queued + bootstrap_new_specs + assert_clean_lifecycle_tree + reconcile_orphans; render_backlog.py (new) markdown view; migrate_backlog_to_lifecycle.py (new, one-shot). DELETED: marker_utils.py (117), _restore_callback_markers_from_head (54), autostash dance (81), DLD-CALLBACK-MARKER blocks in spec template + Phase 5.5 E007/E008 rules. Supersedes ADR-018. Closes BUG-185. | autopilot (interactive) |
-| 2026-05-23 | **TECH-189 P0 hardening cluster (9 tasks):** Task 1 pyproject testpaths += scripts/vps/tests; Task 2 tests/conftest.py autouse _db_isolation; Task 3 DELETED spec_lint.py + tests/unit/test_spec_lint.py + removed DLD-CALLBACK-MARKER refs across completion.md ×2, facilitator.md, .git-hooks/pre-commit, feature-mode.md ×2; Task 4 BOOTSTRAP_ANOMALY_THRESHOLD constant + warning + ai/.bootstrap-anomaly-count counter + Hermes event; Task 5 lifecycle._push_best_effort DEBUG→WARNING + ai/.lifecycle-push-failures counter + TimeoutExpired path; Task 6 GROWTH in _SPEC_ID_RE (callback) + bootstrap_new_specs regex (orchestrator:308); Task 7 lifecycle._run timeout=30 + _cas_loop TimeoutExpired catch; Task 8 NEW scripts/vps/heartbeat_monitor.py + orchestrator main-loop heartbeat write + setup-vps.sh cron (*/5 min); Task 9 reconcile_orphans by="orchestrator" (was "callback"). | autopilot |
-| 2026-05-20 | **BUG-188:** claude-runner result_received/result_is_error tracking — post-result Exception no longer overrides exit_code=0 (Layer 1); public ClaudeAgentOptions.stderr callback captures subprocess CLI stderr (Layer 2); sdk_post_result_errors table + log_sdk_post_result_error helper (schema.sql + db.py, Layer 4); claude-runner wires telemetry inside post-result branch; autopilot SKILL.md adds early-exit detection step (Layer 3, both .claude/ and template/.claude/); ADR-024 documents exit_code contract. | autopilot |
-| 2026-05-24 | **ARCH-190 Task 3:** NEW gate-daemon.py (391 LOC) shadow polling daemon; NEW gate_logic.py dependency sections added to dependencies.md. | coder |
-| 2026-05-24 | **ARCH-190 Task 4:** setup-vps.sh — install dld-gate-daemon.service user-unit (HEREDOC + loginctl enable-linger + systemctl --user enable --now); setup-vps.sh Uses updated with gate-daemon.py entry. | coder |
-| 2026-05-24 | **ARCH-190 Task 5:** NEW tests/test_gate_logic.py (410 LOC) — 24 pure-function tests covering DA-1, DA-4, DA-5, DA-6, DA-9 + parse_allowed_files v1/legacy + match_subject 3 forms + fetch_develop timeout. Real git repos via subprocess + tmp_path (ADR-013). | coder |
-| 2026-05-24 | **ARCH-190 Task 6:** NEW tests/test_gate_daemon.py (515 LOC) — 8 integration tests covering SA-3 lifecycle-never-touched, SHADOW_ONLY_MODE guard, gate_health row, JSONL line count, per-project error isolation, SHA cache spy, heartbeat mtime, SIGTERM graceful exit. | coder |
-| 2026-05-24 | **ARCH-190 Task 7 (Wave 1 complete):** dependency map consolidated — gate-daemon.py + gate_logic.py sections; reverse-pointer rows added to db.py, lifecycle.py, setup-vps.sh sections. Shadow daemon ready for VPS deploy (Wave 2 parity check next). | autopilot |
-| 2026-05-26 | **TECH-195:** orchestrator._parse_backlog column-aware parser + safe default=queued (was: positional regex falling through to done); lifecycle.recover_bootstrap_artifact narrow Rule 7 escape + NotBootstrapArtifactError; NEW scripts/vps/recover_bootstrap_as_done.py operator helper (dry-run default); NEW scripts/vps/lifecycle_audit.py READ-ONLY 14-category drift detector; ADR-026 architecture.md; lifecycle.py reverse-pointers extended. +12 tests (recovery) + 12 tests (audit) in scripts/vps/tests/test_orchestrator_bootstrap.py (39 in file, 212 total). | autopilot |
-| 2026-05-28 | NEW scripts/vps/orchestrator_monitor.py — 30-min cron: service alive + CB state + active tasks + demote burst; setup-vps.sh section 8c. | manual |
-| 2026-05-26 | **TECH-194 (ARCH-193 follow-up):** Layer C — setup-vps.sh `core.hooksPath` absolute + `install-hooks-all-worktrees.sh` migration + `.git-hooks/pre-commit` uses `git rev-parse --git-common-dir` + `pre-commit-lifecycle-guard.mjs` resolves `event_writer.py` via `import.meta.url`; Layer D — `lifecycle._atomic_write` + `_atomic_write_file` use `git checkout HEAD --` (was `checkout-index --force` losing `env=env`); Layer E — callback Step 6 gates qa+reflect dispatch on `task_status not in ('blocked','needs_review')`; NEW `cleanup-lifecycle-drift.sh` operator helper; 11 new regression tests across 3 files. | autopilot |
-| 2026-06-13 | **TECH-198:** Layer A: claude-runner heartbeat on every SDK message (was AssistantMessage-only). Layer B: NEW heartbeat_reaper.py (cron */5, kills wedged sessions: stale >25min + process idle + fail-open). setup-vps.sh section 8d cron install. 27 tests (5 Layer A + 22 Layer B). dependencies.md reaper section + reverse-pointers (claude-runner, event_writer, setup-vps). | autopilot |
-| 2026-06-19 | **TECH-203:** claude-runner.py: AUTOPILOT_EFFORT env (default high, enum-validated) + ClaudeAgentOptions(effort=...). model-capabilities.md table synced to frontmatter SSOT. ADR-028 added. 9 template agent files synced to ADR-019 frontmatter. | autopilot |
-| 2026-06-19 | **BUG-205:** scan_queued authoritative lifecycle re-read before _pueue_add (TOCTOU close). 5 regression tests in test_orchestrator.py (stale-block, happy-path, read-None, stale-done, resumed). | autopilot |
-| 2026-06-26 | **scan_queued reconciliation gate:** orchestrator.py imports gate_logic; before _pueue_add checks `find_implementation_commit` on origin/develop and, if already implemented, writes done by="orchestrator" (no session). Closes single-writer hole (ADR-023) for out-of-band completion (other dev/window/node, callback never fired). 3 regression tests (TestReconciliationGate). dependencies.md orchestrator Uses += lifecycle/gate_logic + gate_logic reverse-pointer. | interactive |
-| 2026-07-02 | **Council-in-Phase-4 fix (dowry FTR-1333 incident):** lifecycle.create_initial guard — `by="spark"` может создавать ТОЛЬКО `status="queued"` (spark-born blocked «council_required» = ValueError); 1 regression test (test_lifecycle.py). Skills (root+template): spark feature-mode Phase 4 COUNCIL = convene NOW inside session (never write-spec-then-defer); spark facilitator COUNCIL execution semantics + next_step «Council review required» removed; spark completion.md «blocked is NOT a valid status for a created spec»; council SKILL.md новый Spark Phase 4 Mode (pre-spec, no status writes) + needs_human scoped by entry point; autopilot SKILL.md pre-flight 1.5 — pre-implementation council gates invalid, escalate via council in-session. | interactive |
-| 2026-07-26 | **Stale-CLI fix:** `claude-runner._resolve_cli_path` now picks the NEWEST CLI (probes `--version`) instead of the first on PATH, returns `(path, version)`, and warns below `_MIN_CLI_VERSION`; `cli_path`/`cli_version`/`model`/`effort` added to the run log for drift telemetry. Root cause: pueue inherits systemd PATH (no `~/.local/bin`), so `which claude` found a root-owned **2.1.72 build frozen since March** — it predates Opus 5 and silently ran `claude-opus-4-6`, i.e. a 200K window instead of 1M, autocompact every ~155K, 34 compactions in one 90-min run, timeout with nothing merged. VPS `.env` also pins `CLAUDE_CLI_PATH`/`CLAUDE_PATH`. +14 tests (`test_claude_runner_cli_resolution.py`). | interactive |
-| 2026-07-26 | **`lifecycle._run` byte-level git I/O:** dropped `text=True` — it translated `\n`→`\r\n` on stdin (CRLF blobs in the lifecycle SoT despite `.gitattributes`, permanently dirty `ai/lifecycle/` → `assert_clean_lifecycle_tree` aborted daemon startup for every project) and decoded git output with the locale codec (cp1251 → `UnicodeDecodeError` on Cyrillic). +7 tests (`test_lifecycle_run_encoding.py`). | interactive |
-| 2026-07-26 | **Spec-readiness gate in `scan_queued`:** a queued lifecycle row with no spec body in `ai/features/` is skipped instead of dispatched. Spec-first ID CAS (ADR-027) writes `queued` at ID-claim time, minutes before the body is committed; the 60s poll lost that race and burned a slot + a session for a `missing_allowed_files` block (awardybot BUG-1410). Row stays `queued`; persistent rows are orphans, reported by `lifecycle_audit.py`. +5 tests. | interactive |
-| 2026-07-26 | **`scripts/check-research-stack.py`** (new, mirrored into `template/scripts/`): probes Exa's live `tools/list`, checks Context7 install scope, and cross-checks every `mcp__exa__*` name in `.claude/` + `template/.claude/` against what the server actually serves. Catches silent research degradation — the failure mode that left 259 dead tool references across 55 files. | interactive |
-| 2026-07-27 | **Lifecycle guard actually deployed:** NEW `install-lifecycle-guard.sh` — shared wrapper + central-guard fallback + chain to the repo's own hook. Audit found the structural half of ADR-025 running in exactly one of ten repos: dld/dowry/wb carried the wrapper but pointed `core.hooksPath` at `.git/hooks`, wb's path was relative (dead inside worktrees), six repos had neither file. Verified live 6/6, including the worktree case. | interactive |
-| 2026-07-27 | **Timeout no longer discards the run's work:** NEW `salvage.py` — on non-zero exit or SIGTERM, snapshots the worktree via plumbing (hooks can't veto a salvage; `ai/lifecycle/` excluded) and pushes the branch to origin. `claude-runner` wires it into both paths and now reports `turns` from the observed count when no ResultMessage arrived — a 575-turn timeout used to log "0 turns, $0.00". `lifecycle.run_git` public alias. +23 tests. | interactive |
-| 2026-07-27 | **Provider selection fixed:** `db.get_provider_capacity()` separates "busy" from "not configured here". `orchestrator` scan_queued honoured a spec's `provider:` unconditionally (`get_available_slots(...) >= 0` — COUNT is never negative), so a spec naming an unconfigured provider blocked its own dispatch forever under a "no slots" log. Unknown → warn + project default; known but busy → wait. +6 tests. | interactive |
-| 2026-07-27 | **Gate no longer reconciles a spec against its own birth commit:** `gate_logic.strip_bookkeeping_paths` removes `ai/lifecycle/`, `ai/features/`, `ai/diary/`, `ai/backlog.md` from the allowlist before the path-filtered `git log`; applied in both copies of the gate (`gate_logic.find_implementation_commit` + `callback._is_done_on_develop`). Root cause: Spark writes `lifecycle(BUG-460): queued` touching `ai/lifecycle/BUG-460.yaml`, and puts that path in `## Allowed Files` — the subject parses as a conventional commit with the id in scope, so the spec proved its own completion. Five specs closed having merged nothing (dowry BUG-460/TECH-461/TECH-462, wb FTR-182, plpilot TECH-352; TECH-462 was P0). Docs paths deliberately NOT stripped — a documentation spec's implementation lives there. Bookkeeping-only allowlist → fail closed (dispatch normally). +6 tests. | interactive |
-| 2026-07-27 | **VPS test suite green on Windows:** explicit `encoding="utf-8"` on file I/O across 17 test modules (cp1251 default raised UnicodeEncodeError on `⛔`/Cyrillic — the same class as the `lifecycle._run` fix), SIGTERM daemon test skipped on `nt`. 400 passed / 0 failed, was 5 failed. | interactive |
-| 2026-07-02 | **Gate false-blocked fix (plpilot BUG-338/339/340/346/347 + TECH-349):** `match_subject`/`_subject_implements` (gate_logic.py + callback.py, sync L-derived-2) принимают trailing `(SPEC-ID)` в конце subject (все элементы в скобках обязаны быть spec-id-shaped; `(see X)`/`(FTR-X Task 3)` — reject) + merge-формы `merge: feature/SPEC-ID` и `Merge branch 'fix/SPEC-ID-slug'`. `find_implementation_commit`/`_is_done_on_develop` — второй проход `git log --first-parent` (history simplification прятала no-ff merge из path-filtered лога — `Merge SPEC-ID:` никогда не доходил до matcher'а). 11 новых тестов (test_gate_logic.py 8 unit + 3 integration), 3 (test_callback_implementation_guard.py EC-7..9), test_callback.py anti-false-positive narrowed. docs/orchestrator/status-model.md#guard обновлён. | interactive |
-| 2026-07-28 | **TECH-212:** `db.py` (602 → 373 LOC) split into `db_decisions.py` (127 LOC), `db_findings.py` (105 LOC), `db_cli.py` (88 LOC) — pure leaves, zero `import db`, connection passed as first param. `db.py` rebinds all 12 names via a `_delegate(fn, immediate=...)` factory; public API (`db.<name>`, `from db import get_db`) and CLI contract byte-identical. Zero edits to orchestrator.py/callback.py/gate-daemon.py/claude-runner.py/orchestrator_monitor.py/night-reviewer.sh. +12 CLI characterization tests + EC-1..EC-10 structural contract tests (test_db.py 213 → 568 LOC). | autopilot |
-| 2026-07-28 | **BUG-218:** `queued → in_progress` had zero production writers — never implemented, not a regression; docs credited `callback`, which fires on pueue *completion* and can only ever write `done`/`blocked`. `scan_queued` now calls `lifecycle.write_lifecycle(..., "in_progress", by="orchestrator", pueue_id=...)` right after `pueue add` succeeds (a failed write logs and does NOT unwind the dispatch — the pueue task is already queued). This makes `started_at` and `reconcile_orphans` (crash recovery) reachable for the first time. Armed a second, previously inert bug: `startup_reconcile`'s `get_live_pueue_ids() or set()` collapsed a pueue-unreachable `None` into "nothing alive" — harmless while `in_progress` was empty by construction, a mass-demote-and-redispatch the moment the first fix landed. Now fail-closed: `None` skips orphan reconciliation for the cycle instead of demoting. orchestrator.py `Uses(→) lifecycle.py` row updated (this table). +11 tests (`test_orchestrator_in_progress.py`). | autopilot |
+История изменений (changelog) вынесена в `docs/dependencies-changelog.md` — этот путь
+не попадает под `paths:` выше и не грузится автоматически в контекст сессии. Ничего не
+потеряно, только перенесено. Новые записи дописывать туда, а не сюда.

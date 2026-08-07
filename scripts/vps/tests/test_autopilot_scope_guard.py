@@ -108,9 +108,7 @@ class TestFixBEnvWiring:
         assert found_spec_path_in_env, (
             "scan_queued must define pueue_env with CLAUDE_CURRENT_SPEC_PATH"
         )
-        assert found_env_in_pueue_add, (
-            "scan_queued must pass env=pueue_env to _pueue_add"
-        )
+        assert found_env_in_pueue_add, "scan_queued must pass env=pueue_env to _pueue_add"
 
     def test_claude_runner_forwards_spec_env(self) -> None:
         """claude-runner.py must forward CLAUDE_CURRENT_SPEC_PATH to the agent session."""
@@ -149,17 +147,20 @@ def _make_git_repo(tmp_path: Path) -> Path:
     subprocess.run(["git", "init", str(repo)], capture_output=True, check=True)
     subprocess.run(
         ["git", "-C", str(repo), "config", "user.email", "test@test.com"],
-        capture_output=True, check=True,
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "-C", str(repo), "config", "user.name", "Test"],
-        capture_output=True, check=True,
+        capture_output=True,
+        check=True,
     )
     (repo / "README.md").write_text("# Test", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
     subprocess.run(
         ["git", "-C", str(repo), "commit", "-m", "init"],
-        capture_output=True, check=True,
+        capture_output=True,
+        check=True,
     )
     return repo
 
@@ -181,7 +182,8 @@ class TestFixCOutOfScopeDetection:
         subprocess.run(["git", "-C", str(git_repo), "add", "."], capture_output=True, check=True)
         subprocess.run(
             ["git", "-C", str(git_repo), "commit", "-m", "feat(FTR-100): add main"],
-            capture_output=True, check=True,
+            capture_output=True,
+            check=True,
         )
 
         result = callback._detect_out_of_scope_files(
@@ -200,7 +202,8 @@ class TestFixCOutOfScopeDetection:
         subprocess.run(["git", "-C", str(git_repo), "add", "."], capture_output=True, check=True)
         subprocess.run(
             ["git", "-C", str(git_repo), "commit", "-m", "feat(FTR-100): add main and extra"],
-            capture_output=True, check=True,
+            capture_output=True,
+            check=True,
         )
 
         result = callback._detect_out_of_scope_files(
@@ -217,7 +220,8 @@ class TestFixCOutOfScopeDetection:
         subprocess.run(["git", "-C", str(git_repo), "add", "."], capture_output=True, check=True)
         subprocess.run(
             ["git", "-C", str(git_repo), "commit", "-m", "chore: unrelated cleanup"],
-            capture_output=True, check=True,
+            capture_output=True,
+            check=True,
         )
 
         result = callback._detect_out_of_scope_files(
@@ -237,7 +241,8 @@ class TestFixCOutOfScopeDetection:
         subprocess.run(["git", "-C", str(git_repo), "add", "."], capture_output=True, check=True)
         subprocess.run(
             ["git", "-C", str(git_repo), "commit", "-m", "feat(FTR-100): add main"],
-            capture_output=True, check=True,
+            capture_output=True,
+            check=True,
         )
 
         result = callback._detect_out_of_scope_files(
@@ -249,14 +254,10 @@ class TestFixCOutOfScopeDetection:
         """Empty or None allowed list should return empty (no false alarms)."""
         import callback
 
-        result = callback._detect_out_of_scope_files(
-            str(git_repo), "FTR-100", [], "2020-01-01"
-        )
+        result = callback._detect_out_of_scope_files(str(git_repo), "FTR-100", [], "2020-01-01")
         assert result == []
 
-        result = callback._detect_out_of_scope_files(
-            str(git_repo), "FTR-100", None, "2020-01-01"
-        )
+        result = callback._detect_out_of_scope_files(str(git_repo), "FTR-100", None, "2020-01-01")
         assert result == []
 
     def test_does_not_block_status(self) -> None:
@@ -271,9 +272,7 @@ class TestFixCOutOfScopeDetection:
         # Ensure result is NOT used to set new_status
         for line in source.splitlines():
             if "new_status" in line and "out_of_scope" in line:
-                pytest.fail(
-                    f"out_of_scope_files must NOT influence new_status: {line.strip()}"
-                )
+                pytest.fail(f"out_of_scope_files must NOT influence new_status: {line.strip()}")
 
 
 # ============================================================================

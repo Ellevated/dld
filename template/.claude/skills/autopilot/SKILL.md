@@ -276,13 +276,13 @@ Before taking a spec from backlog:
         ```
       - Exit.
 
-   **Why:** This mirrors `callback._spec_has_merged_implementation` (TECH-176)
+   **Why:** This mirrors `callback._spec_has_merged_implementation`
    on the **front side** so autopilot does not burn 30+ turns re-doing work that
    callback would auto-close anyway. Saves ~$5/run × every false-fail retry.
 
    **False-skip protection:** the subject-line regex requires canonical
    `<type>(SPEC-ID):` or `SPEC-ID ` prefix. Bare mentions in commit body /
-   cross-references in `Refs:`/`See also:` lines do NOT count (TECH-177 lesson).
+   cross-references in `Refs:`/`See also:` lines do NOT count.
 
 After PHASE 1 (planner always runs):
 
@@ -376,4 +376,4 @@ The final JSON output MUST include `task_status`:
 }
 ```
 
-Status field is written by callback only (TECH-172). Autopilot emits `task_status` in final JSON; never Edits `**Status:**` in spec or backlog."
+Status field is written by callback only. Autopilot emits `task_status` in final JSON; never Edits `**Status:**` in spec or backlog."

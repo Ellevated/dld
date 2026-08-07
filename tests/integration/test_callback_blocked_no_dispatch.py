@@ -5,7 +5,9 @@ Eval Criteria:
   E1: task_status=blocked  → no pueue add for qa/reflect
   E2: task_status=complete → pueue add IS called for both qa and reflect
   E2b: task_status=needs_review → no pueue add for qa/reflect
-  E2c: task_status="" (missing) → pueue add IS called (backward compat)
+  E2c: task_status="" (missing) + impl merged on origin/develop → pueue add IS
+       called (TECH-207 merge-confirmed fallback)
+  E2d: task_status="" (missing) + nothing merged → no pueue add (SIGKILL/abort)
 
 ADR-013: real fs + real git + real sqlite.
 External binaries (pueue, openclaw) replaced with shell stubs — not mocks of
@@ -15,7 +17,6 @@ and log files that don't exist in tests (external I/O, not business logic).
 
 from __future__ import annotations
 
-import os
 import sqlite3
 import subprocess
 import sys
@@ -51,28 +52,8 @@ def tmp_db(tmp_path):
         yield db_path
 
 
-@pytest.fixture
-def stub_pueue_bin(tmp_path, monkeypatch):
-    """Replace `pueue` on PATH with a shell stub that records invocations.
-
-    The stub writes all argv to a log file and exits 0.
-    For `pueue add --print-task-id`, it also prints a task ID so callback
-    can parse it (simulates successful dispatch).
-    """
-    stub_dir = tmp_path / "bin"
-    stub_dir.mkdir()
-    log_file = tmp_path / "pueue-calls.log"
-    stub = stub_dir / "pueue"
-    stub.write_text(
-        "#!/usr/bin/env bash\n"
-        f'echo "$@" >> "{log_file}"\n'
-        # When `--print-task-id` is present, emit a fake task id
-        "if echo \"$@\" | grep -q 'print-task-id'; then echo 42; fi\n"
-        "exit 0\n"
-    )
-    stub.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{stub_dir}:{os.environ['PATH']}")
-    return log_file
+# `stub_pueue_bin` lives in tests/integration/conftest.py — it needs a
+# platform split that has no business being duplicated per test module.
 
 
 @pytest.fixture
@@ -114,8 +95,7 @@ def _make_project(tmp_path: Path, spec_id: str) -> Path:
     )
     (repo / "ai" / "features" / f"{spec_id}.md").write_text(spec_body)
     (repo / "ai" / "backlog.md").write_text(
-        f"| ID | Title | Status | P |\n|---|---|---|-"
-        f"--|\n| {spec_id} | demo | in_progress | P1 |\n"
+        f"| ID | Title | Status | P |\n|---|---|---|---|\n| {spec_id} | demo | in_progress | P1 |\n"
     )
     (repo / "README.md").write_text("init\n")
 
@@ -172,6 +152,7 @@ def _run_main(
     task_status: str,
     monkeypatch,
     stub_event_writer,
+    merged_on_develop: bool = False,
 ) -> None:
     """Invoke callback.main() with controlled inputs.
 
@@ -180,17 +161,18 @@ def _run_main(
       - sys.exit: prevents test process termination
       - extract_agent_output: returns (skill="autopilot", preview="", task_status=task_status)
         because in tests there is no real pueue socket / log file
-      - _fetch_develop + _is_done_on_develop: stub out Step 7 git I/O so that
-        verify_status_sync can complete without a real remote
+      - _fetch_develop + _is_done_on_develop: stub out the git I/O against a
+        remote that tests do not have. `merged_on_develop` is the verdict both
+        the Step 6 merge fallback (TECH-207) and Step 7 read.
     """
     monkeypatch.setattr(
         callback,
         "extract_agent_output",
         lambda *a, **kw: ("autopilot", f"TECH-194 result task_status={task_status}", task_status),
     )
-    # Stub Step 7 git I/O (no remote in tests)
+    # Stub git I/O against origin (no remote in tests)
     monkeypatch.setattr(callback, "_fetch_develop", lambda *a, **kw: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a, **kw: False)
+    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a, **kw: merged_on_develop)
 
     with patch("sys.argv", ["callback.py", str(pueue_id), "claude-runner", "Success"]):
         with patch("sys.exit"):
@@ -216,9 +198,7 @@ def test_blocked_skips_dispatch(tmp_path, tmp_db, stub_pueue_bin, stub_event_wri
 
     pueue_log = stub_pueue_bin.read_text() if stub_pueue_bin.exists() else ""
     # pueue add is the dispatch mechanism — must NOT appear for qa or reflect
-    assert "add" not in pueue_log or (
-        "qa-" not in pueue_log and "reflect-" not in pueue_log
-    ), (
+    assert "add" not in pueue_log or ("qa-" not in pueue_log and "reflect-" not in pueue_log), (
         f"Expected NO qa/reflect dispatch, but pueue was called with: {pueue_log!r}"
     )
 
@@ -255,9 +235,7 @@ def test_needs_review_skips_dispatch(
     _run_main(pueue_id, "needs_review", monkeypatch, stub_event_writer)
 
     pueue_log = stub_pueue_bin.read_text() if stub_pueue_bin.exists() else ""
-    assert "add" not in pueue_log or (
-        "qa-" not in pueue_log and "reflect-" not in pueue_log
-    ), (
+    assert "add" not in pueue_log or ("qa-" not in pueue_log and "reflect-" not in pueue_log), (
         f"Expected NO qa/reflect dispatch for needs_review, pueue called with: {pueue_log!r}"
     )
 
@@ -278,9 +256,7 @@ def test_needs_review_skips_dispatch(
 # ---------------------------------------------------------------------------
 
 
-def test_complete_dispatches(
-    tmp_path, tmp_db, stub_pueue_bin, stub_event_writer, monkeypatch
-):
+def test_complete_dispatches(tmp_path, tmp_db, stub_pueue_bin, stub_event_writer, monkeypatch):
     """E2: autopilot exits with task_status=complete → callback dispatches qa AND reflect."""
     spec_id = "TECH-196"
     project_id = "proj3"
@@ -303,14 +279,21 @@ def test_complete_dispatches(
 
 
 # ---------------------------------------------------------------------------
-# E2c: task_status="" (missing) → dispatches qa+reflect (backward compat)
+# E2c: task_status="" (missing) → merge on develop decides (TECH-207)
 # ---------------------------------------------------------------------------
 
 
 def test_missing_task_status_dispatches(
     tmp_path, tmp_db, stub_pueue_bin, stub_event_writer, monkeypatch
 ):
-    """E2c: no task_status field (empty string) → backward compat — dispatches qa+reflect."""
+    """E2c: no task_status, but the work IS merged on origin/develop → dispatch.
+
+    TECH-207 merge-confirmed fallback. This case used to be asserted as plain
+    backward compat — dispatch on any missing signal — which TECH-207 deliberately
+    replaced: a SIGKILL'd run also reports task_status="", and QA on an aborted run
+    is exactly what the TECH-194 allowlist exists to prevent. The merge verdict is
+    now what separates the two, so it is what the test has to supply.
+    """
     spec_id = "TECH-197"
     project_id = "proj4"
     pueue_id = 504
@@ -320,13 +303,38 @@ def test_missing_task_status_dispatches(
     _seed_db(project_id, str(repo), pueue_id, task_label)
 
     # task_status="" simulates agent output with no task_status field
-    _run_main(pueue_id, "", monkeypatch, stub_event_writer)
+    _run_main(pueue_id, "", monkeypatch, stub_event_writer, merged_on_develop=True)
 
     pueue_log = stub_pueue_bin.read_text() if stub_pueue_bin.exists() else ""
     assert "add" in pueue_log, (
-        f"Expected pueue add calls when task_status missing (backward compat), "
+        f"Expected pueue add calls when task_status missing but merge confirmed, "
         f"pueue log: {pueue_log!r}"
     )
     assert "reflect-" in pueue_log, (
         f"Expected reflect dispatch for missing task_status, pueue log: {pueue_log!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# E2d: task_status="" and nothing merged → no dispatch (TECH-207 skip path)
+# ---------------------------------------------------------------------------
+
+
+def test_missing_task_status_without_merge_skips_dispatch(
+    tmp_path, tmp_db, stub_pueue_bin, stub_event_writer, monkeypatch
+):
+    """E2d: no task_status and no merged implementation → SIGKILL/abort → no dispatch."""
+    spec_id = "TECH-198"
+    project_id = "proj5"
+    pueue_id = 505
+    task_label = f"autopilot-{spec_id}"
+
+    repo = _make_project(tmp_path, spec_id)
+    _seed_db(project_id, str(repo), pueue_id, task_label)
+
+    _run_main(pueue_id, "", monkeypatch, stub_event_writer, merged_on_develop=False)
+
+    pueue_log = stub_pueue_bin.read_text() if stub_pueue_bin.exists() else ""
+    assert "qa-" not in pueue_log and "reflect-" not in pueue_log, (
+        f"Expected NO dispatch without a confirmed merge, pueue log: {pueue_log!r}"
     )

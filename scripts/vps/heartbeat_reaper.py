@@ -21,7 +21,7 @@ import json
 import logging
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -32,8 +32,8 @@ import reaper_liveness  # noqa: E402
 import reaper_pueue  # noqa: E402
 
 # Thresholds (seconds)
-GRACE_SECONDS = 300        # 5 min — skip tasks younger than this
-STALE_SECONDS = 1500       # 25 min — heartbeat older than this = candidate
+GRACE_SECONDS = 300  # 5 min — skip tasks younger than this
+STALE_SECONDS = 1500  # 25 min — heartbeat older than this = candidate
 
 # started_at tolerance for cross-check (seconds)
 STARTED_AT_TOLERANCE = 10
@@ -49,9 +49,8 @@ log = logging.getLogger("heartbeat-reaper")
 # Heartbeat helpers
 # ---------------------------------------------------------------------------
 
-def find_heartbeat_file(
-    project: str, task_start_dt: datetime | None
-) -> Path | None:
+
+def find_heartbeat_file(project: str, task_start_dt: datetime | None) -> Path | None:
     """Find the heartbeat file for a project, cross-checking started_at.
 
     Returns None if no unambiguous match (fail-open).
@@ -95,7 +94,9 @@ def find_heartbeat_file(
     if len(matched) > 1:
         log.warning(
             "Ambiguous: %d heartbeat files match project=%s start_dt=%s — fail-open",
-            len(matched), project, task_start_dt,
+            len(matched),
+            project,
+            task_start_dt,
         )
     return None
 
@@ -112,12 +113,15 @@ def read_heartbeat(hb_path: Path) -> dict | None:
 # Kill + notify
 # ---------------------------------------------------------------------------
 
+
 def kill_task(pueue_id: int) -> bool:
     """Kill a pueue task. Returns True on success."""
     try:
         r = subprocess.run(
             ["pueue", "kill", str(pueue_id)],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if r.returncode == 0:
             log.info("Killed pueue task %d", pueue_id)
@@ -134,6 +138,7 @@ def notify_reap(project: str, pueue_id: int, stale_minutes: float) -> None:
     try:
         sys.path.insert(0, str(SCRIPT_DIR))
         from event_writer import notify
+
         # event_writer.notify(project_path, skill, status, message, artifact_rel)
         # Use SCRIPT_DIR as project_path (infra event, not per-project)
         notify(
@@ -152,6 +157,7 @@ def notify_reap(project: str, pueue_id: int, stale_minutes: float) -> None:
 # ---------------------------------------------------------------------------
 # Main reaper logic
 # ---------------------------------------------------------------------------
+
 
 def reap_stale_sessions() -> int:
     """Scan Running claude-runner tasks and kill wedged ones.
@@ -187,9 +193,16 @@ def reap_stale_sessions() -> int:
             # No heartbeat yet — could be still initializing within grace,
             # or ambiguous collision — fail-open
             if age < GRACE_SECONDS + 120:
-                log.debug("Task %d project=%s no heartbeat, still in extended grace — skip", tid, project)
+                log.debug(
+                    "Task %d project=%s no heartbeat, still in extended grace — skip", tid, project
+                )
             else:
-                log.warning("Task %d project=%s no heartbeat after %.0fs — skip (fail-open)", tid, project, age)
+                log.warning(
+                    "Task %d project=%s no heartbeat after %.0fs — skip (fail-open)",
+                    tid,
+                    project,
+                    age,
+                )
             continue
 
         # Read heartbeat
@@ -208,14 +221,18 @@ def reap_stale_sessions() -> int:
         if stale_seconds < STALE_SECONDS:
             log.debug(
                 "Task %d project=%s heartbeat fresh (%.0fs ago) — ok",
-                tid, project, stale_seconds,
+                tid,
+                project,
+                stale_seconds,
             )
             continue
 
         stale_minutes = stale_seconds / 60
         log.info(
             "Task %d project=%s heartbeat STALE (%.1f min) — checking process liveness",
-            tid, project, stale_minutes,
+            tid,
+            project,
+            stale_minutes,
         )
 
         # Process liveness cross-check
@@ -223,20 +240,26 @@ def reap_stale_sessions() -> int:
         if idle is None:
             log.warning(
                 "Task %d project=%s stale %.1fmin but liveness check inconclusive — skip (fail-open)",
-                tid, project, stale_minutes,
+                tid,
+                project,
+                stale_minutes,
             )
             continue
         if not idle:
             log.info(
                 "Task %d project=%s stale %.1fmin but process is BUSY — skip (long tool?)",
-                tid, project, stale_minutes,
+                tid,
+                project,
+                stale_minutes,
             )
             continue
 
         # STALE + IDLE → kill
         log.warning(
             "REAPING task %d project=%s — stale %.1fmin + idle process",
-            tid, project, stale_minutes,
+            tid,
+            project,
+            stale_minutes,
         )
         if kill_task(tid):
             notify_reap(project, tid, stale_minutes)
