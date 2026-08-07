@@ -1,8 +1,8 @@
 # scripts/vps/tests/test_gate_logic.py
 """Pure-function tests for gate_logic.py (ARCH-190 Task 5 — Wave 1 MP-001).
 
-Covers all P0 Devil's Advocate cases (DA-series) from the acceptance criteria
-plus unit coverage for match_subject, parse_allowed_files_v1/legacy, fetch_develop.
+Covers all P0 Devil's Advocate cases (DA-series) plus unit coverage for
+parse_allowed_files_v1/legacy, fetch_develop (match_subject → test_gate_logic_subject.py).
 
 ADR-013: NO mocks. Real git repos via subprocess in tmp_path (mirror test_callback.py).
 """
@@ -23,7 +23,6 @@ from gate_logic import (  # noqa: E402
     _parse_allowed_files_v1,
     fetch_develop,
     find_implementation_commit,
-    match_subject,
     parse_allowed_files,
     strip_bookkeeping_paths,
 )
@@ -127,123 +126,7 @@ def _push_to_remote(repo: Path) -> None:
     _git(repo, "push", "-q", "origin", "develop")
 
 
-# ===========================================================================
-# Part 1: match_subject — unit tests (no git)
-# ===========================================================================
-
-
-def test_match_subject_conventional_feat():
-    """Conventional Commits form: feat(SPEC-A): description."""
-    assert match_subject("feat(SPEC-A): implement the feature", "SPEC-A") is True
-
-
-def test_match_subject_conventional_fix():
-    """Conventional Commits form: fix(SPEC-A)!: description."""
-    assert match_subject("fix(SPEC-A)!: critical fix", "SPEC-A") is True
-
-
-def test_match_subject_merge_form():
-    """Merge commit form: merge SPEC-A (spec_id directly after 'merge')."""
-    # The regex is ^merge\s+{spec_id}\b — spec_id must come right after 'merge'.
-    assert match_subject("Merge SPEC-A", "SPEC-A") is True
-
-
-def test_match_subject_bare_prefix():
-    """Legacy bare prefix form: SPEC-A: description."""
-    assert match_subject("SPEC-A: implement the feature", "SPEC-A") is True
-
-
-def test_match_subject_wrong_spec_id():
-    """Negative: feat(BUG-200): work should NOT match TECH-189."""
-    assert match_subject("feat(BUG-200): work", "TECH-189") is False
-
-
-def test_DA4_growth_spec_id_match_subject():
-    """DA-4: GROWTH-042 spec_id must be matched by match_subject."""
-    assert match_subject("feat(GROWTH-042): add growth metric", "GROWTH-042") is True
-
-
-# --- 2026-07-02 false-blocked regression (plpilot BUG-338/339, TECH-349) ----
-
-
-def test_match_subject_trailing_parens_with_scope():
-    """Real plpilot BUG-339 subject: domain scope + trailing (SPEC-ID)."""
-    assert (
-        match_subject(
-            "fix(security): REVOKE public execute on 7 SECURITY DEFINER RPCs (BUG-339)",
-            "BUG-339",
-        )
-        is True
-    )
-
-
-def test_match_subject_trailing_parens_no_scope():
-    """Real plpilot BUG-338 subject: no scope, trailing (SPEC-ID)."""
-    assert (
-        match_subject(
-            "fix: HTML-aware TG text truncation prevents broken tags (BUG-338)",
-            "BUG-338",
-        )
-        is True
-    )
-
-
-def test_match_subject_trailing_parens_multi_spec():
-    """Trailing parens with comma-separated spec ids matches each one."""
-    subj = "fix: shared helper hardening (BUG-339, BUG-340)"
-    assert match_subject(subj, "BUG-339") is True
-    assert match_subject(subj, "BUG-340") is True
-    assert match_subject(subj, "BUG-341") is False
-
-
-def test_match_subject_trailing_parens_free_text_rejected():
-    """`(see SPEC-ID)` is a cross-reference, not a declaration → reject."""
-    assert match_subject("fix: adjust helper (see BUG-339)", "BUG-339") is False
-
-
-def test_match_subject_mid_subject_parens_rejected():
-    """Parenthesized ID NOT at end of subject stays rejected."""
-    assert match_subject("fix: revert (BUG-339) partial change now", "BUG-339") is False
-
-
-def test_match_subject_merge_colon_form():
-    """Real plpilot TECH-349 subject: `merge: feature/SPEC-ID — ...`."""
-    assert (
-        match_subject(
-            "merge: feature/TECH-349 — Edge resilience (CORS fail-fast + timeouts)",
-            "TECH-349",
-        )
-        is True
-    )
-
-
-def test_match_subject_merge_branch_quoted_form():
-    """Git default merge subject: Merge branch 'fix/SPEC-ID-slug'."""
-    assert (
-        match_subject(
-            "Merge branch 'fix/BUG-346-one-time-receipt-phantom' into develop",
-            "BUG-346",
-        )
-        is True
-    )
-
-
-def test_match_subject_merge_branch_wrong_spec_rejected():
-    """Merge of an UNRELATED branch must not match a different spec."""
-    assert (
-        match_subject(
-            "Merge branch 'fix/BUG-346-one-time-receipt-phantom' into develop",
-            "BUG-347",
-        )
-        is False
-    )
-    # Spec id boundary: BUG-346 must not match inside BUG-3468.
-    assert match_subject("Merge branch 'fix/BUG-3468-x'", "BUG-346") is False
-
-
-# ===========================================================================
-# Part 2: _parse_allowed_files_v1 — unit tests (no git)
-# ===========================================================================
+# --- Part 2: _parse_allowed_files_v1 — unit tests (no git) ---
 
 _V1_SPEC_HAPPY = """\
 ## Spec heading
@@ -362,9 +245,7 @@ def test_parse_allowed_files_v1_mixed_bullets_and_numbered():
     ]
 
 
-# ===========================================================================
-# Part 3: _parse_allowed_files_legacy — unit tests (no git)
-# ===========================================================================
+# --- Part 3: _parse_allowed_files_legacy — unit tests (no git) ---
 
 _LEGACY_SPEC_STANDARD_HEADING = """\
 ## Spec
@@ -413,9 +294,7 @@ def test_parse_allowed_files_legacy_no_section_returns_none():
     assert result is None
 
 
-# ===========================================================================
-# Part 4: parse_allowed_files (public API, file-based) — unit tests
-# ===========================================================================
+# --- Part 4: parse_allowed_files (public API, file-based) — unit tests ---
 
 
 def test_DA5_spec_without_allowed_files_returns_none(tmp_path):
@@ -453,9 +332,7 @@ def test_parse_allowed_files_v1_numbered_from_file(tmp_path):
     ]
 
 
-# ===========================================================================
-# Part 5: fetch_develop — uses real git repo
-# ===========================================================================
+# --- Part 5: fetch_develop — uses real git repo ---
 
 
 def test_fetch_develop_succeeds_with_valid_remote(git_repo_with_remote):
@@ -474,9 +351,7 @@ def test_fetch_develop_timeout_returns_false(git_repo_with_remote):
     assert result is False
 
 
-# ===========================================================================
-# Part 6: find_implementation_commit — real git repos
-# ===========================================================================
+# --- Part 6: find_implementation_commit — real git repos ---
 
 
 def test_DA6_golden_oracle_commit_on_allowed_file(git_repo_with_remote):
