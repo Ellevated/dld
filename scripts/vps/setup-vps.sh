@@ -22,13 +22,24 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 
 # ── Shared function: sync DLD skills to global ~/.claude/skills/ ─────────────
 update_skills() {
-    local DLD_REPO="${DLD_REPO:-$HOME/dev/dld}"
+    local DLD_REPO="${DLD_REPO:-}"
+    if [[ -z "$DLD_REPO" ]]; then
+        # The repo is not always at ~/dev/dld — on tietokettu-claude it lives in
+        # ~/projects/dld, where the old hardcoded default silently warned and returned 1.
+        local candidate
+        for candidate in "$HOME/dev/dld" "$HOME/projects/dld"; do
+            if [[ -d "$candidate/.claude/skills" ]]; then DLD_REPO="$candidate"; break; fi
+        done
+    fi
     if [[ ! -d "$DLD_REPO/.claude/skills" ]]; then
-        warn "DLD repo not found at $DLD_REPO — cannot sync skills"
+        warn "DLD repo not found (tried \$DLD_REPO, ~/dev/dld, ~/projects/dld) — cannot sync skills"
         return 1
     fi
     mkdir -p ~/.claude/skills ~/.claude/rules
-    rsync -a --delete "$DLD_REPO/.claude/skills/" ~/.claude/skills/
+    # NO --delete here. ~/.claude/skills/ is shared with the operator's own global
+    # skills (tasks, agent-reach, nexus, …); --delete removed every one of them that
+    # DLD does not ship. Found 2026-08-17 before it fired on a populated machine.
+    rsync -a "$DLD_REPO/.claude/skills/" ~/.claude/skills/
     cp "$DLD_REPO/.claude/rules/localization.md" ~/.claude/rules/localization.md 2>/dev/null || true
     ok "DLD skills synced to ~/.claude/skills/ ($(ls ~/.claude/skills/ | wc -l) skills)"
 }
@@ -402,8 +413,16 @@ echo "--- Global CLAUDE.md ---"
 GLOBAL_CLAUDE_DIR="${HOME}/.claude"
 mkdir -p "$GLOBAL_CLAUDE_DIR"
 if [[ -f "${SCRIPT_DIR}/global-claude-md.template" ]]; then
-    cp "${SCRIPT_DIR}/global-claude-md.template" "${GLOBAL_CLAUDE_DIR}/CLAUDE.md"
-    ok "Global CLAUDE.md installed at ${GLOBAL_CLAUDE_DIR}/CLAUDE.md"
+    if [[ -f "${GLOBAL_CLAUDE_DIR}/CLAUDE.md" ]]; then
+        # Never clobber an existing file: the operator merges personal rules into it,
+        # and a plain cp silently reverted that on every setup run. Ship the template
+        # alongside instead, so the VDS rules stay available to diff and merge.
+        cp "${SCRIPT_DIR}/global-claude-md.template" "${GLOBAL_CLAUDE_DIR}/CLAUDE.vds.md"
+        warn "CLAUDE.md already exists — template written to ${GLOBAL_CLAUDE_DIR}/CLAUDE.vds.md instead. Merge by hand if the VDS rules are missing there."
+    else
+        cp "${SCRIPT_DIR}/global-claude-md.template" "${GLOBAL_CLAUDE_DIR}/CLAUDE.md"
+        ok "Global CLAUDE.md installed at ${GLOBAL_CLAUDE_DIR}/CLAUDE.md"
+    fi
 else
     warn "global-claude-md.template not found — skip"
 fi
