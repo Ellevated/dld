@@ -131,54 +131,12 @@ the other is the defect this framework produces most often.
 
 **Rule:** If skill applies — MUST use it.
 
-| Skill | When |
-|-------|------|
-| **bootstrap** | Day 0 — extract idea from founder's head (interviewer, not decider) |
-| **board** | Business architecture — revenue, channels, org model (after bootstrap) |
-| **architect** | System architecture — domains, data, APIs, cross-cutting (after board) |
-| **spark** | Feature spec — multi-agent with 3 scouts + tests mandatory (within blueprint) |
-| **autopilot** | Execute tasks (plan + coder/tester per task + reflect upstream) |
-| **council** | Complex/controversial decisions (5 experts + cross-critique) |
-| **audit** | Code analysis, consistency check (READ-ONLY) |
-| **reflect** | Synthesize diary + upstream signals into rules |
-| **scout** | Isolated research via Exa + Context7 |
-| **release** | Update CHANGELOG, README, docs after changes (fully automatic) |
-| **skill-creator** | Create agents/skills or optimize CLAUDE.md, rules, prompts |
-| **retrofit** | Brownfield lifecycle — reassess existing projects (audit -> architect -> board -> stabilize) |
-| **brandbook** | Brand identity system — anti-convergence, design tokens, coder handoff |
-| **diagram** | Generate professional Excalidraw diagrams from description or code analysis |
-| **eval** | Agent prompt eval suite — golden datasets + LLM-as-Judge scoring |
-| **upgrade** | Upgrade DLD framework from latest GitHub template |
-| **qa** | Manual QA tester — tests product behavior like a real user, not code |
+The roster (name + when to use) is already in the session's skill list, and Russian triggers live in
+`.claude/rules/localization.md` — neither is repeated here. What is NOT derivable from a description
+is the **order** skills run in, so that is all this section keeps.
 
-### Skill Auto-Selection
-
-Claude auto-selects skills based on user intent. Each skill has semantic triggers in its description.
-
-**How it works:**
-- User says "add login feature" → Claude activates `/spark`
-- User says "implement TECH-055" → Claude activates `/autopilot`
-- User says "how does X work?" → Claude activates `/scout`
-
-**Override:** Always use explicit `/command` to force specific skill.
-
-**Trigger examples:**
-
-| User says | Skill activated |
-|-----------|-----------------|
-| "new project", "day 0" | bootstrap |
-| "business strategy", "revenue model" | board |
-| "system design", "architecture" | architect |
-| "add feature", "create spec", "bug" | spark |
-| "implement", "execute", "build this" | autopilot |
-| "should we", "which approach", "debate" | council |
-| "research", "find docs", "how does X work" | scout |
-| "find all", "analyze code", "check for" | audit |
-| "reflect", "what did we learn" | reflect |
-| "diagram", "draw", "visualize architecture" | diagram |
-| "retrofit", "brownfield", "reassess project" | retrofit |
-| "upgrade DLD", "update framework", "обнови DLD" | upgrade |
-| "протестируй", "проверь как работает", "QA", "потыкай" | qa |
+Auto-selection happens on intent ("add login feature" → `/spark`); an explicit `/command` always
+overrides it.
 
 **Flows:**
 ```
