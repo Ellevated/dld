@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -32,32 +33,71 @@ DLD_PROJECT_PATH = str(SCRIPT_DIR.parent.parent)  # projects/dld
 
 DEMOTE_WINDOW_MINUTES = 35  # slightly wider than cron interval to avoid gaps
 
+# pueue lives outside cron's PATH on this host.
+EXTRA_PATH = "/usr/local/bin"
+
+
+def _runtime_env() -> dict[str, str]:
+    """Environment that lets `systemctl --user` and `pueue` reach the user session.
+
+    cron starts with no XDG_RUNTIME_DIR and a PATH of /usr/bin:/bin. Without the
+    former, `systemctl --user` fails with "Failed to connect to bus" and pueue
+    falls back to a socket path the daemon does not listen on — both write to
+    stderr and leave stdout EMPTY, so the checks below read a healthy host as a
+    dead one. That misread fired ORCHESTRATOR_DOWN + CIRCUIT_BREAKER_TRIPPED
+    every 30 min from 2026-05-28 (3910 alerts) while the orchestrator was up.
+    """
+    env = dict(os.environ)
+    getuid = getattr(os, "getuid", None)  # absent on Windows, where dev tests run
+    if not env.get("XDG_RUNTIME_DIR") and getuid is not None:
+        candidate = Path(f"/run/user/{getuid()}")
+        if candidate.is_dir():
+            env["XDG_RUNTIME_DIR"] = str(candidate)
+    path = env.get("PATH", "")
+    if EXTRA_PATH not in path.split(os.pathsep):
+        env["PATH"] = os.pathsep.join([p for p in (path, EXTRA_PATH) if p])
+    return env
+
+
+def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+    """subprocess.run with the session environment and a 10s cap."""
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=_runtime_env(),
+    )
+
 
 def check_orchestrator_service() -> tuple[bool, str]:
     """Returns (ok, detail)."""
     try:
-        result = subprocess.run(
-            ["systemctl", "--user", "is-active", "dld-orchestrator.service"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        active = result.stdout.strip() == "active"
-        return active, result.stdout.strip()
+        result = _run(["systemctl", "--user", "is-active", "dld-orchestrator.service"])
+        state = result.stdout.strip()
+        if not state:
+            # Empty stdout means systemctl never reached the bus; report the
+            # reason instead of an empty detail that reads as "service dead".
+            return False, f"systemctl unreachable: {result.stderr.strip() or 'no output'}"
+        return state == "active", state
     except Exception as exc:
         return False, f"systemctl error: {exc}"
+
+
+def _pueue_status() -> dict:
+    """Parsed `pueue status --json`. Raises with stderr when the client fails."""
+    result = _run(["pueue", "status", "--json"])
+    if not result.stdout.strip():
+        raise RuntimeError(
+            result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "empty output"
+        )
+    return json.loads(result.stdout)
 
 
 def check_pueue_group() -> tuple[bool, str]:
     """Returns (ok=not-paused, detail)."""
     try:
-        result = subprocess.run(
-            ["pueue", "status", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        data = json.loads(result.stdout)
+        data = _pueue_status()
         groups = data.get("groups", {})
         cr = groups.get("claude-runner", {})
         status = cr.get("status", "unknown")
@@ -68,20 +108,14 @@ def check_pueue_group() -> tuple[bool, str]:
 
 
 def count_active_tasks() -> tuple[int, int]:
-    """Returns (running_count, queued_count)."""
+    """Returns (running_count, queued_count), or (-1, -1) when pueue is unreadable."""
     try:
-        result = subprocess.run(
-            ["pueue", "status", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        data = json.loads(result.stdout)
-        tasks = data.get("tasks", {})
+        tasks = _pueue_status().get("tasks", {})
         running = sum(1 for t in tasks.values() if "Running" in str(t.get("status", "")))
         queued = sum(1 for t in tasks.values() if "Queued" in str(t.get("status", "")))
         return running, queued
-    except Exception:
+    except Exception as exc:
+        log.warning("pueue task count failed: %s", exc)
         return -1, -1
 
 
