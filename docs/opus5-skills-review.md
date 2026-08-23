@@ -130,9 +130,56 @@ Ordered by where money burns, not by what is easiest.
             above came out of it.
       - [x] Loop change, 2026-07-27 (77d5b09): spec-reviewer folded into the loop.
             4 dispatches per task → 3. See "What the agents' contents changed" below.
-      - [ ] Measure it: **session cache_creation per completed spec** on the next
-            real specs, against the clean Opus 5 baseline below. Hit rate is not the
-            metric — it stays high regardless.
+      - [x] Measure it — **done 2026-08-23**, n=62 clean Opus 5 runs (there were 7
+            when this was written). Result below: the Step 0 hypothesis holds, and
+            the share is bigger than expected.
+
+### Step 1 measurement, 2026-08-23 — the spawn architecture is 82% of the bill
+
+62 Opus 5 runs carrying session-scope telemetry, against 7 available on 2026-07-27.
+
+| | |
+|---|---|
+| correlation(session cache_creation, cost) | **0.945** |
+| median $ per 1M cache_creation tokens | $19.91 |
+| session cache_creation, median | 898,306 |
+| main-loop cache_creation, median | 119,468 |
+| **subagent share of context built, median** | **82%** |
+| session cache_read, median | 19,152,254 |
+| cost split | opus-5 67% / sonnet-5 33% / haiku 0% |
+
+Step 0 said cost tracks cache_creation almost linearly and hit rate says nothing.
+At n=62 that is no longer an impression: r = 0.945. Four fifths of every dollar is
+spent building subagent contexts — not on the main loop, and not on Opus 5 thinking
+longer. **The model is not what got expensive. Re-priming it 20+ times per spec is.**
+
+That reframes the "is Opus 5 worth it" question, which the delivery numbers otherwise
+answer badly. Measured over the same boundary:
+
+| | before 2026-07-26 | from 2026-07-26 |
+|---|---|---|
+| $ per delivered spec | $10.31 | **$38.18** |
+| runs per delivered spec | 1.41 | **1.71** |
+| machine-hours per delivered spec | 0.76 | **1.66** |
+| share of spend on runs that delivered nothing | 16% | **44%** |
+| burn rate per machine-minute | $0.319 | $0.419 |
+
+Read alone, that table says the accidental 4-6 configuration beat the intended one and
+we should roll back. Read with the correlation above, it says something different: the
+burn *rate* barely moved (1.3x). What moved is how long a spec takes and how much
+context gets rebuilt along the way — and 82% of the rebuilding is an architecture that
+exists because a 200K model could not hold a spec in one context. A 1M model can.
+
+So the lever is spawn count, not model choice. Folding one dispatch out of three per
+task removes roughly a third of the subagent context, and cost follows cache_creation
+at r = 0.945. Downgrading the model attacks the 1.3x and leaves the 5.4x untouched.
+
+Method note so this is reproducible rather than quoted: run durations come from
+`task_log`, cost and token scopes from the per-run JSON in `scripts/vps/logs/`, joined
+on project + start timestamp (log filenames are host-local, task_log is UTC). Runs
+killed before `ResultMessage` log `cost_usd: 0` — 29% of the Opus 5 era against 6%
+before it — so unpriced runs are charged at their own period's median burn rate rather
+than dropped, which would have flattered August by understating exactly its worst runs.
 
 ### What the agents' contents changed, 2026-07-27
 
