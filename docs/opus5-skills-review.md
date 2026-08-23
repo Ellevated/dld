@@ -181,6 +181,44 @@ killed before `ResultMessage` log `cost_usd: 0` — 29% of the Opus 5 era agains
 before it — so unpriced runs are charged at their own period's median burn rate rather
 than dropped, which would have flattered August by understating exactly its worst runs.
 
+### The quality half, 2026-08-23 — rework per delivered spec fell 2.5x
+
+Cost per delivered spec is the wrong number on its own: a cheap spec that comes back
+as three bugs is not cheap. Spec files carry their type in the id, and git records
+when each first appeared, so rework is measurable without new instrumentation.
+Normalised per delivered spec, so a quieter month cannot masquerade as a cleaner one:
+
+| | before 2026-07-26 (61 d) | from 2026-07-26 (29 d) |
+|---|---|---|
+| BUG specs created | 188 | 18 |
+| non-BUG specs created | 196 | 84 |
+| BUG share of new work | 49% | **18%** |
+| **BUG specs per delivered spec** | **0.74** | **0.30** |
+
+**Read this one carefully — it is the weakest number in this document.** Bugs are
+filed after code ships, and the "after" window is 29 days, so August's specs have had
+less time to produce complaints than May's. That bias runs entirely in Opus 5's
+favour, and nothing here corrects for it. Founder engagement also halved over the same
+period (5.2 → 2.7 specs attempted per day), and unnoticed bugs are unfiled bugs.
+n=18 is small. Treat it as directional, and re-run it in October when the August
+cohort has aged; `bughunt` has never run through the orchestrator, so at least the
+batch-filing confounder is absent.
+
+Taking it at face value anyway, the fully loaded comparison — a delivered spec plus
+the rework it generates, priced at that period's own $/spec:
+
+| | before | after |
+|---|---|---|
+| $ per delivered spec | $10.31 | $38.18 |
+| × (1 + bugs it generates) | × 1.74 | × 1.30 |
+| **$ per spec that stays fixed** | **$17.94** | **$49.63** |
+
+So the rework gain is real and does not close the gap: 2.8x rather than 3.7x. The
+honest summary is that Opus 5 appears to do better work and we are paying far more
+than the improvement is worth — **because 82% of what we pay is not the improvement.**
+It is the 200K-era spawn architecture measured above. The two findings point the same
+way: keep the model, remove the tax.
+
 ### What the agents' contents changed, 2026-07-27
 
 The plan going in was "one long-lived agent instead of six". Reading what the
