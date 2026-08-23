@@ -119,10 +119,23 @@ def parse_label(label: str) -> tuple:
     return label, label
 
 
-def map_result(result: str) -> tuple:
-    """Map pueue result string to (status, exit_code)."""
+def map_result(result: str, raw_exit_code: str | None = None) -> tuple:
+    """Map pueue result string to (status, exit_code).
+
+    `result` is only ever "Success" / "Failed" / "Killed", so on its own it
+    flattens every failure to 1. That is how 40% of runs over the week of
+    2026-08-16 — all of them 90-minute TIMEOUT_SECONDS kills reporting 124 —
+    were recorded in task_log as ordinary exit_code=1 failures, indistinguishable
+    from a lint error. `{{ exit_code }}` in the pueue callback template carries
+    the real code; it is optional so an un-migrated pueue.yml still works.
+    """
     if "Success" in result:
         return "done", 0
+    if raw_exit_code:
+        try:
+            return "failed", int(raw_exit_code)
+        except ValueError:
+            log.warning("un-parseable exit_code %r from pueue, recording 1", raw_exit_code)
     return "failed", 1
 
 
@@ -1574,8 +1587,17 @@ def main() -> None:  # pragma: no cover
         pueue_id = sys.argv[1] if len(sys.argv) > 1 else "0"
         group = sys.argv[2] if len(sys.argv) > 2 else "unknown"
         result = sys.argv[3] if len(sys.argv) > 3 else "unknown"
+        # Optional: pueue's {{ exit_code }}. Absent on hosts whose pueue.yml
+        # predates the template change in setup-vps.sh.
+        raw_exit_code = sys.argv[4] if len(sys.argv) > 4 else None
 
-        log.info("callback: id=%s group=%s result=%s", pueue_id, group, result)
+        log.info(
+            "callback: id=%s group=%s result=%s exit_code=%s",
+            pueue_id,
+            group,
+            result,
+            raw_exit_code if raw_exit_code else "-",
+        )
 
         # Skip night-reviewer group
         if group == "night-reviewer":
@@ -1584,7 +1606,7 @@ def main() -> None:  # pragma: no cover
 
         label = resolve_label(pueue_id)
         project_id, task_label = parse_label(label)
-        status, exit_code = map_result(result)
+        status, exit_code = map_result(result, raw_exit_code)
 
         log.info("parsed: project=%s task=%s status=%s", project_id, task_label, status)
 

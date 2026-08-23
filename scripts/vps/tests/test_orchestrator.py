@@ -17,6 +17,13 @@ if VPS_DIR not in sys.path:
 
 import db
 import orchestrator
+import orchestrator_queue
+
+# Canonical v1 `## Allowed Files` block. Since 2026-08-23 orchestrator_queue
+# refuses to dispatch a spec without one (the callback gate would block it on
+# arrival regardless of the run), so every fixture expecting a dispatch to
+# happen must carry it.
+ALLOWLIST_BLOCK = "\n## Allowed Files\n\n<!-- callback-allowlist v1 -->\n- `src/dummy.py`\n"
 
 
 # --- EC-7: get_occupied_slots returns correct data ---
@@ -569,10 +576,20 @@ class TestTOCTOURecheck:
     """
 
     def _setup_features(self, tmp_path: Path, spec_id: str) -> None:
-        """Create a dummy spec file so scan_queued can glob for it."""
+        """Create a spec file that scan_queued can glob for AND dispatch."""
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True, exist_ok=True)
-        (features / f"{spec_id}-dummy.md").write_text("# Dummy spec\n", encoding="utf-8")
+        # Carries a canonical `## Allowed Files` section: since 2026-08-23 the
+        # allowlist gate in orchestrator_queue skips any spec without one,
+        # because the callback gate would block it on arrival regardless of how
+        # the run went. A bare "# Dummy spec" is no longer a dispatchable spec.
+        (features / f"{spec_id}-dummy.md").write_text(
+            "# Dummy spec\n\n"
+            "## Allowed Files\n\n"
+            "<!-- callback-allowlist v1 -->\n"
+            "- `src/dummy.py`\n",
+            encoding="utf-8",
+        )
 
     def test_stale_block_stops_dispatch(self, tmp_path, seed_project):
         """EC-4: lifecycle re-read returns 'blocked' → abort, no pueue add."""
@@ -813,7 +830,7 @@ class TestDependencyGate:
         """ARCH-1246 (dep unmet) skipped → FTR-1247 (no dep) dispatched."""
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True, exist_ok=True)
-        (features / "FTR-1247-dummy.md").write_text("# dummy\n", encoding="utf-8")
+        (features / "FTR-1247-dummy.md").write_text("# dummy\n" + ALLOWLIST_BLOCK, encoding="utf-8")
         queued = [{"spec_id": "ARCH-1246"}, {"spec_id": "FTR-1247"}]
         mock_add = MagicMock(return_value=42)
 
@@ -882,7 +899,17 @@ class TestReconciliationGate:
     def _setup_features(self, tmp_path: Path, spec_id: str) -> None:
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True, exist_ok=True)
-        (features / f"{spec_id}-dummy.md").write_text("# Dummy spec\n", encoding="utf-8")
+        # Carries a canonical `## Allowed Files` section: since 2026-08-23 the
+        # allowlist gate in orchestrator_queue skips any spec without one,
+        # because the callback gate would block it on arrival regardless of how
+        # the run went. A bare "# Dummy spec" is no longer a dispatchable spec.
+        (features / f"{spec_id}-dummy.md").write_text(
+            "# Dummy spec\n\n"
+            "## Allowed Files\n\n"
+            "<!-- callback-allowlist v1 -->\n"
+            "- `src/dummy.py`\n",
+            encoding="utf-8",
+        )
 
     def test_already_implemented_marks_done_no_dispatch(self, tmp_path, seed_project):
         """Positive allowlist + implementation commit on develop → write done, no pueue add."""
@@ -969,8 +996,17 @@ class TestReconciliationGate:
         assert mock_write.call_args[0][2] == "in_progress"
         assert mock_write.call_args[1]["by"] == "orchestrator"
 
-    def test_no_allowlist_skips_reconcile_and_dispatches(self, tmp_path, seed_project):
-        """No allowlist (parse returns None) → reconcile skipped (degrade), dispatch proceeds."""
+    def test_no_allowlist_skips_reconcile_and_blocks_dispatch(self, tmp_path, seed_project):
+        """No allowlist → reconcile skipped AND dispatch skipped.
+
+        Policy change 2026-08-23. This used to assert `dispatches`: reconcile
+        degraded open and the run went ahead. But the callback gate is "done iff
+        a develop commit matches the subject AND touches an allowed file", so a
+        spec with no allowlist has no path to done — it burns a full session and
+        lands blocked/missing_allowed_files every time (dowry BUG-477: 90
+        minutes, 522 turns, blocked on arrival). Degrade-open here was not
+        tolerance, it was guaranteed waste.
+        """
         spec_id = "FTR-RECON3"
         self._setup_features(tmp_path, spec_id)
         mock_add = MagicMock(return_value=42)
@@ -1000,14 +1036,13 @@ class TestReconciliationGate:
         ):
             result = orchestrator.scan_queued("testproject", str(tmp_path))
 
-        assert result is True
-        mock_add.assert_called_once()
-        # BUG-218: reconcile is skipped (degrade), but dispatch still writes
-        # in_progress — the gate never writes done on this path.
-        mock_write.assert_called_once()
-        assert mock_write.call_args[0][2] == "in_progress"
-        assert mock_write.call_args[1]["by"] == "orchestrator"
+        assert result is False
+        mock_add.assert_not_called()
+        # BUG-218 still holds: reconcile never runs without an allowlist.
         mock_find.assert_not_called()
+        # And nothing is written — the spec stays queued for its author to fix,
+        # rather than being marked in_progress for a run that cannot be accepted.
+        mock_write.assert_not_called()
 
 
 # --- Spec-readiness gate: queued lifecycle row without a spec body ---
@@ -1132,48 +1167,8 @@ class TestSpecReadinessGate:
         spec_id = "FTR-READY4"
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True)
-        (features / f"{spec_id}-console-scaffold.md").write_text("# Spec\n", encoding="utf-8")
-        mock_add = MagicMock(return_value=42)
-
-        with (
-            patch.object(
-                orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
-            ),
-            patch("orchestrator._unmet_dependencies", return_value=[]),
-            patch.object(
-                orchestrator.lifecycle,
-                "read_lifecycle",
-                return_value={"status": "queued", "spec_id": spec_id},
-            ),
-            patch("orchestrator.pueue_has_active_label", return_value=False),
-            patch("orchestrator.pueue_has_active_spec", return_value=False),
-            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
-            patch("orchestrator._pueue_add", mock_add),
-            patch("orchestrator.SCRIPT_DIR", tmp_path),
-            patch("orchestrator.db.get_available_slots", return_value=1),
-            patch("orchestrator.db.try_acquire_slot"),
-            patch("orchestrator.db.log_task"),
-            patch("orchestrator.db.update_project_phase"),
-            patch.object(orchestrator.gate_logic, "parse_allowed_files", return_value=None),
-            patch.object(orchestrator.lifecycle, "write_lifecycle") as mock_write,
-        ):
-            result = orchestrator.scan_queued("testproject", str(tmp_path))
-
-        assert result is True
-        mock_add.assert_called_once()
-        # BUG-218: the spec-readiness gate does not write done — it only lets
-        # dispatch proceed, and dispatch writes in_progress.
-        mock_write.assert_called_once()
-        assert mock_write.call_args[0][2] == "in_progress"
-        assert mock_write.call_args[1]["by"] == "orchestrator"
-
-    def test_body_matched_by_prefix_not_exact_name(self, tmp_path, seed_project):
-        """Spec files carry a date+slug suffix; the glob must still find them."""
-        spec_id = "FTR-0081"
-        features = tmp_path / "ai" / "features"
-        features.mkdir(parents=True)
-        (features / f"{spec_id}-2026-07-26-console-scaffold.md").write_text(
-            "# Spec\n", encoding="utf-8"
+        (features / f"{spec_id}-console-scaffold.md").write_text(
+            "# Spec\n" + ALLOWLIST_BLOCK, encoding="utf-8"
         )
         mock_add = MagicMock(return_value=42)
 
@@ -1196,13 +1191,139 @@ class TestSpecReadinessGate:
             patch("orchestrator.db.try_acquire_slot"),
             patch("orchestrator.db.log_task"),
             patch("orchestrator.db.update_project_phase"),
-            patch.object(orchestrator.gate_logic, "parse_allowed_files", return_value=None),
+            # A real allowlist, because the dispatch gate now requires one.
+            # Reconcile still no-ops: find_implementation_commit finds nothing.
+            patch.object(
+                orchestrator.gate_logic, "parse_allowed_files", return_value=["src/dummy.py"]
+            ),
+            patch.object(orchestrator.gate_logic, "fetch_develop", return_value=True),
+            patch.object(orchestrator.gate_logic, "find_implementation_commit", return_value=None),
+            patch.object(orchestrator.lifecycle, "write_lifecycle") as mock_write,
+        ):
+            result = orchestrator.scan_queued("testproject", str(tmp_path))
+
+        assert result is True
+        mock_add.assert_called_once()
+        # BUG-218: the spec-readiness gate does not write done — it only lets
+        # dispatch proceed, and dispatch writes in_progress.
+        mock_write.assert_called_once()
+        assert mock_write.call_args[0][2] == "in_progress"
+        assert mock_write.call_args[1]["by"] == "orchestrator"
+
+    def test_body_matched_by_prefix_not_exact_name(self, tmp_path, seed_project):
+        """Spec files carry a date+slug suffix; the glob must still find them."""
+        spec_id = "FTR-0081"
+        features = tmp_path / "ai" / "features"
+        features.mkdir(parents=True)
+        (features / f"{spec_id}-2026-07-26-console-scaffold.md").write_text(
+            "# Spec\n" + ALLOWLIST_BLOCK, encoding="utf-8"
+        )
+        mock_add = MagicMock(return_value=42)
+
+        with (
+            patch.object(
+                orchestrator.lifecycle, "list_by_status", return_value=[{"spec_id": spec_id}]
+            ),
+            patch("orchestrator._unmet_dependencies", return_value=[]),
+            patch.object(
+                orchestrator.lifecycle,
+                "read_lifecycle",
+                return_value={"status": "queued", "spec_id": spec_id},
+            ),
+            patch("orchestrator.pueue_has_active_label", return_value=False),
+            patch("orchestrator.pueue_has_active_spec", return_value=False),
+            patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
+            patch("orchestrator._pueue_add", mock_add),
+            patch("orchestrator.SCRIPT_DIR", tmp_path),
+            patch("orchestrator.db.get_available_slots", return_value=1),
+            patch("orchestrator.db.try_acquire_slot"),
+            patch("orchestrator.db.log_task"),
+            patch("orchestrator.db.update_project_phase"),
+            # A real allowlist, because the dispatch gate now requires one.
+            # Reconcile still no-ops: find_implementation_commit finds nothing.
+            patch.object(
+                orchestrator.gate_logic, "parse_allowed_files", return_value=["src/dummy.py"]
+            ),
+            patch.object(orchestrator.gate_logic, "fetch_develop", return_value=True),
+            patch.object(orchestrator.gate_logic, "find_implementation_commit", return_value=None),
             patch.object(orchestrator.lifecycle, "write_lifecycle"),
         ):
             result = orchestrator.scan_queued("testproject", str(tmp_path))
 
         assert result is True
         mock_add.assert_called_once()
+
+
+# --- Allowlist gate: a spec the callback gate could never accept ---
+
+
+class TestAllowlistGate:
+    """A spec without `## Allowed Files` must not be dispatched at all.
+
+    The callback gate is "done iff a commit on origin/develop matches the
+    subject AND touches an allowed file". With no allowlist there is no path to
+    done, so the run is guaranteed-futile: dowry BUG-477 (2026-08-23) burned 90
+    minutes and 522 turns, produced real code, and was blocked on arrival for a
+    section Spark never wrote.
+    """
+
+    def _write_spec(self, tmp_path, spec_id, body):
+        features = tmp_path / "ai" / "features"
+        features.mkdir(parents=True, exist_ok=True)
+        (features / f"{spec_id}-x.md").write_text(body, encoding="utf-8")
+
+    def test_spec_has_allowlist_true_for_canonical_v1(self, tmp_path):
+        self._write_spec(tmp_path, "FTR-AL1", "# S\n" + ALLOWLIST_BLOCK)
+        files = list((tmp_path / "ai" / "features").glob("FTR-AL1*"))
+
+        assert orchestrator_queue.spec_has_allowlist(files) is True
+
+    def test_spec_has_allowlist_false_without_section(self, tmp_path):
+        self._write_spec(tmp_path, "FTR-AL2", "# S\n\n## Scope\n\nsomething\n")
+        files = list((tmp_path / "ai" / "features").glob("FTR-AL2*"))
+
+        assert orchestrator_queue.spec_has_allowlist(files) is False
+
+    def test_spec_has_allowlist_false_for_empty_section(self, tmp_path):
+        """v1 marker with zero bullets is degrade-closed — an explicit empty list."""
+        self._write_spec(
+            tmp_path,
+            "FTR-AL3",
+            "# S\n\n## Allowed Files\n\n<!-- callback-allowlist v1 -->\n\n## Next\n",
+        )
+        files = list((tmp_path / "ai" / "features").glob("FTR-AL3*"))
+
+        assert orchestrator_queue.spec_has_allowlist(files) is False
+
+    def test_gate_skips_dispatch_when_allowlist_missing(self, tmp_path, seed_project):
+        """End-to-end: no allowlist → gate_before_pueue_add refuses."""
+        spec_id = "FTR-AL4"
+        self._write_spec(tmp_path, spec_id, "# S\n\n## Scope\n\nno allowlist here\n")
+
+        with patch("orchestrator_queue.db.get_available_slots", return_value=1):
+            result = orchestrator_queue.gate_before_pueue_add(
+                "testproject", str(tmp_path), spec_id, tmp_path / "audit.jsonl"
+            )
+
+        assert result is None
+
+    def test_gate_allows_dispatch_when_allowlist_present(self, tmp_path, seed_project):
+        """Control: the same spec with an allowlist passes the gate."""
+        spec_id = "FTR-AL5"
+        self._write_spec(tmp_path, spec_id, "# S\n" + ALLOWLIST_BLOCK)
+
+        with (
+            patch("orchestrator_queue.db.get_available_slots", return_value=1),
+            patch("orchestrator_queue.db.get_project_state", return_value={"provider": "claude"}),
+        ):
+            result = orchestrator_queue.gate_before_pueue_add(
+                "testproject", str(tmp_path), spec_id, tmp_path / "audit.jsonl"
+            )
+
+        assert result is not None
+        spec_files, provider = result
+        assert provider == "claude"
+        assert len(spec_files) == 1
 
 
 # --- Provider selection: spec request vs project default ---
@@ -1222,7 +1343,9 @@ class TestProviderSelection:
         spec_id = "FTR-PROV1"
         features = tmp_path / "ai" / "features"
         features.mkdir(parents=True, exist_ok=True)
-        (features / f"{spec_id}-provider.md").write_text(spec_body, encoding="utf-8")
+        (features / f"{spec_id}-provider.md").write_text(
+            spec_body + ALLOWLIST_BLOCK, encoding="utf-8"
+        )
 
         with (
             patch.object(
@@ -1244,7 +1367,13 @@ class TestProviderSelection:
             patch("orchestrator.db.try_acquire_slot") as mock_acquire,
             patch("orchestrator.db.log_task"),
             patch("orchestrator.db.update_project_phase"),
-            patch.object(orchestrator.gate_logic, "parse_allowed_files", return_value=None),
+            # A real allowlist, because the dispatch gate now requires one.
+            # Reconcile still no-ops: find_implementation_commit finds nothing.
+            patch.object(
+                orchestrator.gate_logic, "parse_allowed_files", return_value=["src/dummy.py"]
+            ),
+            patch.object(orchestrator.gate_logic, "fetch_develop", return_value=True),
+            patch.object(orchestrator.gate_logic, "find_implementation_commit", return_value=None),
             patch.object(orchestrator.lifecycle, "write_lifecycle"),
         ):
             result = orchestrator.scan_queued("testproject", str(tmp_path))

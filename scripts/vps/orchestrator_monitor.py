@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -84,27 +85,81 @@ def check_orchestrator_service() -> tuple[bool, str]:
         return False, f"systemctl error: {exc}"
 
 
+class PueueUnreachable(RuntimeError):
+    """The pueue daemon did not answer at all — distinct from a paused group."""
+
+
+# pueue renders a failure as an "Error:" block of numbered causes, then a
+# "Location:" block, then RUST_BACKTRACE boilerplate:
+#
+#   Error:
+#      0: Failed to initialize client.
+#      1: Failed to initialize stream.
+#      2: I/O error at path ".../pueue_dld.socket" while connecting to daemon...
+#   Location:
+#      .../client.rs:85
+#   Backtrace omitted. Run with RUST_BACKTRACE=1 ...
+#   Run with RUST_BACKTRACE=full to include source snippets.
+#
+# Taking the last line (as this did until 2026-08-23) reported every daemon
+# outage as "Run with RUST_BACKTRACE=full to include source snippets." — the one
+# line that says nothing about what broke. The deepest numbered cause is the
+# root cause, so prefer that.
+_STDERR_NOISE = ("RUST_BACKTRACE", "Backtrace omitted")
+_NUMBERED_CAUSE_RE = re.compile(r"^\d+:\s*(.+)$")
+
+
+def _meaningful_stderr(stderr: str) -> str:
+    """The stderr line that actually describes the failure."""
+    lines = [ln.strip() for ln in stderr.strip().splitlines() if ln.strip()]
+    if not lines:
+        return "empty output"
+
+    # Everything from "Location:" onward is call-site noise, including the
+    # path line that follows it.
+    body: list[str] = []
+    for ln in lines:
+        if ln.startswith("Location:"):
+            break
+        body.append(ln)
+
+    causes = [m.group(1) for ln in body if (m := _NUMBERED_CAUSE_RE.match(ln))]
+    if causes:
+        return causes[-1][:300]
+
+    signal = [ln for ln in body if ln != "Error:" and not any(n in ln for n in _STDERR_NOISE)]
+    return (signal[-1] if signal else lines[-1])[:300]
+
+
 def _pueue_status() -> dict:
-    """Parsed `pueue status --json`. Raises with stderr when the client fails."""
+    """Parsed `pueue status --json`. Raises PueueUnreachable when the client fails."""
     result = _run(["pueue", "status", "--json"])
     if not result.stdout.strip():
-        raise RuntimeError(
-            result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "empty output"
-        )
+        raise PueueUnreachable(_meaningful_stderr(result.stderr))
     return json.loads(result.stdout)
 
 
-def check_pueue_group() -> tuple[bool, str]:
-    """Returns (ok=not-paused, detail)."""
+def check_pueue_group() -> tuple[bool, str, bool]:
+    """Returns (ok, detail, daemon_reachable).
+
+    A dead daemon and a tripped circuit breaker both stop all work, but they are
+    different incidents with different fixes — `systemctl --user start pueued`
+    versus `pueue start --group claude-runner`. Reporting both as
+    CIRCUIT_BREAKER_TRIPPED is why the real outage of 2026-08-23 was invisible:
+    it read identically to the 3910 false alarms fired between 2026-05-28 and
+    the cron-environment fix, so the message carried no information by then.
+    """
     try:
         data = _pueue_status()
-        groups = data.get("groups", {})
-        cr = groups.get("claude-runner", {})
-        status = cr.get("status", "unknown")
-        paused = isinstance(status, dict) and "Paused" in status or status == "Paused"
-        return not paused, f"claude-runner={status}"
+    except PueueUnreachable as exc:
+        return False, f"daemon unreachable: {exc}", False
     except Exception as exc:
-        return False, f"pueue error: {exc}"
+        return False, f"pueue error: {exc}", False
+    groups = data.get("groups", {})
+    cr = groups.get("claude-runner", {})
+    status = cr.get("status", "unknown")
+    paused = isinstance(status, dict) and "Paused" in status or status == "Paused"
+    return not paused, f"claude-runner={status}", True
 
 
 def count_active_tasks() -> tuple[int, int]:
@@ -159,9 +214,15 @@ def main() -> None:
     else:
         log.info("orchestrator service: %s", svc_detail)
 
-    # 2. Circuit breaker tripped?
-    pueue_ok, pueue_detail = check_pueue_group()
-    if not pueue_ok:
+    # 2. Queue daemon alive, and circuit breaker not tripped?
+    pueue_ok, pueue_detail, daemon_reachable = check_pueue_group()
+    if not daemon_reachable:
+        issues.append(
+            f"PUEUE_DAEMON_DOWN: {pueue_detail} — nothing dispatches; "
+            f"fix: systemctl --user start pueued"
+        )
+        log.error("pueue daemon: %s", pueue_detail)
+    elif not pueue_ok:
         issues.append(f"CIRCUIT_BREAKER_TRIPPED: {pueue_detail}")
         log.error("pueue group: %s", pueue_detail)
     else:

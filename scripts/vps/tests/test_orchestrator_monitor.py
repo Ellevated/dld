@@ -114,10 +114,60 @@ def test_pueue_status_raises_with_stderr_when_stdout_empty(monkeypatch):
 def test_group_check_not_paused(monkeypatch):
     monkeypatch.setattr(mon, "_run", lambda cmd: _completed(stdout=PUEUE_JSON))
 
-    ok, detail = mon.check_pueue_group()
+    ok, detail, reachable = mon.check_pueue_group()
 
     assert ok is True
     assert "claude-runner=Running" == detail
+    assert reachable is True
+
+
+def test_group_check_reports_daemon_down_not_paused_group(monkeypatch):
+    """A dead daemon must NOT be reported as a tripped circuit breaker.
+
+    Different incident, different fix (`systemctl --user start pueued` vs
+    `pueue start --group`). Conflating them is what hid the 2026-08-23 outage
+    behind the same string as 3910 earlier false alarms.
+    """
+    monkeypatch.setattr(
+        mon,
+        "_run",
+        lambda cmd: _completed(
+            stderr=(
+                'I/O error at path "/run/user/1000/pueue_dld.socket" while '
+                "connecting to daemon. Did you start it?\n"
+                "Backtrace omitted. Run with RUST_BACKTRACE=1 ...\n"
+                "Run with RUST_BACKTRACE=full to include source snippets."
+            ),
+            code=1,
+        ),
+    )
+
+    ok, detail, reachable = mon.check_pueue_group()
+
+    assert ok is False
+    assert reachable is False
+    # The detail must name the actual failure, not the RUST_BACKTRACE boilerplate.
+    assert "pueue_dld.socket" in detail
+    assert "RUST_BACKTRACE" not in detail
+
+
+def test_meaningful_stderr_skips_backtrace_boilerplate():
+    noisy = (
+        "Error:\n"
+        '   2: I/O error at path "/run/user/1000/pueue_dld.socket"\n'
+        "Location:\n"
+        "   client.rs:85\n"
+        "Backtrace omitted. Run with RUST_BACKTRACE=1 environment variable.\n"
+        "Run with RUST_BACKTRACE=full to include source snippets."
+    )
+
+    assert "pueue_dld.socket" in mon._meaningful_stderr(noisy)
+
+
+def test_meaningful_stderr_falls_back_when_all_noise():
+    """All-boilerplate stderr still yields something rather than crashing."""
+    assert mon._meaningful_stderr("Run with RUST_BACKTRACE=full") != ""
+    assert mon._meaningful_stderr("") == "empty output"
 
 
 def test_group_check_paused(monkeypatch):

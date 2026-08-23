@@ -61,7 +61,13 @@ def _dispatch(repo, spec_id, pueue_id=42):
     `provider:` line added to the fixture later would silently aim the suite
     at the production database.
     """
-    (repo / "ai" / "features" / f"{spec_id}-x.md").write_text("# spec\n", encoding="utf-8")
+    # `## Allowed Files` в каноничной v1-форме: с 2026-08-23 гейт в
+    # orchestrator_queue не диспатчит спеку без него — callback-гейт всё равно
+    # заблокировал бы её на приёме, чем бы прогон ни кончился.
+    (repo / "ai" / "features" / f"{spec_id}-x.md").write_text(
+        "# spec\n\n## Allowed Files\n\n<!-- callback-allowlist v1 -->\n- `src/dummy.py`\n",
+        encoding="utf-8",
+    )
     with (
         patch("orchestrator.SCRIPT_DIR", repo),
         patch("orchestrator.pueue_has_active_label", return_value=False),
@@ -73,7 +79,12 @@ def _dispatch(repo, spec_id, pueue_id=42):
         patch("orchestrator.db.try_acquire_slot"),
         patch("orchestrator.db.log_task"),
         patch("orchestrator.db.update_project_phase"),
-        patch("orchestrator.gate_logic.parse_allowed_files", return_value=[]),
+        # Непустой allowlist: пустой список — это degrade-closed («секция есть,
+        # путей нет»), и с 2026-08-23 гейт диспатча такую спеку не пропускает.
+        # Reconcile всё равно не сработает — коммита на develop нет.
+        patch("orchestrator.gate_logic.parse_allowed_files", return_value=["src/dummy.py"]),
+        patch("orchestrator.gate_logic.fetch_develop", return_value=True),
+        patch("orchestrator.gate_logic.find_implementation_commit", return_value=None),
     ):
         return orchestrator.scan_queued("testproject", str(repo))
 

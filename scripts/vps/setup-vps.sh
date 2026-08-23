@@ -203,13 +203,16 @@ echo ""
 # ── Pre-flight checks ──────────────────────────────────────────────────────────
 echo "--- Pre-flight checks ---"
 
-# DA-1: loginctl enable-linger so pueued survives SSH disconnect
+# DA-1: loginctl enable-linger so the user's systemd units (pueued,
+# dld-orchestrator, dld-gate-daemon) start at boot and keep running with nobody
+# logged in. Linger alone is NOT what makes pueued reboot-safe — being a unit
+# is; linger is what lets that unit start without a login session.
 if command -v loginctl &>/dev/null; then
     loginctl enable-linger "$(whoami)" 2>/dev/null \
         && ok "loginctl enable-linger set for $(whoami)" \
         || warn "loginctl enable-linger failed (may need sudo; run manually if needed)"
 else
-    warn "loginctl not found — pueued may stop on SSH disconnect (non-systemd system?)"
+    warn "loginctl not found — user units will not start at boot (non-systemd system?)"
 fi
 
 # Python 3.12+
@@ -297,12 +300,54 @@ else
     ok "pueue already installed (${FOUND_VER})"
 fi
 
-# Start pueued if not running
-if ! pueue status &>/dev/null; then
+# Install pueued as a systemd user unit, not `pueued --daemonize`.
+#
+# `--daemonize` forks the daemon away from whatever started it. Combined with
+# linger that survives an SSH disconnect, which is what it was chosen for — but
+# it does NOT survive a reboot, and nothing brings it back. On 2026-08-23 the
+# host rebooted at 14:37:06; dld-orchestrator and dld-gate-daemon returned
+# (they are units), the queue did not. The orchestrator then dispatched into a
+# void every 300s for hours and every spec silently timed out. pueued's own
+# --help says as much: "This should be avoided and rather be properly done
+# using a service manager."
+PUEUED_PATH="$(command -v pueued)"
+if command -v systemctl &>/dev/null && [[ -n "$PUEUED_PATH" ]]; then
+    mkdir -p "${HOME}/.config/systemd/user"
+    cat > "${HOME}/.config/systemd/user/pueued.service" <<EOF
+[Unit]
+Description=Pueue Daemon — task queue for the DLD orchestrator
+Documentation=https://github.com/Nukesor/pueue
+After=network.target
+
+[Service]
+Type=simple
+# Foreground on purpose — see setup-vps.sh for why --daemonize is wrong here.
+ExecStart=${PUEUED_PATH}
+Restart=always
+RestartSec=2s
+StartLimitBurst=10
+StartLimitIntervalSec=300s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pueued
+
+[Install]
+WantedBy=default.target
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable --now pueued.service 2>/dev/null || true
+    sleep 2
+    if pueue status &>/dev/null; then
+        ok "pueued running under systemd (survives reboot)"
+    else
+        warn "pueued unit installed but queue unreachable — check 'systemctl --user status pueued'"
+    fi
+elif ! pueue status &>/dev/null; then
+    # No systemd (non-Linux dev box): fall back, and say plainly what is lost.
     pueued --daemonize 2>/dev/null || true
     sleep 1
     if pueue status &>/dev/null; then
-        ok "pueued started"
+        warn "pueued started via --daemonize — NOT reboot-safe (no systemctl on this host)"
     else
         warn "pueued may not have started — check 'pueue status' manually"
     fi
@@ -323,7 +368,12 @@ ok "Pueue groups configured (claude-runner=2, codex-runner=1, night-reviewer=1)"
 PUEUE_CONFIG_DIR="${HOME}/.config/pueue"
 mkdir -p "$PUEUE_CONFIG_DIR"
 PUEUE_CONFIG="${PUEUE_CONFIG_DIR}/pueue.yml"
-CALLBACK_LINE="${SCRIPT_DIR}/venv/bin/python3 ${SCRIPT_DIR}/callback.py {{ id }} '{{ group }}' '{{ result }}'"
+# `{{ result }}` is only ever "Success" / "Failed" / "Killed" — it cannot tell a
+# 90-minute timeout (124) from a lint failure (1), so every failure landed in
+# task_log as exit_code=1 and timeouts were invisible as timeouts. `{{ exit_code }}`
+# carries the real code; verified on pueue 4.0.4 (a task exiting 42 renders
+# result=Failed exit_code=42). callback.py treats argv[4] as optional.
+CALLBACK_LINE="${SCRIPT_DIR}/venv/bin/python3 ${SCRIPT_DIR}/callback.py {{ id }} '{{ group }}' '{{ result }}' '{{ exit_code }}'"
 
 if [[ -f "$PUEUE_CONFIG" ]]; then
     # Patch existing file — update callback line if present, otherwise append to daemon section

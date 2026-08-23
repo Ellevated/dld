@@ -123,11 +123,19 @@ def spec_body_files(project_dir: str, spec_id: str) -> list[Path]:
     return list(features_dir.glob(f"{spec_id}*"))
 
 
+def spec_has_allowlist(spec_files: list[Path]) -> bool:
+    """True if any spec body carries a parseable `## Allowed Files` section.
+
+    Uses the same parser the callback gate uses, so the two cannot disagree.
+    """
+    return any(gate_logic.parse_allowed_files(f) for f in spec_files)
+
+
 def gate_before_pueue_add(
     project_id: str, project_dir: str, spec_id: str, audit_log: Path
 ) -> tuple[list[Path], str] | None:
-    """Bundle of three independent pre-dispatch gates: recency, spec-readiness,
-    provider/slot availability.
+    """Bundle of four independent pre-dispatch gates: recency, spec-readiness,
+    allowlist-presence, provider/slot availability.
 
     Extracted as a single step (EC-8, TECH-215 Task 6) rather than three
     separate calls in scan_queued: none of `recently_processed`,
@@ -156,6 +164,31 @@ def gate_before_pueue_add(
         log.info(
             "skip dispatch: %s queued but no spec body in ai/features/ yet "
             "(spec-first ID claim not finished; orphan if it persists)",
+            spec_id,
+        )
+        return None
+
+    # ALLOWLIST GATE (2026-08-23)
+    # The callback gate cannot accept a spec without `## Allowed Files` — it has
+    # nothing to check merged commits against, so it writes
+    # blocked/missing_allowed_files no matter how well the run went. Dispatching
+    # such a spec is therefore guaranteed-futile work: dowry BUG-477 spent 90
+    # minutes and 522 turns, produced real code on fix/BUG-477, and was blocked
+    # on arrival for a section Spark never wrote.
+    #
+    # Spark owns this section (skills/spark/feature-mode.md "Allowed Files", and
+    # its own Phase 5.5 allowlist linter in completion.md). Until now that was
+    # prose an agent was asked to follow, with nothing downstream checking it.
+    # A missing allowlist is a Spark defect and, exactly like the bodiless-spec
+    # case above, not something dispatch can repair — so skip rather than burn
+    # a session, and name the fix in the log.
+    if not spec_has_allowlist(spec_files):
+        log.warning(
+            "skip dispatch: %s has no parseable '## Allowed Files' — the callback "
+            "gate would block it on arrival regardless of the run. Fix the spec "
+            "(node .claude/scripts/validate-allowlist.mjs ai/features/%s*.md), "
+            "then re-queue.",
+            spec_id,
             spec_id,
         )
         return None
