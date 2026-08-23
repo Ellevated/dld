@@ -333,13 +333,18 @@ spec exits Spark as `queued` (see completion.md).
 ### Session Budget (size the spec before writing it)
 
 One spec = one autopilot session, and that session is hard-capped:
-`MAX_TURNS = 120`, `TIMEOUT_SECONDS = 5400` (90 minutes) in
-`scripts/vps/claude-runner.py`. The timeout is deliberately NOT raised — a spec
-that doesn't fit the budget is a scoping problem, not a timeout problem.
+`MAX_TURNS = 300`, `TIMEOUT_SECONDS = 10800` (3 hours) in
+`scripts/vps/claude-runner.py`. A spec that doesn't fit the budget is a scoping
+problem — but note the budget is not fixed forever, and the old "the timeout is
+deliberately NOT raised" absolute was wrong: it was raised on 2026-08-23 because
+the run it had been calibrated against stopped existing. Until 2026-07-26 the
+orchestrator silently ran Opus 4.6 on a 200K window; on real Opus 5 the median
+run went from 8.7 to 47.1 minutes and the timeout rate from 1% to 32%. Sizing
+guidance below is unchanged — the ceilings were never the thing that broke.
 
-A session that overruns produces nothing. It is killed mid-work, callback marks
-it `blocked`, and the branch is discarded. FTR-0081 (2026-07-26) spent a full 90
-minutes and merged zero lines.
+A session that overruns still produces nothing mergeable. It is killed mid-work,
+callback marks it `blocked`, and only what `salvage.py` pushed survives on the
+branch. FTR-0081 (2026-07-26) spent a full 90 minutes and merged zero lines.
 
 Decide the shape here, while the spec is still an outline:
 
@@ -809,8 +814,8 @@ Before marking spec `queued`, run 8 structural validation gates.
 □ > 8 tasks OR > 15 Allowed Files       → BLOCK: split (Phase 4 Session Budget)
 ```
 
-**Why this one blocks.** Autopilot is capped at `MAX_TURNS = 120` /
-`TIMEOUT_SECONDS = 5400` (90 min), and the timeout is deliberately fixed. An
+**Why this one blocks.** Autopilot is capped at `MAX_TURNS = 300` /
+`TIMEOUT_SECONDS = 10800` (3 h). The cap is generous, not infinite, and an
 oversized spec doesn't degrade gracefully — it is killed mid-run, marked
 `blocked`, and merges nothing. BUG-327: 117 turns, $50, FAIL. FTR-0081: 90
 minutes, blocked, zero lines merged. This gate used to end with "proceed

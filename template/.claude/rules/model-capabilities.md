@@ -78,6 +78,17 @@ work. If you carried effort settings over from an earlier model, run a fresh eff
 
 Their level table names `low` as the level for **subagents** specifically.
 
+**Re-measure your harness timeout when you change models, not just your prompts.**
+A wall-clock limit is calibrated against how long a run took on the model in use when
+someone picked the number, and nothing makes it complain when that stops being true —
+it just starts killing work. A newer model that thinks longer per turn and takes more
+turns can multiply run duration several times over while every spec, prompt and ceiling
+stays exactly as it was, so the regression looks like "our specs got too big" and is not.
+Before blaming scope, join run durations to their outcomes and compare the periods either
+side of the model change: if the upper decile of runs that *succeed* is sitting near the
+limit, the limit is the defect. Raise it, then re-run any effort sweep you deferred
+because of it.
+
 > **Frontmatter is the SSOT, this table is documentation.** When you change an agent's
 > `model:` or `effort:`, change its row here in the same commit, or the next reader routes
 > work from a stale table. Where the two disagree, the frontmatter is what runs.

@@ -74,8 +74,37 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-MAX_TURNS = 120
-TIMEOUT_SECONDS = 5400  # 90 min hard limit (R1 specs with 8+ tasks need >60m)
+# Both constants were set on 2026-03-12 and never revisited. They were calibrated
+# against a run that no longer exists: until 2026-07-26 (a710cf5) pueue resolved a
+# March-frozen CLI 2.1.72 off systemd's PATH, which predates Opus 5 and silently ran
+# claude-opus-4-6 with a 200K window. Measured over 1087 joined runs:
+#
+#                        median turns   median wall-clock   s/turn   timeout rate
+#   before 2026-07-26         11             8.7 min         15.5         1%
+#   from   2026-07-26         49            47.1 min         50.3        32%
+#
+# 4.5x the turns and 3.2x the seconds per turn — real Opus 5 on a 1M window thinks
+# longer per turn and is no longer forced to converge by autocompact every ~155K.
+# Nothing about spec sizing changed; the cost of executing a spec did.
+#
+# At 5400s the p90 of runs that DID finish was 81.7 min and the slowest was 86.9 —
+# the distribution's upper decile was sitting on the wall, which is what a 32%
+# failure rate looks like from the inside. 90 min was ~10x the median run in March;
+# it was ~1.9x by August.
+#
+# 10800s restores roughly 4x headroom over the current median. It is a measured step,
+# not a final answer: re-run scripts/vps/ analysis against task_log after a few weeks
+# and move it again if the tail still crosses. Two deferred improvements were blocked
+# on this number and can now be re-evaluated — planner held at high instead of xhigh
+# (BUG-1101) and ADR-028's "xhigh-for-agentic upside deferred pending TIMEOUT_SECONDS
+# increase". A dead run is not lost work: salvage.py pushes the branch either way.
+TIMEOUT_SECONDS = 10800  # 3 h. Was 5400 (2026-03-12 → 2026-08-23); see above.
+# Backstop, not a target — the wall-clock timeout is the real limit. Only 2 of 67
+# post-cutover runs came within 5 turns of 120, but they finished in ~47 min; at
+# 10800s a legitimate run has time for ~3x that, so 120 would become the new binding
+# constraint. A run that exhausts max_turns still returns a ResultMessage and is
+# recorded as a SUCCESS, so this ceiling fails silently — keep it well clear of normal.
+MAX_TURNS = 300
 # Main autopilot loop model. Explicit (not settings-alias "opus") so the SDK is
 # pinned deterministically. Override per-task via AUTOPILOT_MODEL env. Subagents
 # resolve their own model from agent frontmatter. See rules/model-capabilities.md.

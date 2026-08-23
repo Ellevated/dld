@@ -50,8 +50,10 @@ Three reasons it stays unrouted, in order of weight:
    Item 7 below tells every agent to search only for things after ~May 2026. On
    Fable 5 that instruction silently under-searches four months of reality.
 3. **Turns run long.** Anthropic's migration guidance is to raise client timeouts
-   before switching. `TIMEOUT_SECONDS` is 5400 and already forced `planner` down
-   from xhigh (BUG-1101).
+   before switching. `TIMEOUT_SECONDS` was 5400 and forced `planner` down from
+   xhigh (BUG-1101); it is 10800 as of 2026-08-23, so this objection is weaker
+   than it was — but it was raised to absorb Opus 5's own turn growth, not to
+   create headroom for a second, slower model on top.
 
 **The one defensible experiment**, if it is ever wanted: `AUTOPILOT_MODEL=claude-fable-5`
 on a single large spec, measured against the Opus 5 baseline in
@@ -111,7 +113,7 @@ Their level table names `low` as the level for **subagents** specifically.
 | Agent Role | Model | Effort | Rationale |
 |------------|-------|--------|-----------|
 | autopilot main loop (claude-runner) | opus | **high** | Long-horizon agentic coding. **Not xhigh:** `xhigh` is not in the SDK enum (`_VALID_EFFORT` in `claude-runner.py`, ADR-028), so setting it silently falls back to `high`. This row said xhigh and described a config that could not exist |
-| planner | opus | high | Deep analysis. Held at high (not xhigh) for the 90-min TIMEOUT_SECONDS budget (BUG-1101). A harness constraint, not a quality finding — revisit if the timeout rises |
+| planner | opus | high | Deep analysis. Was held at high (not xhigh) for the 90-min TIMEOUT_SECONDS budget (BUG-1101) — a harness constraint, not a quality finding. **That constraint lifted on 2026-08-23** (timeout 5400 → 10800). Still `high`: raising it is now a measurable experiment rather than a blocked one, and it should be run as one — the same change that unblocked it also tripled the wall-clock cost of getting it wrong |
 | review (Code Quality Gate) | **opus** | **low** | Opus 5 finds real bugs at high rate per pass with few false positives, **and accuracy holds at lower effort**. Direct Anthropic recommendation — replaces sonnet/xhigh (ADR-029) |
 | debugger | opus | high | Root cause analysis. Down from max — max causes overthinking on structured tasks |
 | council experts | opus | high | Down from max. Anthropic: reserve max for "genuinely frontier problems" |

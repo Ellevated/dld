@@ -293,7 +293,7 @@ code → test → review cycle; `advisory` findings are recorded and go no furth
 Keep finding everything — the report bar below does not change. Label honestly
 instead of filtering: an advisory finding is still reported, still read, still
 lands in the diary. What it does not do is spend two more coder cycles and a
-re-test against a 90-minute session budget.
+re-test against the autopilot session budget.
 
 Marking everything `blocking` defeats this as surely as reporting nothing. A
 review where every finding blocks is a review that has not been triaged.
