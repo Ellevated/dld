@@ -10,13 +10,15 @@ CODER → TESTER → PRE-CHECK → SPEC CHECK → CODE QUALITY → COMMIT → DI
 
 Two steps dispatch a subagent on every task; the rest you run yourself.
 "Yourself" means the autopilot loop reading this file, in its own context, with
-no Task tool call. Step 2.5 adds a third dispatch, but only on a task where the
-debug loop found a real bug worth a regression test.
+no Task tool call. Two further dispatches are conditional rather than absent:
+Step 2.5 sends the coder to write a regression test after a debug loop, and any
+check below that fails sends the coder back to fix what it found.
 
 | Step | Runs where |
 |---|---|
 | 1. Coder | subagent `coder` |
 | 2. Tester | subagent `tester` (`debugger` on failure) |
+| 2.5 Regression capture (conditional) | subagent `coder` |
 | 3. Pre-check | you — shell commands |
 | 4. Spec compliance | you |
 | 5. Code quality | you — checklist in `.claude/agents/review.md` |
