@@ -10,9 +10,9 @@ CODER → TESTER → PRE-CHECK → SPEC CHECK → CODE QUALITY → COMMIT → DI
 
 Two steps dispatch a subagent on every task; the rest you run yourself.
 "Yourself" means the autopilot loop reading this file, in its own context, with
-no Task tool call. Two further dispatches are conditional rather than absent:
-Step 2.5 sends the coder to write a regression test after a debug loop, and any
-check below that fails sends the coder back to fix what it found.
+no Task tool call. The conditional dispatches are not absent, only occasional:
+the `debugger` when a test fails in scope, the coder again at Step 2.5 to write
+a regression test, and the coder again wherever a check below sends work back.
 
 | Step | Runs where |
 |---|---|
