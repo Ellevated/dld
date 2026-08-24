@@ -150,6 +150,12 @@ For EACH task from plan:
 
 ⛔ **Skipping any step = VIOLATION**
 
+⛔ **Проверки — только синхронно.** Ни `run_in_background`, ни «жду прогона, вернусь и
+закоммичу», ни «жду кодера». Ход завершён = сессия завершена, разбудить некому: фон досчитает
+в пустоту, работа останется незакоммиченной, раннер отчитается `exit=0`. Ночь 21.08 в awardybot
+стоила $58.80, сутки 24.08 в dowry — ~$115. Долгий набор → сузить его или коммитить до проверки.
+Подробности: `safety-rules.md` § «Ход не заканчивается ожиданием».
+
 ### Commit Format (MANDATORY)
 
 Every PHASE 2 task commit MUST use Conventional Commits with the spec_id in scope:
