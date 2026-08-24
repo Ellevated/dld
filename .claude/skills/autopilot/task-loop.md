@@ -8,8 +8,10 @@ CODER → TESTER → PRE-CHECK → SPEC CHECK → CODE QUALITY → COMMIT → DI
 
 ## Who runs each step
 
-Two steps dispatch a subagent; the rest you run yourself. "Yourself" means the
-autopilot loop reading this file, in its own context, with no Task tool call.
+Two steps dispatch a subagent on every task; the rest you run yourself.
+"Yourself" means the autopilot loop reading this file, in its own context, with
+no Task tool call. Step 2.5 adds a third dispatch, but only on a task where the
+debug loop found a real bug worth a regression test.
 
 | Step | Runs where |
 |---|---|
