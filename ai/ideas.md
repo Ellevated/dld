@@ -76,3 +76,42 @@ Out-of-scope findings, future improvements, and architectural notes.
 историю pueue только частично, всегда оставляя задачу с максимальным id, чтобы счётчик не
 откатывался (так сделана чистка 2026-08-24: удалено 809 задач старше 30 дней, `state.json`
 2.1 МБ → 364 КБ).
+
+## reconcile_if_implemented принимает salvage-дамп за реализацию (2026-08-25)
+
+`orchestrator_queue.reconcile_if_implemented` закрывает queued-спеку как `done`, если в
+origin/develop нашёлся коммит, упоминающий spec_id и трогающий файлы из `## Allowed Files`
+(`gate_logic.find_implementation_commit`). Проверяется факт коммита, но не его природа.
+
+Между тем `salvage.py` по прямому решению (комментарий в `claude-runner.py:99`: «A dead run is
+not lost work: salvage.py pushes the branch either way») пушит незаконченную работу после
+таймаута — коммитом вида `wip(BUG-478): salvaged after timeout — not reviewed, not tested`.
+Когда такая ветка позже попадает в develop, следующий проход оркестратора видит «реализация
+есть» и закрывает спеку.
+
+Замер по всем 10 проектам: через reconcile закрыто **20** спек (awardybot 11, dowry 3,
+dowry-mc 3, plpilot 2, wb 1). Из них сомнительных четыре:
+- `dowry BUG-477` → закрыт 23.08 по `wip(BUG-477): salvaged after timeout — not reviewed,
+  not tested`. Код в коммите есть (tracker.py +140), но он не проходил ни ревью, ни тестов.
+  Остаток работы позже оформили отдельной спекой BUG-479 («остаток дрейфа кода и схемы —
+  14 мест, продолжение BUG-477»).
+- `dowry BUG-478` → закрыт 25.08 по `wip(BUG-478): salvaged after timeout…`, где из
+  Allowed Files затронут только `tests/unit/domains/escalations/test_mapper.py` (+428).
+  Настоящая реализация — merge `cc1b6897`, а он прямо говорит: «Task 1 — миграция
+  escalations.context + mapper (Tasks 2-8 остались)». Спека из 8 задач закрыта на одной.
+- `wb FTR-182` → закрыт по коммиту `lifecycle(FTR-182): queued`, то есть по служебной записи
+  статуса, а не по коду вообще.
+- `dowry BUG-467` → закрыт по коммиту `bc6e10465e`, чьё сообщение не читается в текущем репо.
+
+Отдельно тяжело то, что ошибка необратима: `done` терминален (Rule 7, ADR-025 write-once-done),
+`spec_operator.py demote --blocked` отвечает «cannot transition done → blocked». Ложно закрытую
+спеку нельзя переоткрыть — остаётся только заводить спеку-продолжение, как сделали с
+BUG-477 → BUG-479.
+
+Направление (обсудить, не спека):
+- отсеивать по сообщению коммита: `wip(`, `salvaged`, `not reviewed`, `not tested`, `lifecycle(`
+  не могут служить доказательством реализации;
+- либо требовать, чтобы совпадение было не по любому файлу из Allowed Files, а по коду
+  (не только `tests/**` и не только служебные файлы вроде `autopilot-state.json`);
+- либо, как минимум, разделить: salvage пушит ветку — но помечает коммит так, чтобы гейт его
+  никогда не засчитал (например, префикс, который `find_implementation_commit` исключает).
