@@ -16,6 +16,8 @@ Used by:
 """
 
 import logging
+import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -133,12 +135,20 @@ def _rebase_onto_origin(repo_dir: str, branch: str) -> bool:
         )
         return False
 
-    # Guard 1: WT must be clean. rebase refuses on a dirty tree, and we must
-    # never disturb uncommitted work. In the stuck case the WT is clean (just
-    # behind origin) because _atomic_write synced only the yaml+backlog paths.
-    status = lifecycle_git._run(["git", "status", "--porcelain"], cwd=repo_dir)
-    if status.returncode != 0 or status.stdout.strip():
-        log.warning("lifecycle rebase: WT not clean, skipping auto-rebase branch=%s", branch)
+    # Guard 1: a dirty WT is survivable, an OVERLAPPING dirty WT is not.
+    # The old rule ("clean or bail") sounded safe and cost dowry 16 hours and
+    # memyselfandi 17 days of a frozen orchestrator on 2026-08-24: the human's
+    # own unrelated edits (9 files under _Dowry/) were enough to disarm the
+    # self-heal forever. rebase --autostash puts them back on both paths —
+    # success and abort — so uncommitted work is still never disturbed.
+    # What we do refuse is a dirty file the rebase itself will rewrite: there
+    # the autostash pop would land in a conflict and leave a mess behind.
+    if _dirty_overlaps_lifecycle(repo_dir):
+        log.warning(
+            "lifecycle rebase: uncommitted changes in lifecycle/backlog paths — "
+            "refusing auto-rebase (manual heal) branch=%s",
+            branch,
+        )
         return False
 
     # Guard 2: only auto-rebase when every ahead-commit is lifecycle/backlog-only.
@@ -151,12 +161,22 @@ def _rebase_onto_origin(repo_dir: str, branch: str) -> bool:
         return False
 
     try:
-        rebase = lifecycle_git._run(["git", "rebase", f"origin/{branch}"], cwd=repo_dir, timeout=60)
+        rebase = lifecycle_git._run(
+            ["git", "rebase", "--autostash", f"origin/{branch}"], cwd=repo_dir, timeout=60
+        )
     except subprocess.TimeoutExpired:
         log.warning("lifecycle rebase: timeout branch=%s — aborting", branch)
         lifecycle_git._run(["git", "rebase", "--abort"], cwd=repo_dir)
         return False
     if rebase.returncode != 0:
+        # The module header calls lifecycle replay "conflict-free by
+        # construction — callback is the sole writer". backlog.md broke that
+        # claim on 2026-08-24: spark added an FTR-480 row on origin while
+        # callback flipped BUG-479 to blocked locally, both inside the same
+        # table. Two writers, one file, guaranteed conflict.
+        if _resolve_backlog_only_conflict(repo_dir) and _rebase_continue(repo_dir):
+            log.info("lifecycle rebase: backlog.md conflict merged row-wise branch=%s", branch)
+            return True
         log.warning(
             "lifecycle rebase: conflict/failure, aborting branch=%s stderr=%s",
             branch,
@@ -167,11 +187,144 @@ def _rebase_onto_origin(repo_dir: str, branch: str) -> bool:
     return True
 
 
+def _dirty_overlaps_lifecycle(repo_dir: str) -> bool:
+    """True iff uncommitted changes touch the paths the rebase will rewrite."""
+    status = lifecycle_git._run(["git", "status", "--porcelain"], cwd=repo_dir)
+    if status.returncode != 0:
+        return True  # cannot tell → treat as unsafe
+    for line in status.stdout.splitlines():
+        path = line[3:].strip().strip('"')
+        if " -> " in path:  # rename: the destination is what gets written
+            path = path.split(" -> ", 1)[1]
+        if path.startswith(LIFECYCLE_DIR) or path == "ai/backlog.md":
+            return True
+    return False
+
+
+_BACKLOG_ROW = re.compile(r"^\|\s*((?:TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*)\s*\|")
+
+
+def merge_backlog_conflict(text: str) -> str | None:
+    """Resolve conflict markers in ai/backlog.md row-wise, or None if unsure.
+
+    Both sides are rows of one table keyed by spec id, so the merge is defined:
+    our side wins for the ids it mentions (callback just moved that spec), and
+    rows only origin knows about (a spec filed while we were busy) are carried
+    over. Anything inside a conflict block that is not a spec row → give up and
+    let the caller abort, rather than inventing a merge for prose.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    resolved = 0
+    i = 0
+    while i < len(lines):
+        if not lines[i].startswith("<<<<<<<"):
+            out.append(lines[i])
+            i += 1
+            continue
+        ours: list[str] = []
+        theirs: list[str] = []
+        i += 1
+        while i < len(lines) and not lines[i].startswith("======="):
+            ours.append(lines[i])
+            i += 1
+        if i >= len(lines):
+            return None  # truncated block
+        i += 1
+        while i < len(lines) and not lines[i].startswith(">>>>>>>"):
+            theirs.append(lines[i])
+            i += 1
+        if i >= len(lines):
+            return None
+        i += 1
+        block = [ln for ln in ours + theirs if ln.strip()]
+        if not block or any(not _BACKLOG_ROW.match(ln) for ln in block):
+            return None  # not a pure table conflict — not ours to resolve
+        # During a rebase "ours" is the upstream being replayed onto (origin)
+        # and "theirs" is the commit being replayed (our status change).
+        mine = {_BACKLOG_ROW.match(ln).group(1) for ln in theirs if ln.strip()}
+        out.extend(ln for ln in theirs if ln.strip())
+        out.extend(
+            ln
+            for ln in ours
+            if ln.strip() and _BACKLOG_ROW.match(ln).group(1) not in mine
+        )
+        resolved += 1
+    return "\n".join(out) if resolved else None
+
+
+def _resolve_backlog_only_conflict(repo_dir: str) -> bool:
+    """Merge the conflict when ai/backlog.md is the ONLY unmerged file."""
+    unmerged = lifecycle_git._run(
+        ["git", "diff", "--name-only", "--diff-filter=U"], cwd=repo_dir
+    )
+    if unmerged.returncode != 0:
+        return False
+    if [f for f in unmerged.stdout.split() if f] != ["ai/backlog.md"]:
+        return False
+    path = Path(repo_dir) / "ai" / "backlog.md"
+    try:
+        merged = merge_backlog_conflict(path.read_text(encoding="utf-8"))
+        if merged is None:
+            return False
+        path.write_text(merged, encoding="utf-8")
+    except OSError:
+        return False
+    return lifecycle_git._run(["git", "add", "ai/backlog.md"], cwd=repo_dir).returncode == 0
+
+
+def _rebase_continue(repo_dir: str) -> bool:
+    """`git rebase --continue` with the editor disabled (message kept as-is)."""
+    try:
+        r = lifecycle_git._run(
+            ["git", "-c", "core.editor=true", "rebase", "--continue"],
+            cwd=repo_dir,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    return r.returncode == 0
+
+
 def _bump_push_failure_counter(repo_dir: str) -> None:
-    """Increment ai/.lifecycle-push-failures counter (best-effort)."""
+    """Increment ai/.lifecycle-push-failures counter, then wake a human."""
     counter = Path(repo_dir) / "ai" / ".lifecycle-push-failures"
+    total = None
     try:
         prev = int(counter.read_text().strip()) if counter.is_file() else 0
-        counter.write_text(str(prev + 1))
+        total = prev + 1
+        counter.write_text(str(total))
+    except Exception:  # noqa: BLE001
+        pass
+    _alert_push_failure(repo_dir, total)
+
+
+def _alert_push_failure(repo_dir: str, total: int | None) -> None:
+    """Tell a human. A counter nobody reads is not a signal.
+
+    awardybot stood at 38 failures, dowry at 2, memyselfandi at 1 before
+    anyone looked — and the two SMALL numbers were the ones that had frozen
+    their orchestrators for days. Best-effort by design: no notifier → no
+    noise, and never an exception back into the push path.
+    """
+    notify = Path.home() / "ops" / "notify.sh"
+    if not os.access(notify, os.X_OK):
+        return
+    project = Path(repo_dir).name
+    count = f"{total}-й раз" if total else "счётчик не прочитался"
+    body = (
+        f"Статус спеки закоммичен локально, но не уехал в origin ({count}).\n\n"
+        "Пока это так, оркестратор по проекту стоит: его git merge --ff-only\n"
+        "падает на разошедшихся ветках, спеки не двигаются.\n\n"
+        f"Лечение: cd ~/projects/{project} && git fetch origin && "
+        "git rebase origin/develop && git push origin develop"
+    )
+    try:
+        subprocess.run(
+            [str(notify), f"⚠️ lifecycle push не прошёл: {project}", body],
+            timeout=30,
+            check=False,
+            capture_output=True,
+        )
     except Exception:  # noqa: BLE001
         pass
