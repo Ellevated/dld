@@ -149,6 +149,29 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 
 ---
 
+## <a name="backlog"></a>ai/backlog.md — кто пишет и почему это важно
+
+`ai/backlog.md` — **не** SoT (ADR-023), но и не чистый рендер: часть данных живёт **только** там.
+
+| Писатель | Что пишет | Разрушает ли соседние байты |
+|----------|-----------|------------------------------|
+| Spark / autopilot (Edit) | Новую строку спеки, описание, `AFTER <ID>` | нет (ручная правка) |
+| `lifecycle._atomic_write` (`:318-353`) | **Только ячейку Status** существующих строк, через `render_backlog.sync_status`. Вкладывается в тот же plumbing-коммит, что и yaml; WT синкается на `:396` | нет — по построению |
+| `callback._render_and_commit_backlog` (`:1095`) | Operator-only, **живых вызовов нет** (ARCH-196). После BUG-217 тоже идёт через `sync_status`; полная пересборка — только когда файла нет в HEAD | нет |
+| `render_backlog.render_backlog()` (`:151`) | Полная пересборка из lifecycle-yaml | **ДА** — стирает описания founder'а, структуру секций и `AFTER`-маркеры |
+
+**Противоречие, которое надо помнить:** зависимость между спеками (`AFTER <ID>`) существует
+**только** в строке backlog. `orchestrator._backlog_deps` (`:737-755`) не читает ничего другого,
+а `_unmet_dependencies` (`:758-771`) на этом основании не даёт `scan_queued` диспатчить спеку.
+Отказ молчаливый: маркера нет → пустое множество → диспатч. То есть для одного поля backlog
+де-факто и есть SoT. Пока это так — `render_backlog()` нельзя ставить ни в один автоматический путь.
+Правильное решение (`after:` в lifecycle-yaml) — смена SoT, требует ADR; см. upstream-сигнал BUG-217.
+
+**Инвариант:** `grep -n "_render_and_commit_backlog(" scripts/vps/callback.py` → только `def`.
+Возврат вызова в `verify_status_sync` откатывает ARCH-196 (single-writer backlog).
+
+---
+
 ## Side monitors (cron, kill-only / alert-only — статус не пишут)
 
 | Демон | Триггер | Что делает | Fail-режим |

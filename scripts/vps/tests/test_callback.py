@@ -8,6 +8,7 @@ Guard A: target=done  + lifecycle=blocked  → skip (respect blocked).
 Guard B: target=blocked + lifecycle=done   → skip (respect done).
 """
 
+import ast
 import json
 import sqlite3
 import subprocess
@@ -868,3 +869,110 @@ class TestParseLogTaskStatus:
         log = self._write_log(tmp_path, {"skill": "autopilot", "result_preview": "no signal here"})
         _skill, _preview, task_status = callback._parse_log_file(log)
         assert task_status == ""
+
+
+# ---------------------------------------------------------------------------
+# BUG-217: _render_and_commit_backlog must not destroy the backlog
+# ---------------------------------------------------------------------------
+
+_HELPER = "_render_and_commit_backlog"
+
+
+class TestRenderAndCommitBacklog:
+    """Operator-only helper. Non-destructive by contract — it is the one place
+    left in the codebase that can still call the full rebuild."""
+
+    _BACKLOG = (
+        "# DLD Backlog\n\nfounder prose — keep\n\n"
+        "## P1 — High impact (default)\n\n"
+        "| ID | Status | Kind | Updated | Spec |\n"
+        "|----|--------|------|---------|------|\n"
+        "| TECH-210 | queued | tech | 2026-07-27 | [spec](features/a.md) |\n"
+        "| TECH-216 | queued | tech | 2026-07-27 | [spec](features/b.md) — AFTER TECH-210 |\n"
+    )
+
+    def test_no_live_caller_anywhere(self):
+        """ARCH-196 CQRS lock: the helper must stay unwired from the hot path.
+
+        Parsed with `ast`, not grepped. A substring scan matches the name in
+        comments and docstrings too — callback.py already mentions it in the
+        `verify_status_sync` comment, and that line escaped a `"...backlog("`
+        scan only because of the space before the paren. The next person to
+        write `_render_and_commit_backlog()` in prose would get a false-fail
+        reporting a call site that does not exist.
+        """
+        tree = ast.parse(Path(callback.__file__).read_text(encoding="utf-8"))
+
+        calls = [
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and (
+                (isinstance(node.func, ast.Name) and node.func.id == _HELPER)
+                or (isinstance(node.func, ast.Attribute) and node.func.attr == _HELPER)
+            )
+        ]
+        assert calls == [], (
+            f"{_HELPER} is called at callback.py lines {calls} — re-wiring it "
+            "reverts ARCH-196 (ai/backlog.md single-writer)"
+        )
+
+        defs = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == _HELPER
+        ]
+        assert len(defs) == 1, f"expected exactly one def, found {len(defs)}"
+
+    def test_preserves_after_marker_and_prose(self, git_repo):
+        """EC-1/EC-2/EC-3: statuses sync, everything else is byte-preserved.
+
+        Non-vacuity note: lifecycle.write_lifecycle already folds a sync_status
+        pass into its own commit (lifecycle.py:318-353), so by the time the
+        helper is called HEAD:ai/backlog.md could already read `in_progress`
+        even if the helper does nothing. To make this test actually exercise
+        the helper (and not just the fact that lifecycle already reconciled),
+        step 3 below overwrites HEAD:ai/backlog.md back to the STALE `queued`
+        row (marker + prose intact) without touching the lifecycle yaml, so
+        only `_render_and_commit_backlog` can bring the status cell back to
+        `in_progress`.
+        """
+        (git_repo / "ai").mkdir(exist_ok=True)
+        (git_repo / "ai" / "backlog.md").write_text(self._BACKLOG, encoding="utf-8")
+        _git(git_repo, "add", "ai/backlog.md")
+        _git(git_repo, "commit", "-q", "-m", "docs: backlog")
+
+        lifecycle.create_initial(git_repo, "TECH-210", "p1", "tech", by="orchestrator")
+        lifecycle.write_lifecycle(str(git_repo), "TECH-210", "in_progress", by="callback")
+
+        # Make backlog STALE relative to lifecycle yaml (yaml=in_progress,
+        # backlog=queued) — lifecycle.write_lifecycle's own sync_status pass
+        # already reconciled it, so we deliberately regress it back so the
+        # helper call below is the only thing that can fix it.
+        (git_repo / "ai" / "backlog.md").write_text(self._BACKLOG, encoding="utf-8")
+        _git(git_repo, "add", "ai/backlog.md")
+        _git(git_repo, "commit", "-q", "-m", "test: force-stale backlog")
+
+        precondition = _git(git_repo, "show", "HEAD:ai/backlog.md")
+        assert "| TECH-210 | queued |" in precondition, (
+            "precondition failed — backlog must be stale before calling the "
+            "helper, otherwise this test is vacuous"
+        )
+
+        callback._render_and_commit_backlog(str(git_repo), "testproj")
+
+        out = _git(git_repo, "show", "HEAD:ai/backlog.md")
+        assert out.count("AFTER TECH-210") == 1
+        assert "founder prose — keep" in out
+        assert "## P1 — High impact (default)" in out
+        assert "| TECH-210 | in_progress |" in out
+
+    def test_falls_back_to_full_render_when_backlog_absent(self, git_repo):
+        """EC-5: new project — HEAD has no ai/backlog.md, full rebuild is correct."""
+        lifecycle.create_initial(git_repo, "TECH-210", "p1", "tech", by="orchestrator")
+
+        callback._render_and_commit_backlog(str(git_repo), "testproj")
+
+        out = _git(git_repo, "show", "HEAD:ai/backlog.md")
+        assert "# DLD Backlog" in out
+        assert "TECH-210" in out
