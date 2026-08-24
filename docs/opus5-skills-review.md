@@ -271,6 +271,42 @@ selection tables and immutable-test rules the loop does not hold. `debugger` fir
 on failure. `planner` re-reads a codebase that moved since the spec was queued. None of
 those re-derive what the caller already has, which is the only test being applied here.
 
+**Rolled to the fleet the same day, and the fleet turned out to be nine forks.** The
+orchestrator carries no prompts: `claude-runner.py` sets `cwd=project_path` and
+`setting_sources=["user","project"]`, so every run executes the *project's own*
+`.claude/`. A change in this repo reaches nothing else by itself. Checking the md5 of
+each project's `task-loop.md` against this repo's history dates every copy exactly:
+
+| project | its copy came from | dispatches/task | machine-time share since 2026-07-26 |
+|---|---|---|---|
+| awardybot | a fork matching no DLD commit | 4 → **2** | 58% |
+| dowry | template of 2026-05-06 | 4 → **2** | 24% |
+| dld | current | 3 → **2** | 12% |
+| dowry-mc | template of 2026-03-01 | 4 → **2** | 5% |
+| plpilot, memyselfandi, wb, gipotenuza | template of 2026-03-09 | 4 | 2% |
+| nexus, mishkinlyap | template of 2026-02-16 | 4 | 0% |
+
+Everything except this repo was still dispatching `spec-reviewer`, folded in here on
+2026-07-27 and never delivered anywhere else. So the three projects that carry 87% of
+the machine time went from four dispatches per task to two, not three to two.
+
+This matters to the measurement, not only to the bill: the baselines above are computed
+across all projects. Had the change lived only in DLD — 12% of machine time — the
+re-measurement would have read as noise no matter what the loop did.
+
+Ported by hand, per project, because a shared skills layer would overwrite what each
+project legitimately customised — awardybot's Step 6 carries an ADR-043 anti-clobber
+guard that exists nowhere else, and its `agents/review.md` predates the severity
+routing, so its Step 5 had to be worded without a field its reviewer does not emit.
+Both retired agent files are kept on disk in every project: nothing dispatches them from
+the loop, but a run already in flight can, and a missing agent turns a redundant call
+into a hard failure.
+
+Commits: dld@69d1580, awardybot@869d154b0, dowry@44353ce1, dowry-mc@5e81eb9. The four
+remaining projects account for 2% of machine time and are left for whenever they next
+matter. dowry-mc additionally still dispatches `diary-recorder`, retired by ADR-007 as
+unable to write files — noted, not fixed here.
+
 ### What the agents' contents changed, 2026-07-27
 
 The plan going in was "one long-lived agent instead of six". Reading what the
