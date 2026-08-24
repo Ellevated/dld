@@ -1,6 +1,6 @@
 ---
 name: autopilot
-description: Autonomous spec execution with subagents (planner, coder, tester, reviewer).
+description: Autonomous spec execution with subagents (planner, coder, tester).
 model: opus
 ---
 
@@ -65,7 +65,7 @@ PHASE 2: Execute (per task)    → task-loop.md
       └─ fail? → [Debugger] opus (max 3) → escalation.md
   └─ PRE-CHECK (deterministic)
   └─ Spec compliance checked inline (no dispatch)
-  └─ [Code Quality] opus → approved?
+  └─ Code quality checked inline (no dispatch) → approved?
   └─ COMMIT (no push)
   └─ LOCAL VERIFY (if AV section) → warn only
 
@@ -107,7 +107,7 @@ PHASE 2: FOR EACH TASK (fresh subagent per task!)
   [TESTER] → Smart Testing
   PRE-CHECK → deterministic validation
   Spec compliance → inline, Step 4
-  [CODE QUALITY] → Stage 2
+  Code quality → inline, Step 5 (agents/review.md as checklist)
   COMMIT (NO PUSH yet!)
   See: task-loop.md (SSOT for execution flow)
 

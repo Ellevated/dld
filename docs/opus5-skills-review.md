@@ -133,6 +133,12 @@ Ordered by where money burns, not by what is easiest.
       - [x] Measure it — **done 2026-08-23**, n=62 clean Opus 5 runs (there were 7
             when this was written). Result below: the Step 0 hypothesis holds, and
             the share is bigger than expected.
+      - [x] Loop change, 2026-08-24: code quality folded into the loop.
+            3 dispatches per task → 2. Section below.
+      - [ ] Re-measure after that change — same join, same two numbers ($ per
+            delivered spec, BUG per delivered spec). Not before ~20 autopilot runs
+            have landed under the new loop; earlier than that the number is noise
+            wearing a decimal point.
 
 ### Step 1 measurement, 2026-08-23 — the spawn architecture is 82% of the bill
 
@@ -218,6 +224,52 @@ honest summary is that Opus 5 appears to do better work and we are paying far mo
 than the improvement is worth — **because 82% of what we pay is not the improvement.**
 It is the 200K-era spawn architecture measured above. The two findings point the same
 way: keep the model, remove the tax.
+
+### Step 1 rollout, 2026-08-24 — the code-quality dispatch folded in
+
+Three dispatches per task became two. The subagent that was removed is `review`; the
+checklist it ran is not removed, and not copied either — the loop reads
+`.claude/agents/review.md` and follows it, so `/review` and `/eval` keep dispatching
+the same file they always did.
+
+**The argument that had protected it, and why it does not hold.** Every previous pass
+kept `review` on the grounds that independence is load-bearing: the author of a change
+cannot see its holes. That is true, and it is about *self*-review — but the loop is not
+the author. The coder wrote the diff, in a subagent context that no longer exists by
+the time Step 5 runs. What a separate reviewer bought beyond that is ignorance of the
+plan, which is a real but much thinner property than author-blindness, and it was being
+paid for at the price of a full context rebuild on every task of every spec.
+
+**What it should buy.** At the median measured on 2026-08-23 — subagents building 82%
+of a session's context, cost following context built at r = 0.945 — removing one
+dispatch of three per task is worth roughly a quarter to a third of a run's bill. That
+is an expectation derived from a measured multiplier, not a result. The result requires
+runs.
+
+**What it risks, stated before the data arrives so it cannot be reinterpreted after.**
+Review quality. The failure mode is not a reviewer that argues badly, it is a reviewer
+that nods: the loop has watched the task for six steps and already believes it is fine,
+which is exactly the position a cold reviewer was not in. Step 5 therefore keeps
+`checks_performed` mandatory and calls an empty list a self-reject — the same rule the
+agent file already carried, now aimed at a reader with a motive to skip it.
+
+**The exit condition.** Two numbers, both already defined and both computable from
+`task_log` plus the per-run JSON, no new instrumentation:
+
+| | baseline (from 2026-07-26) | verdict |
+|---|---|---|
+| $ per delivered spec | $38.18 | must fall |
+| BUG specs per delivered spec | 0.30 | must not rise |
+
+Cost down and rework flat = the step is kept. Rework up = revert the commit that
+inlined it, rather than patching Step 5 until it looks acceptable; a review that needs
+propping up has already answered the question. Cost flat and rework flat would mean the
+dispatch was never where the money was, which would itself be worth knowing.
+
+**Not folded in, and why.** `coder` divides labour across models. `tester` carries
+selection tables and immutable-test rules the loop does not hold. `debugger` fires only
+on failure. `planner` re-reads a codebase that moved since the spec was queued. None of
+those re-derive what the caller already has, which is the only test being applied here.
 
 ### What the agents' contents changed, 2026-07-27
 

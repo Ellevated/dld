@@ -8,7 +8,7 @@ CODER → TESTER → PRE-CHECK → SPEC CHECK → CODE QUALITY → COMMIT → DI
 
 ## Who runs each step
 
-Three steps dispatch a subagent; the rest you run yourself. "Yourself" means the
+Two steps dispatch a subagent; the rest you run yourself. "Yourself" means the
 autopilot loop reading this file, in its own context, with no Task tool call.
 
 | Step | Runs where |
@@ -17,10 +17,10 @@ autopilot loop reading this file, in its own context, with no Task tool call.
 | 2. Tester | subagent `tester` (`debugger` on failure) |
 | 3. Pre-check | you — shell commands |
 | 4. Spec compliance | you |
-| 5. Code quality | subagent `review` |
+| 5. Code quality | you — checklist in `.claude/agents/review.md` |
 | 6. Commit / 6.5 Diary / 7 Local verify | you |
 
-## Why those three, and not the others
+## Why those two, and not the others
 
 A subagent starts cold. Before it can act it rebuilds the task context you are
 already holding — the spec, the plan, the diff — and that rebuild is billed as
@@ -37,16 +37,31 @@ So the test is whether a step needs **something you do not have**:
   every task.
 - **Debugger** is dispatched only on a failure, because reasoning about the
   failure is the part that needs a model.
-- **Code quality** is the one place independence is load-bearing: an agent that
-  did not write the code sees duplication and debt the author is blind to.
 - **Spec compliance** needs neither. You are holding the spec and the diff, so a
   fresh agent would only re-read both to reach the position you are already in.
+- **Code quality** was the last step still dispatched, on the argument that its
+  independence is load-bearing. Read precisely, that argument guards against
+  *self*-review — and you did not write this code. The coder did, in a context
+  that no longer exists by the time you review. What a separate reviewer buys on
+  top of that is ignorance of the plan, which is a thinner claim than "the author
+  cannot see their own blind spots". The rest of what it brought is a checklist,
+  and a checklist can be read (`.claude/agents/review.md`) without paying for a
+  second context to hold it.
 
 The cut is specific, not a policy of "fewer agents". Anthropic's guidance for
 this model generation is explicit that a separate subagent asked to verify work
 already done produces over-verification rather than better verification — so the
-step that only re-derived what this context knows is folded in, and the steps
-that carry knowledge or independence are left alone.
+steps that only re-derive what this context knows are folded in, and the steps
+that divide labour or carry knowledge you lack are left alone.
+
+**Folding code quality in is an experiment, and it has a stated exit.** Measured
+2026-08-23 over 62 runs: subagents build 82% of the context in a run, and cost
+follows context built at r = 0.945 — so dropping one dispatch of three per task
+is the largest single lever available. What it risks is review quality, and that
+has a baseline to be judged against: 0.30 BUG specs per delivered spec since
+2026-07-26. If that number climbs, revert the commit that inlined this step
+instead of patching Step 5 — a review that needs propping up has already failed
+the experiment.
 
 ## State tracking
 
@@ -160,15 +175,22 @@ cost of re-reading a spec you have had in context since PHASE 1.
 
 ---
 
-## Step 5: CODE QUALITY
+## Step 5: CODE QUALITY — run it yourself
 
-```yaml
-Task tool:
-  subagent_type: "review"
-  prompt: |
-    TASK: {description}
-    FILES CHANGED: {list}
-```
+Read `.claude/agents/review.md` and apply it to `files_changed`. That file is the
+SSOT for what a code-quality review is here, whether a subagent or this loop
+performs it — do not restate it, follow it. Run every bash check it names against
+the real files; answering them from what you remember the coder doing is the
+failure mode this step exists to catch.
+
+Emit its `## Output` YAML in your reply before routing, `checks_performed`
+included. That list is the only thing separating a review from a nod, and inline
+is where a nod is cheapest to give: you have been watching this task for six
+steps and already believe it is fine. Approving with an empty or vague list is a
+self-reject — run the checks instead.
+
+Every finding carries `severity`, by the test the file states: would you revert
+this commit for it?
 
 ```
 ├─ approved        → Step 6 (COMMIT — approved means proceed, not stop)
@@ -229,7 +251,7 @@ so the diary is the only record that they were ever seen. Write
 | {file}:{line} | {issue} | {action} |
 ```
 
-One line per finding, verbatim from the reviewer. No commentary — `/reflect`
+One line per finding, verbatim from the review. No commentary — `/reflect`
 decides whether a recurring advisory deserves a spec.
 
 For `problem`, also write `ai/diary/{YYYY-MM-DD}-{TASK_ID}-task{N}-problem.md`:

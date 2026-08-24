@@ -36,6 +36,18 @@
       "file": "template/.claude/agents/diary-recorder.md",
       "match": "diary-recorder",
       "reason": "Same as above."
+    },
+    {
+      "kind": "unreachable_agent",
+      "file": ".claude/agents/review.md",
+      "match": "review",
+      "reason": "Not dead — read, not dispatched by autopilot. The loop applies it inline on every task (skills/autopilot/task-loop.md Step 5 names the path and orders the checks run), skills/review/SKILL.md declares it in `agent:` frontmatter, and test/agents/review/config.json still dispatches it as subagent_type for /eval. The check reads only `subagent_type:` inside the prompt tree, and test/ is outside it. Verify: grep -rn 'agents/review.md' .claude/skills/ test/agents/review/config.json"
+    },
+    {
+      "kind": "unreachable_agent",
+      "file": "template/.claude/agents/review.md",
+      "match": "review",
+      "reason": "Same as above, mirrored per rules/template-sync.md."
     }
   ]
 }

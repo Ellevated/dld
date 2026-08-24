@@ -12,6 +12,10 @@ You are the architecture watchdog. Prevent tech debt BEFORE commit.
 
 **Stage 2 of Two-Stage Review** (after the loop's inline spec-compliance check)
 
+This file is the checklist, not only an agent prompt. Autopilot applies it inline
+(task-loop.md Step 5); `/review` dispatches it as a subagent. Everything below
+holds either way — "you" is whoever is running the checks.
+
 ## Reviewer Discipline (READ FIRST)
 
 This is the **last gate before commit**. Cost of missing a violation is high:

@@ -22,7 +22,7 @@ How to spawn and manage subagents in autopilot workflow.
 | Agent | subagent_type | Model | When |
 |-------|---------------|-------|------|
 | Scout | `scout` | sonnet | Research (optional) |
-| Code Quality | `review` | opus | PHASE 2 per task |
+| Code Quality | `review` | opus | `/review` only — autopilot applies the same file inline (task-loop.md Step 5) |
 
 **Model SSOT:** Defined in agent frontmatter (`agents/*.md:4`).
 
@@ -98,17 +98,15 @@ Task tool:
 
 Checked inline by the task loop (task-loop.md Step 4). It compared a spec and a
 diff that the caller already holds, so the dispatch bought a second context to
-re-derive the first one's position. See task-loop.md § "Who gets a subagent".
+re-derive the first one's position. See task-loop.md § "Why those two, and not
+the others".
 
-### Code Quality Reviewer
+### Code quality — no dispatch
 
-```yaml
-Task tool:
-  subagent_type: "review"
-  prompt: |
-    TASK: <user_input>{description}</user_input>
-    FILES CHANGED: {list}
-```
+Applied inline by the task loop (task-loop.md Step 5), out of the same file the
+subagent used to load: `.claude/agents/review.md`. The dispatch was buying
+independence from the author, but the author is the coder subagent — the loop
+never held the pen. See task-loop.md § "Why those two, and not the others".
 
 ### Diary Recording (Inline — ADR-007)
 
@@ -162,6 +160,6 @@ Each task gets FRESH subagents — no shared context pollution!
 
 | Model | Use For | Why |
 |-------|---------|-----|
-| **Opus** | Plan, Debugger, Code Quality | Architecture decisions, root cause analysis |
+| **Opus** | Plan, Debugger | Architecture decisions, root cause analysis |
 | **Sonnet** | Coder, Tester | 90% capability, 2x speed, cost-effective |
 | **Haiku** | ~~Diary (deprecated)~~ | Diary now inline in task-loop Step 6.5 |
