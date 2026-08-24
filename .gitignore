@@ -67,3 +67,6 @@ ai/.council/
 # PLPilot, RIS/MeMyselfAndI. The tool is public; its output is not.
 # Curate a pair by hand into test/agents/<agent>/ before it goes anywhere.
 test/agents-harvested/
+
+# Бэкапы БД оркестратора на VPS
+scripts/vps/orchestrator.db.bak-*
