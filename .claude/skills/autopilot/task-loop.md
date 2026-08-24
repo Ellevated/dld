@@ -153,6 +153,9 @@ Catches `# TODO`/`# FIXME`, bare `except:` without re-raise, files over 400 LOC 
 Catches type violations (float for money), import direction, domain placement, missing Blueprint Reference.
 
 Either failing → CODER fixes → re-run that check. Either absent → skip it.
+`precheck_loop < 2`? retry : ESCALATE — these checks are deterministic, so one
+that still fails after two fixes is not going to pass on the third attempt; it
+is a spec or an environment problem and belongs with a human.
 
 ---
 
@@ -358,6 +361,7 @@ Then: `current_task += 1` → back to Step 1. When `current_task > total_tasks` 
 | `debug_attempts` | 3 | Escalate (escalation.md) |
 | `spec_review_loop` | 2 | Escalate to Council |
 | `refactor_loop` | 2 | Escalate to Council |
+| `precheck_loop` | 2 | Escalate (escalation.md) |
 | `verify_smoke_retry` | 2 | Warn, don't block |
 | `verify_func_retry` | 2 | Coder fix, then warn |
 

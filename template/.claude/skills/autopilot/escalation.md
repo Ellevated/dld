@@ -12,6 +12,7 @@ When to escalate and how to handle failures.
 | ./test ci fail (finishing gate) | 3 | → STOP (ask human) |
 | ./test llm fail | 2 | → STOP (ask human) |
 | Reviewer refactor | 2 | → Council |
+| Pre-check fix (`precheck_loop`) | 2 | → STOP (ask human) |
 | Heavy drift (planner) | 0 | → Council (immediate) |
 | Out-of-scope failures | ∞ | skip |
 
