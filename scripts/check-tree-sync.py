@@ -106,14 +106,26 @@ def unwrap(parsed: dict) -> dict:
     if parsed.get("isError"):
         raise RuntimeError(f"tool reported an error: {text or parsed}")
 
-    if "structuredContent" in parsed:
-        return parsed["structuredContent"]
+    # Prefer whichever copy actually carries data. `structuredContent` is the documented
+    # place, but a build that puts a summary there and the real payload in `content` would
+    # silently answer "no rows" — indistinguishable from a clean tree, and therefore the
+    # worst possible failure for a check whose whole job is to notice things.
+    candidates = []
+    if isinstance(parsed.get("structuredContent"), dict):
+        candidates.append(parsed["structuredContent"])
     if text is not None:
         try:
-            return json.loads(text)
+            decoded = json.loads(text)
+            if isinstance(decoded, dict):
+                candidates.append(decoded)
         except json.JSONDecodeError:
             pass
-    return parsed
+    candidates.append(parsed)
+
+    for candidate in candidates:
+        if any(candidate.get(key) for key in ("rows", "projects", "nodes")):
+            return candidate
+    return candidates[0]
 
 
 def call(binary: Path, tool: str, payload: dict, attempts: int = 3) -> dict:
