@@ -244,20 +244,14 @@ def merge_backlog_conflict(text: str) -> str | None:
         # and "theirs" is the commit being replayed (our status change).
         mine = {_BACKLOG_ROW.match(ln).group(1) for ln in theirs if ln.strip()}
         out.extend(ln for ln in theirs if ln.strip())
-        out.extend(
-            ln
-            for ln in ours
-            if ln.strip() and _BACKLOG_ROW.match(ln).group(1) not in mine
-        )
+        out.extend(ln for ln in ours if ln.strip() and _BACKLOG_ROW.match(ln).group(1) not in mine)
         resolved += 1
     return "\n".join(out) if resolved else None
 
 
 def _resolve_backlog_only_conflict(repo_dir: str) -> bool:
     """Merge the conflict when ai/backlog.md is the ONLY unmerged file."""
-    unmerged = lifecycle_git._run(
-        ["git", "diff", "--name-only", "--diff-filter=U"], cwd=repo_dir
-    )
+    unmerged = lifecycle_git._run(["git", "diff", "--name-only", "--diff-filter=U"], cwd=repo_dir)
     if unmerged.returncode != 0:
         return False
     if [f for f in unmerged.stdout.split() if f] != ["ai/backlog.md"]:

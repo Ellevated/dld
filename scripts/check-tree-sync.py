@@ -51,6 +51,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT_PREFIX = ".claude/"
@@ -83,23 +84,38 @@ def find_binary() -> Path | None:
     return None
 
 
-def call(binary: Path, tool: str, payload: dict) -> dict:
-    """Run one MCP tool through the CLI, returning its parsed JSON result."""
-    proc = subprocess.run(
-        [str(binary), "cli", tool],
-        input=json.dumps(payload),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
+def call(binary: Path, tool: str, payload: dict, attempts: int = 3) -> dict:
+    """Run one MCP tool through the CLI, returning its parsed JSON result.
+
+    Retries an empty result. Each CLI invocation starts a temporary daemon unless one is
+    already warm, and on a cold CI runner that start has been observed to finish with
+    exit 0 and no output at all — a race, not a failure the caller can act on. Retrying
+    is cheaper than diagnosing which invocation lost it.
+    """
+    last = None
+    for attempt in range(attempts):
+        proc = subprocess.run(
+            [str(binary), "cli", tool],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        # Structured logs go to stderr and the result to stdout, but a few log lines leak
+        # into stdout on some builds. Take the last line that parses as JSON.
+        for line in reversed([ln for ln in proc.stdout.splitlines() if ln.strip()]):
+            try:
+                return json.loads(line)
+            except json.JSONDecodeError:
+                continue
+        last = proc
+        if attempt < attempts - 1:
+            time.sleep(2)
+
+    raise RuntimeError(
+        f"{tool} returned no JSON after {attempts} attempts (last exit {last.returncode}). "
+        f"stdout={last.stdout[-600:]!r} stderr={last.stderr[-400:]!r}"
     )
-    # Structured logs go to stderr and the result to stdout, but a few log lines leak into
-    # stdout on some builds. Take the last line that parses as JSON.
-    for line in reversed([ln for ln in proc.stdout.splitlines() if ln.strip()]):
-        try:
-            return json.loads(line)
-        except json.JSONDecodeError:
-            continue
-    raise RuntimeError(f"{tool} returned no JSON (exit {proc.returncode}): {proc.stderr[-400:]}")
 
 
 def project_for(binary: Path, repo_root: Path) -> str | None:

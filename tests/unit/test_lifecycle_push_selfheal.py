@@ -28,9 +28,7 @@ ROW_NEW = "| FTR-480 | queued | ftr |  | [spec](features/FTR-480.md) |"
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", *args], cwd=repo, capture_output=True, text=True, check=True
-    )
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True)
 
 
 @pytest.fixture()
@@ -146,8 +144,9 @@ def test_rebase_refuses_when_the_dirty_file_is_the_backlog_itself(repo_pair):
     """Мёртвая половина: правка в файле, который rebase сам перепишет."""
     repo, _ = repo_pair
     backlog = repo / "ai" / "backlog.md"
-    backlog.write_text(backlog.read_text(encoding="utf-8") + "\n<!-- ручная правка -->\n",
-                       encoding="utf-8")
+    backlog.write_text(
+        backlog.read_text(encoding="utf-8") + "\n<!-- ручная правка -->\n", encoding="utf-8"
+    )
 
     assert lifecycle_push._rebase_onto_origin(str(repo), "develop") is False
     assert "<!-- ручная правка -->" in backlog.read_text(encoding="utf-8"), (
