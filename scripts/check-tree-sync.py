@@ -48,6 +48,8 @@ from __future__ import annotations
 import difflib
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -82,6 +84,39 @@ def find_binary() -> Path | None:
         if candidate.exists():
             return candidate
     return None
+
+
+def parse_table(text: str) -> dict | None:
+    """Parse the human table `query_graph` prints instead of JSON on 0.10.8.
+
+        rows: 2  (cols: f, name)
+          template/.claude/scripts/x.mjs readStdin "483" "487"
+        total: 2
+
+    `--json` wraps the envelope but not this payload, and there is no structuredContent
+    to fall back on, so the table is the only machine-readable form the CLI offers for
+    this tool. Values are shell-quoted, which is why shlex and not split() — a quoted
+    number and a bare identifier sit in the same row.
+    """
+    lines = text.splitlines()
+    header = next((ln for ln in lines if ln.startswith("rows:")), None)
+    if header is None:
+        return None
+
+    match = re.search(r"\(cols:\s*(.+?)\)", header)
+    columns = [c.strip() for c in match.group(1).split(",")] if match else []
+
+    rows: list[list[str]] = []
+    for line in lines:
+        if not line.startswith(("  ", "\t")):
+            continue
+        try:
+            values = shlex.split(line.strip())
+        except ValueError:
+            continue
+        if values:
+            rows.append(values)
+    return {"columns": columns, "rows": rows}
 
 
 def unwrap(parsed: dict) -> dict:
@@ -119,7 +154,9 @@ def unwrap(parsed: dict) -> dict:
             if isinstance(decoded, dict):
                 candidates.append(decoded)
         except json.JSONDecodeError:
-            pass
+            table = parse_table(text)
+            if table is not None:
+                candidates.append(table)
     candidates.append(parsed)
 
     for candidate in candidates:

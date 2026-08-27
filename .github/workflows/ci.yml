@@ -147,15 +147,6 @@ jobs:
           # text as "no result". Kept because it is free and the hint recommends it.
           "$CBM_BIN" daemon start || true
           echo "{\"repo_path\":\"$PWD\",\"mode\":\"full\"}" | "$CBM_BIN" cli index_repository
-          # Diagnostic: this runner's CLI build has answered differently from the local
-          # one twice already. Print the raw envelope so a failure here is read from
-          # evidence rather than guessed at across CI round-trips.
-          echo "--- raw list_projects ---"
-          "$CBM_BIN" cli --json list_projects 2>/dev/null | head -c 500 || true
-          echo
-          echo "--- raw query_graph ---"
-          echo '{"project":"home-runner-work-dld-dld","query":"MATCH (n:Function) WHERE n.file_path CONTAINS \"claude/\" RETURN n.file_path AS f LIMIT 2"}'             | "$CBM_BIN" cli --json query_graph 2>/dev/null | head -c 900 || true
-          echo
           python scripts/check-tree-sync.py --require-graph
 
   harness-test:
