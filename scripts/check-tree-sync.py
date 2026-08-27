@@ -33,6 +33,11 @@ Findings:
 
 Exit codes: 0 clean or unavailable, 1 findings, 2 the graph could not be queried.
 
+`--require-graph` turns every "unavailable" path into exit 2. Locally a missing binary should
+not fail anyone's commit; in CI a missing binary means the check silently measured nothing,
+which is the exact failure mode this repo has been bitten by before — a green step that never
+ran. CI passes the flag.
+
 Requires the `codebase-memory-mcp` binary (external OSS, DeusData/codebase-memory-mcp) and a
 `.cbmignore` un-skipping the hidden trees — without it the indexer never sees `.claude/` and
 this check has nothing to compare. Set CBM_BIN to override binary discovery.
@@ -227,25 +232,33 @@ def analyse(repo_root: Path, root: dict, tmpl: dict) -> tuple[list, int, int]:
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
+    require_graph = "--require-graph" in sys.argv[1:]
+
+    def unavailable() -> int:
+        """0 locally (a missing tool is not a broken commit), 2 under --require-graph."""
+        if require_graph:
+            print("  --require-graph was passed: treating this as a failure, not a skip.")
+            return 2
+        return 0
 
     binary = find_binary()
     if binary is None:
         print("TREE_SYNC_UNAVAILABLE: codebase-memory-mcp not installed — nothing ran.")
         print("  Install it, or set CBM_BIN, to enable this check.")
-        return 0
+        return unavailable()
 
     if not (repo_root / ".cbmignore").exists():
         print("TREE_SYNC_UNAVAILABLE: no .cbmignore — the indexer skips hidden directories,")
         print("  so .claude/ and template/.claude/ are absent from the graph and there is")
         print("  nothing to compare. Add '!.claude/' and '!template/.claude/' to .cbmignore.")
-        return 0
+        return unavailable()
 
     try:
         project = project_for(binary, repo_root)
         if project is None:
             print(f"TREE_SYNC_UNAVAILABLE: {repo_root} is not indexed — nothing ran.")
             print('  Index it first: index_repository(repo_path=".", mode="full")')
-            return 0
+            return unavailable()
         root, tmpl = collect_symbols(binary, project)
     except (RuntimeError, OSError, ValueError) as exc:
         print(f"TREE_SYNC_ERROR: {exc}", file=sys.stderr)
@@ -254,7 +267,7 @@ def main() -> int:
     if not root and not tmpl:
         print("TREE_SYNC_UNAVAILABLE: the graph holds no functions under either tree.")
         print('  The index predates .cbmignore — rebuild with mode="full" and re-run.')
-        return 0
+        return unavailable()
 
     findings, compared, unreadable = analyse(repo_root, root, tmpl)
 

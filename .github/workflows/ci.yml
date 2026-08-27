@@ -110,6 +110,40 @@ jobs:
       - name: Prompt tree integrity (template)
         run: node .claude/scripts/check-prompt-integrity.mjs --tree template/.claude
 
+      # Tree sync. `.claude/` and `template/.claude/` drift silently — a fix lands in
+      # one tree and the other keeps the bug. `diff -r` cannot police this, because the
+      # two trees are *supposed* to differ in prose, so the check compares function
+      # bodies using spans from a code graph. First run found four real divergences,
+      # including an allowlist fix that existed only in root.
+      #
+      # The binary is pinned by version AND sha256: it is third-party code executed in
+      # CI, and "latest" would let an upstream release change what runs here.
+      - name: Cache code-graph binary
+        id: cbm-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cbm
+          key: cbm-linux-amd64-v0.10.8
+
+      - name: Fetch code-graph binary
+        if: steps.cbm-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.cbm
+          curl -sSfL -o /tmp/cbm.tar.gz             https://github.com/DeusData/codebase-memory-mcp/releases/download/v0.10.8/codebase-memory-mcp-linux-amd64.tar.gz
+          echo "e5cba4cad6ca8254a85f45041fc8a831908d7d5cb64f98fc3f8eb70a58671793  /tmp/cbm.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/cbm.tar.gz -C ~/.cbm
+
+      # --require-graph is the point of this step. Without it the script exits 0 when
+      # the binary or the index is missing, which locally is right — a missing tool is
+      # not a broken commit — and in CI would be a green check that measured nothing.
+      # This repo has already shipped one of those.
+      - name: Tree sync (.claude vs template/.claude)
+        run: |
+          export CBM_BIN="$HOME/.cbm/codebase-memory-mcp"
+          chmod +x "$CBM_BIN"
+          echo "{\"repo_path\":\"$PWD\",\"mode\":\"full\"}" | "$CBM_BIN" cli index_repository
+          python scripts/check-tree-sync.py --require-graph
+
   harness-test:
     # The node test suites under test/scripts/ — the skill harness itself
     # (test-wrapper, autopilot-state, spark-state). 31 assertions that ran

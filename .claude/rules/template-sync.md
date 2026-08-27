@@ -78,6 +78,13 @@ Root prompts reference these paths, so their absence is a decision, not a gap. R
   `skills/skill-creator/SKILL.md` now say so and give the manual procedure instead.
 - `.claude/scripts/validate-spec-structure.mjs` — template-only and referenced by nothing
   in root. Not assessed; left alone rather than ported blind.
+- `.claude/hooks/__tests__/` — ten node test files covering the hooks, template-only. Root runs
+  the same hooks with **no** tests over them. Found 2026-08-28 while closing the debug-layer
+  divergence; recorded rather than ported because the suite currently fails one case on
+  Windows (`getProjectDir` asserts a `/tmp` path), so porting it blind would hand root a red
+  suite. `scripts/check-tree-sync.py` does not catch gaps of this shape — it compares functions
+  in files that exist in **both** trees, and a file present in only one is exactly what this
+  section is for.
 
 ## Files in Both, but Root Has DLD-Specific Extensions
 

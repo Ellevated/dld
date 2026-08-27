@@ -264,7 +264,10 @@ export function extractAllowedFiles(specPath) {
     const allowed = [];
 
     for (const line of section.split('\n')) {
-      const trimmed = line.trim();
+      // Canonical `- `path`` bullet: strip the list marker BEFORE matching — the
+      // marker's `-` is also a valid path char, so the backtracking regex below
+      // otherwise captures a bare "-" as the path and the allowlist deny-alls.
+      const trimmed = line.trim().replace(/^-\s+/, '');
       if (!trimmed || trimmed.startsWith('#')) continue;
 
       // Extract path from markdown formats: `path`, **path**, or path - description
