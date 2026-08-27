@@ -92,16 +92,27 @@ def unwrap(parsed: dict) -> dict:
     rather than pinning a version — the shape is cheap to detect and a version pin here
     would break on the next upgrade instead of on a rewrite.
     """
-    if "structuredContent" in parsed:
-        return parsed["structuredContent"]
+    text = None
     content = parsed.get("content")
     if isinstance(content, list) and content and isinstance(content[0], dict):
-        text = content[0].get("text")
-        if isinstance(text, str):
-            try:
-                return json.loads(text)
-            except json.JSONDecodeError:
-                pass
+        raw = content[0].get("text")
+        if isinstance(raw, str):
+            text = raw
+
+    # A failed tool call still exits 0 and still returns a well-formed envelope — the only
+    # marker is isError. Unwrapping it silently yields an empty result that reads exactly
+    # like "nothing matched", which is how a rejected query first reached CI as
+    # "the graph holds no functions".
+    if parsed.get("isError"):
+        raise RuntimeError(f"tool reported an error: {text or parsed}")
+
+    if "structuredContent" in parsed:
+        return parsed["structuredContent"]
+    if text is not None:
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
     return parsed
 
 
@@ -172,19 +183,25 @@ def collect_symbols(binary: Path, project: str) -> tuple[dict, dict, list[str]]:
     did not; the paths it returned are the only way to tell a stale index from a prefix
     that does not look the way this script assumes.
     """
-    result = call(
-        binary,
-        "query_graph",
-        {
-            "project": project,
-            "query": (
-                "MATCH (n) WHERE (n:Function OR n:Method) AND n.file_path CONTAINS 'claude/' "
-                "RETURN n.file_path AS f, n.name AS name, n.start_line AS s, n.end_line AS e"
-            ),
-        },
-    )
-
-    rows = result.get("rows", [])
+    # One label per query. `(n:Function OR n:Method)` works on the Cypher subset this tool
+    # shipped in 0.9.0, but the subset is not a documented contract and a rejected query
+    # comes back as a well-formed empty result, not as an error the caller notices. Two
+    # plain MATCHes ask for less and cost one extra call.
+    rows: list[list] = []
+    for label in ("Function", "Method"):
+        result = call(
+            binary,
+            "query_graph",
+            {
+                "project": project,
+                "query": (
+                    f"MATCH (n:{label}) WHERE n.file_path CONTAINS 'claude/' "
+                    "RETURN n.file_path AS f, n.name AS name, n.start_line AS s, "
+                    "n.end_line AS e"
+                ),
+            },
+        )
+        rows.extend(result.get("rows", []))
     root: dict[tuple[str, str], tuple[int, int]] = {}
     tmpl: dict[tuple[str, str], tuple[int, int]] = {}
     samples: list[str] = []
