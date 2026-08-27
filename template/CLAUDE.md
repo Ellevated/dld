@@ -160,8 +160,12 @@ ai/glossary/
 On any change. Steps 1-2 run on the **code graph** if one is indexed, on `grep` if not.
 
 **Graph** = a code-graph MCP (`codebase-memory` or equivalent: `list_projects`, `search_graph`,
-`trace_path`, `detect_changes`). Check once per session with `list_projects`; if the project is
-absent or its `head_sha` lags `git rev-parse HEAD`, treat it as stale and grep for that run.
+`trace_path`, `index_repository`). **Rebuild before you trust it** — indexing is sub-second on a
+repo of this size, which is cheaper than reasoning about whether the index is current.
+
+Do not hunt for a staleness field. In `codebase-memory` neither `head_sha` (read live from git,
+so always equal to `HEAD`) nor `detect_changes` (a git diff against the base branch) reports
+index drift. Rebuilding is the check.
 
 1. **UP** — who uses the changed code? → `trace_path(function_name, direction="inbound", depth=2)`
    gives transitive callers, not just direct imports · fallback `grep -r "from.*{module}" .`

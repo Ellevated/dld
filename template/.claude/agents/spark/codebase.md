@@ -69,10 +69,15 @@ edges instead of text that happens to match. Check once, before Step 1:
 list_projects()   → find the entry whose root_path is this repo; note its `name`
 ```
 
+Then rebuild it before you rely on it — `index_repository(repo_path=".", mode="full")`,
+sub-second on a repo of this size. Do not hunt for a freshness field: `head_sha` is read live
+from git and always matches `HEAD`, and `detect_changes` returns a git diff against the base
+branch, not index drift. The rebuild *is* the freshness check.
+
 | Result | What you do |
 |--------|-------------|
-| Project present, `head_sha` at or near `git rev-parse HEAD` | Graph path for Steps 1-2 |
-| Project absent, `head_sha` far behind, or no such MCP | Grep path — and say which in the output |
+| Rebuild succeeded | Graph path for Steps 1-2 |
+| No such MCP, or the rebuild errors | Grep path — and say which in the output |
 
 Never stall waiting for a graph. A missing graph costs precision, not the research.
 

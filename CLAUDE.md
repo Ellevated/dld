@@ -114,9 +114,14 @@ Knowledge that prevents breakage during refactoring. In **this** repo it is two 
 
 On any change. Steps 1-2 run on the **code graph** if it is fresh, on `grep` if it is not.
 
-**The graph here** is the `codebase-memory` MCP, project `D-dev-dld`. Check freshness once per
-session with `list_projects` and compare its `head_sha` to `git rev-parse HEAD`; absent or
-lagging means grep for that run.
+**The graph here** is the `codebase-memory` MCP (external OSS, `DeusData/codebase-memory-mcp`),
+project `D-dev-dld`. **Rebuild it, don't check it:** `index_repository(repo_path=".",
+mode="full")` costs **687 ms** on this repo — cheaper than working out whether you need to.
+
+Both plausible freshness signals lie, verified 2026-08-27: `index_status.head_sha` is read live
+from git, so it equals `HEAD` whether the graph was built a second ago or a month ago, and
+`detect_changes` returns a git diff against `main` (812 files here), not index drift. `mode`
+matters too — `fast` drops `scripts/`, `docs/` and `tests/integration` from the graph entirely.
 
 1. **UP** — who uses the changed code? →
    `trace_path(project="D-dev-dld", function_name="write_lifecycle", direction="inbound", depth=2)`

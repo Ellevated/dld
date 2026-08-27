@@ -1,0 +1,6 @@
+# codebase-memory-mcp — what the code graph may index.
+#
+# The indexer skips hidden directories by default, so .claude/ — the agents, skills and hooks
+# this project runs on — never reaches the graph. This line un-skips it, which is what lets
+# search_graph and trace_path answer questions about the prompt tree at all.
+!.claude/

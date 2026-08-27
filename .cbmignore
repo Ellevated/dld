@@ -1,0 +1,8 @@
+# codebase-memory-mcp — what the code graph may index.
+#
+# The indexer skips hidden directories by default, which in this repo means it skipped
+# .claude/ and template/.claude/ — the prompt tree, which IS this repo's product. These two
+# lines un-skip them: measured 2026-08-27, they take the graph from 19756 to 24201 nodes and
+# make SIMILAR_TO link each script to its twin in the other tree (jaccard 1.000 when in sync).
+!.claude/
+!template/.claude/

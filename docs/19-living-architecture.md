@@ -416,9 +416,14 @@ when it is not; Steps 3-5 are grep either way.
 
 #### Step 0: Is a graph available?
 
-`list_projects()` on a code-graph MCP (`codebase-memory` or equivalent). Project present and
-its `head_sha` at or near `git rev-parse HEAD` → graph path. Absent or stale → grep path, and
-say so in the output rather than letting a silent fallback read as a thorough search.
+`list_projects()` on a code-graph MCP (`codebase-memory` or equivalent), then rebuild it:
+`index_repository(repo_path=".", mode="full")` is sub-second on a repo of this size. No MCP, or
+the rebuild fails → grep path, and say so in the output rather than letting a silent fallback
+read as a thorough search.
+
+There is no freshness field to check instead. `head_sha` is read live from git and equals `HEAD`
+regardless of when the graph was built; `detect_changes` returns a git diff against the base
+branch, not index drift. Rebuilding is both cheaper and the only honest check.
 
 The indexer skips hidden directories, so in this repo `.claude/**` and `template/.claude/**`
 are not in the graph at all — the prompt tree is grep-only territory.
