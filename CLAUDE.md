@@ -117,7 +117,10 @@ On any change. Steps 1-2 run on the **code graph** if it is fresh, on `grep` if 
 
 **The graph here** is the `codebase-memory` MCP (external OSS, `DeusData/codebase-memory-mcp`),
 project `D-dev-dld`. **Rebuild it, don't check it:** `index_repository(repo_path=".",
-mode="full")` costs **687 ms** on this repo — cheaper than working out whether you need to.
+mode="full")` costs **687 ms** on an already-indexed dld — cheaper than working out whether you
+need to. That figure is incremental and does not generalise: a first index of a large repo is
+minutes, not milliseconds (measured 2026-08-28 across the fleet — 5k nodes 1.4 s, 24k 0.7 s
+incremental, 92k 15 s, 130k **235 s**). Budget by node count, not by habit.
 
 Both plausible freshness signals lie, verified 2026-08-27: `index_status.head_sha` is read live
 from git, so it equals `HEAD` whether the graph was built a second ago or a month ago, and

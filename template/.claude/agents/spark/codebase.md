@@ -69,8 +69,9 @@ edges instead of text that happens to match. Check once, before Step 1:
 list_projects()   → find the entry whose root_path is this repo; note its `name`
 ```
 
-Then rebuild it before you rely on it — `index_repository(repo_path=".", mode="full")`,
-sub-second on a repo of this size. Do not hunt for a freshness field: `head_sha` is read live
+Then rebuild it before you rely on it — `index_repository(repo_path=".", mode="full")`.
+An incremental rebuild is sub-second; a first index of a large repo runs minutes (measured:
+~1 s at 5k graph nodes, ~4 min at 130k), so do it once at the start, not per question. Do not hunt for a freshness field: `head_sha` is read live
 from git and always matches `HEAD`, and `detect_changes` returns a git diff against the base
 branch, not index drift. The rebuild *is* the freshness check.
 

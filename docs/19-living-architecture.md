@@ -417,7 +417,8 @@ when it is not; Steps 3-5 are grep either way.
 #### Step 0: Is a graph available?
 
 `list_projects()` on a code-graph MCP (`codebase-memory` or equivalent), then rebuild it:
-`index_repository(repo_path=".", mode="full")` is sub-second on a repo of this size. No MCP, or
+`index_repository(repo_path=".", mode="full")` is sub-second incrementally, but a first index
+scales with the repo — measured 2026-08-28 from ~1 s at 5k graph nodes to ~4 min at 130k. No MCP, or
 the rebuild fails → grep path, and say so in the output rather than letting a silent fallback
 read as a thorough search.
 

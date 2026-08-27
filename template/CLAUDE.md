@@ -160,8 +160,10 @@ ai/glossary/
 On any change. Steps 1-2 run on the **code graph** if one is indexed, on `grep` if not.
 
 **Graph** = a code-graph MCP (`codebase-memory` or equivalent: `list_projects`, `search_graph`,
-`trace_path`, `index_repository`). **Rebuild before you trust it** — indexing is sub-second on a
-repo of this size, which is cheaper than reasoning about whether the index is current.
+`trace_path`, `index_repository`). **Rebuild before you trust it** — an incremental rebuild after
+a few edits is sub-second, which is cheaper than reasoning about whether the index is current.
+A *first* index is not: it scales with the repo, from ~1 s at 5k graph nodes to ~4 min at 130k
+(measured across eight repos, 2026-08-28). Pay that once per session, not once per question.
 
 Do not hunt for a staleness field. In `codebase-memory` neither `head_sha` (read live from git,
 so always equal to `HEAD`) nor `detect_changes` (a git diff against the base branch) reports
