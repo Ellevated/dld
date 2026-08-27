@@ -112,18 +112,34 @@ Knowledge that prevents breakage during refactoring. In **this** repo it is two 
 
 ### Impact Tree Algorithm (5 steps)
 
-On any change:
+On any change. Steps 1-2 run on the **code graph** if it is fresh, on `grep` if it is not.
 
-1. **UP** — who uses the changed code? (`grep -r "from.*{module}" .`)
-2. **DOWN** — what does it depend on? (imports in file)
-3. **BY TERM** — grep old name across entire project
-4. **CHECKLIST** — mandatory folders (tests/, migrations/, edge functions/)
+**The graph here** is the `codebase-memory` MCP, project `D-dev-dld`. Check freshness once per
+session with `list_projects` and compare its `head_sha` to `git rev-parse HEAD`; absent or
+lagging means grep for that run.
+
+1. **UP** — who uses the changed code? →
+   `trace_path(project="D-dev-dld", function_name="write_lifecycle", direction="inbound", depth=2)`
+   returns 9 callers across `callback.py`, `orchestrator_queue.py`, `spec_operator.py` and
+   `orchestrator.py`, including 2-hop ones a single grep never sees ·
+   fallback `grep -r "from.*{module}" .`
+2. **DOWN** — what does it depend on? → the same call with `direction="outbound"` · fallback:
+   imports in the file
+3. **BY TERM** — `grep -rn "{old_term}" .` — **always grep here**, graph or no graph
+4. **CHECKLIST** — mandatory folders (`tests/`, `scripts/vps/tests/`, `template/`)
 5. **DUAL SYSTEM** — if changing data source, who reads from old/new?
 
-**Rule:** After changes `grep "{old_term}" .` = 0 results!
+**Rule:** After changes `grep "{old_term}" .` = 0 results! Grep stays the acceptance check even
+when the graph found the call sites.
+
+**What the graph does not cover here** (verified 2026-08-27): the indexer skips hidden
+directories, so `.claude/**` and `template/.claude/**` — the whole prompt tree, which is this
+repo's actual product — have **zero** nodes. It covers `scripts/`, `tests/`, `packages/`,
+`docs/`, `ai/` and root-level `*.md`.
 
 **In this repo, step 4 always includes `template/`.** A rename finished in one tree and not
-the other is the defect this framework produces most often.
+the other is the defect this framework produces most often — and it is exactly the case the
+graph cannot catch, because neither tree's `.claude/` is indexed.
 
 ---
 
