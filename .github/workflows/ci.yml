@@ -141,9 +141,10 @@ jobs:
         run: |
           export CBM_BIN="$HOME/.cbm/codebase-memory-mcp"
           chmod +x "$CBM_BIN"
-          # Without a warm daemon every CLI call starts a temporary one, and on a cold
-          # runner that start was observed finishing with exit 0 and no output — the
-          # first run of this step died on exactly that. The script also retries.
+          # A warm daemon removes the per-call start cost. It is not what fixed this
+          # step — the first two runs failed because CLI 0.10.8 prints a human table
+          # unless asked for --json, and the script was reading 248 rows of formatted
+          # text as "no result". Kept because it is free and the hint recommends it.
           "$CBM_BIN" daemon start || true
           echo "{\"repo_path\":\"$PWD\",\"mode\":\"full\"}" | "$CBM_BIN" cli index_repository
           python scripts/check-tree-sync.py --require-graph

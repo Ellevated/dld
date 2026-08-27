@@ -84,18 +84,41 @@ def find_binary() -> Path | None:
     return None
 
 
+def unwrap(parsed: dict) -> dict:
+    """Return the tool result from whichever envelope this CLI version used.
+
+    `--json` yields the MCP envelope: `structuredContent` holds the result, and `content`
+    repeats it as a JSON string. Older builds printed the bare result. Accept all three
+    rather than pinning a version — the shape is cheap to detect and a version pin here
+    would break on the next upgrade instead of on a rewrite.
+    """
+    if "structuredContent" in parsed:
+        return parsed["structuredContent"]
+    content = parsed.get("content")
+    if isinstance(content, list) and content and isinstance(content[0], dict):
+        text = content[0].get("text")
+        if isinstance(text, str):
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                pass
+    return parsed
+
+
 def call(binary: Path, tool: str, payload: dict, attempts: int = 3) -> dict:
     """Run one MCP tool through the CLI, returning its parsed JSON result.
 
-    Retries an empty result. Each CLI invocation starts a temporary daemon unless one is
-    already warm, and on a cold CI runner that start has been observed to finish with
-    exit 0 and no output at all — a race, not a failure the caller can act on. Retrying
-    is cheaper than diagnosing which invocation lost it.
+    `--json` is mandatory, not cosmetic: 0.9.0 printed JSON by default, 0.10.8 prints a
+    human table instead, and without the flag this script read 248 rows of formatted text
+    as "no result". CI found that; a version-agnostic flag is the fix.
+
+    Retries an empty result — each invocation starts a temporary daemon unless one is warm,
+    and a cold start can finish with exit 0 and no output at all.
     """
     last = None
     for attempt in range(attempts):
         proc = subprocess.run(
-            [str(binary), "cli", tool],
+            [str(binary), "cli", "--json", tool],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
@@ -105,7 +128,7 @@ def call(binary: Path, tool: str, payload: dict, attempts: int = 3) -> dict:
         # into stdout on some builds. Take the last line that parses as JSON.
         for line in reversed([ln for ln in proc.stdout.splitlines() if ln.strip()]):
             try:
-                return json.loads(line)
+                return unwrap(json.loads(line))
             except json.JSONDecodeError:
                 continue
         last = proc
