@@ -165,8 +165,13 @@ def relative(path: str) -> str:
     return path
 
 
-def collect_symbols(binary: Path, project: str) -> tuple[dict, dict]:
-    """Return (root, template) maps of (file, name) -> (start_line, end_line)."""
+def collect_symbols(binary: Path, project: str) -> tuple[dict, dict, list[str]]:
+    """Return (root, template) maps of (file, name) -> span, plus sample paths seen.
+
+    The samples exist so that "no functions found" can say *why*. The query matched or it
+    did not; the paths it returned are the only way to tell a stale index from a prefix
+    that does not look the way this script assumes.
+    """
     result = call(
         binary,
         "query_graph",
@@ -179,9 +184,13 @@ def collect_symbols(binary: Path, project: str) -> tuple[dict, dict]:
         },
     )
 
+    rows = result.get("rows", [])
     root: dict[tuple[str, str], tuple[int, int]] = {}
     tmpl: dict[tuple[str, str], tuple[int, int]] = {}
-    for path, name, start, end in result.get("rows", []):
+    samples: list[str] = []
+    for path, name, start, end in rows:
+        if len(samples) < 5 and path not in samples:
+            samples.append(path)
         if not is_code(path):
             continue
         key = (relative(path), name)
@@ -190,7 +199,7 @@ def collect_symbols(binary: Path, project: str) -> tuple[dict, dict]:
             tmpl[key] = span
         elif path.startswith(ROOT_PREFIX):
             root[key] = span
-    return root, tmpl
+    return root, tmpl, samples
 
 
 def read_lines(repo_root: Path, tree_prefix: str, rel_file: str, cache: dict) -> list[str] | None:
@@ -298,7 +307,7 @@ def main() -> int:
             print(f"TREE_SYNC_UNAVAILABLE: {repo_root} is not indexed — nothing ran.")
             print('  Index it first: index_repository(repo_path=".", mode="full")')
             return unavailable()
-        root, tmpl = collect_symbols(binary, project)
+        root, tmpl, samples = collect_symbols(binary, project)
     except (RuntimeError, OSError, ValueError) as exc:
         print(f"TREE_SYNC_ERROR: {exc}", file=sys.stderr)
         return 2
@@ -306,6 +315,13 @@ def main() -> int:
     if not root and not tmpl:
         print("TREE_SYNC_UNAVAILABLE: the graph holds no functions under either tree.")
         print('  The index predates .cbmignore — rebuild with mode="full" and re-run.')
+        if samples:
+            print("  The query DID return rows; none matched the expected prefixes")
+            print(f"  ('{ROOT_PREFIX}' / '{TMPL_PREFIX}') with a code suffix. Sample paths:")
+            for sample in samples:
+                print(f"    {sample}")
+        else:
+            print("  The query returned no rows at all.")
         return unavailable()
 
     findings, compared, unreadable = analyse(repo_root, root, tmpl)
