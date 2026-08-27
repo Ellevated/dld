@@ -61,7 +61,7 @@ const TEST_FILE_PATTERNS = [
 ];
 
 function isTestFile(filePath) {
-  return TEST_FILE_PATTERNS.some(pattern => pattern.test(filePath));
+  return TEST_FILE_PATTERNS.every(pattern => pattern.test(filePath));
 }
 
 function isIntegrationTest(relPath, patterns) {
