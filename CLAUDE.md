@@ -15,6 +15,7 @@ pytest tests/ -v                                   # unit + integration + regres
 pytest scripts/vps/tests/ -v                       # orchestrator
 for f in test/scripts/*.test.mjs; do node "$f"; done   # skill harness
 node .claude/scripts/check-prompt-integrity.mjs --tree .claude
+python scripts/check-tree-sync.py                  # .claude/ vs template/.claude/ drift
 ```
 
 > **`./test` does not exist in this repo, by decision.** It is a per-project artifact

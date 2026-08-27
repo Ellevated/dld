@@ -51,6 +51,9 @@ Does template/.claude/ have this file?
 - `settings.local.json` — Local dev settings
 - `skills/scaffold/SKILL.md` — Skill generator
 - `hooks/hooks.config.local.mjs` — DLD-specific hook overrides (excludeFromSync)
+- `scripts/check-tree-sync.py` — compares the two trees' function bodies and reports what was
+  fixed in one only. Root-only by nature: a downstream project has a single `.claude/` and
+  nothing to compare it against.
 - `scripts/eval-agents.mjs` — feeds root's `/eval` over `test/agents/` golden datasets.
   Not the same tool as template's `scripts/run-eval.mjs`, which runs a *skill* against
   `evals.json`; the similar names have already caused one "isn't this a rename?"
