@@ -1,13 +1,19 @@
 allowed_files_hash: null
-blocked_reason: null
+blocked_reason: раскол callback.py делаем в интерактиве по решению founder 29.08 —
+  автопилоту НЕ отдавать (прошлый прогон сжёг таймаут и оставил ветку висеть)
 finished_at: null
 kind: tech
 priority: p1
 pueue_id: null
 spec_id: TECH-216
 started_at: null
-status: queued
-transitions: []
-updated_at: '2026-07-27T17:40:14Z'
-updated_by: spark
-version: 1
+status: blocked
+transitions:
+- at: '2026-08-28T22:07:32Z'
+  by: operator
+  from: queued
+  pueue_id: null
+  to: blocked
+updated_at: '2026-08-28T22:07:32Z'
+updated_by: operator
+version: 2
