@@ -81,7 +81,15 @@ if (existsSync(domainMapPath)) {
   if (refMatch) {
     try {
       const domainMap = readFileSync(domainMapPath, 'utf-8');
-      const specDomain = refMatch[1].trim().toLowerCase();
+      // Strip markdown emphasis/code marks before matching. Specs write the field
+      // as **Domain:** with the value in backticks, so a raw capture keeps the
+      // trailing "**" and the whole tail — which never matches domain-map.md and
+      // failed the gate on every spec in the repo.
+      const specDomain = refMatch[1]
+        .replace(/[*`]/g, '')
+        .trim()
+        .split(/\s+/)[0]
+        .toLowerCase();
       if (specDomain && !domainMap.toLowerCase().includes(specDomain)) {
         errors.push(`Blueprint conflict: domain "${specDomain}" not found in domain-map.md`);
       }
