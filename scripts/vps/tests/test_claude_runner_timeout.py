@@ -196,14 +196,16 @@ class TestVariantCNeverIntroduced:
     """EC-5: callback gate NEVER returns done from local-only develop."""
 
     def test_no_local_develop_gate_path(self):
-        """_is_done_on_develop must check origin/develop, never just 'develop'."""
-        source = (Path(VPS_DIR) / "callback.py").read_text(encoding="utf-8")
+        """find_implementation_commit must check origin/develop, never just 'develop'."""
+        source = (Path(VPS_DIR) / "gate_logic.py").read_text(encoding="utf-8")
         import re
 
-        fn_match = re.search(r"def _is_done_on_develop\(.*?\).*?(?=\ndef |\Z)", source, re.DOTALL)
-        assert fn_match, "_is_done_on_develop function not found"
+        fn_match = re.search(
+            r"def find_implementation_commit\(.*?\).*?(?=\ndef |\Z)", source, re.DOTALL
+        )
+        assert fn_match, "find_implementation_commit function not found"
         fn_body = fn_match.group()
-        assert "origin/develop" in fn_body, "_is_done_on_develop must check origin/develop"
+        assert "origin/develop" in fn_body, "find_implementation_commit must check origin/develop"
         # Verify no bare "develop" (without origin/) as a git ref
         lines_with_bare_develop = [
             line
@@ -211,12 +213,14 @@ class TestVariantCNeverIntroduced:
             if '"develop"' in line and "origin/develop" not in line and "fetch" not in line.lower()
         ]
         assert len(lines_with_bare_develop) == 0, (
-            f"_is_done_on_develop must not use bare 'develop' ref: {lines_with_bare_develop}"
+            f"find_implementation_commit must not use bare 'develop' ref: {lines_with_bare_develop}"
         )
 
     def test_push_local_is_best_effort_not_gate(self):
         """push-local is a flush helper, NOT a gate — gate must still check origin."""
         source = (Path(VPS_DIR) / "callback.py").read_text(encoding="utf-8")
-        # push-local block must NOT skip _fetch_develop or _is_done_on_develop
-        assert "_fetch_develop(" in source, "_fetch_develop must still be called"
-        assert "_is_done_on_develop(" in source, "_is_done_on_develop must still be the gate"
+        # push-local block must NOT skip the gate_logic gate calls
+        assert "gate_logic.fetch_develop(" in source, "gate_logic.fetch_develop must still be called"
+        assert "gate_logic.find_implementation_commit(" in source, (
+            "gate_logic.find_implementation_commit must still be the gate"
+        )

@@ -26,6 +26,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import callback  # noqa: E402
 import db  # noqa: E402
+import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 
 
@@ -138,9 +139,9 @@ def test_ec1_feature_branch_only_is_blocked(tmp_path, tmp_db, monkeypatch):
     _commit(repo, "src/x.py", "y=1\n", f"feat({spec_id}): work")
     _git(repo, "checkout", "-q", "develop")
 
-    # _is_done_on_develop sees only origin/develop → False
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
+    # find_implementation_commit sees only origin/develop → None
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=901)
 
@@ -161,8 +162,8 @@ def test_ec2_commit_on_origin_develop_is_done(tmp_path, tmp_db, monkeypatch):
     _seed_lifecycle_yaml(repo, spec_id)
 
     # Gate finds implementation on origin/develop
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: "deadbee")
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=902)
 
@@ -180,8 +181,8 @@ def test_ec3_no_commits_demotes(tmp_path, tmp_db, monkeypatch):
     _seed_task("proj", f"autopilot-{spec_id}", pueue_id=903, branch=f"feature/{spec_id}")
     _seed_lifecycle_yaml(repo, spec_id)
 
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=903)
 

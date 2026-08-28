@@ -23,6 +23,7 @@ if VPS_DIR not in sys.path:
 
 import callback  # noqa: E402
 import db  # noqa: E402
+import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 
 
@@ -76,6 +77,50 @@ def git_repo(tmp_path):
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
+
+
+# ---------------------------------------------------------------------------
+# EC-5 (devil DA-4): monkeypatch on gate_logic module attribute must intercept
+# the call callback.verify_status_sync makes. This is the guard on the whole
+# TECH-210 approach — if `from gate_logic import find_implementation_commit`
+# is ever reintroduced in callback.py, this test fails because the name is
+# bound at import time and monkeypatching gate_logic.find_implementation_commit
+# no longer reaches the bound reference callback.py would be using.
+# ---------------------------------------------------------------------------
+
+
+class TestGateLogicModuleAttributePatchIntercepted:
+    def test_find_implementation_commit_patch_is_used_not_real_function(
+        self, git_repo, monkeypatch
+    ):
+        """Real git_repo has NO implementation commit — the real
+        `gate_logic.find_implementation_commit` would return None here, giving
+        `blocked`. If callback.py called it via `from gate_logic import
+        find_implementation_commit` (a name bound at import time), this
+        monkeypatch of the gate_logic module attribute would NOT be seen and
+        the real function would run, giving `blocked` — this assertion would
+        fail. Seeing `done` proves the module-attribute call form is in effect.
+        """
+        lifecycle.write_lifecycle(str(git_repo), "TECH-EC5", "in_progress")
+        (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
+        (git_repo / "ai" / "features" / "TECH-EC5-spec.md").write_text(
+            "# TECH-EC5\n\n## Allowed Files\n\n- `scripts/vps/callback.py`\n"
+        )
+
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a, **kw: "deadbee")
+
+        callback.verify_status_sync(str(git_repo), "TECH-EC5", target="done", pueue_id=5)
+
+        data = lifecycle.read_lifecycle(str(git_repo), "TECH-EC5")
+        assert data is not None
+        assert data["status"] == "done", (
+            "monkeypatch.setattr(gate_logic, 'find_implementation_commit', fake) "
+            "must be what verify_status_sync sees — status did not reflect the fake, "
+            "the real function ran instead (DA-4 trap: a `from gate_logic import ...` "
+            "in callback.py would bind the name at import time and this patch would "
+            "silently miss it)"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -171,8 +216,8 @@ class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
         lifecycle.write_lifecycle(str(git_repo), "TECH-X", "in_progress")
 
         # Gate stubs
-        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: "deadbee")
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
 
         # Need spec file with ## Allowed Files so gate branch is entered
@@ -211,8 +256,8 @@ class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
         """Rule 1 gate returns False → lifecycle demoted to blocked."""
         lifecycle.write_lifecycle(str(git_repo), "TECH-Y", "in_progress")
 
-        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
 
         (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
@@ -345,151 +390,6 @@ class TestFindLogFileFiltersStale:
         assert result == f
 
 
-# --- TECH-177: Subject-only matcher for _spec_has_merged_implementation ------
-
-
-class TestSubjectImplements:
-    """Unit tests for the pure subject-line classifier."""
-
-    def test_conventional_scope_match(self):
-        assert callback._subject_implements("feat(FTR-925): impl", "FTR-925")
-
-    def test_conventional_scope_with_bang(self):
-        assert callback._subject_implements("fix(FTR-925)!: breaking", "FTR-925")
-
-    def test_conventional_multi_scope_match(self):
-        assert callback._subject_implements("feat(FTR-925,FTR-926): both", "FTR-925")
-        assert callback._subject_implements("feat(FTR-925, FTR-926): both", "FTR-926")
-
-    def test_legacy_bare_match(self):
-        assert callback._subject_implements("FTR-925: impl Y", "FTR-925")
-
-    def test_merge_match(self):
-        assert callback._subject_implements("merge FTR-925", "FTR-925")
-        assert callback._subject_implements("merge FTR-925: impl", "FTR-925")
-        assert callback._subject_implements("Merge FTR-925", "FTR-925")
-
-    def test_body_mention_does_not_match(self):
-        # subject is just the first line; body never reaches this function.
-        # But verify subjects that LOOK like body-style mentions are rejected.
-        assert not callback._subject_implements(
-            "feat(FTR-923): impl X (see also FTR-925)", "FTR-925"
-        )
-
-    def test_id_after_colon_does_not_match(self):
-        assert not callback._subject_implements("feat: FTR-925 something", "FTR-925")
-
-    def test_wrong_scope_does_not_match(self):
-        assert not callback._subject_implements("feat(FTR-923): impl", "FTR-925")
-
-    def test_empty_inputs(self):
-        assert not callback._subject_implements("", "FTR-925")
-        assert not callback._subject_implements("feat(FTR-925): x", "")
-
-
-class TestSubjectImplementsRealWorld:
-    """Real-world subjects from awardybot 2026-05-24/25 night — should all match.
-    BUG-192 regression cases.
-    """
-
-    def test_lowercase_scope(self):
-        assert callback._subject_implements(
-            "feat(ftr-1076): add WB API key Pydantic schemas", "FTR-1076"
-        )
-        assert callback._subject_implements(
-            "chore(ftr-1076): mark done in spec + backlog", "FTR-1076"
-        )
-
-    def test_mixed_case_scope(self):
-        assert callback._subject_implements("feat(Ftr-1076): something", "FTR-1076")
-
-    def test_merge_with_branch_prefix(self):
-        assert callback._subject_implements(
-            "Merge feature/FTR-1076: SRID — MC admin endpoint", "FTR-1076"
-        )
-        assert callback._subject_implements("Merge autopilot/BUG-1065 into develop", "BUG-1065")
-        assert callback._subject_implements("Merge fix/BUG-439 — restore constraint", "BUG-439")
-
-    def test_case_insensitive_multi_scope(self):
-        assert callback._subject_implements("feat(area, ftr-1076, FTR-1077): both", "FTR-1077")
-        assert callback._subject_implements("feat(area, ftr-1076, FTR-1077): both", "FTR-1076")
-
-
-class TestSubjectImplementsAntiFalsePositive:
-    """TECH-177 invariant: body/trailer mentions DO NOT count.
-    MUST stay False after BUG-192 fix.
-
-    2026-07-02 narrowing: a PURE trailing `(SPEC-ID)` at end of subject is now
-    ACCEPTED (plpilot BUG-338/339/340/346/347 + TECH-349 false-blocked with
-    merged work). Free text inside the trailing parens stays rejected.
-    """
-
-    def test_trailing_free_text_rejected(self):
-        # `(FTR-1077 Task 3)` is a task reference, not a pure spec-id token.
-        assert not callback._subject_implements(
-            "feat(billing): SRID pre-withdrawal gate (FTR-1077 Task 3)", "FTR-1077"
-        )
-        assert not callback._subject_implements(
-            "fix(db): restore constraint (see BUG-439)", "BUG-439"
-        )
-
-    def test_trailing_pure_spec_id_accepted(self):
-        # 2026-07-02 semantic change: pure trailing ID = implementation claim.
-        assert callback._subject_implements("fix(db): restore constraint (BUG-439)", "BUG-439")
-
-    def test_see_also_rejected(self):
-        assert not callback._subject_implements("feat(other): see also FTR-925", "FTR-925")
-
-    def test_refs_footer_rejected(self):
-        assert not callback._subject_implements("Refs: FTR-925", "FTR-925")
-
-    def test_no_scope_id_in_message_rejected(self):
-        assert not callback._subject_implements("feat: FTR-1076 implementation", "FTR-1076")
-
-
-class TestMatchSubjectParityWithCallback:
-    """gate_logic.match_subject MUST accept identical sets after BUG-192 fix.
-    Without parity, gate-daemon (shadow) and callback drift apart.
-    """
-
-    def test_parity_real_world_accepts(self):
-        from gate_logic import match_subject
-
-        positives = [
-            ("feat(ftr-1076): impl", "FTR-1076"),
-            ("Merge feature/FTR-1076: foo", "FTR-1076"),
-            ("Merge autopilot/BUG-1065 into develop", "BUG-1065"),
-            ("feat(area, ftr-1076): both", "FTR-1076"),
-            # 2026-07-02 plpilot false-blocked forms:
-            ("fix(security): revoke grants (BUG-339)", "BUG-339"),
-            ("merge: feature/TECH-349 — Edge resilience", "TECH-349"),
-            ("Merge branch 'fix/BUG-346-receipt-phantom' into develop", "BUG-346"),
-        ]
-        for subject, spec_id in positives:
-            assert callback._subject_implements(subject, spec_id), (
-                f"callback rejected positive: {subject!r} {spec_id}"
-            )
-            assert match_subject(subject, spec_id), (
-                f"gate_logic rejected positive: {subject!r} {spec_id}"
-            )
-
-    def test_parity_tech177_rejects(self):
-        from gate_logic import match_subject
-
-        negatives = [
-            ("feat(other): see FTR-925", "FTR-925"),
-            ("Refs: FTR-925", "FTR-925"),
-            ("fix(db): restore (see BUG-439)", "BUG-439"),
-        ]
-        for subject, spec_id in negatives:
-            assert not callback._subject_implements(subject, spec_id), (
-                f"callback wrongly accepted: {subject!r} {spec_id}"
-            )
-            assert not match_subject(subject, spec_id), (
-                f"gate_logic wrongly accepted: {subject!r} {spec_id}"
-            )
-
-
 # ---------------------------------------------------------------------------
 # TECH-197: Push-local + grace-retry + demote-once tests
 # ---------------------------------------------------------------------------
@@ -540,7 +440,7 @@ class TestPushLocalBeforeGate:
 
         # Stub _commit_stats — no pueue_id so started_at=None anyway
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
-        # Do NOT stub _fetch_develop or _is_done_on_develop — let them run real
+        # Do NOT stub gate_logic.fetch_develop or find_implementation_commit — let them run real
 
         # autopilot_signaled=False, target=blocked → push-local should flush
         callback.verify_status_sync(
@@ -686,12 +586,12 @@ class TestGraceRetry:
 
         # Simulate: push impl to origin on the "second" fetch check
         call_count = {"n": 0}
-        original_is_done = callback._is_done_on_develop
+        original_is_done = gate_logic.find_implementation_commit
 
         def _delayed_is_done(pp, sid, af):
             call_count["n"] += 1
             if call_count["n"] == 1:
-                return False  # first check: not visible yet
+                return None  # first check: not visible yet
             # Push impl BEFORE second check (simulates network lag)
             (repo / "src").mkdir(exist_ok=True)
             (repo / "src" / "g.py").write_text("# impl\n", encoding="utf-8")
@@ -700,7 +600,7 @@ class TestGraceRetry:
             _git(repo, "push", "origin", "develop")
             return original_is_done(pp, sid, af)
 
-        monkeypatch.setattr(callback, "_is_done_on_develop", _delayed_is_done)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", _delayed_is_done)
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
         monkeypatch.setattr(callback.time, "sleep", lambda s: None)
 
@@ -796,8 +696,8 @@ class TestAutopilotSignaledOverride:
         lifecycle.write_lifecycle(str(repo), "ARCH-DEP", "in_progress")
 
         # Gate is FALSE (no impl on origin) + autopilot explicitly blocked.
-        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
         monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0

@@ -1,7 +1,10 @@
 """TECH-166 — unit tests for callback.py implementation guard.
 
 EC-1..EC-3: _parse_allowed_files parser variants.
-EC-4..EC-6: _is_done_on_develop gate (replaces deleted _has_implementation_commits).
+EC-4..EC-9: gate_logic.find_implementation_commit gate (replaces deleted
+_has_implementation_commits). TECH-210: retargeted from callback._is_done_on_develop
+(bool) to gate_logic.find_implementation_commit (str | None, the single source
+callback.py now calls) — sha-truthy/None replaces is True/is False.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent.parent.parent / "scripts" / "vps"
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import callback  # noqa: E402
+import gate_logic  # noqa: E402
 
 
 # --- _parse_allowed_files ----------------------------------------------------
@@ -67,7 +71,7 @@ def test_ec3_parser_section_present_but_empty(tmp_path):
     assert callback._parse_allowed_files(spec) == []
 
 
-# --- _is_done_on_develop (Rule 1 gate) ----------------------------------------
+# --- gate_logic.find_implementation_commit (Rule 1 gate) ----------------------
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -106,31 +110,34 @@ def dev_repo(tmp_path):
 
 
 def test_ec4_done_on_develop_true(dev_repo):
-    """EC-4: commit on origin/develop with spec_id in subject + allowed file → True."""
+    """EC-4: commit on origin/develop with spec_id in subject + allowed file → sha."""
     _commit_to(dev_repo, "src/foo.py", "x=1\n", "feat(TECH-XXX): impl")
     _git(dev_repo, "push", "-q", "origin", "develop")
     _git(dev_repo, "fetch", "-q", "origin", "develop")
 
-    assert callback._is_done_on_develop(str(dev_repo), "TECH-XXX", ["src/foo.py"]) is True
+    assert (
+        gate_logic.find_implementation_commit(str(dev_repo), "TECH-XXX", ["src/foo.py"])
+        is not None
+    )
 
 
 def test_ec5_done_on_develop_wrong_file(dev_repo):
-    """EC-5: subject matches spec_id but allowed file not touched → False."""
+    """EC-5: subject matches spec_id but allowed file not touched → None."""
     _commit_to(dev_repo, "docs/note.md", "n\n", "feat(TECH-XXX): note only")
     _git(dev_repo, "push", "-q", "origin", "develop")
     _git(dev_repo, "fetch", "-q", "origin", "develop")
 
-    assert callback._is_done_on_develop(str(dev_repo), "TECH-XXX", ["src/foo.py"]) is False
+    assert gate_logic.find_implementation_commit(str(dev_repo), "TECH-XXX", ["src/foo.py"]) is None
 
 
 def test_ec6_done_on_develop_no_remote(tmp_path):
-    """EC-6: no origin/develop exists → graceful False, no exception."""
+    """EC-6: no origin/develop exists → graceful None, no exception."""
     repo = tmp_path / "bare"
     repo.mkdir()
     subprocess.run(
         ["git", "-C", str(repo), "init", "-q", "-b", "develop"], check=True, capture_output=True
     )
-    assert callback._is_done_on_develop(str(repo), "TECH-XXX", ["src/foo.py"]) is False
+    assert gate_logic.find_implementation_commit(str(repo), "TECH-XXX", ["src/foo.py"]) is None
 
 
 # --- 2026-07-02 false-blocked regression (plpilot BUG-338/339, TECH-349) ------
@@ -143,13 +150,16 @@ def test_ec7_trailing_parens_subject(dev_repo):
     _git(dev_repo, "push", "-q", "origin", "develop")
     _git(dev_repo, "fetch", "-q", "origin", "develop")
 
-    assert callback._is_done_on_develop(str(dev_repo), "BUG-339", ["src/foo.py"]) is True
+    assert (
+        gate_logic.find_implementation_commit(str(dev_repo), "BUG-339", ["src/foo.py"])
+        is not None
+    )
 
 
 def test_ec8_trailing_parens_free_text_rejected():
     """`(see SPEC-ID)` cross-reference stays rejected (TECH-177 discipline)."""
-    assert callback._subject_implements("fix: adjust helper (see BUG-339)", "BUG-339") is False
-    assert callback._subject_implements("fix: revert (BUG-339) partial now", "BUG-339") is False
+    assert gate_logic.match_subject("fix: adjust helper (see BUG-339)", "BUG-339") is False
+    assert gate_logic.match_subject("fix: revert (BUG-339) partial now", "BUG-339") is False
 
 
 def test_ec9_merge_commit_found_via_first_parent(dev_repo):
@@ -170,4 +180,7 @@ def test_ec9_merge_commit_found_via_first_parent(dev_repo):
     _git(dev_repo, "push", "-q", "origin", "develop")
     _git(dev_repo, "fetch", "-q", "origin", "develop")
 
-    assert callback._is_done_on_develop(str(dev_repo), "BUG-338", ["src/text.py"]) is True
+    assert (
+        gate_logic.find_implementation_commit(str(dev_repo), "BUG-338", ["src/text.py"])
+        is not None
+    )

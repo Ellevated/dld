@@ -30,6 +30,7 @@ import yaml  # noqa: E402
 
 import callback  # noqa: E402
 import db  # noqa: E402
+import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 
 
@@ -340,8 +341,8 @@ def test_ec15_operator_uncommitted_edits_in_spec_survive(tmp_path, tmp_db, monke
     _suppress_push(monkeypatch)
 
     # Gate stubs: gate=True so lifecycle becomes done
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: "deadbee")
 
     # Operator adds notes to working tree (not committed)
     spec_workdir = repo / "ai" / "features" / f"{spec_id}.md"

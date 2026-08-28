@@ -32,6 +32,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 import callback  # noqa: E402
 import db  # noqa: E402
 import event_writer  # noqa: E402
+import gate_logic  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -171,8 +172,12 @@ def _run_main(
         lambda *a, **kw: ("autopilot", f"TECH-194 result task_status={task_status}", task_status),
     )
     # Stub git I/O against origin (no remote in tests)
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a, **kw: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a, **kw: merged_on_develop)
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(
+        gate_logic,
+        "find_implementation_commit",
+        lambda *a, **kw: ("deadbee" if merged_on_develop else None),
+    )
 
     with patch("sys.argv", ["callback.py", str(pueue_id), "claude-runner", "Success"]):
         with patch("sys.exit"):

@@ -98,8 +98,6 @@ def _parse_allowed_files_v1(spec_text: str) -> list[str] | None:
     list[str]: >=1 paths (success).
     []        : marker present but ZERO valid bullets — degrade-closed.
     None      : v1 marker not present (caller should try legacy fallback).
-
-    Copied verbatim from callback._parse_allowed_files_v1.
     """
     lines = spec_text.splitlines()
 
@@ -137,8 +135,6 @@ def _parse_allowed_files_legacy(spec_text: str) -> list[str] | None:
     Used only when v1 marker is absent (legacy specs). Same semantics as the
     pre-TECH-167 implementation: section heading match -> extract every
     backticked path inside the section.
-
-    Copied verbatim from callback._parse_allowed_files_legacy.
     """
     lines = spec_text.splitlines()
     in_section = False
@@ -159,7 +155,7 @@ def _parse_allowed_files_legacy(spec_text: str) -> list[str] | None:
 def parse_allowed_files(spec_path: Path) -> list[str] | None:
     """Extract allowlist from a spec file.
 
-    Public API (gate-daemon entry point). Mirrors callback._parse_allowed_files.
+    Public API (gate-daemon entry point).
 
     Strategy (TECH-167):
         1. If spec has the v1 marker -> strict canonical parse (no fallback).
