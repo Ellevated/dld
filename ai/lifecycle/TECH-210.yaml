@@ -1,14 +1,13 @@
 allowed_files_hash: null
-blocked_reason: 'no_merged_implementation — if implementation IS real, run: python3
-  scripts/vps/spec_operator.py force-done dld TECH-210 ''gate regex bug, verified
-  manually'' --by=operator'
-finished_at: null
+blocked_reason: 'ветка tech/TECH-210 смержена в develop (2d6fadc): 5 функций и 7 регэкспов
+  удалены из callback.py, 1720->1438, дублей 0; 623 pytest passed'
+finished_at: '2026-08-28T22:07:02Z'
 kind: tech
 priority: p1
 pueue_id: 1044
 spec_id: TECH-210
 started_at: '2026-08-06T23:09:57Z'
-status: blocked
+status: done
 transitions:
 - at: '2026-07-27T19:52:57Z'
   by: callback
@@ -40,6 +39,11 @@ transitions:
   from: in_progress
   pueue_id: 1044
   to: blocked
-updated_at: '2026-08-07T00:40:43Z'
-updated_by: callback
-version: 7
+- at: '2026-08-28T22:07:02Z'
+  by: operator
+  from: blocked
+  pueue_id: null
+  to: done
+updated_at: '2026-08-28T22:07:02Z'
+updated_by: operator
+version: 8
