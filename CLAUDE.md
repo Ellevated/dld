@@ -116,11 +116,13 @@ Knowledge that prevents breakage during refactoring. In **this** repo it is two 
 On any change. Steps 1-2 run on the **code graph** if it is fresh, on `grep` if it is not.
 
 **The graph here** is the `codebase-memory` MCP (external OSS, `DeusData/codebase-memory-mcp`),
-project `D-dev-dld`. **Rebuild it, don't check it:** `index_repository(repo_path=".",
-mode="full")` costs **687 ms** on an already-indexed dld — cheaper than working out whether you
-need to. That figure is incremental and does not generalise: a first index of a large repo is
-minutes, not milliseconds (measured 2026-08-28 across the fleet — 5k nodes 1.4 s, 24k 0.7 s
-incremental, 92k 15 s, 130k **235 s**). Budget by node count, not by habit.
+project `D-dev-dld`. **Rebuild it, don't check it:** re-indexing dld from scratch costs
+**17 s** on 0.10.8 — cheaper than working out whether you need to. Node count is a poor
+predictor of that cost: a full rebuild of every project on this machine (2026-08-28, CLI
+0.10.8, cold — the 0.9.0→0.10.8 upgrade wipes all indexes) took 14 s for 130k nodes
+(AwardyBot) but 65 s for 68k (Dowry), 47 s for 92k (wb), 13-17 s for everything else.
+File mix dominates, not size. The older numbers here (687 ms, 235 s) were 0.9.0
+*incremental* runs and no longer apply.
 
 Both plausible freshness signals lie, verified 2026-08-27: `index_status.head_sha` is read live
 from git, so it equals `HEAD` whether the graph was built a second ago or a month ago, and
@@ -129,8 +131,9 @@ matters too — `fast` drops `scripts/`, `docs/` and `tests/integration` from th
 
 1. **UP** — who uses the changed code? →
    `trace_path(project="D-dev-dld", function_name="write_lifecycle", direction="inbound", depth=2)`
-   returns 9 callers across `callback.py`, `orchestrator_queue.py`, `spec_operator.py` and
-   `orchestrator.py`, including 2-hop ones a single grep never sees ·
+   returns 10 callers (0.10.8; 0.9.0 found 9) across `callback.py`,
+   `orchestrator_queue.py`, `spec_operator.py` and `orchestrator.py`,
+   including 2-hop ones a single grep never sees ·
    fallback `grep -r "from.*{module}" .`
 2. **DOWN** — what does it depend on? → the same call with `direction="outbound"` · fallback:
    imports in the file
