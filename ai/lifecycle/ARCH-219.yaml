@@ -1,18 +1,23 @@
 allowed_files_hash: null
-blocked_reason: null
+blocked_reason: autopilot_signaled_blocked
 finished_at: null
 kind: ARCH
 priority: p0
 pueue_id: 1256
 spec_id: ARCH-219
 started_at: '2026-08-30T11:04:37Z'
-status: in_progress
+status: blocked
 transitions:
 - at: '2026-08-30T11:04:37Z'
   by: orchestrator
   from: queued
   pueue_id: 1256
   to: in_progress
-updated_at: '2026-08-30T11:04:37Z'
-updated_by: orchestrator
-version: 2
+- at: '2026-08-30T11:08:28Z'
+  by: callback
+  from: in_progress
+  pueue_id: 1256
+  to: blocked
+updated_at: '2026-08-30T11:08:28Z'
+updated_by: callback
+version: 3
