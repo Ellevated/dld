@@ -221,6 +221,54 @@ def test_create_initial_then_read(tmp_git_repo):
     assert data["transitions"] == []
 
 
+def test_create_initial_writes_depends_on(tmp_git_repo):
+    """EC-5: create_initial(..., depends_on=[...]) lands depends_on in HEAD."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-505", "p1", "tech", depends_on=["TECH-220"])
+    data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-505")
+    assert data["depends_on"] == ["TECH-220"]
+    assert data["status"] == "queued"
+
+
+def test_create_initial_without_depends_on_defaults_empty(tmp_git_repo):
+    """EC-6: back-compat for existing callers (bootstrap, migrate) that don't
+    pass depends_on — defaults to [] and other fields are unaffected."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-506", "p1", "tech")
+    data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-506")
+    assert data["depends_on"] == []
+    assert data["spec_id"] == "TECH-506"
+    assert data["status"] == "queued"
+    assert data["priority"] == "p1"
+    assert data["kind"] == "tech"
+
+
+def test_write_lifecycle_fills_depends_on_on_legacy_yaml(tmp_git_repo):
+    """EC-4: a lifecycle yaml committed before depends_on existed has no key at
+    all. write_lifecycle (update branch) must not crash and must leave
+    depends_on == [] — same effective behavior as today's absent backlog line."""
+    lc_dir = tmp_git_repo / "ai" / "lifecycle"
+    lc_dir.mkdir(parents=True, exist_ok=True)
+    (lc_dir / "TECH-600.yaml").write_text(
+        "spec_id: TECH-600\nstatus: queued\npriority: p1\nkind: tech\n"
+        "blocked_reason: null\nstarted_at: null\nfinished_at: null\n"
+        "allowed_files_hash: null\nupdated_at: '2026-01-01T00:00:00Z'\n"
+        "updated_by: migration\nversion: 1\npueue_id: null\ntransitions: []\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "ai/lifecycle/TECH-600.yaml"], cwd=str(tmp_git_repo), check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "pre-migration lifecycle yaml"],
+        cwd=str(tmp_git_repo),
+        check=True,
+        capture_output=True,
+    )
+
+    lifecycle.write_lifecycle(tmp_git_repo, "TECH-600", "in_progress")
+
+    data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-600")
+    assert data["depends_on"] == []
+    assert data["status"] == "in_progress"
+
+
 def test_version_monotonic(tmp_git_repo):
     """Two writes must increment version each time."""
     lifecycle.write_lifecycle(tmp_git_repo, "TECH-502", "queued")
@@ -728,3 +776,13 @@ class TestSplitContract:
         for name in names:
             loc = len((vps / name).read_text(encoding="utf-8").splitlines())
             assert loc <= 400, f"{name}: {loc} LOC > 400"
+
+
+def test_write_lifecycle_preserves_depends_on(tmp_git_repo):
+    """A status change must not drop depends_on — otherwise the dependency gate
+    dies on the very first dispatch of a spec that declared one."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-507", "p1", "tech", depends_on=["TECH-220"])
+    lifecycle.write_lifecycle(tmp_git_repo, "TECH-507", "in_progress", by="orchestrator")
+    data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-507")
+    assert data["depends_on"] == ["TECH-220"]
+    assert data["status"] == "in_progress"

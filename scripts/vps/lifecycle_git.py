@@ -96,12 +96,13 @@ def _build_yaml_content(
     status: str,
     *,
     existing: Optional[dict],
-    reason: Optional[str],
+    reason: Optional[str] = None,
     by: str,
-    pueue_id: Optional[int],
-    allowed_files_hash: Optional[str],
+    pueue_id: Optional[int] = None,
+    allowed_files_hash: Optional[str] = None,
     priority: Optional[str] = None,
     kind: Optional[str] = None,
+    depends_on: Optional[list] = None,
 ) -> str:
     now = _now_iso()
     if existing is None:
@@ -119,6 +120,7 @@ def _build_yaml_content(
             "version": 1,
             "pueue_id": pueue_id,
             "transitions": [],
+            "depends_on": [str(d) for d in (depends_on or [])],
         }
         return yaml.safe_dump(data, default_flow_style=False, allow_unicode=True)
 
@@ -138,6 +140,10 @@ def _build_yaml_content(
         data["allowed_files_hash"] = allowed_files_hash
     if pueue_id is not None:
         data["pueue_id"] = pueue_id
+    if depends_on is not None:
+        data["depends_on"] = [str(d) for d in depends_on]
+    else:
+        data.setdefault("depends_on", [])
     if (
         old_status in ("queued", "resumed")
         and status == "in_progress"

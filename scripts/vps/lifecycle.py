@@ -146,6 +146,7 @@ def create_initial(
     status: str = "queued",
     *,
     by: str = "orchestrator",
+    depends_on: Optional[list] = None,
 ) -> None:
     """Bootstrap a new lifecycle.yaml (default status=queued, version=1).
 
@@ -156,6 +157,8 @@ def create_initial(
     `by` defaults to "orchestrator" for backward compatibility with existing
     callers. Spark may pass by="spark" to claim an ID via CAS (ARCH-196 CR-7).
     Gated by _ALLOWED_WRITERS_FOR_CREATE (superset of _ALLOWED_WRITERS).
+
+    `depends_on` lists spec_ids this spec waits for (TECH-222); absent == [].
     """
     if by not in _ALLOWED_WRITERS_FOR_CREATE:
         raise ValueError(
@@ -197,6 +200,7 @@ def create_initial(
             allowed_files_hash=None,
             priority=priority,
             kind=kind,
+            depends_on=depends_on,
         )
 
     lifecycle_cas._cas_loop(repo_dir, spec_id, branch, make_yaml)
