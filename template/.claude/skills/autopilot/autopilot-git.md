@@ -46,15 +46,17 @@ PHASE 3: Finish
 | BUG-XXX | `fix/BUG-XXX` | `.worktrees/BUG-XXX/` |
 | TECH-XXX | `tech/TECH-XXX` | `.worktrees/TECH-XXX/` |
 | ARCH-XXX | `arch/ARCH-XXX` | `.worktrees/ARCH-XXX/` |
+| GROWTH-XXX | `growth/GROWTH-XXX` | `.worktrees/GROWTH-XXX/` |
 
 **Branch prefix by type:**
 ```bash
 case $TASK_TYPE in
-  FTR)  BRANCH_PREFIX="feature" ;;
-  BUG)  BRANCH_PREFIX="fix" ;;
-  TECH) BRANCH_PREFIX="tech" ;;
-  ARCH) BRANCH_PREFIX="arch" ;;
-  *)    BRANCH_PREFIX="task" ;;
+  FTR)    BRANCH_PREFIX="feature" ;;
+  BUG)    BRANCH_PREFIX="fix" ;;
+  TECH)   BRANCH_PREFIX="tech" ;;
+  ARCH)   BRANCH_PREFIX="arch" ;;
+  GROWTH) BRANCH_PREFIX="growth" ;;
+  *)      BRANCH_PREFIX="task" ;;
 esac
 ```
 
@@ -113,16 +115,57 @@ WORKTREE_PATH="${WORKTREE_DIR}/${TASK_ID}"
 # Refresh remote — branch base MUST be fresh origin/develop, not stale local ref
 git fetch origin develop
 
-# WHY origin/develop explicit (not implicit HEAD):
-#   `git worktree add -b new-branch path` without a base ref branches off
-#   the CWD's current HEAD. If anything left cwd HEAD on main (broken prior
-#   worktree, manual `git checkout main`, recovery state, orchestrator
-#   improvisation) — the new branch inherits main and PHASE 3 merge into
-#   develop drags unrelated main-only commits (dependabot bumps, release
-#   merge-backs). Pin to origin/develop to guarantee base regardless of
-#   CWD state. This has bitten a real run — do not skip the check.
-git worktree add "$WORKTREE_PATH" -b "${BRANCH_PREFIX}/${TASK_ID}" origin/develop
-cd "$WORKTREE_PATH"
+if git ls-remote --exit-code --heads origin "${BRANCH_PREFIX}/${TASK_ID}" >/dev/null 2>&1; then
+  # CONTINUATION: a previous run was killed by timeout and its salvage pushed
+  # the commits. Starting fresh here burns them and makes the next salvage
+  # push non-fast-forward.
+  git fetch origin "${BRANCH_PREFIX}/${TASK_ID}"
+
+  # A local ref may survive from a swept worktree. Drop it only when origin
+  # already has everything it holds; otherwise STOP — never discard commits.
+  if git show-ref --verify --quiet "refs/heads/${BRANCH_PREFIX}/${TASK_ID}"; then
+    if [[ -z "$(git log --oneline "origin/${BRANCH_PREFIX}/${TASK_ID}..${BRANCH_PREFIX}/${TASK_ID}" 2>/dev/null)" ]]; then
+      git branch -D "${BRANCH_PREFIX}/${TASK_ID}"
+    else
+      echo "LOCAL_BRANCH_AHEAD: ${BRANCH_PREFIX}/${TASK_ID} has commits origin lacks — needs_review"
+      exit 2
+    fi
+  fi
+
+  # -b <branch> <start-point> is the only non-detached form: plain
+  # `worktree add <path> <branch>` detaches HEAD unless the local branch
+  # already exists (worktree.guessRemote is off by default).
+  git worktree add "$WORKTREE_PATH" -b "${BRANCH_PREFIX}/${TASK_ID}" "origin/${BRANCH_PREFIX}/${TASK_ID}"
+  cd "$WORKTREE_PATH"
+
+  git rebase origin/develop || {
+    git rebase --abort
+    echo "REBASE_CONFLICT: ${BRANCH_PREFIX}/${TASK_ID} vs origin/develop"
+    # STOP. Emit task_status="needs_review". NEVER reset --hard: those
+    # commits are the work this spec exists to save.
+    exit 2
+  }
+
+  # Re-sync origin immediately: the rebase rewrote the salvaged commits, so
+  # until this lands origin and local have diverged and the NEXT salvage
+  # push would be rejected non-fast-forward — the exact loss this fixes.
+  git push --force-with-lease origin "${BRANCH_PREFIX}/${TASK_ID}"
+
+  echo "CONTINUING ${BRANCH_PREFIX}/${TASK_ID} — commits already done:"
+  git log --oneline origin/develop..HEAD
+  # Read that list before planning. Those tasks are DONE — do not redo them.
+else
+  # WHY origin/develop explicit (not implicit HEAD):
+  #   `git worktree add -b new-branch path` without a base ref branches off
+  #   the CWD's current HEAD. If anything left cwd HEAD on main (broken prior
+  #   worktree, manual `git checkout main`, recovery state, orchestrator
+  #   improvisation) — the new branch inherits main and PHASE 3 merge into
+  #   develop drags unrelated main-only commits (dependabot bumps, release
+  #   merge-backs). Pin to origin/develop to guarantee base regardless of
+  #   CWD state. This has bitten a real run — do not skip the check.
+  git worktree add "$WORKTREE_PATH" -b "${BRANCH_PREFIX}/${TASK_ID}" origin/develop
+  cd "$WORKTREE_PATH"
+fi
 ```
 
 ### 2.5 Copy Environment
@@ -256,7 +299,11 @@ NEVER `git add ai/lifecycle/*.yaml` — direct commits to lifecycle yaml are HAR
 ### 5.3 Push Feature Branch (backup)
 
 ```bash
-git push -u origin ${BRANCH_PREFIX}/${TASK_ID}
+# A continued branch (PHASE 0) was rebased onto develop, so its first push is
+# non-fast-forward by construction. --force-with-lease refuses if origin moved
+# under us; never plain --force.
+git push -u origin ${BRANCH_PREFIX}/${TASK_ID} ||
+  git push --force-with-lease origin ${BRANCH_PREFIX}/${TASK_ID}
 ```
 
 ### 5.4 Merge to Develop
