@@ -132,7 +132,13 @@ Git worktree isolation for safe parallel development.
      # Re-sync origin immediately: the rebase rewrote the salvaged commits, so
      # until this lands origin and local have diverged and the NEXT salvage
      # push would be rejected non-fast-forward — the exact loss this fixes.
-     git -C ".worktrees/{ID}" push --force-with-lease origin "{type}/{ID}"
+     # --force-if-includes: a bare lease is satisfied by a BACKGROUND fetch that
+     # never integrated the remote tip, and the gate-daemon fetches concurrently.
+     git -C ".worktrees/{ID}" push --force-with-lease --force-if-includes origin "{type}/{ID}" || {
+       echo "PUSH_REJECTED: origin/{type}/{ID} moved under us — someone else pushed to this branch"
+       # STOP. Emit task_status="needs_review". NEVER retry with plain --force.
+       exit 2
+     }
 
      echo "CONTINUING {type}/{ID} — commits already done:"
      git -C ".worktrees/{ID}" log --oneline origin/develop..HEAD

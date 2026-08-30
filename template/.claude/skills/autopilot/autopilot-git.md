@@ -149,7 +149,13 @@ if git ls-remote --exit-code --heads origin "${BRANCH_PREFIX}/${TASK_ID}" >/dev/
   # Re-sync origin immediately: the rebase rewrote the salvaged commits, so
   # until this lands origin and local have diverged and the NEXT salvage
   # push would be rejected non-fast-forward — the exact loss this fixes.
-  git push --force-with-lease origin "${BRANCH_PREFIX}/${TASK_ID}"
+  # --force-if-includes: a bare lease is satisfied by a BACKGROUND fetch that
+  # never integrated the remote tip, and the gate-daemon fetches concurrently.
+  git push --force-with-lease --force-if-includes origin "${BRANCH_PREFIX}/${TASK_ID}" || {
+    echo "PUSH_REJECTED: origin/${BRANCH_PREFIX}/${TASK_ID} moved under us"
+    # STOP. Emit task_status="needs_review". NEVER retry with plain --force.
+    exit 2
+  }
 
   echo "CONTINUING ${BRANCH_PREFIX}/${TASK_ID} — commits already done:"
   git log --oneline origin/develop..HEAD
@@ -301,9 +307,12 @@ NEVER `git add ai/lifecycle/*.yaml` — direct commits to lifecycle yaml are HAR
 ```bash
 # A continued branch (PHASE 0) was rebased onto develop, so its first push is
 # non-fast-forward by construction. --force-with-lease refuses if origin moved
-# under us; never plain --force.
+# under us; never plain --force. --force-if-includes (git 2.30+) closes the
+# lease's one hole: a BACKGROUND fetch updates refs/remotes/origin/<branch>
+# without integrating it, which satisfies a bare lease. The gate-daemon fetches
+# these repos concurrently, so that is a live race here, not a theoretical one.
 git push -u origin ${BRANCH_PREFIX}/${TASK_ID} ||
-  git push --force-with-lease origin ${BRANCH_PREFIX}/${TASK_ID}
+  git push --force-with-lease --force-if-includes origin ${BRANCH_PREFIX}/${TASK_ID}
 ```
 
 ### 5.4 Merge to Develop
