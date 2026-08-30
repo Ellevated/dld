@@ -434,3 +434,32 @@ Architect: либо засеять банк уроков (`/seed-lessons` сущ
   § «✅ РЕШЕНО 2026-07-28» таблица замера vs фактический
   `grep -rn 'monkeypatch.setattr(callback, "_is_done_on_develop"' tests/` → 11 попаданий
   в 5 файлах (+11 на `_fetch_develop`); `tests/integration/test_callback_already_merged.py:151,243`
+
+## SIGNAL-2026-08-30-arch-219
+
+| Field | Value |
+|-------|-------|
+| Source | spark |
+| Spec ID | ARCH-219 |
+| Target | architect |
+| Type | gap |
+| Severity | warning |
+
+### Message
+Карта «тип спеки → префикс ветки» существует только в прозе, в двух файлах, и расходится:
+`worktree-setup.md:102-108` (таблица без GROWTH) и `autopilot-git.md:52-58` (bash `case`,
+GROWTH падает в `task/`). В Python её нет; `orchestrator_queue.record_dispatch:328` пишет
+`feature/` для всех типов. TECH-220 вводит `gate_ancestry.branch_ref_for` как единственный
+источник (GROWTH → `growth/`) с меткой L-derived-4, но проза остаётся второй копией.
+
+### Evidence
+`ai/.spark/20260830-ARCH-219/research-devil.md` §Argument 1; `research-codebase.md` §Step 2.
+
+### Suggested Action
+После TECH-221 (правит обе копии промптов) — вынести таблицу в один файл, на который ссылаются
+оба промпта, либо генерировать фрагмент промпта из `gate_ancestry._BRANCH_PREFIX`.
+
+### Process signal
+Бриф скаутам содержал две фактические ошибки (`_merge_confirmed` приписан `callback_sync`;
+`tests/regression/test_callback_spec_corpus.py` назван корпусом subject-вердиктов) — оба
+поправил codebase-скаут grep'ом. Скаут, проверяющий бриф, окупился; Verified References — рабочий гейт.
