@@ -45,10 +45,23 @@ traceability, not only for failures.
 counterpart needs a final sync task (`cp {file} template/{file}`, acceptance: `diff` is
 empty), unless the file is listed in `.claude/CUSTOMIZATIONS.md`.
 
-**The coder executes literally and starts cold.** Your plan is everything it gets: exact
-paths, real code, real commands, real expected output. "Implement the logic", "add
-appropriate tests", "modify service.py" are all failures — write the code, write the
-tests, name the lines.
+**The coder executes literally and starts cold — but it can read.** Your plan is everything it
+gets *about decisions*: exact paths, insertion points, signatures, invariants, commands, expected
+output. It is not where the implementation gets pre-written. The coder opens the same files you
+did and writes its own body; a body pasted here becomes a second copy that diverges the moment
+it is written, and review then checks the code against a plan that no longer describes it.
+"Implement the logic", "add appropriate tests", "modify service.py" remain failures — name the
+file, the line, the signature and the constraint.
+
+**Implementation: anchor, do not author.** Path + insertion point (`file.py:120-135`) +
+signature + invariants + what must NOT change. Existing code is cited as `file:line`, never
+pasted.
+
+**Tests: the contract, not the file.** One line per EC-ID — test name plus the assertion that
+makes it red today. No imports, no fixtures, no boilerplate; the coder writes those. Every EC-ID
+in the spec appears in exactly one task.
+
+A plan longer than the spec it plans is the signal that you are writing code, not a plan.
 
 **Research earns its place or is skipped.** If the spec names `## Research Sources`, crawl
 them. Verify the proposed approach is still current only where that is genuinely in doubt
@@ -70,8 +83,9 @@ A `## Detailed Implementation Plan` section, one block per task:
 
 **Context:** why this task exists, what it achieves
 
-**Steps:** failing test → command that shows it failing → implementation → command that
-shows it passing. Real code with imports, real commands, real expected output.
+**Steps:** failing test (name + assertion) → command that shows it failing → implementation
+(anchor + signature) → command that shows it passing. Real commands and real expected
+output; code only as anchors and `file:line` citations.
 
 **Acceptance:** criteria, mapped to the spec's EC-IDs
 ```

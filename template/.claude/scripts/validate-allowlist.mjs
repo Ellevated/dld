@@ -12,22 +12,25 @@
  * Why this is a script and not prose in a prompt.
  * -----------------------------------------------
  * Spark used to run this check by reading four regexes out of its own prompt
- * and applying them by hand. Two copies of one format spec drift, and this pair
- * did: the tooling grew numbered-list support and the prompt did not, so valid
- * specs were rejected — and rejection there deleted the spec file. A check
- * whose failure mode is destructive has no business being an LLM re-derivation
- * of a regex that lives somewhere else.
+ * and applying them by hand. That copy drifted from the parser that actually
+ * gates the pipeline: numbered-list items were accepted by `callback.py`
+ * (TECH-208) and rejected by the prompt, and a rejection there *deletes the
+ * spec file*. A check whose failure mode is destructive has no business being
+ * an LLM re-derivation of someone else's regex.
  *
- * If your project consumes the allowlist programmatically (a CI gate, a commit
- * guard, an agent runner), that consumer and this script must agree. Keep the
- * regexes below identical to it and put a test on the pair.
+ * The rules below therefore mirror `callback._parse_allowed_files_v1` and
+ * `gate_logic.strip_bookkeeping_paths` exactly. Where this script is stricter
+ * than the parser, it is because the parser's tolerance is silent and the
+ * author would not learn about it until the run failed — each such case is
+ * argued in place.
  */
 
 import { readFileSync } from 'fs';
 
-// --- Regexes: the canonical allowlist format -------------------------------
-// Matched line by line. Any consumer that parses `## Allowed Files` must use
-// these exact patterns, or the two will disagree about what a spec permits.
+// --- Regexes: byte-for-byte the parser's, JS syntax ------------------------
+// Sources: scripts/vps/callback.py:451-459, scripts/vps/gate_logic.py:46-52.
+// Python `^`/`$` here are per-line because we match line by line, matching the
+// parser, which iterates `spec_text.splitlines()`.
 const HEADING_RE = /^##[ \t]+Allowed Files[ \t]*$/;
 const MARKER_RE = /<!--\s*callback-allowlist\s+v1\b[^>]*-->/;
 const BULLET_RE = /^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$/;
@@ -151,6 +154,7 @@ const LIST_SHAPED_RE = /^\s*(?:[-*+]|\d+\.)\s/;
 const TABLE_ROW_RE = /^\s*\|.*\|/;
 
 const paths = [];
+const entries = [];
 const lostLines = [];
 const extraPathLines = [];
 
@@ -161,6 +165,11 @@ section.forEach((ln, offset) => {
 
   if (m) {
     paths.push(m[1]);
+    entries.push({
+      path: m[1],
+      line: lineNo,
+      reason: ln.replace(/^(?:-|\d+\.)[ \t]+`[^`]+`[ \t]*(?:—|-|:)?[ \t]*/, '').trim()
+    });
     // Trailing prose after the path is the "reason" field and may legitimately
     // name other files. But it may equally be a second entry the parser silently
     // drops, and no rule can tell the two apart — so warn, never block.
@@ -223,6 +232,58 @@ if (paths.length > 0 && implPaths.length === 0) {
     code: 'ALLOWLIST_W001_BOOKKEEPING_PRESENT',
     message: 'Bookkeeping paths are stripped by the guard and prove nothing. Harmless, but they are not implementation.',
     paths: paths.filter(isBookkeeping)
+  });
+}
+
+// 7. Headroom. An allowlist can parse perfectly and still be impossible to execute:
+//    TECH-220 listed `scripts/vps/tests/test_gate_logic.py` with "дописать серию тестов"
+//    at 598 LOC against the 600 ceiling in `.claude/rules/architecture.md`. There was
+//    nowhere to write, so the coder created a file outside the allowlist. The check is
+//    `wc -l` — no model needed, which is the whole point (K1, findings-2026-08-30).
+//    Never an error: shrinking a file at its ceiling is legitimate and happens (TECH-222
+//    absorbed `_spec_deps` into a 400-LOC module by tightening docstrings).
+// The limits live in `.claude/rules/architecture.md` and apply to code, not prose —
+// a 900-line runbook is not a defect, a 900-line module is.
+const CODE_EXT_RE = /\.(py|mjs|cjs|js|ts|tsx|jsx|sh|bash)$/;
+const TEST_PATH_RE = /(^|\/)tests?\//;
+const TEST_FILE_RE = /(^test_|_test\.|\.test\.|\.spec\.)/;
+const GROW_RE = /(дописать|дополнить|расширить|добавить сери|add tests|extend|append|новая сери)/i;
+const tight = [];
+const over = [];
+
+for (const e of entries) {
+  if (isBookkeeping(e.path) || !CODE_EXT_RE.test(e.path)) continue;
+  let loc;
+  try {
+    loc = readFileSync(e.path, 'utf-8').split('\n').length;
+  } catch {
+    continue; // file is created by this spec — nothing to measure
+  }
+  const isTest = TEST_PATH_RE.test(e.path) || TEST_FILE_RE.test(e.path.split('/').pop());
+  const limit = isTest ? 600 : 400;
+  const headroom = limit - loc;
+  const row = { path: e.path, line: e.line, loc, limit, headroom, grows: GROW_RE.test(e.reason) };
+  if (headroom < 0) over.push(row);
+  else if (headroom < 50) tight.push(row);
+}
+
+if (tight.length > 0) {
+  const growing = tight.some((t) => t.grows);
+  warnings.push({
+    code: 'ALLOWLIST_W003_NO_HEADROOM',
+    message: growing
+      ? 'An allowlist entry sits within 50 lines of its ceiling AND its reason asks for more code. The work as described does not fit — split the file, or add the new path to the allowlist now.'
+      : 'Allowlist entries are within 50 lines of the file-size ceiling (400 code / 600 tests). Any net addition breaks the limit; plan a split or a shrink.',
+    occurrences: tight
+  });
+}
+
+if (over.length > 0) {
+  warnings.push({
+    code: 'ALLOWLIST_W004_OVER_LIMIT',
+    message:
+      'Allowlist entries already exceed the file-size ceiling before this spec starts. Pre-existing, so not this spec\'s fault — but it cannot grow them, and "add it here" is not an option the coder has.',
+    occurrences: over
   });
 }
 

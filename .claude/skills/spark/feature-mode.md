@@ -554,6 +554,15 @@ _Write "none" explicitly if spark-codebase found no historical lessons for this 
 
 ## Design
 
+> **Every claim about how the system behaves today carries a `file:line` or a command that
+> shows it.** Not the design you are proposing — the *existing* behaviour you are designing
+> against: how a merge happens, what a diff range covers, which gate runs first, what a
+> function returns. Those sentences are the ones that get written from memory of the prompt
+> tree rather than from the code, and a wrong one produces a spec that looks implemented and
+> is not. TECH-220 specified a diff range that is empty under `--ff-only` — the only merge
+> the pipeline performs — and its own EC would have passed while the gate never fired; the
+> planner caught it against the code, spec review had not. Cite it or drop it.
+
 ### User Flow
 [Step-by-step user journey]
 
