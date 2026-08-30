@@ -36,22 +36,14 @@ from orchestrator_slots import _pueue_add  # noqa: E402,F401
 log = logging.getLogger("orchestrator")
 
 
-# BUG-206: dependency-aware dispatch. Specs declare ordering with an
-# "AFTER <SPEC-ID>" marker in their backlog row (the uniform place this
-# convention lives — spec prose is too noisy to parse reliably). scan_queued
-# must not dispatch a spec whose declared dependency is not yet done, or the
-# autopilot burns a full run self-blocking on the unmet prerequisite
-# (ARCH-1246/FTR-1245 vs the still-queued TECH-1244, awardybot 2026-06-20).
-# Dependency EDGE comes from the backlog; dependency STATUS from the lifecycle SoT.
+# BUG-206 / TECH-222: dependency-aware dispatch. The edge lives on the dependent spec
+# (`depends_on: [ID]` in its lifecycle yaml, written by Spark); the `AFTER <ID>` backlog
+# marker is a deprecated fallback (deps_via=backlog). STATUS always from the lifecycle SoT.
 _AFTER_DEP_RE = re.compile(r"\bafter\s+([A-Z]{2,5}-\d+)", re.IGNORECASE)
 
 
 def _backlog_deps(project_dir: str, spec_id: str) -> set:
-    """Declared 'AFTER <ID>' dependencies for spec_id, read from its backlog row.
-
-    Returns an empty set when the backlog, the row, or the marker is absent —
-    conservative by design: a missing marker means no gate, never a stall.
-    """
+    """Deprecated 'AFTER <ID>' deps from spec_id's backlog row; empty when absent."""
     backlog = Path(project_dir) / "ai" / "backlog.md"
     if not backlog.is_file():
         return set()
@@ -67,16 +59,24 @@ def _backlog_deps(project_dir: str, spec_id: str) -> set:
     return set()
 
 
-def _unmet_dependencies(project_dir: str, spec_id: str) -> list:
-    """Subset of spec_id's declared deps whose lifecycle status is not 'done'.
+def _spec_deps(project_dir: str, spec_id: str) -> set:
+    """Declared deps: lifecycle `depends_on` (SoT) ∪ backlog `AFTER` row (legacy)."""
+    raw = (lifecycle.read_lifecycle(project_dir, spec_id) or {}).get("depends_on") or []
+    if not isinstance(raw, list):
+        log.warning("DEP_SHAPE: %s depends_on is not a list — ignored", spec_id)
+        raw = []
+    yaml_deps = {d.upper() for d in raw if isinstance(d, str)}
+    legacy = _backlog_deps(project_dir, spec_id) - yaml_deps
+    if legacy:
+        log.info("DEP_VIA: %s deps_via=backlog (legacy) %s", spec_id, sorted(legacy))
+    return yaml_deps | legacy
 
-    A dependency absent from lifecycle is treated as MET — avoids a permanent
-    stall on a stale/archived reference. Prefer a false-negative (dispatch, then
-    the autopilot self-blocks and is correctly labeled by callback) over a
-    false-positive (a spec that silently never dispatches).
-    """
+
+def _unmet_dependencies(project_dir: str, spec_id: str) -> list:
+    """Declared deps of spec_id not yet 'done'. Absent from lifecycle ≡ met (fail-open:
+    a stale/archived reference must not stall dispatch forever). Unchanged by TECH-222."""
     unmet = []
-    for dep in sorted(_backlog_deps(project_dir, spec_id)):
+    for dep in sorted(_spec_deps(project_dir, spec_id)):
         dep_lc = lifecycle.read_lifecycle(project_dir, dep)
         if dep_lc and dep_lc.get("status") != "done":
             unmet.append(dep)

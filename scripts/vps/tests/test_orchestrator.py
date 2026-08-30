@@ -750,6 +750,99 @@ class TestTOCTOURecheck:
         mock_add.assert_called_once()
 
 
+@pytest.fixture()
+def dep_repo(tmp_path):
+    """Реальный git-репо: read_lifecycle читает HEAD, фикстура-словарь тут не годится."""
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=str(tmp_path), check=True, capture_output=True)
+
+    git("init", "-b", "develop")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "T")
+    (tmp_path / "ai" / "lifecycle").mkdir(parents=True)
+    (tmp_path / "ai" / "lifecycle" / ".gitkeep").write_text("", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "init")
+    return tmp_path
+
+
+def _commit_raw_yaml(repo, spec_id, body):
+    """Записать lifecycle-yaml произвольной формы (плумбинг такое не напишет)."""
+    (repo / "ai" / "lifecycle" / f"{spec_id}.yaml").write_text(body, encoding="utf-8")
+    subprocess.run(
+        ["git", "add", f"ai/lifecycle/{spec_id}.yaml"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", f"raw({spec_id})"], cwd=str(repo), check=True, capture_output=True
+    )
+
+
+class TestSpecDeps:
+    """TECH-222: рёбра из lifecycle YAML ∪ backlog-строка (deprecated)."""
+
+    def _backlog(self, repo, rows):
+        backlog = repo / "ai" / "backlog.md"
+        backlog.parent.mkdir(parents=True, exist_ok=True)
+        header = "| ID | status | kind | date | desc |\n| --- | --- | --- | --- | --- |\n"
+        backlog.write_text(header + "\n".join(rows) + "\n", encoding="utf-8")
+
+    def test_reads_depends_on_from_yaml(self, dep_repo):
+        """Главный новый путь: строки в бэклоге нет вовсе."""
+        import lifecycle
+
+        lifecycle.create_initial(dep_repo, "ARCH-1246", "p1", "arch", depends_on=["TECH-1244"])
+        assert orchestrator_queue._spec_deps(str(dep_repo), "ARCH-1246") == {"TECH-1244"}
+
+    def test_missing_key_is_empty(self, dep_repo):
+        """EC-4: запись, созданная до миграции, ведёт себя как сегодня."""
+        _commit_raw_yaml(dep_repo, "TECH-800", "spec_id: TECH-800\nstatus: queued\n")
+        assert orchestrator_queue._spec_deps(str(dep_repo), "TECH-800") == set()
+
+    def test_broken_shape_warns_and_is_ignored(self, dep_repo, caplog):
+        """EC-3: depends_on строкой, а не списком → WARNING DEP_SHAPE, трактуем как []."""
+        import logging
+
+        _commit_raw_yaml(
+            dep_repo, "TECH-801", 'spec_id: TECH-801\nstatus: queued\ndepends_on: "TECH-210"\n'
+        )
+        with caplog.at_level(logging.WARNING, logger="orchestrator"):
+            assert orchestrator_queue._spec_deps(str(dep_repo), "TECH-801") == set()
+        assert any("DEP_SHAPE" in r.message for r in caplog.records)
+
+    def test_legacy_backlog_still_read_and_logged(self, dep_repo, caplog):
+        """EC-12: ARCH-209 до миграции — ребро только в бэклоге, в лог идёт deps_via=backlog."""
+        import logging
+
+        lifecycle_mod = __import__("lifecycle")
+        lifecycle_mod.create_initial(dep_repo, "ARCH-209", "p1", "arch")
+        self._backlog(dep_repo, ["| ARCH-209 | queued | arch | 2026-07-27 | x AFTER TECH-213 |"])
+        with caplog.at_level(logging.INFO, logger="orchestrator"):
+            assert orchestrator_queue._spec_deps(str(dep_repo), "ARCH-209") == {"TECH-213"}
+        assert any("deps_via=backlog" in r.message for r in caplog.records)
+
+    def test_union_does_not_double_log(self, dep_repo, caplog):
+        """YAML ∪ backlog: пересечение не считается legacy-находкой."""
+        import logging
+
+        lifecycle_mod = __import__("lifecycle")
+        lifecycle_mod.create_initial(dep_repo, "ARCH-210", "p1", "arch", depends_on=["TECH-213"])
+        self._backlog(dep_repo, ["| ARCH-210 | queued | arch | 2026-07-27 | x AFTER TECH-213 |"])
+        with caplog.at_level(logging.INFO, logger="orchestrator"):
+            assert orchestrator_queue._spec_deps(str(dep_repo), "ARCH-210") == {"TECH-213"}
+        assert not [r for r in caplog.records if "deps_via=backlog" in r.message]
+
+    def test_dangling_reference_is_met(self, dep_repo):
+        """EC-2: fail-open сохранён — ссылки нет в lifecycle, исключения тоже нет."""
+        import lifecycle
+
+        lifecycle.create_initial(dep_repo, "ARCH-211", "p1", "arch", depends_on=["TECH-9999"])
+        assert orchestrator_queue._unmet_dependencies(str(dep_repo), "ARCH-211") == []
+
+
 class TestDependencyGate:
     """BUG-206: dependency-aware dispatch. scan_queued must skip a queued spec
     whose declared 'AFTER <ID>' backlog dependency is not yet done, and dispatch
