@@ -3,11 +3,16 @@ blocked_reason: null
 finished_at: null
 kind: TECH
 priority: p1
-pueue_id: null
+pueue_id: 1269
 spec_id: TECH-222
-started_at: null
-status: queued
-transitions: []
-updated_at: '2026-08-30T11:42:52Z'
-updated_by: spark
-version: 1
+started_at: '2026-08-30T14:54:37Z'
+status: in_progress
+transitions:
+- at: '2026-08-30T14:54:37Z'
+  by: orchestrator
+  from: queued
+  pueue_id: 1269
+  to: in_progress
+updated_at: '2026-08-30T14:54:37Z'
+updated_by: orchestrator
+version: 2
