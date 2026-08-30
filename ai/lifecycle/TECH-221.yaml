@@ -3,10 +3,10 @@ blocked_reason: TECH-220 done — зависимость снята
 finished_at: null
 kind: TECH
 priority: p0
-pueue_id: null
+pueue_id: 1266
 spec_id: TECH-221
-started_at: null
-status: queued
+started_at: '2026-08-30T13:14:37Z'
+status: in_progress
 transitions:
 - at: '2026-08-30T11:13:15Z'
   by: operator
@@ -18,6 +18,11 @@ transitions:
   from: blocked
   pueue_id: null
   to: queued
-updated_at: '2026-08-30T13:05:05Z'
-updated_by: operator
-version: 3
+- at: '2026-08-30T13:14:37Z'
+  by: orchestrator
+  from: queued
+  pueue_id: 1266
+  to: in_progress
+updated_at: '2026-08-30T13:14:37Z'
+updated_by: orchestrator
+version: 4
