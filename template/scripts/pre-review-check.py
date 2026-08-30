@@ -28,7 +28,7 @@ class Issue(NamedTuple):
 def check_todo_fixme(file_path: Path) -> list[Issue]:
     """Check for TODO/FIXME comments in Python files."""
     issues: list[Issue] = []
-    if not file_path.suffix == ".py":
+    if file_path.suffix != ".py":
         return issues
 
     try:
@@ -55,7 +55,7 @@ def check_todo_fixme(file_path: Path) -> list[Issue]:
 def check_bare_exceptions(file_path: Path) -> list[Issue]:
     """Check for bare except: or except Exception: without re-raise."""
     issues: list[Issue] = []
-    if not file_path.suffix == ".py":
+    if file_path.suffix != ".py":
         return issues
 
     try:
@@ -111,7 +111,7 @@ def _check_reraise(lines: list[str], except_line: int) -> bool:
 def check_loc_limits(file_path: Path) -> list[Issue]:
     """Check file line count against limits (400 code, 600 tests)."""
     issues: list[Issue] = []
-    if not file_path.suffix == ".py":
+    if file_path.suffix != ".py":
         return issues
 
     try:
