@@ -11,7 +11,6 @@ Uses:
   - callback_sync: verify_status_sync  (TECH-216)
   - db: release_slot, finish_task, update_project_phase, record_decision, count_demotes_since
   - event_writer: notify, notify_circuit_event
-  - lifecycle: read_lifecycle, write_lifecycle  (ADR-023 — sole status writer)
   - subprocess: pueue CLI fallback
 
 Used by:
@@ -22,7 +21,8 @@ INVARIANT: Always exit 0. Every step in try/except.
 
 TECH-171: _write_audit / _emit_audit append one JSONL line per verify_status_sync call.
 Audit log path: $CALLBACK_AUDIT_LOG or scripts/vps/callback-audit.jsonl.
-ARCH-186: verify_status_sync writes only to lifecycle.yaml (no markdown edits).
+ARCH-186: verify_status_sync (callback_sync) writes only to lifecycle.yaml — callback.py
+itself no longer imports lifecycle; the dead backlog renderer was removed in TECH-222.
 TECH-207: _step6_dispatch_qa_reflect — merge-confirmed QA dispatch fallback.
 """
 
@@ -43,7 +43,6 @@ import callback_sync  # noqa: E402  — the status gate + Step 6 (TECH-216)
 import db  # noqa: E402
 import event_writer  # noqa: E402
 import gate_logic  # noqa: E402 — single source of gate logic (TECH-210)
-import lifecycle  # noqa: E402  — atomic YAML writer (ADR-023)
 
 log = logging.getLogger("callback")
 
@@ -182,34 +181,6 @@ _pueue_resume = callback_circuit._pueue_resume
 _trip_circuit = callback_circuit._trip_circuit
 _reset_circuit_cli = callback_circuit._reset_circuit_cli
 _record = callback_circuit._record
-
-
-def _render_and_commit_backlog(project_path: str, project_id: str) -> None:
-    """Rule 5: inline render of ai/backlog.md after every lifecycle write.
-
-    Best-effort. Lifecycle yaml is the SoT; backlog.md is a render. If render
-    fails, lifecycle write still succeeds and the next callback retries the
-    render. Logged but never raises.
-    """
-    try:
-        import render_backlog
-
-        content = render_backlog.render_backlog(project_path)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("RENDER: render_backlog failed for %s: %s", project_id, exc)
-        return
-    try:
-        ok = lifecycle.write_file_atomic(
-            project_path,
-            "ai/backlog.md",
-            content,
-            "render(backlog): auto-sync from lifecycle",
-            by="callback",
-        )
-        if not ok:
-            log.warning("RENDER: write_file_atomic returned False for %s", project_id)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("RENDER: write_file_atomic raised for %s: %s", project_id, exc)
 
 
 verify_status_sync = callback_sync.verify_status_sync

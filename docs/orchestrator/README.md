@@ -101,7 +101,8 @@ orchestrator.py · process_project (каждые ≤5 мин):
   bootstrap_new_specs → создать yaml для новых spec.md без него (safe default=queued)
   scan_queued:
     lifecycle.list_by_status({queued, resumed})   # SoT = yaml@HEAD, НЕ backlog.md
-    dependency gate: все `AFTER <ID>` зависимости должны быть done
+    dependency gate: все `depends_on: [ID]` из lifecycle YAML должны быть done
+                     (legacy-фолбэк: `AFTER <ID>` в backlog-строке, метрика DEP_VIA)
     slot check + dup-guard (label + spec_id)
     TOCTOU re-check: lifecycle.read_lifecycle(spec) ещё раз ПЕРЕД pueue add   [BUG-205]
     pueue add → run-agent.sh <dir> claude autopilot "/autopilot SPEC-NNN"
@@ -178,7 +179,8 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 1. **Не диспатчить spec, чей lifecycle-статус ≠ queued/resumed** (SoT = yaml@HEAD, не backlog.md).
 2. **Авторитетный TOCTOU re-check перед каждым `pueue add`** (BUG-205) — snapshot устаревает.
 3. **Не bootstrap-ить в терминальный статус** — unparsable → `queued`, никогда `done`.
-4. **Dependency gate** — не диспатчить spec с незакрытой `AFTER <ID>` (BUG-206).
+4. **Dependency gate** — не диспатчить spec с незакрытой зависимостью из `depends_on`
+   (BUG-206 + TECH-222; backlog-`AFTER` — deprecated-фолбэк, снимается после 30 дней без DEP_VIA).
 5. **RAM floor ≥3GB** перед запуском LLM-агента (иначе OOM на полпути = потраченные токены).
 6. **Slot discipline + dup-guard** — не диспатчить без слота / дубликат spec_id.
 7. **Timeout как hard-limit** (claude 90м / codex 15м / gemini 30м) + heartbeat-reaper добивает зависшие.

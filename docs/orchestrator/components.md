@@ -29,8 +29,12 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 - **TOCTOU re-check (BUG-205, `:855-870`):** прямо перед `pueue add` перечитывает
   `lifecycle.read_lifecycle(spec)` (HEAD); если статус уже не `queued/resumed` → abort. Snapshot из
   `list_by_status` устаревает (callback — отдельный процесс; git_pull пропущен пока агент работает).
-- **Dependency gate (BUG-206, `:782-795`):** spec с `AFTER <ID>` в backlog-строке диспатчится только
-  когда все зависимости `done` (status из lifecycle SoT). Отсутствующая зависимость = MET (анти-stall).
+- **Dependency gate (BUG-206 + TECH-222, `orchestrator_queue._spec_deps`):** ребро живёт в
+  `depends_on: [ID]` в lifecycle YAML зависимой спеки (пишет Spark в `create_initial`, ретрофит —
+  `lifecycle.set_depends_on`). Диспатч только когда все зависимости `done` (status из lifecycle SoT).
+  Отсутствующая зависимость = MET (fail-open, анти-stall). Backlog-`AFTER` читается как
+  deprecated-фолбэк и логируется как `DEP_VIA: … deps_via=backlog` — удалить, когда метрика
+  молчит 30 дней.
 - **Reconciliation gate (2026-06-26, ancestry-gate TECH-220; three-way TECH-221):** ПЕРЕД `pueue add` —
   `orchestrator_queue.reconcile()` возвращает `"done"` / `"continue"` / `"fresh"` (та же проверка,
   что callback-guard и gate-daemon, plus `gate_ancestry.branch_state()` когда `find_implementation`
@@ -212,7 +216,7 @@ alert/blocked), оба heartbeat-инструмента fail-open (никогд�
 3. **Не bootstrap-ить в терминальный статус** — unparsable/missing → `queued`, никогда `done`
    (иначе спека «исчезает»: never dispatched + Rule 7 не даст восстановить).
 4. **Bootstrap читает backlog из HEAD, не WT** (CWE-367) — параллельные render/правки делают WT гонкой.
-5. **Dependency gate** — не диспатчить spec с незакрытой `AFTER <ID>` (BUG-206).
+5. **Dependency gate** — не диспатчить spec с незакрытым `depends_on` (BUG-206, TECH-222).
 6. **Hermes intake gate** — `scan_inbox` диспатчит только `Status: queued`.
 7. **RAM floor ≥3GB** перед запуском LLM-агента (exit 78).
 8. **Slot discipline** — не диспатчить без слота; orphan-слоты освобождать, но НИКОГДА при недостижимом
