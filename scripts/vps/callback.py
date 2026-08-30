@@ -6,6 +6,8 @@ Role: Pueue completion callback — release slot, update phase, dispatch QA/Refl
 Uses:
   - callback_logs: extract_agent_output  (TECH-216)
   - callback_dispatch: resolve_spec_id, dispatch_qa, dispatch_reflect  (TECH-216)
+  - callback_scope: _commit_stats, _detect_out_of_scope_files, _emit_audit  (TECH-216)
+  - callback_circuit: is_circuit_open, _trip_circuit, _record, _reset_circuit_cli  (TECH-216)
   - db: release_slot, finish_task, update_project_phase, record_decision, count_demotes_since
   - event_writer: notify, notify_circuit_event
   - lifecycle: read_lifecycle, write_lifecycle  (ADR-023 — sole status writer)
@@ -29,13 +31,14 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
+import callback_circuit  # noqa: E402  — circuit-breaker (TECH-216)
 import callback_dispatch  # noqa: E402  — QA/reflect dispatch (TECH-216)
 import callback_logs  # noqa: E402  — agent output extraction (TECH-216)
+import callback_scope  # noqa: E402  — allowlist telemetry + audit log (TECH-216)
 import db  # noqa: E402
 import event_writer  # noqa: E402
 import gate_logic  # noqa: E402 — single source of gate logic (TECH-210)
@@ -164,368 +167,33 @@ dispatch_reflect = callback_dispatch.dispatch_reflect
 _parse_allowed_files = gate_logic.parse_allowed_files
 
 
-def _get_started_at(pueue_id: int) -> str | None:
-    """Read started_at for a pueue task from task_log (read-only db access)."""
-    try:
-        with db.get_db() as conn:
-            row = conn.execute(
-                "SELECT started_at FROM task_log WHERE pueue_id = ? ORDER BY id DESC LIMIT 1",
-                (pueue_id,),
-            ).fetchone()
-            if row is None:
-                return None
-            return row[0] if not hasattr(row, "keys") else row["started_at"]
-    except Exception as exc:  # noqa: BLE001 — defensive (callback must not crash)
-        log.warning("ALLOWED_FILES: started_at lookup failed for %s: %s", pueue_id, exc)
-        return None
+# --- TECH-216: scope telemetry + circuit-breaker live in sibling modules -----
+#
+# Re-exports for root tests/ and spec_operator.py (both outside Allowed Files):
+# tests/unit/test_audit_log_format.py, tests/integration/test_callback_status_sync.py
+# and test_callback_circuit_breaker.py call these as `callback.<name>`;
+# spec_operator.py:119 calls `callback._reset_circuit_cli()`. verify_status_sync
+# below still binds them by bare name so `monkeypatch.setattr(callback, "_commit_stats", …)`
+# keeps working until Task 3 moves it to callback_sync.
+_get_started_at = callback_scope._get_started_at
+_audit_log_path = callback_scope._audit_log_path
+_write_audit = callback_scope._write_audit
+_emit_audit = callback_scope._emit_audit
+_is_test_path = callback_scope._is_test_path
+_commit_stats = callback_scope._commit_stats
+_detect_out_of_scope_files = callback_scope._detect_out_of_scope_files
 
-
-def _audit_log_path() -> Path:
-    """Return path to callback-audit.jsonl (from CALLBACK_AUDIT_LOG env or default)."""
-    env_val = os.environ.get("CALLBACK_AUDIT_LOG", "")
-    if env_val:
-        return Path(env_val)
-    return SCRIPT_DIR / "callback-audit.jsonl"
-
-
-def _write_audit(record: dict) -> None:
-    """Append one JSON line to the audit log. Atomic: write to tmp, then rename."""
-    try:
-        audit_path = _audit_log_path()
-        line = json.dumps(record, ensure_ascii=False) + "\n"
-        # Atomic append: open in append mode (kernel-level atomicity for O_APPEND)
-        with audit_path.open("a", encoding="utf-8") as fh:
-            fh.write(line)
-    except Exception as exc:  # noqa: BLE001 — must not crash callback
-        log.warning("AUDIT: write failed: %s", exc)
-
-
-def _is_test_path(rel_path: str) -> bool:
-    """True if rel_path looks like a test file."""
-    p = rel_path.lower()
-    return (
-        p.startswith("tests/")
-        or "/tests/" in p
-        or "_test." in p
-        or p.endswith("_test.py")
-        or p.endswith("_test.ts")
-        or p.endswith(".test.ts")
-        or p.endswith(".test.js")
-        or p.endswith(".spec.ts")
-        or p.endswith(".spec.js")
-    )
-
-
-def _commit_stats(
-    project_path: str,
-    allowed: list[str] | None,
-    started_at: str | None,
-) -> tuple[int, int, int]:
-    """Return (code_loc, test_loc, code_commits) via git log --numstat.
-
-    - code_loc:    total lines added in non-test allowed files.
-    - test_loc:    total lines added in test files.
-    - code_commits: number of commits that touched non-test allowed files.
-
-    Returns (0, 0, 0) on any error or when guard would degrade-open.
-    """
-    if not allowed or started_at is None:
-        return 0, 0, 0
-    cmd = [
-        "git",
-        "-C",
-        project_path,
-        "log",
-        "--all",
-        f"--since={started_at}",
-        "--pretty=format:COMMIT",
-        "--numstat",
-        "--",
-        *allowed,
-    ]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return 0, 0, 0
-    if r.returncode != 0:
-        return 0, 0, 0
-
-    code_loc = 0
-    test_loc = 0
-    code_commits = 0
-    commit_has_code = False
-
-    for line in r.stdout.splitlines():
-        if line.strip() == "COMMIT":
-            if commit_has_code:
-                code_commits += 1
-            commit_has_code = False
-            continue
-        parts = line.split("\t")
-        if len(parts) == 3:
-            try:
-                added = int(parts[0])
-            except ValueError:
-                added = 0
-            rel_path = parts[2]
-            if _is_test_path(rel_path):
-                test_loc += added
-            else:
-                code_loc += added
-                if added > 0:
-                    commit_has_code = True
-    # Flush last commit
-    if commit_has_code:
-        code_commits += 1
-
-    return code_loc, test_loc, code_commits
-
-
-def _detect_out_of_scope_files(
-    project_path: str,
-    spec_id: str,
-    allowed: list[str] | None,
-    started_at: str | None,
-) -> list[str]:
-    """Return files touched by spec-attributed commits but NOT in the allowlist.
-
-    BUG-199 Fix C: detection-only (WARNING), not enforcement.
-    Inspects commits since started_at whose subject implements spec_id,
-    and returns any paths they touched that are NOT in the allowed list.
-    """
-    if not allowed or not started_at or not spec_id:
-        return []
-    cmd = [
-        "git",
-        "-C",
-        project_path,
-        "log",
-        "--all",
-        f"--since={started_at}",
-        "--pretty=format:%h%x00%s",
-        "--name-only",
-    ]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return []
-    if r.returncode != 0:
-        return []
-
-    allowed_set = set(allowed)
-    out_of_scope: set[str] = set()
-    is_spec_commit = False
-
-    for line in r.stdout.splitlines():
-        if "\x00" in line:
-            # New commit header: hash\x00subject
-            _, _, current_subject = line.partition("\x00")
-            is_spec_commit = gate_logic.match_subject(current_subject, spec_id)
-        elif line.strip() and is_spec_commit:
-            # File path from --name-only
-            rel_path = line.strip()
-            if rel_path not in allowed_set and not rel_path.startswith("ai/"):
-                out_of_scope.add(rel_path)
-
-    return sorted(out_of_scope)
-
-
-# --- TECH-169: Circuit-breaker -----------------------------------------------
-
-# Threshold: more than this many demotes within WINDOW_MIN → circuit OPEN.
-CIRCUIT_THRESHOLD = 3
-CIRCUIT_WINDOW_MIN = 10
-# Healing: if there were no demotes in the last HEAL_MIN minutes, circuit
-# auto-closes (lazy check inside is_circuit_open).
-CIRCUIT_HEAL_MIN = 30
-# Reset CLI clears decisions newer than this (matches HEAL_MIN by design).
-CIRCUIT_RESET_CLEAR_MIN = 30
-# Pueue group paused on OPEN / resumed on RESET.
-CIRCUIT_PUEUE_GROUP = "claude-runner"
-
-
-def is_circuit_open() -> bool:
-    """Return True if circuit-breaker is currently OPEN.
-
-    Logic:
-      1. Count demotes in last CIRCUIT_WINDOW_MIN minutes.
-      2. If count > CIRCUIT_THRESHOLD → OPEN.
-      3. Auto-heal: if count == 0 over CIRCUIT_HEAL_MIN window → CLOSED
-         (cheap because we just compared to 0 above; no extra query).
-
-    Pure function over DB state — no in-memory flag (callback is short-lived
-    per pueue completion).
-    """
-    try:
-        recent = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
-    except Exception as exc:  # noqa: BLE001 — callback must not crash
-        log.warning("CIRCUIT: count_demotes_since failed: %s", exc)
-        return False
-    if recent > CIRCUIT_THRESHOLD:
-        # Lazy auto-heal: if last 30 min were quiet, ignore stale window.
-        try:
-            heal = db.count_demotes_since(CIRCUIT_HEAL_MIN)
-        except Exception:
-            heal = recent
-        if heal == 0:
-            log.info("CIRCUIT: auto-heal — no demotes in %d min", CIRCUIT_HEAL_MIN)
-            return False
-        return True
-    return False
-
-
-def _pueue_pause(group: str = CIRCUIT_PUEUE_GROUP) -> bool:
-    """Best-effort pause of a pueue group. Returns True on success.
-
-    Never raises — pueue might be missing, socket mismatch, etc.
-    """
-    try:
-        r = subprocess.run(
-            ["pueue", "pause", "--group", group],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-        if r.returncode == 0:
-            log.warning("CIRCUIT: paused pueue group=%s", group)
-            return True
-        log.warning(
-            "CIRCUIT: pause failed (rc=%s) stderr=%s",
-            r.returncode,
-            r.stderr.strip()[:200],
-        )
-        return False
-    except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("CIRCUIT: pause subprocess error: %s", exc)
-        return False
-
-
-def _pueue_resume(group: str = CIRCUIT_PUEUE_GROUP) -> bool:
-    """Best-effort resume of a pueue group. Returns True on success."""
-    try:
-        r = subprocess.run(
-            ["pueue", "start", "--group", group],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-        if r.returncode == 0:
-            log.warning("CIRCUIT: resumed pueue group=%s", group)
-            return True
-        log.warning(
-            "CIRCUIT: resume failed (rc=%s) stderr=%s",
-            r.returncode,
-            r.stderr.strip()[:200],
-        )
-        return False
-    except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("CIRCUIT: resume subprocess error: %s", exc)
-        return False
-
-
-def _trip_circuit(project_id: str, spec_id: str | None, count: int) -> None:
-    """Side-effects fired exactly once when circuit transitions to OPEN.
-
-    1. Log structured warning.
-    2. Record an explicit 'circuit_open' decision (NOT counted as demote).
-    3. Notify via event_writer (Telegram-equivalent).
-    4. Pause claude-runner pueue group (best-effort).
-    """
-    log.error(
-        "CIRCUIT_OPEN: %d demotes in %d min, refusing further status mutations until reset",
-        count,
-        CIRCUIT_WINDOW_MIN,
-    )
-    try:
-        db.record_decision(
-            project_id,
-            spec_id,
-            "circuit_open",
-            f"threshold_exceeded:{count}/{CIRCUIT_WINDOW_MIN}min",
-            demoted=False,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.warning("CIRCUIT: record_decision(circuit_open) failed: %s", exc)
-    try:
-        event_writer.notify_circuit_event(
-            action="open",
-            count=count,
-            window_min=CIRCUIT_WINDOW_MIN,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.warning("CIRCUIT: notify_circuit_event(open) failed: %s", exc)
-    _pueue_pause()
-
-
-def _reset_circuit_cli() -> None:
-    """Operator-triggered circuit reset.
-
-    Steps:
-      1. Clear callback_decisions newer than CIRCUIT_RESET_CLEAR_MIN.
-      2. Resume claude-runner pueue group.
-      3. Send reset event (Telegram-equivalent).
-    """
-    try:
-        deleted = db.clear_decisions(CIRCUIT_RESET_CLEAR_MIN)
-        log.warning("CIRCUIT_RESET: cleared %d decision row(s)", deleted)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("CIRCUIT_RESET: clear_decisions failed: %s", exc)
-    _pueue_resume()
-    try:
-        event_writer.notify_circuit_event(action="reset", count=0, window_min=CIRCUIT_WINDOW_MIN)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("CIRCUIT_RESET: notify failed: %s", exc)
-    print(f"circuit reset: cleared decisions, resumed {CIRCUIT_PUEUE_GROUP}")
-
-
-# -----------------------------------------------------------------------------
-
-
-def _emit_audit(
-    project_id: str,
-    spec_id: str,
-    pueue_id: int | None,
-    target_in: str,
-    target_out: str,
-    reason: str,
-    allowed_count: int,
-    code_loc: int,
-    test_loc: int,
-    code_commits: int,
-    started_at: str | None,
-    start_wall: float,
-    **extra: object,
-) -> None:
-    """Build audit record and write one JSONL line. Called once per verify_status_sync exit."""
-    duration_ms = int((time.monotonic() - start_wall) * 1000)
-    record = {
-        "ts": datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "project_id": project_id,
-        "spec_id": spec_id,
-        "pueue_id": pueue_id,
-        "target_in": target_in,
-        "target_out": target_out,
-        "reason": reason,
-        "allowed_count": allowed_count,
-        "code_loc": code_loc,
-        "test_loc": test_loc,
-        "code_commits": code_commits,
-        "started_at": started_at,
-        "duration_ms": duration_ms,
-    }
-    if extra:
-        record.update(extra)
-    _write_audit(record)
-
-
-def _record(project_id, spec_id, action, reason, *, demoted=False):
-    """db.record_decision, never raises (BLE001)."""
-    try:
-        db.record_decision(project_id, spec_id, action, reason, demoted=demoted)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("CIRCUIT: record_decision failed: %s", exc)
+CIRCUIT_THRESHOLD = callback_circuit.CIRCUIT_THRESHOLD
+CIRCUIT_WINDOW_MIN = callback_circuit.CIRCUIT_WINDOW_MIN
+CIRCUIT_HEAL_MIN = callback_circuit.CIRCUIT_HEAL_MIN
+CIRCUIT_RESET_CLEAR_MIN = callback_circuit.CIRCUIT_RESET_CLEAR_MIN
+CIRCUIT_PUEUE_GROUP = callback_circuit.CIRCUIT_PUEUE_GROUP
+is_circuit_open = callback_circuit.is_circuit_open
+_pueue_pause = callback_circuit._pueue_pause
+_pueue_resume = callback_circuit._pueue_resume
+_trip_circuit = callback_circuit._trip_circuit
+_reset_circuit_cli = callback_circuit._reset_circuit_cli
+_record = callback_circuit._record
 
 
 def _render_and_commit_backlog(project_path: str, project_id: str) -> None:

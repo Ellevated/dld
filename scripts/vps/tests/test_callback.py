@@ -22,7 +22,9 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import callback  # noqa: E402
+import callback_circuit  # noqa: E402
 import callback_logs  # noqa: E402
+import callback_scope  # noqa: E402
 import db  # noqa: E402
 import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
@@ -268,6 +270,8 @@ class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
 
         callback.verify_status_sync(str(git_repo), "TECH-Y", target="done", pueue_id=99)
         data = lifecycle.read_lifecycle(str(git_repo), "TECH-Y")
@@ -481,6 +485,8 @@ class TestPushLocalBeforeGate:
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
 
         callback.verify_status_sync(
             str(repo),
@@ -514,6 +520,8 @@ class TestPushLocalBeforeGate:
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
 
         callback.verify_status_sync(
             str(repo),
@@ -552,6 +560,8 @@ class TestDemoteOnce:
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
 
         callback.verify_status_sync(
             str(repo),
@@ -641,6 +651,8 @@ class TestAutopilotSignaledOverride:
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
 
         # autopilot_signaled=True + target=blocked → must stay blocked
         callback.verify_status_sync(
@@ -703,6 +715,8 @@ class TestAutopilotSignaledOverride:
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
 
         callback.verify_status_sync(
             str(repo),
