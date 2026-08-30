@@ -1,0 +1,73 @@
+{
+  "spec_id": "TECH-220",
+  "spec_path": "ai/features/TECH-220-2026-08-30-gate-by-branch-ancestry.md",
+  "started": "2026-08-30T11:27:47.302Z",
+  "plan_exists": true,
+  "tasks": [
+    {
+      "id": "1",
+      "status": "done",
+      "coder": [
+        "scripts/vps/gate_ancestry.py",
+        "scripts/vps/tests/test_gate_ancestry.py"
+      ],
+      "tester": "pass",
+      "reviewer": "approved",
+      "commit": "dd90d02c",
+      "verify": "pending",
+      "ts": "2026-08-30T11:46:25.685Z"
+    },
+    {
+      "id": "2",
+      "status": "done",
+      "coder": [
+        "scripts/vps/callback_sync.py",
+        "scripts/vps/callback_dispatch.py"
+      ],
+      "tester": "pass",
+      "reviewer": "approved",
+      "commit": "18831c93",
+      "verify": "pending",
+      "ts": "2026-08-30T12:10:38.959Z"
+    },
+    {
+      "id": "3",
+      "status": "done",
+      "coder": [
+        "scripts/vps/orchestrator_queue.py",
+        "scripts/vps/gate-daemon.py",
+        "scripts/vps/tests/test_claude_runner_timeout.py"
+      ],
+      "tester": "pass",
+      "reviewer": "approved",
+      "commit": "18831c93",
+      "verify": "pending",
+      "ts": "2026-08-30T12:10:39.061Z"
+    },
+    {
+      "id": "4",
+      "status": "done",
+      "coder": [
+        "tests/unit/test_callback_branch_awareness.py",
+        "tests/unit/test_callback_implementation_guard.py"
+      ],
+      "tester": "pass",
+      "reviewer": "approved",
+      "commit": "abce7693",
+      "verify": "pending",
+      "ts": "2026-08-30T12:36:06.607Z"
+    },
+    {
+      "id": "5",
+      "status": "done",
+      "coder": [
+        "docs/orchestrator/status-model.md"
+      ],
+      "tester": "pass",
+      "reviewer": "approved",
+      "commit": "3f20db7b",
+      "verify": "pending",
+      "ts": "2026-08-30T12:36:06.608Z"
+    }
+  ]
+}
