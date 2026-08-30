@@ -201,6 +201,26 @@ def call(binary: Path, tool: str, payload: dict, attempts: int = 3) -> dict:
     )
 
 
+def reindex(binary: Path, project: str, repo_root: Path) -> None:
+    """Rebuild the graph before reading it. Costs ~17 s on this repo; skipping it costs more.
+
+    The index does not refresh itself here: the resident MCP server was removed on
+    2026-08-30 (an 0.10.8 Windows busy-loop burning a quarter core per session), `auto_watch`
+    is off, and no hook re-indexes on edit. So the graph freezes at whatever the last build
+    saw, and this script — which compares function BODIES read at graph spans — then reports
+    differences between two files that are byte-identical on disk. That happened the same day:
+    a DIVERGED on `validate-allowlist.mjs::emit` while `diff` showed nothing.
+
+    Neither freshness signal can replace this. `index_status.head_sha` is read live from git,
+    so it equals HEAD however old the graph is, and `detect_changes` returns a git diff against
+    the base branch, not index drift. Rebuilding IS the check — pass `--no-reindex` only when
+    you have just built it yourself.
+    """
+    call(
+        binary, "index_repository", {"project": project, "path": str(repo_root).replace("\\", "/")}
+    )
+
+
 def project_for(binary: Path, repo_root: Path) -> str | None:
     """Return the indexed project name whose root_path is this repo."""
     result = call(binary, "list_projects", {})
@@ -373,6 +393,11 @@ def main() -> int:
             print(f"TREE_SYNC_UNAVAILABLE: {repo_root} is not indexed — nothing ran.")
             print('  Index it first: index_repository(repo_path=".", mode="full")')
             return unavailable()
+        if "--no-reindex" in sys.argv[1:]:
+            print("  (--no-reindex: comparing against the graph as it stands)")
+        else:
+            print("  rebuilding the graph first (~17 s) — a stale index reports false DIVERGED")
+            reindex(binary, project, repo_root)
         root, tmpl, samples = collect_symbols(binary, project)
     except (RuntimeError, OSError, ValueError) as exc:
         print(f"TREE_SYNC_ERROR: {exc}", file=sys.stderr)
