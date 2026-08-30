@@ -227,6 +227,17 @@ def _decide_status(
             log.info("GRACE_RETRY: %s — resolved on attempt %d (via=%s)", spec_id, attempt, via)
             return "done", "", via
 
+    state = gate_ancestry.branch_state(project_path, spec_id)
+    if state.exists and state.ahead > 0:
+        # TECH-221: the run died before merge and salvage pushed the branch.
+        # Nothing is lost and force-done is the WRONG advice here — the next
+        # dispatch continues that branch (orchestrator_queue.reconcile).
+        return (
+            "blocked",
+            f"branch_pushed_not_merged:{state.ahead} ahead — "
+            f"origin/{state.ref} carries the work; re-dispatch continues that branch",
+            via,
+        )
     return (
         "blocked",
         (

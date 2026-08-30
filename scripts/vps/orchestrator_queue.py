@@ -10,14 +10,15 @@ coupling: nothing in this module is a monkeypatch target, so each step is
 called by the wrapper as `orchestrator_queue.<name>(...)`, never re-exported
 by bare name.
 
-Uses: db (import), lifecycle (import), gate_logic (import), gate_ancestry (import),
-      orchestrator_slots._pueue_add
+Uses: os (import), db (import), lifecycle (import), gate_logic (import),
+      gate_ancestry (import), orchestrator_slots._pueue_add
 Used by: orchestrator (facade re-export of dep helpers; attribute calls into
          the six scan_queued steps from the wrapper)
 """
 
 import json
 import logging
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -253,31 +254,29 @@ def status_still_dispatchable(project_dir: str, spec_id: str) -> bool:
     return True
 
 
-def reconcile_if_implemented(project_dir: str, spec_id: str, spec_file: Path) -> bool:
-    """RECONCILIATION GATE: mark done + skip dispatch if already on develop.
+def reconcile(project_dir: str, spec_id: str, spec_file: Path) -> str:
+    """Pre-dispatch verdict: "done" | "continue" | "fresh".
 
-    A queued spec may already be implemented on origin/develop — work landed
-    via another developer, another window, another node, or an autopilot
-    session whose callback never fired. The single-writer model (ADR-023)
-    only updates status through callback on THIS orchestrator's pueue
-    completions, so out-of-band work leaves the lifecycle stuck at queued.
-    Without this gate we re-dispatch (burn a full session) only for the
-    callback guard to rubber-stamp done post-hoc. Run the SAME check the
-    callback guard / gate-daemon use (gate_logic), but BEFORE dispatch.
-    Fail-closed: only reconcile on a positive allowlist AND a positive commit
-    match; otherwise dispatch proceeds as normal (return False).
+    "done"     — already on origin/develop (another window, another node, or a
+                 session whose callback never fired). Marked done here; without
+                 this we burn a session for the guard to rubber-stamp it after.
+    "continue" — origin/<type>/<ID> exists with commits develop lacks: a run
+                 killed by timeout whose salvage pushed the branch (TECH-221).
+                 Dispatch, but the worktree must be built FROM that branch.
+    "fresh"    — nothing found; normal dispatch.
 
-    Returns True if the spec was reconciled (marked done) — the caller must
-    not dispatch.
+    Fail-closed: "done" only on a positive allowlist AND a positive gate match;
+    "continue" only on a remote branch that is provably ahead of develop.
     """
     allowed_files = gate_logic.parse_allowed_files(spec_file)
     if not allowed_files:
-        return False
+        return "fresh"
     gate_logic.fetch_develop(project_dir)
     gate_ancestry.fetch_branch(project_dir, spec_id)
     impl_sha, via = gate_ancestry.find_implementation(project_dir, spec_id, allowed_files)
     if not impl_sha:
-        return False
+        state = gate_ancestry.branch_state(project_dir, spec_id)
+        return "continue" if state.exists and state.ahead > 0 else "fresh"
     try:
         lifecycle.write_lifecycle(
             project_dir,
@@ -297,7 +296,29 @@ def reconcile_if_implemented(project_dir: str, spec_id: str, spec_file: Path) ->
         log.info("reconcile noop: %s already done (race)", spec_id)
     except lifecycle.LifecycleWriteRaceError:
         log.info("reconcile deferred: %s CAS race, retry next cycle", spec_id)
-    return True
+    return "done"
+
+
+def reconcile_if_implemented(project_dir: str, spec_id: str, spec_file: Path) -> bool:
+    """Bool facade for scan_queued, plus the CLAUDE_CONTINUE_BRANCH side effect.
+
+    The name and the bool are load-bearing: orchestrator.py:249 reads this as a
+    truth value and is NOT editable under this spec. Returning the raw verdict
+    string would make "continue" and "fresh" truthy and skip EVERY dispatch.
+
+    The env write is here for the same reason. scan_queued builds its pueue_env
+    dict at orchestrator.py:245 and calls this at 249, immediately before
+    _pueue_add (252), which submits `{**os.environ, **env}` — so this is the
+    only per-dispatch hook this module owns. ALWAYS written, never only set: a
+    leftover "1" would label the next, unrelated spec a continuation.
+    """
+    verdict = reconcile(project_dir, spec_id, spec_file)
+    if verdict == "continue":
+        os.environ["CLAUDE_CONTINUE_BRANCH"] = "1"
+        log.info("continue dispatch: %s — origin branch has unmerged commits", spec_id)
+    else:
+        os.environ.pop("CLAUDE_CONTINUE_BRANCH", None)
+    return verdict == "done"
 
 
 def record_dispatch(
