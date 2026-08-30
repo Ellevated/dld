@@ -1,0 +1,32 @@
+# Fleet drift debt register — scripts/check-fleet-drift.py
+#
+# One line per downstream project: how many synced files may differ from `template/`
+# before the gate fails. Same contract as `scripts/vps/loc-limit-baseline.txt` — the
+# gate fails on a project that got WORSE than its entry, never on the history.
+#
+# **These numbers are not a target, they are today's damage.** DLD's prompt tree has
+# reached projects by hand since `upgrade.mjs` was deleted 2026-05-25, and on
+# 2026-08-31 that came to ~95 diverged files per project. The absent files were
+# delivered that day (`--apply-absent`: 91 files across 7 repos, nothing overwritten),
+# which is why every `absent` count is now 0 and only `differs` remains.
+#
+# `differs` is deliberately NOT swept. Each of those files exists in both places and
+# says something different, and some of the differences are the project's own work —
+# AwardyBot alone carries 364 local commits under `.claude/`. Overwriting them blind
+# is precisely what got the auto-apply script deleted. Bringing a project to zero is a
+# per-project job done with the diff in hand:
+#
+#     python scripts/check-fleet-drift.py D:/dev/<project>        # see what differs
+#     git -C D:/dev/<project> diff --stat                         # then decide, file by file
+#     python scripts/check-fleet-drift.py D:/dev/<project> --apply  # only when the diff is understood
+#
+# Lower the number here when a project is brought closer. Raising one is an admission
+# that a project drifted further — say why in a comment when you do.
+
+AwardyBot   = 92
+Dowry       = 94
+Dowry-mc    = 99
+PLPilot     = 94
+wb          = 95
+gipotenuza  = 94
+MishkinLyap = 91

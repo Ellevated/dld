@@ -53,10 +53,11 @@ import gate_logic  # noqa: E402
 log = logging.getLogger(__name__)
 
 # L-derived-4: the same map lives as prose twice — the "Type mapping" table in
-# .claude/skills/autopilot/worktree-setup.md:102-108 and the bash `case` in
-# autopilot-git.md:52-58 — and the two disagree. Neither has a GROWTH row; the
-# bash falls through to `task/`. GROWTH is decided here as `growth/`; if either
-# prose copy ever grows a GROWTH row it must match this value.
+# `.claude/skills/autopilot/worktree-setup.md` and the bash `case` in
+# `autopilot-git.md`. Both copies were missing GROWTH (the bash fell through to
+# `task/`) until 2026-08-30; `tests/test_branch_prefix_parity.py` now binds all
+# four prose copies to this dict, so a type added here without the prompts fails
+# the suite instead of branching work somewhere the gate never looks.
 _BRANCH_PREFIX = {
     "FTR": "feature",
     "BUG": "fix",

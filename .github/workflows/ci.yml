@@ -114,6 +114,15 @@ jobs:
       # dead agent or dangling script reference should stop a merge rather than
       # scroll past in a log. Suppress a deliberate exception in
       # prompt-integrity-baseline.json, with a reason.
+      # The fleet guard itself needs downstream checkouts, which CI does not have — it
+      # runs from a laptop or the VPS (`python scripts/check-fleet-drift.py --root ~/projects`).
+      # What CI can protect is the guard's own behaviour: that an absent file counts as
+      # drift, that --apply-absent never overwrites local work, and that a version marker
+      # is recomputed from disk rather than believed. A marker that is trusted instead of
+      # verified is the failure this repo has hit three times.
+      - name: Fleet drift guard (self-tests)
+        run: pytest tests/unit/test_check_fleet_drift.py -v
+
       - name: Prompt tree integrity (root)
         run: node .claude/scripts/check-prompt-integrity.mjs --tree .claude
 

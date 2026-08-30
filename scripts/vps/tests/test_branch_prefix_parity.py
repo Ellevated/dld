@@ -20,6 +20,7 @@ Spark linter to the production parser.
 ADR-013: no mocks. Real module import, real prompt files, both trees.
 """
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -87,3 +88,68 @@ def test_unknown_type_is_refused_loudly():
     """An unlisted prefix must raise, not silently fall back to a default branch."""
     with pytest.raises(ValueError):
         gate_ancestry.branch_ref_for("XXX-9")
+
+
+# --- The same parity, on the projects the orchestrator actually dispatches ----------
+#
+# The four prompts above live in this repo, so CI covers them. Each downstream project
+# carries its own copy of the same two files, and nothing reached those — which is how
+# GROWTH came to be in `_BRANCH_PREFIX` and in neither prompt of any of the seven repos
+# on 2026-08-31, three weeks after the dict grew the entry.
+#
+# Point `FLEET_ROOT` at the directory holding the checkouts (e.g. `D:/dev`, or
+# `~/projects` on the VPS) and this runs there too. It is opt-in because CI has no
+# checkouts to look at; the structural fix is `scripts/check-fleet-drift.py` driving
+# `differs` to zero, at which point these files are byte-identical to the ones above.
+
+FLEET_ROOT = os.environ.get("FLEET_ROOT")
+DOWNSTREAM_PROMPTS = [
+    ".claude/skills/autopilot/autopilot-git.md",
+    ".claude/skills/autopilot/worktree-setup.md",
+]
+
+# `  ARCH) BRANCH_PREFIX="arch" ;;` — the bash form the table alone does not cover.
+BASH_CASE_RE = re.compile(r"^\s*([A-Z]{3,6})\)\s*BRANCH_PREFIX=\"([a-z]+)\"", re.MULTILINE)
+
+
+def _fleet_projects() -> list[Path]:
+    if not FLEET_ROOT:
+        return []
+    root = Path(FLEET_ROOT)
+    if not root.is_dir():
+        return []
+    return sorted(p for p in root.iterdir() if p.is_dir() and (p / DOWNSTREAM_PROMPTS[0]).is_file())
+
+
+@pytest.mark.skipif(not FLEET_ROOT, reason="set FLEET_ROOT to check downstream checkouts")
+@pytest.mark.parametrize("rel", DOWNSTREAM_PROMPTS)
+def test_downstream_prompt_tables_match_python_map(rel):
+    projects = _fleet_projects()
+    assert projects, f"FLEET_ROOT={FLEET_ROOT} holds no project with {rel}"
+
+    expected = dict(gate_ancestry._BRANCH_PREFIX)
+    wrong = {
+        p.name: sorted(_pairs_from(p / rel).items())
+        for p in projects
+        if _pairs_from(p / rel) != expected
+    }
+    assert not wrong, (
+        f"{rel} disagrees with gate_ancestry._BRANCH_PREFIX in: {wrong}\n"
+        f"  python: {sorted(expected.items())}\n"
+        "A type the dispatcher knows and the prompt does not means autopilot branches "
+        "the work somewhere the ancestry gate never looks — a false no_merged_implementation "
+        "on a run that already cost money."
+    )
+
+
+@pytest.mark.skipif(not FLEET_ROOT, reason="set FLEET_ROOT to check downstream checkouts")
+def test_downstream_bash_case_matches_python_map():
+    """The table can be right while the `case` that creates the branch falls through."""
+    expected = dict(gate_ancestry._BRANCH_PREFIX)
+    wrong = {}
+    for project in _fleet_projects():
+        text = (project / DOWNSTREAM_PROMPTS[0]).read_text(encoding="utf-8")
+        found = {m.group(1): m.group(2) for m in BASH_CASE_RE.finditer(text)}
+        if found != expected:
+            wrong[project.name] = sorted(found.items())
+    assert not wrong, f"autopilot-git.md bash `case` disagrees with the dict in: {wrong}"

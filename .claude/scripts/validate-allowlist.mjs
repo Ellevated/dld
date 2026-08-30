@@ -13,13 +13,13 @@
  * -----------------------------------------------
  * Spark used to run this check by reading four regexes out of its own prompt
  * and applying them by hand. That copy drifted from the parser that actually
- * gates the pipeline: numbered-list items were accepted by `callback.py`
+ * gates the pipeline: numbered-list items were accepted by the pipeline parser
  * (TECH-208) and rejected by the prompt, and a rejection there *deletes the
  * spec file*. A check whose failure mode is destructive has no business being
  * an LLM re-derivation of someone else's regex.
  *
- * The rules below therefore mirror `callback._parse_allowed_files_v1` and
- * `gate_logic.strip_bookkeeping_paths` exactly. Where this script is stricter
+ * The rules below therefore mirror `gate_logic.py::_parse_allowed_files_v1` and
+ * `gate_logic.py::strip_bookkeeping_paths` exactly. Where this script is stricter
  * than the parser, it is because the parser's tolerance is silent and the
  * author would not learn about it until the run failed — each such case is
  * argued in place.
@@ -28,7 +28,11 @@
 import { readFileSync } from 'fs';
 
 // --- Regexes: byte-for-byte the parser's, JS syntax ------------------------
-// Sources: scripts/vps/callback.py:451-459, scripts/vps/gate_logic.py:46-52.
+// Sources: `gate_logic.py::_parse_allowed_files_v1`,
+// `gate_logic.py::strip_bookkeeping_paths`. Cited by symbol, not line: the
+// line form of this very comment pointed past the end of a file that had
+// shrunk by a thousand lines, and named `callback.py` a module after the
+// parser left it. `test_doc_symbol_refs.py` now checks these.
 // Python `^`/`$` here are per-line because we match line by line, matching the
 // parser, which iterates `spec_text.splitlines()`.
 const HEADING_RE = /^##[ \t]+Allowed Files[ \t]*$/;
