@@ -286,7 +286,6 @@ def main() -> None:  # pragma: no cover
             runner_code = callback_logs.runner_exit_code(pueue_id, project_id)
             if runner_code is not None:
                 raw_exit_code = str(runner_code)
-                log.info("exit_code from runner log: %s", raw_exit_code)
         status, exit_code = map_result(result, raw_exit_code)
 
         log.info("parsed: project=%s task=%s status=%s", project_id, task_label, status)
