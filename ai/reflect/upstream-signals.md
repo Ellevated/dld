@@ -463,3 +463,18 @@ GROWTH падает в `task/`). В Python её нет; `orchestrator_queue.reco
 Бриф скаутам содержал две фактические ошибки (`_merge_confirmed` приписан `callback_sync`;
 `tests/regression/test_callback_spec_corpus.py` назван корпусом subject-вердиктов) — оба
 поправил codebase-скаут grep'ом. Скаут, проверяющий бриф, окупился; Verified References — рабочий гейт.
+
+---
+### SIGNAL-2026-08-30-1115
+- **Source:** autopilot (TECH-220)
+- **Target:** spark
+- **Type:** gap
+- **Message:** Спека предписала диапазон диффа `git diff merge-base(<ref>, origin/develop) <ref>`, который при `--ff-only` мерже (единственный, который делает `finishing.md`) всегда пуст: после ff `merge-base == tip`. Ancestry-гейт не сработал бы НИ РАЗУ, а спека выглядела бы выполненной — тесты EC-1/EC-2, написанные через `--no-ff`, были бы зелёными. Поймал планнер при сверке с кодом, не ревью спеки. Spark спроектировал git-логику, не проверив её против того способа мержа, который прописан в его же собственном промпте.
+- **Evidence:** `.claude/skills/autopilot/finishing.md:51-54` (`git merge --ff-only`) против `ai/features/TECH-220-...md` §Design шаг 3 (исходная редакция); лечится `gate_ancestry._base_for_diff`
+
+### SIGNAL-2026-08-30-1116
+- **Source:** autopilot (TECH-220)
+- **Target:** spark
+- **Type:** gap
+- **Message:** `## Allowed Files` дважды оказался неполон, оба раза детерминированно предсказуемо. (1) `scripts/vps/tests/test_gate_logic.py` внесён как «дописать серию тестов» при 598 LOC из лимита 600 — дописывать было некуда, потребовался новый файл. (2) Тест `test_claude_runner_timeout.py::test_push_local_is_best_effort_not_gate` ассертит ИМЯ точки входа гейта строкой в исходнике; спека переименовывала точку входа и не внесла файл в allowlist — гарантированный красный тест. Оба случая ловятся механически на этапе Spark Phase 5.5: (а) `wc -l` каждого файла в allowlist против лимита, (б) grep исходников тестов на имена функций, которые спека переименовывает/перенацеливает.
+- **Evidence:** `scripts/vps/tests/test_gate_logic.py` = 598/600; `scripts/vps/tests/test_claude_runner_timeout.py:225`; Drift Log пп. 13-15 в спеке
