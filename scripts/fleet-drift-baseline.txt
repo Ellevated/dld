@@ -27,6 +27,10 @@
 #   Dowry-mc    autopilot with the spec-reviewer folded inline
 #   gipotenuza  coder.md pointing at .claude/rules/domains/{domain}.md for history
 #
+# **MishkinLyap is at 0** and carries a stamped `.claude/DLD_VERSION`. That is what the
+# end state looks like: the marker is only written when a project actually reaches this
+# template version, and it is re-verified from disk on every run.
+#
 # Raising a number is an admission that a project drifted further — say why in a
 # comment. Lowering one means real convergence. To see what a project still holds:
 #
@@ -36,10 +40,10 @@
 # `--apply` (overwrite everything) stays a per-file human decision. It is the mode
 # that got `upgrade.mjs` deleted on 2026-05-25.
 
-AwardyBot   = 42
-Dowry       = 11
-Dowry-mc    = 12
-PLPilot     = 6
-wb          = 5
-gipotenuza  = 7
-MishkinLyap = 2
+AwardyBot   = 35
+Dowry       = 10
+Dowry-mc    = 11
+PLPilot     = 5
+wb          = 4
+gipotenuza  = 6
+MishkinLyap = 0

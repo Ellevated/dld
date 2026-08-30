@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -173,6 +174,53 @@ def write_marker(project: Path, manifest: dict[str, str], commit: str) -> None:
     )
 
 
+_FRONTMATTER = re.compile(rb"\A---\n.*?\n---\n", re.S)
+
+
+def split_frontmatter(blob: bytes) -> tuple[bytes, bytes]:
+    """`(frontmatter, body)` — frontmatter is `b""` when the file has none."""
+    m = _FRONTMATTER.match(blob)
+    return (m.group(0), blob[m.end() :]) if m else (b"", blob)
+
+
+def template_body_history(rel: str, repo_root: Path = REPO_ROOT) -> set[str]:
+    """Digests of every BODY `template/<rel>` has had, frontmatter stripped.
+
+    A project legitimately tunes an agent's `model:` / `effort:` — that is the routing
+    bill it pays, not framework content. But one changed frontmatter line makes the whole
+    file match no template version, so `--apply-clean` skips it and the *prose* below
+    silently stays months behind. Eight of AwardyBot's agents were frozen exactly that
+    way: `model: haiku -> sonnet` held back bug-hunt prompts that had since gained
+    anti-hallucination rules and a confidence field.
+
+    Comparing bodies separates the two: the body is framework content and gets refreshed,
+    the frontmatter is the project's and is kept verbatim.
+    """
+    return {
+        hashlib.sha256(split_frontmatter(blob)[1]).hexdigest()
+        for blob in _template_blobs(rel, repo_root)
+    }
+
+
+def _template_blobs(rel: str, repo_root: Path = REPO_ROOT) -> list[bytes]:
+    log = subprocess.run(
+        ["git", "-C", str(repo_root), "log", "--all", "--format=%H", "--", f"template/{rel}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.split()
+    blobs = []
+    for sha in log:
+        blob = subprocess.run(
+            ["git", "-C", str(repo_root), "show", f"{sha}:template/{rel}"],
+            capture_output=True,
+            check=False,
+        ).stdout
+        if blob:
+            blobs.append(blob.replace(b"\r\n", b"\n"))
+    return blobs
+
+
 def template_history(rel: str, repo_root: Path = REPO_ROOT) -> set[str]:
     """Digests of every version `template/<rel>` has ever had in this repo's history.
 
@@ -188,22 +236,7 @@ def template_history(rel: str, repo_root: Path = REPO_ROOT) -> set[str]:
     one night), its gate scripts rewritten for its own `bots/`+`agents/` layering, and
     Dowry's `seed-lessons` extension, which even carries a comment saying so.
     """
-    log = subprocess.run(
-        ["git", "-C", str(repo_root), "log", "--all", "--format=%H", "--", f"template/{rel}"],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.split()
-    seen = set()
-    for sha in log:
-        blob = subprocess.run(
-            ["git", "-C", str(repo_root), "show", f"{sha}:template/{rel}"],
-            capture_output=True,
-            check=False,
-        ).stdout
-        if blob:
-            seen.add(hashlib.sha256(blob.replace(b"\r\n", b"\n")).hexdigest())
-    return seen
+    return {hashlib.sha256(b).hexdigest() for b in _template_blobs(rel, repo_root)}
 
 
 def apply_sync(
@@ -238,7 +271,17 @@ def apply_sync(
             if absent_only or _digest(dst) == manifest[rel]:
                 continue
             if clean_only and _digest(dst) not in template_history(rel, template.parent):
-                continue  # holds edits that were never in template — leave it alone
+                proj_fm, proj_body = split_frontmatter(_norm(dst))
+                body_is_clean = bool(proj_fm) and (
+                    hashlib.sha256(proj_body).hexdigest()
+                    in template_body_history(rel, template.parent)
+                )
+                if not body_is_clean:
+                    continue  # holds edits that were never in template — leave it alone
+                # Body is stale framework content; frontmatter is the project's tuning.
+                dst.write_bytes(proj_fm + split_frontmatter(_norm(src))[1])
+                updated += 1
+                continue
             updated += 1
         else:
             created += 1

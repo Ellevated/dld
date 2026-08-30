@@ -116,6 +116,9 @@ _Source: code graph (`trace_path` inbound) or grep — state which._
 
 ### Verification
 - [ ] All found files added to Allowed Files
+- [ ] **Signature change or method removal:** a separate `grep -rn "{symbol}" tests/`, and
+      **every** caller test goes in Allowed Files — not just the obvious one. Precedent
+      (AwardyBot TECH-1325): 2 listed, 5 broke.
 
 ## Research Sources
 - [Pattern](https://example.com) — description from Scout

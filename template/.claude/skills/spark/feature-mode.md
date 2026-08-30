@@ -457,6 +457,13 @@ _Source: code graph or grep — state which._
 
 ### Step 3: BY TERM — grep entire project
 - [ ] `grep -rn "{old_term}" . --include="*.py" --include="*.sql"` → ___ results
+- [ ] **Signature change or method removal — grep `tests/` separately.** When a function's
+      arguments change (added, removed, renamed) or a method/module is deleted, run
+      `grep -rn "{symbol}" tests/` on its own and put **every** caller test in Allowed Files.
+      Not the obvious unit test — all of them. Precedent (AwardyBot TECH-1325): the spec
+      named 2 test files, 5 actually broke, and autopilot widened its own scope mid-run to
+      reach them — seven retries. A caller test outside the allowlist is a run that cannot
+      finish honestly.
 
 | File | Line | Status | Action |
 |------|------|--------|--------|

@@ -279,3 +279,78 @@ def test_apply_clean_does_not_stamp_a_marker(versioned_template, tmp_path):
         capture_output=True, text=True, check=False,
     )
     assert not (project / ".claude/DLD_VERSION").exists()
+
+
+# --- frontmatter tuning must not freeze the body ------------------------------------
+
+FM_FILE = ".claude/agents/tuned.md"
+
+
+@pytest.fixture
+def fm_template(tmp_path: Path) -> Path:
+    """Template whose agent file has frontmatter and gains a body change in v2."""
+    repo = tmp_path / "dld2"
+    template = repo / "template"
+    (template / ".claude/agents").mkdir(parents=True)
+    (template / FM_FILE).write_text(
+        "---\nmodel: haiku\n---\n\n# agent\n\nold guidance\n", encoding="utf-8", newline="\n"
+    )
+    _git(repo.parent, "init", "-q", str(repo))
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "v1")
+
+    (template / FM_FILE).write_text(
+        "---\nmodel: haiku\n---\n\n# agent\n\nnew guidance, anti-hallucination rule\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "v2")
+    return template
+
+
+def _run_clean(project: Path, template: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [
+            sys.executable, str(SCRIPT), str(project),
+            "--template", str(template), "--json", "--apply-clean",
+        ],
+        capture_output=True, text=True, check=False,
+    )
+
+
+def test_project_model_tuning_survives_while_body_is_refreshed(fm_template, tmp_path):
+    """A changed `model:` must not hold the prose below it months behind.
+
+    This froze eight of AwardyBot's agents: `model: haiku -> sonnet` made the file match
+    no template version, so --apply-clean skipped it, and bug-hunt prompts stayed on a
+    revision predating their anti-hallucination rules. The routing choice is the
+    project's; the guidance under it is not.
+    """
+    project = tmp_path / "proj2"
+    (project / ".claude/agents").mkdir(parents=True)
+    (project / FM_FILE).write_text(  # v1 body, project's own model
+        "---\nmodel: sonnet\neffort: medium\n---\n\n# agent\n\nold guidance\n",
+        encoding="utf-8", newline="\n",
+    )
+
+    _run_clean(project, fm_template)
+
+    got = (project / FM_FILE).read_text(encoding="utf-8")
+    assert "model: sonnet" in got and "effort: medium" in got, "project tuning was overwritten"
+    assert "anti-hallucination" in got, "stale body was not refreshed"
+    assert "old guidance" not in got
+
+
+def test_a_project_edited_body_is_still_left_alone(fm_template, tmp_path):
+    """The safety property must survive the new path: an edited body is untouchable."""
+    project = tmp_path / "proj3"
+    (project / ".claude/agents").mkdir(parents=True)
+    own = "---\nmodel: sonnet\n---\n\n# agent\n\nour own guidance nobody else has\n"
+    (project / FM_FILE).write_text(own, encoding="utf-8", newline="\n")
+
+    _run_clean(project, fm_template)
+
+    assert (project / FM_FILE).read_text(encoding="utf-8") == own, "local body overwritten"
