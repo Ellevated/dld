@@ -179,35 +179,64 @@ fetch, allowed_files, существующий lifecycle); pueue exit-code и ac
 → `target="done"` (`:1509-1519`). При гонке Rule 7 (`LifecycleAlreadyDoneError`) — noop `rule_7_saved` +
 notify «investigate who wrote done» (`:1290-1320`).
 
-### <a name="guard"></a>Implementation guard (`_is_done_on_develop`)
+### <a name="guard"></a>Implementation guard (`gate_ancestry.find_implementation`)
 
-**Текущий гейт (Rule 1, `:797-838`):** `done` ⟺ на `origin/develop` есть коммит, чей **subject**
-реализует spec_id И трогает ≥1 allowed-файл. **Нет activity-окна, нет `--all`, нет auto-close.**
-Fail-closed: ambiguity → `blocked`.
+**Текущий гейт (Rule 1, TECH-220):** `done` ⟺ ветка `<type>/<ID>` — предок `origin/develop`
+И принесла ≥1 не-bookkeeping allowed-файл. Одна функция, `gate_ancestry.find_implementation`,
+во всех четырёх точках вызова: `callback_sync._decide_status`, `callback_dispatch._merge_confirmed`,
+`orchestrator_queue.reconcile_if_implemented`, `gate-daemon._evaluate_project`. **Нет
+activity-окна, нет `--all`, нет auto-close.** Fail-closed: любая ошибка git → `None` → `blocked`,
+никогда не `done`.
 
 > ⚠️ Это **редизайн поверх TECH-170 (`--all`) / TECH-176 (auto-close)** — те механики жили в старом
-> `_spec_has_merged_implementation` и в текущем коде **заменены** на origin/develop-gate. ADR-таблица в
-> `.claude/rules/architecture.md` ещё описывает их как актуальные — это дрейф, верь коду.
+> `_spec_has_merged_implementation` и в текущем коде **заменены** сначала origin/develop subject-gate
+> (2026-05-21), затем ancestry-gate (TECH-220, 2026-08-30). ADR-таблица в `.claude/rules/architecture.md`
+> ещё описывает TECH-170/176 как актуальные — это дрейф, верь коду.
 
-- **`_subject_implements`** (TECH-177): засчитывает ТОЛЬКО первую строку (subject), не
-  body/footer. Формы: Conventional scope `feat(FTR-925):` (case-insensitive, multi-scope, `!`);
-  merge `merge[:] [branch] ['][prefix/]SPEC-ID` (покрывает `merge: feature/SPEC-ID — ...` и
-  git-дефолтный `Merge branch 'fix/SPEC-ID-slug'`); trailing `(SPEC-ID)` в конце subject
-  (каждый элемент в скобках обязан быть spec-id-shaped — `(see SPEC-ID)` отвергается);
-  legacy-префикс `SPEC-ID:` с пробелом. Расширено 2026-07-02 после ложных demote plpilot
-  BUG-338/339/340/346/347,
-  TECH-349. Синхронизировано с `gate_logic.match_subject` (L-derived-2).
-- **`_is_done_on_develop` — два прохода `git log`:** обычный path-filtered + `--first-parent`.
-  Дефолтная history simplification прячет no-ff merge из path-filtered лога (merge TREESAME
-  feature-родителю), поэтому subject `Merge SPEC-ID: ...` раньше никогда не доходил до проверки —
-  `--first-parent` считает TREESAME только против первого родителя и merge-коммиты видит
-  (2026-07-02, plpilot BUG-338). Зеркально в `gate_logic.find_implementation_commit`.
+- **Ступень 1 — ancestry (primary, `gate_ancestry.find_merged_branch`).**
+  `git merge-base --is-ancestor refs/remotes/origin/<type>/<ID> origin/develop`. Мержит в develop
+  только автопилот, только из ветки `<type>/<ID>`, только `--ff-only` после зелёного прогона
+  (`.claude/skills/autopilot/finishing.md:51-61`) — значит предок = протокол завершения прошёл.
+  Карта префиксов (`gate_ancestry._BRANCH_PREFIX` — единственная машинная копия): FTR→`feature/`,
+  BUG→`fix/`, TECH→`tech/`, ARCH→`arch/`, GROWTH→`growth/`. Две прозаические копии живут в
+  `.claude/skills/autopilot/worktree-setup.md` и `autopilot-git.md` и между собой расходятся
+  (ни одна не знает GROWTH, bash-копия падает в `task/`) — свести их отдельной TECH. Имя ref
+  точное, без glob: `ARCH-176` никогда не матчит `ARCH-176a`.
+- **Диапазон и bookkeeping-фильтр (`gate_ancestry._base_for_diff`).** После `--ff-only` мержа
+  `merge-base(ref, origin/develop) == ref` — обычного диффа не существует, поэтому нижняя граница
+  диапазона в этом случае не merge-base, а birth-коммит спеки (первый коммит, добавивший
+  `ai/features/<ID>-*.md`, `--diff-filter=A --reverse`); при no-ff мерже нижняя граница — обычный
+  `merge-base`. Файлы, которые branch принесла в этом диапазоне, пересекаются с
+  `gate_logic.strip_bookkeeping_paths(allowed)`; пусто → не evidence, значит branch, тронувшая
+  только lifecycle/backlog-бухгалтерию, `done` не даёт.
+- **Ступень 2 — subject (`gate_logic.match_subject` / `find_implementation_commit`,
+  DEPRECATED).** Старый гейт без изменений, второй проход после ancestry: засчитывает ТОЛЬКО
+  первую строку (subject) коммита на `origin/develop`, не body/footer. Формы: Conventional scope
+  `feat(FTR-925):` (case-insensitive, multi-scope, `!`); merge `merge[:] [branch]
+  ['][prefix/]SPEC-ID` (покрывает `merge: feature/SPEC-ID — ...` и git-дефолтный `Merge branch
+  'fix/SPEC-ID-slug'`); trailing `(SPEC-ID)` в конце subject (каждый элемент в скобках обязан быть
+  spec-id-shaped — `(see SPEC-ID)` отвергается); legacy-префикс `SPEC-ID:` с пробелом. Два прохода
+  `git log` (обычный path-filtered + `--first-parent`, TREESAME-фикс plpilot BUG-338). Покрывает
+  squash-мерж и ветку, удалённую с origin — оба случая, где ancestry-проверке ref смотреть не на
+  что. Отдельная TECH удалит эту ступень + regex, когда наступит день ниже.
+- **Метрика и дата смерти.** Каждый вердикт (все четыре точки вызова) пишет `gate_via` = `ancestry`
+  | `subject` | `none` — в `callback-audit.jsonl` (`_Audit.gate_via`, default `"none"`, поле есть в
+  КАЖДОЙ строке через `_Audit.emit`, даже когда self-block переопределяет позитивный вердикт) и в
+  shadow-JSONL `gate-daemon.py`. Когда `gate_via=subject` не срабатывает 30 дней подряд —
+  `match_subject`/`find_implementation_commit` и вся ступень 2 удаляются отдельной TECH.
 - **`_parse_allowed_files`** (`:529-565`, TECH-167): v1 strict (маркер
   `<!-- callback-allowlist v1 -->` + heading `## Allowed Files`, только канон-буллеты
   `` - `path.ext` ``) → list (может быть `[]`);
   иначе legacy (heading-варианты + любые backtick-пути); секции нет → `None`.
 - **degrade-closed → blocked:** нет секции → reason `missing_allowed_files`; пустой allowlist (`[]`)
-  → `empty_allowed_files` (`:1192-1196`). Никогда не `done` без позитивного совпадения.
+  → `empty_allowed_files` (`:1192-1196`). Никогда не `done` без позитивного совпадения (ancestry
+  ИЛИ subject).
+- **Self-block outranks any positive verdict.** Если автопилот сам сигналил `blocked`/`needs_review`
+  (`autopilot_signaled=True`, `target="blocked"`), а гейт (любой ступенью) нашёл `done` —
+  побеждает self-block: `callback_sync.verify_status_sync` перезаписывает вердикт в `blocked`,
+  `reason="autopilot_signaled_blocked"`, `gate_via` из позитивного прохода сохраняется в audit-строке
+  как трейс того, что гейт всё-таки нашёл. Автопилот видит то, чего гейт вывести не может (тесты
+  красные, нужен human) — ancestry-мерж не отменяет это решение.
 
 ### Circuit-breaker (TECH-169)
 
@@ -255,7 +284,9 @@ argparse отвергнет. Прочие rc: 2 usage/invalid identity, 3 spec/y
 5. **WT не участвует в записи.** Запись в объекты+ref, WT синхронизируется постфактум
    `git checkout HEAD --`. `assert_clean_lifecycle_tree` валит старт при dirty `ai/lifecycle/`.
 6. **Degrade-closed guard.** Нет/пустой allowlist → `blocked`. `done` — только при позитивном
-   совпадении на origin/develop (subject реализует spec ∧ трогает allowed-файл).
+   вердикте `gate_ancestry.find_implementation` на origin/develop: ancestry (branch `<type>/<ID>`
+   — предок develop и принесла allowed-файл, primary) либо subject (deprecated fallback, реализует
+   spec ∧ трогает allowed-файл). См. §7 [Implementation guard](#guard).
 7. **Push-divergence self-heal без потери чужой работы.** Non-ff rebase ТОЛЬКО если ahead-коммиты —
    lifecycle/backlog-only и WT чист; иначе bail + инкремент `.lifecycle-push-failures`.
 8. **Mass-demote circuit-breaker.** >3 демоутов/10 мин → пауза `claude-runner`, отказ от мутаций статуса
