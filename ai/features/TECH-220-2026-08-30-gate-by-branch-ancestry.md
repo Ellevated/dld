@@ -1295,3 +1295,47 @@ DEPLOY_URL=local-only
 ---
 
 ## Autopilot Log
+
+### Task 1/5: gate_ancestry.py — ancestry-гейт + единая точка входа — 2026-08-30 14:40
+- Coder: completed (2 files: scripts/vps/gate_ancestry.py NEW 212 LOC, scripts/vps/tests/test_gate_ancestry.py NEW 197 LOC)
+- Tester: passed (7/7 ancestry + 59 существующих gate_logic зелёные; ruff format поправлен)
+- Deploy: skipped (no migrations)
+- Spec compliance: matches — `_BRANCH_PREFIX` с GROWTH :57-63, `branch_ref_for` ValueError :90-95, `fetch_branch` :98-110, `_base_for_diff` :113-151, `find_merged_branch` :154-192, `find_implementation` :194-212; `gate_logic.py` diff = 0 строк
+- Code Quality Reviewer: approved (0 blocking, 1 advisory — dependencies.md без записи о новом модуле)
+- Local Verify: pass (AV-S2 FF-09 пусто, LOC 212 ≤ 400)
+- Commit: dd90d02c
+- **Отклонение от плана:** ancestry-серия ушла в новый `test_gate_ancestry.py`, а не в `test_gate_logic.py` — тот 598 LOC из 600, дописать 101 строку было некуда (Drift Log п. 13-14). Кодер отказался сам и эскалировал, allowlist сужен.
+
+### Task 2/5 + 3/5: четыре точки вызова + gate_via — 2026-08-30 15:10
+- Coder: completed (5 files: callback_sync.py, callback_dispatch.py, orchestrator_queue.py, gate-daemon.py, tests/test_claude_runner_timeout.py) — два кодера параллельно по непересекающимся контурам
+- Tester: passed (scripts/vps/tests 636 passed / 1 known pre-existing fail; tests/ 259 passed 1 skipped)
+- Deploy: skipped (no migrations)
+- Spec compliance: matches — все 4 точки через `gate_ancestry.find_implementation`; `fetch_develop` сохранён на каждой; `_push_local_develop` до гейта (verify_status_sync:330 → _decide_status:334); самоблок перебивает (:339-340); `_Audit.gate_via` (:63,:79,:336); `record_dispatch` через `branch_ref_for` (:326); `already_implemented_on_develop` сохранён
+- Code Quality Reviewer: approved (0 blocking, 2 advisory — gate-daemon.py 398/400 LOC; 4 pre-existing bare-except, идентичны на merge-base)
+- Local Verify: pass (grep `find_implementation_commit(` → единственный вызов = фолбэк в gate_ancestry.py:209)
+- Commit: 18831c93
+- **Отклонение от плана:** `test_claude_runner_timeout.py::test_push_local_is_best_effort_not_gate` ассертил имя точки входа строкой в исходнике → красный. Инвариант сохранён, обновлено имя (как при TECH-216), добавлен `test_ancestry_gate_resolves_against_origin`. Файл внесён в allowlist (Drift Log п. 15).
+
+### Task 4/5: EC-серия через публичный контракт — 2026-08-30 15:35
+- Coder: completed (2 files: tests/unit/test_callback_branch_awareness.py 189 LOC, tests/unit/test_callback_implementation_guard.py 332 LOC)
+- Tester: passed (140 passed — было 136 + 4 новых; tests/regression и tests/contracts не тронуты)
+- Spec compliance: matches — EC-7 самоблок поверх ancestry, EC-10 префикс, EC-11 регрессия, EC-12 один вердикт на всех четырёх точках через реальный git-репо, gate_via в audit-JSONL
+- Code Quality Reviewer: approved (pre-review-check PASSED, LOC 189/332 ≤ 600, ruff clean)
+- Commit: abce7693
+
+### Task 5/5: status-model.md §7 — 2026-08-30 15:45
+- Coder: completed (1 file: docs/orchestrator/status-model.md)
+- Tester: skipped (docs) · check-prompt-integrity rc=0
+- Spec compliance: matches — §7 = ancestry primary / subject deprecated с метрикой `gate_via`; якорь `#guard` сохранён; §9 инвариант 6 приведён в соответствие
+- Code Quality Reviewer: approved
+- Commit: 3f20db7b
+
+### PHASE 3 — 2026-08-30 15:55
+- Final test: scripts/vps/tests 636 passed / 1 failed (`test_lifecycle_push_rebase.py::test_dirty_wt_blocks_rebase` — **pre-existing**, воспроизводится на develop до этой ветки); tests/ 259 passed, 1 skipped
+- Exa Verify: no critical issues. Подтверждено, что `merge-base --is-ancestor` — канонический скриптовый тест, и что squash/rebase его ломают — ровно тот случай, который у нас уходит на subject-фолбэк и задокументирован. Отмечено на будущее: `git merge-tree --write-tree` (git ≥ 2.38) даёт content-containment и закрыл бы squash без регекса — кандидат в ту же TECH, что удалит `match_subject`.
+- Reflect: 2 сигнала записаны (SIGNAL-2026-08-30-1115 ff-дифф, -1116 allowlist pre-flight), commit d9dfb2c3
+- Documenter: completed — 5 файлов (`.claude/rules/dependencies.md` + новая секция gate_ancestry, `docs/orchestrator/{README,runbook,components}.md`, `docs/dependencies-changelog.md`), 8 устаревших ссылок на удалённый `_is_done_on_develop` починены, commit f8a8470b
+- Template sync: нечего синхронизировать — `template/scripts/vps/` не существует (подтверждает Step 4 спеки); `validate-allowlist.mjs` затрагивает только `strip_bookkeeping_paths`-регексы, которые не менялись, `test_allowlist_parity.py` зелёный
+- AV-S1 (импорты) pass · AV-S2 (FF-09) pass · AV-F1 (308 passed) pass · AV-F2 (140 passed) pass
+- AV-F3 (coverage ≥54%): **не прогнан локально** — `pytest-cov` не установлен на этой машине; гейт остаётся за CI
+- Post-Deploy Verify: DEPLOY_URL=local-only → AV-F4/EC-13 выполнен read-only на реальном репозитории после мержа (см. ниже)
