@@ -120,15 +120,24 @@ python3 scripts/vps/spec_operator.py demote /home/dld/projects/<proj> <SPEC_ID> 
 **Симптом:** `blocked` с reason `missing_allowed_files` / `empty_allowed_files`, либо guard не нашёл
 коммит, хотя реализация смёржена.
 
-**Причина** (текущий guard `_is_done_on_develop` — origin/develop gate):
+**Причина** (текущий guard `gate_ancestry.find_implementation` — branch-ancestry primary,
+subject-regex deprecated fallback, TECH-220):
 - Нет секции `## Allowed Files` (legacy spec) → `missing_allowed_files`.
 - v1-маркер есть, буллетов нет → `empty_allowed_files` (degrade-closed).
-- Коммит реализации не на `origin/develop` (застрял на feature-ветке, не смёржен).
-- Subject коммита не объявляет spec_id (упоминание в body/footer не считается, TECH-177).
+- Ветка `<type>/<ID>` не смёржена в `origin/develop` (застряла на feature-ветке) — ancestry-ступень
+  не находит доказательства.
+- Ветка смёржена, но не тронула ни один non-bookkeeping allowed-файл — ancestry-ступень тоже не
+  засчитывает.
+- Ancestry не сработала (squash-мерж, ветка удалена с origin) И subject коммита на `origin/develop`
+  не объявляет spec_id (упоминание в body/footer не считается, TECH-177) — deprecated-ступень тоже
+  промахнулась.
 
 **Диагностика:**
 ```bash
 sed -n '/^## Allowed Files/,/^## /p' ai/features/<SPEC_ID>*.md
+# ancestry ступень (primary) — <type>/<ID> смёржена в origin/develop?
+git -C /home/dld/projects/<proj> merge-base --is-ancestor origin/<type>/<SPEC_ID> origin/develop && echo merged
+# subject ступень (deprecated fallback) — только если ancestry не сработала
 git -C /home/dld/projects/<proj> log origin/develop --oneline | grep -i <SPEC_ID>
 ```
 

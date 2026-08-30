@@ -247,7 +247,8 @@ No sibling imports `orchestrator` (enforced by a test). Edges: `orchestrator` �
 | git CLI | PATH | git -C <dir> pull --ff-only origin develop |
 | projects.json | PROJECTS_JSON env | hot-reload project list each cycle |
 | lifecycle.py | scripts/vps/lifecycle.py | list_by_status(), read_lifecycle(), create_initial(), write_lifecycle() — reconciliation gate marks done by="orchestrator"; dispatch in scan_queued marks in_progress with pueue_id right after pueue add succeeds (BUG-218) |
-| gate_logic.py | scripts/vps/gate_logic.py | parse_allowed_files(), fetch_develop(), find_implementation_commit() — scan_queued reconciliation gate (pre-dispatch "already on develop" check) |
+| gate_logic.py | scripts/vps/gate_logic.py | parse_allowed_files(), fetch_develop() — scan_queued reconciliation gate (pre-dispatch "already on develop" check), delegated to `orchestrator_queue.reconcile_if_implemented` |
+| gate_ancestry.py | scripts/vps/gate_ancestry.py | fetch_branch(), find_implementation() — THE gate as of TECH-220 (ancestry primary, `gate_logic.find_implementation_commit` subject fallback); called from `orchestrator_queue.reconcile_if_implemented` / `record_dispatch` |
 
 ### Used by (←)
 
@@ -550,7 +551,8 @@ CI coverage gate lists all six modules (`--cov` is keyed by module name).
 
 | What | Where | Function |
 |------|-------|----------|
-| gate_logic | scripts/vps/gate_logic.py | fetch_develop(), parse_allowed_files(), find_implementation_commit() |
+| gate_logic | scripts/vps/gate_logic.py | fetch_develop(), parse_allowed_files() |
+| gate_ancestry | scripts/vps/gate_ancestry.py | fetch_branch(), find_implementation() — THE gate (TECH-220); `_evaluate_project` writes `gate_via` into the shadow JSONL |
 | lifecycle | scripts/vps/lifecycle.py | list_by_status() |
 | db | scripts/vps/db.py | log_gate_cycle(), get_all_projects() |
 | subprocess | stdlib | git rev-parse origin/develop (SHA cache) |
@@ -565,7 +567,8 @@ CI coverage gate lists all six modules (`--cov` is keyed by module name).
 ### When changing API, check
 
 - [ ] setup-vps.sh (Wave 2 service install)
-- [ ] gate_logic.py (fetch_develop / parse_allowed_files / find_implementation_commit signatures)
+- [ ] gate_logic.py (fetch_develop / parse_allowed_files signatures)
+- [ ] gate_ancestry.py (find_implementation / fetch_branch signatures — TECH-220)
 - [ ] db.py (log_gate_cycle signature)
 
 ---
@@ -586,17 +589,56 @@ CI coverage gate lists all six modules (`--cov` is keyed by module name).
 
 | Who | File:line | Function |
 |-----|-----------|----------|
-| gate-daemon.py | scripts/vps/gate-daemon.py | fetch_develop(), parse_allowed_files(), find_implementation_commit() |
-| orchestrator.py | scripts/vps/orchestrator.py | scan_queued reconciliation gate — parse_allowed_files(), fetch_develop(), find_implementation_commit() before dispatch |
-| callback.py | scripts/vps/callback.py | strip_bookkeeping_paths() — used by `_is_done_on_develop`, the second copy of the gate (L-derived-2) |
+| gate-daemon.py | scripts/vps/gate-daemon.py | fetch_develop(), parse_allowed_files() directly; find_implementation_commit() only reached indirectly, as gate_ancestry's deprecated subject fallback |
+| orchestrator.py | scripts/vps/orchestrator.py | scan_queued reconciliation gate — parse_allowed_files(), fetch_develop() directly; find_implementation_commit() only reached indirectly, as gate_ancestry's deprecated subject fallback |
+| gate_ancestry.py | scripts/vps/gate_ancestry.py | strip_bookkeeping_paths() (ancestry diff-intersect) + find_implementation_commit() as the deprecated module-attribute subject fallback (TECH-220) — the sole caller of both now. `callback.py` (TECH-216 split into `callback_sync.py`) does not call `gate_logic` directly any more; it goes through `gate_ancestry.find_implementation`, which tries ancestry first |
 | .claude/scripts/validate-allowlist.mjs | `.claude/scripts/validate-allowlist.mjs` | **Not an import — a reimplementation in JS.** Spark's Phase 5.5 pre-flight check must accept exactly what this module accepts, or it rejects specs the pipeline would run. Enforced by `tests/test_allowlist_parity.py` |
 
 ### When changing API, check
 
-- [ ] gate-daemon.py (_evaluate_project — all three call sites)
-- [ ] orchestrator.py (scan_queued reconciliation gate — same three functions)
+- [ ] gate-daemon.py (_evaluate_project — fetch_develop/parse_allowed_files call sites)
+- [ ] orchestrator.py (scan_queued reconciliation gate — same two functions)
+- [ ] gate_ancestry.py (`find_implementation` calls `gate_logic.find_implementation_commit` as a module ATTRIBUTE, positionally, with exactly three args — see that module's docstring; renaming/reordering breaks the subject fallback silently)
 - [ ] tests/test_gate_logic.py (pure-function tests, Wave 1 Task 2)
 - [ ] `.claude/scripts/validate-allowlist.mjs` + `template/.claude/scripts/` copy — the allowlist regexes are duplicated there in JS; `tests/test_allowlist_parity.py` is the tripwire
+
+---
+
+## scripts/vps/gate_ancestry.py (TECH-220)
+
+**Path:** `scripts/vps/gate_ancestry.py`
+
+THE implementation gate as of TECH-220: `find_implementation(project_path, spec_id, allowed_files)`
+returns `(sha, "ancestry")` when `origin/<type>/<ID>` is an ancestor of `origin/develop` and carried
+≥1 non-bookkeeping allowed file (`find_merged_branch`), else falls back to the deprecated subject
+regex and returns `(sha, "subject")` or `(None, "none")`. Every caller records that `gate_via` on
+its audit line — the field that decides when the subject fallback (and `gate_logic.match_subject`/
+`find_implementation_commit`) can be deleted.
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| gate_logic.py | scripts/vps/gate_logic.py | `strip_bookkeeping_paths()` (diff-intersect filter) + `find_implementation_commit()` (deprecated subject fallback, called as a module ATTRIBUTE — see module docstring) |
+| subprocess | stdlib | every git call funneled through the private `_git` helper, fail-closed (any error/non-zero → `None`) |
+| pathlib | stdlib | `SCRIPT_DIR` resolution for the local `sys.path` insert |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| callback_sync.py | scripts/vps/callback_sync.py `_decide_status` | fetch_branch(), find_implementation() — Rule 1 gate + grace-retry loop |
+| callback_dispatch.py | scripts/vps/callback_dispatch.py `_merge_confirmed` | fetch_branch(), find_implementation() — gates the QA/Reflect dispatch, same verdict as the status gate |
+| orchestrator_queue.py | scripts/vps/orchestrator_queue.py `reconcile_if_implemented` | fetch_branch(), find_implementation() — pre-dispatch "already on develop" check |
+| orchestrator_queue.py | scripts/vps/orchestrator_queue.py `record_dispatch` | branch_ref_for() — writes the real `<type>/<ID>` branch prefix into `task_log.branch` instead of a hardcoded `feature/` |
+| gate-daemon.py | scripts/vps/gate-daemon.py `_evaluate_project` | fetch_branch(), find_implementation() — shadow verdict, same gate as the enforcing callers |
+
+### When changing API, check
+
+- [ ] callback_sync.py, callback_dispatch.py, orchestrator_queue.py, gate-daemon.py (all four `find_implementation` call sites — same 3-arg signature, same `(sha, via)` return shape)
+- [ ] `_BRANCH_PREFIX` map — two prose copies exist and already disagree: `.claude/skills/autopilot/worktree-setup.md` (Type mapping table) and `autopilot-git.md` (bash `case`, falls through to `task/` and has no GROWTH row)
+- [ ] `gate_logic.find_implementation_commit` (called positionally, as a module attribute — tests monkeypatch that attribute directly)
+- [ ] scripts/vps/tests/test_gate_ancestry.py
 
 ---
 

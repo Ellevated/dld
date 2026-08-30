@@ -120,7 +120,8 @@ pueue completion → callback.py (всегда exit 0):
   5. event_writer.notify → Hermes
   6. dispatch QA + reflect   ── ТОЛЬКО если task_status == "complete"   [TECH-194 Layer E]
   7. verify_status_sync:
-       guard _is_done_on_develop (subject реализует spec ∧ трогает allowed-файл)
+       guard gate_ancestry.find_implementation (branch <type>/<ID> — предок origin/develop
+       И принесла allowed-файл; deprecated subject-regex — fallback, TECH-220)
        → lifecycle.write_lifecycle(by="callback")  → done | blocked
        task_status blocked/needs_review перебивает pueue Success → blocked
 
@@ -207,7 +208,7 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 | ARCH-190 | Shadow merge-gate (`gate-daemon.py`), `SHADOW_ONLY_MODE=True` | актуально (Wave 1, не cutover) |
 | TECH-166 | Implementation guard: git-diff verify перед mark-done | актуально (механика переписана — см. ниже) |
 | TECH-169 | Circuit-breaker на mass-demote (>3/10мин) | актуально |
-| TECH-170 | Guard видит feature-branch коммиты через `--all` | **[SUPERSEDED]** — текущий guard = origin/develop gate (`_is_done_on_develop`), без `--all` |
+| TECH-170 | Guard видит feature-branch коммиты через `--all` | **[SUPERSEDED]** — текущий guard = branch-ancestry gate (`gate_ancestry.find_implementation`, TECH-220), без `--all` |
 | TECH-176 | Guard auto-close «already merged before started_at» | **[SUPERSEDED]** — auto-close убран при редизайне guard 2026-05-21 |
 | TECH-194 | hooksPath absolute + WT-sync через `checkout HEAD --` + dispatch-gate на task_status | актуально |
 | TECH-195 | `lifecycle_audit.py` (14 категорий) + `recover_bootstrap_as_done.py` | актуально |
@@ -215,10 +216,12 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 | TECH-198 | Per-session heartbeat + `heartbeat_reaper.py` | актуально |
 | TECH-204 | night-reviewer notify cap (10) + confidence filter (medium+) | актуально |
 | TECH-206 | CI-parity merge-gate (`./test ci` перед push, needs_review на red) | актуально |
+| TECH-220 | Implementation guard: branch-ancestry primary (`gate_ancestry.find_implementation`), subject-regex deprecated fallback, `gate_via` telemetry | актуально |
 
 > ⚠️ **Известный дрейф в in-repo ADR-таблице** (`.claude/rules/architecture.md`): TECH-170/176
-> там описаны как актуальные, но текущий код callback (`_is_done_on_develop`) их не реализует —
-> guard переписан 2026-05-21 на чистый origin/develop-gate. Подробности — [status-model.md](status-model.md#guard).
+> там описаны как актуальные, но текущий код (`gate_ancestry.find_implementation`, TECH-220) их не
+> реализует — guard переписан сначала 2026-05-21 на origin/develop subject-gate, затем 2026-08-30
+> на branch-ancestry. Подробности — [status-model.md](status-model.md#guard).
 
 ---
 

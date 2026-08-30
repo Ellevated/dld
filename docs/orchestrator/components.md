@@ -31,8 +31,9 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
   `list_by_status` устаревает (callback — отдельный процесс; git_pull пропущен пока агент работает).
 - **Dependency gate (BUG-206, `:782-795`):** spec с `AFTER <ID>` в backlog-строке диспатчится только
   когда все зависимости `done` (status из lifecycle SoT). Отсутствующая зависимость = MET (анти-stall).
-- **Reconciliation gate (2026-06-26):** ПЕРЕД `pueue add` — `gate_logic.find_implementation_commit`
-  на `origin/develop` (та же проверка, что callback-guard и gate-daemon). Если работа уже на develop →
+- **Reconciliation gate (2026-06-26, ancestry-gate TECH-220):** ПЕРЕД `pueue add` —
+  `gate_ancestry.find_implementation` (`orchestrator_queue.reconcile_if_implemented`; та же проверка,
+  что callback-guard и gate-daemon). Если работа уже на develop →
   orchestrator сам пишет `done` (`by="orchestrator"`, reason `already_implemented_on_develop:<sha>`),
   сессию НЕ запускает. Закрывает дыру single-writer (ADR-023): работа, пришедшая мимо callback (другой
   разработчик / другое окно / другой узел / сессия, чей callback не сработал), оставляла lifecycle
@@ -149,12 +150,15 @@ in `db.py`), **decisions** (`record_decision`/`count_demotes_since`/`clear_decis
 - **`SHADOW_ONLY_MODE = True`** (`:47`), двойной assert (импорт + старт `main`): «Wave 3 cutover not yet
   authorized». ZERO импортов callback, ZERO вызовов `write_lifecycle` (инвариант FF-09).
 - `_evaluate_project` (`:160-275`): `fetch_develop` → SHA-кэш (develop не менялся → `skipped`) →
-  `list_by_status({in_progress, queued})` → per-spec: `find_implementation_commit` → вердикт
-  `done`/`in_progress`/`blocked`.
+  `list_by_status({in_progress, queued})` → per-spec: `gate_ancestry.find_implementation` → вердикт
+  `done`/`in_progress`/`blocked` + `gate_via` (`ancestry`/`subject`/`none`, TECH-220).
 - `gate_logic` pure-функции: `fetch_develop` (15s timeout, fail-soft), `parse_allowed_files` (TECH-167
-  v1/legacy), `find_implementation_commit` (path-фильтр + `match_subject`, fail-closed), `match_subject`
-  (subject-only, TECH-177).
-- Пишет: JSONL shadow-лог (`RotatingFileHandler`, 100 MiB × 5), `gate_health` (db), `.gate-daemon-heartbeat`.
+  v1/legacy), `find_implementation_commit` (path-фильтр + `match_subject`, fail-closed, DEPRECATED —
+  reached only as `gate_ancestry`'s subject fallback), `match_subject` (subject-only, TECH-177).
+- `gate_ancestry.find_implementation` (TECH-220): ancestry primary — `<type>/<ID>` предок
+  `origin/develop` И принесла ≥1 allowed-файл — before falling back to `find_implementation_commit`.
+- Пишет: JSONL shadow-лог (`RotatingFileHandler`, 100 MiB × 5, теперь несёт `gate_via`), `gate_health`
+  (db), `.gate-daemon-heartbeat`.
   Per-project error isolation. **Не алертит.**
 
 > Назначение: параллельно с callback независимо считать «что бы я сделал» и копить shadow-данные перед
