@@ -20,14 +20,25 @@ even with concurrent spark sessions on multiple machines (multi-master).
    NEXT=$((MAX + 1))
    CANDIDATE="{TYPE}-$(printf '%03d' $NEXT)"
    ```
-2. **Claim the ID via CAS — where a lifecycle module is available:**
+2. **Собрать зависимости из шапки спеки.** Каждый `**AFTER <ID>**` в заголовочном блоке —
+   это ребро. Извлечь их и проверить, что запись существует, ПЕРЕД claim'ом (опечатка
+   ловится здесь, демон её не увидит — он fail-open):
+   ```bash
+   DEPS=$(sed -n '1,15p' "$SPEC_HEADER" | grep -oE '\bAFTER +[A-Z]{2,5}-[0-9]+' \
+            | awk '{print $2}' | sort -u)
+   for D in $DEPS; do git cat-file -e "HEAD:ai/lifecycle/$D.yaml" 2>/dev/null \
+     || echo "UNKNOWN DEPENDENCY: $D — исправить шапку спеки, не класть в depends_on"; done
+   PY_DEPS=$(echo $DEPS | tr ' ' ',' | sed "s/\([A-Z0-9-]\+\)/'\1'/g")
+   ```
+3. **Claim the ID via CAS — where a lifecycle module is available:**
    ```bash
    python3 -c "
    import sys; sys.path.insert(0, 'scripts/vps')
    import lifecycle
    lifecycle.create_initial('$REPO_DIR', '$CANDIDATE',
                             priority='$PRIORITY', kind='$KIND',
-                            status='queued', by='spark')
+                            status='queued', by='spark',
+                            depends_on=[$PY_DEPS])   # пусто, если AFTER в шапке нет
    "
    ```
 
@@ -40,7 +51,7 @@ even with concurrent spark sessions on multiple machines (multi-master).
    git cat-file -e HEAD:ai/lifecycle/$CANDIDATE.yaml 2>/dev/null && echo claimed || echo unclaimed
    ```
 
-   `claimed` → go to step 4. `unclaimed` → the id is not yours, and:
+   `claimed` → go to step 5. `unclaimed` → the id is not yours, and:
 
    - Do **not** hand-write the YAML. Lifecycle writes are CAS-guarded, and a pre-commit
      hook rejects any staged `ai/lifecycle/*.yaml`.
@@ -55,13 +66,13 @@ even with concurrent spark sessions on multiple machines (multi-master).
    Know what this costs: the spec-first CAS exists to stop two machines claiming the
    same ID. Without the module that protection is not in play — which is why interactive
    Spark runs from one machine at a time.
-3. **Handle CAS collision** (concurrent spark on another machine claimed the
+4. **Handle CAS collision** (concurrent spark on another machine claimed the
    same ID): if `LifecycleWriteRaceError` → re-read HEAD, recompute `NEXT = MAX + 1`,
    retry. Cap at **5 attempts**.
-4. **On success** → lifecycle yaml is in HEAD with `by: spark`. Write
+5. **On success** → lifecycle yaml is in HEAD with `by: spark`. Write
    `ai/features/{CANDIDATE}-YYYY-MM-DD-name.md`. **Do not touch `ai/backlog.md`** —
    see "The backlog is a render" below.
-5. **On exhausted retries** → log WARNING `SPARK_ID_CAS_EXHAUSTED`, bump
+6. **On exhausted retries** → log WARNING `SPARK_ID_CAS_EXHAUSTED`, bump
    `ai/.spark-cas-exhausted-count`, fall back to `MAX + 5` with `cas-fallback`
    in transitions[0].reason.
 
@@ -110,10 +121,10 @@ write the YAML by hand in either case: it is the one file with a CAS protocol ar
 
 ## The backlog is a render — with exactly one exception
 
-Where an orchestrator dispatches specs, it reads the lifecycle records, and `ai/backlog.md`
-is rendered from those same records after every lifecycle write. A spec **that has a
-lifecycle record** and no backlog row is dispatched normally, and its row appears on the
-next render.
+Where an orchestrator dispatches specs, it reads the lifecycle records. `ai/backlog.md` is a
+view over them: a status sync folds the new status into the same commit as the record, and it
+rewrites **only the Status cell of rows that already exist** — it adds no rows and touches no
+prose. A spec **that has a lifecycle record** and no backlog row is dispatched normally.
 
 **The exception, stated once:** write a backlog row if and only if
 `git cat-file -e HEAD:ai/lifecycle/{TASK_ID}.yaml` fails after your claim attempt. An
@@ -131,9 +142,8 @@ backlog"*, which was true when the backlog was the source of truth and false onc
 lifecycle YAML replaced it. It then said never to touch the backlog at all, which is false
 in the other direction for any project without the module. Both halves matter.
 
-Under the exception there is a known race: the renderer rebuilds the file from the YAMLs
-after any lifecycle write, so a hand-written row can be erased before the next bootstrap
-sees it. The window is one orchestrator cycle and closes once the record exists.
+Under the exception there is no renderer race: the status sync rewrites existing rows and
+adds none, so a hand-written row survives until the record exists.
 
 **Status lives in exactly one place**, the lifecycle YAML. There is no second copy to keep
 in sync, and nothing to "say out loud" — that ritual existed because there were two.

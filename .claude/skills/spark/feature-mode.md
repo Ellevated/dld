@@ -398,12 +398,14 @@ Instead of "scan backlog → pick max+1 → write spec", use atomic CAS:
    python3 -c "
    from scripts.vps.lifecycle import create_initial, LifecycleWriteRaceError
    try:
-       create_initial('<REPO_DIR>', '<CANDIDATE_ID>', priority='<P0|P1|P2>', kind='<TECH|FTR|BUG|ARCH>', by='spark', status='queued')
+       create_initial('<REPO_DIR>', '<CANDIDATE_ID>', priority='<P0|P1|P2>', kind='<TECH|FTR|BUG|ARCH>', by='spark', status='queued', depends_on=[<'AFTER' ids from the spec header, or empty>])
        print('claimed')
    except LifecycleWriteRaceError:
        print('race')
    "
    ```
+   `depends_on` — плоский список spec_id из `**AFTER <ID>**` в шапке спеки. Проверить каждый
+   через `git cat-file -e HEAD:ai/lifecycle/<ID>.yaml` до claim'а; несуществующий ID не класть.
 
 3. **On `LifecycleWriteRaceError`** → re-read HEAD, increment candidate, retry (max 3 attempts — `MAX_CAS_RETRIES`).
 

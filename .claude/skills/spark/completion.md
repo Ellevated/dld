@@ -20,14 +20,25 @@ even with concurrent spark sessions on multiple machines (multi-master).
    NEXT=$((MAX + 1))
    CANDIDATE="{TYPE}-$(printf '%03d' $NEXT)"
    ```
-2. **Claim the ID via CAS — where the module exists:**
+2. **Собрать зависимости из шапки спеки.** Каждый `**AFTER <ID>**` в заголовочном блоке —
+   это ребро. Извлечь их и проверить, что запись существует, ПЕРЕД claim'ом (опечатка
+   ловится здесь, демон её не увидит — он fail-open):
+   ```bash
+   DEPS=$(sed -n '1,15p' "$SPEC_HEADER" | grep -oE '\bAFTER +[A-Z]{2,5}-[0-9]+' \
+            | awk '{print $2}' | sort -u)
+   for D in $DEPS; do git cat-file -e "HEAD:ai/lifecycle/$D.yaml" 2>/dev/null \
+     || echo "UNKNOWN DEPENDENCY: $D — исправить шапку спеки, не класть в depends_on"; done
+   PY_DEPS=$(echo $DEPS | tr ' ' ',' | sed "s/\([A-Z0-9-]\+\)/'\1'/g")
+   ```
+3. **Claim the ID via CAS — where the module exists:**
    ```bash
    python3 -c "
    import sys; sys.path.insert(0, 'scripts/vps')
    import lifecycle
    lifecycle.create_initial('$REPO_DIR', '$CANDIDATE',
                             priority='$PRIORITY', kind='$KIND',
-                            status='queued', by='spark')
+                            status='queued', by='spark',
+                            depends_on=[$PY_DEPS])   # пусто, если AFTER в шапке нет
    "
    ```
 
@@ -37,7 +48,7 @@ even with concurrent spark sessions on multiple machines (multi-master).
    git cat-file -e HEAD:ai/lifecycle/$CANDIDATE.yaml 2>/dev/null && echo claimed || echo unclaimed
    ```
 
-   `claimed` → go to step 4. `unclaimed` → the id is not yours, and:
+   `claimed` → go to step 5. `unclaimed` → the id is not yours, and:
 
    - Do **not** hand-write the YAML. `write_lifecycle` is CAS-guarded, and the
      pre-commit hook rejects any staged `ai/lifecycle/*.yaml`.
@@ -67,13 +78,13 @@ even with concurrent spark sessions on multiple machines (multi-master).
    Know what this costs: the spec-first CAS exists to stop two machines claiming the
    same ID. Without the module, that protection is not in play — which is why
    interactive Spark runs from one machine at a time.
-3. **Handle CAS collision** (concurrent spark on another machine claimed the
+4. **Handle CAS collision** (concurrent spark on another machine claimed the
    same ID): if `LifecycleWriteRaceError` → re-read HEAD, recompute `NEXT = MAX + 1`,
    retry. Cap at **5 attempts**.
-4. **On success** → lifecycle yaml is in HEAD with `by: spark`. Write
+5. **On success** → lifecycle yaml is in HEAD with `by: spark`. Write
    `ai/features/{CANDIDATE}-YYYY-MM-DD-name.md`. **Do not touch `ai/backlog.md`** —
    see "The backlog is a render" below.
-5. **On exhausted retries** → log WARNING `SPARK_ID_CAS_EXHAUSTED`, bump
+6. **On exhausted retries** → log WARNING `SPARK_ID_CAS_EXHAUSTED`, bump
    `ai/.spark-cas-exhausted-count`, fall back to `MAX + 5` with `cas-fallback`
    in transitions[0].reason.
 
@@ -129,11 +140,11 @@ manually`, and that is accurate:
 | | |
 |---|---|
 | What dispatches your spec | `orchestrator.scan_queued` → `lifecycle.list_by_status(...)` reads `ai/lifecycle/*.yaml` |
-| What produces the backlog | `callback._render_and_commit_backlog` → `render_backlog.render_backlog()`, from those same YAMLs, after every lifecycle write |
+| What produces the backlog | `lifecycle_cas._atomic_write` → `render_backlog.sync_status`, folded into the same commit as the YAML. It rewrites **only the Status cell of rows that already exist** — it does not add rows, and it does not touch prose. The full renderer has had no caller since 2026-05 and was deleted in TECH-222 |
 
-So a spec with a lifecycle record and no backlog row is **dispatched normally**, and its
-row appears on the next render. A hand-written row, meanwhile, is racing a renderer that
-rewrites the file from the YAMLs.
+So a spec with a lifecycle record and no backlog row is **dispatched normally**. A
+hand-written row is not racing a full re-render — the only live writer touches the Status
+cell of rows that already exist, and adds none.
 
 This section used to say the opposite — *"Spark without backlog entry = DATA LOSS! Autopilot
 reads ONLY backlog"* — and instructed Spark to edit the table by hand. That was true before
@@ -150,11 +161,10 @@ hand-written row is not redundant bookkeeping — it is the whole handshake.
 `git cat-file -e HEAD:ai/lifecycle/{TASK_ID}.yaml` fails after your claim attempt. If it
 succeeds, the id is already claimed and the row is the renderer's business.
 
-There is a known race under that exception: `callback._render_and_commit_backlog`
-rewrites the file from the YAMLs after any lifecycle write, so a row added by hand can be
-erased before the next bootstrap sees it. The window is one orchestrator cycle and closes
-as soon as the record exists. It predates this note; it is recorded here rather than
-discovered again.
+There is no renderer race under that exception: the only live writer is
+`render_backlog.sync_status`, which rewrites the Status cell of existing rows and adds
+none. A hand-written row survives until the record exists. (This paragraph used to
+describe a full re-render after every lifecycle write; that path had no caller.)
 
 **Status lives in exactly one place**, the lifecycle YAML. There is no second copy to keep
 in sync, and nothing to "say out loud" — that ritual existed because there were two.
@@ -165,6 +175,10 @@ in sync, and nothing to "say out loud" — that ritual existed because there wer
 | Spark completed fully | `queued` | Ready for orchestrator pickup |
 | Spec created but interrupted | `queued` | Orchestrator will pick up on next cycle |
 | Needs discussion/postponed | `queued` | Left for refinement, orchestrator holds until slot available |
+
+**Зависимости живут в `depends_on`, не в прозе.** Если спека объявляет `**AFTER <ID>**` в
+шапке, тот же список обязан уехать в `create_initial(depends_on=[...])` — иначе планировщик
+её не увидит и задиспатчит спеку параллельно с её же предусловием (инцидент TECH-221, 30.08).
 
 ⛔ **`blocked` is NOT a valid status for a created spec.** Council/architect
 decisions happen in Phase 4 — BEFORE the spec is written. If a decision is
