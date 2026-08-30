@@ -220,7 +220,7 @@ Split into four flat siblings; `orchestrator.py` keeps bootstrap (`_load_env`,
 | `orchestrator_slots.py` | 209 | `sync_projects`, `get_live_pueue_ids`, `pueue_has_active_label/_spec`, `release_orphan_slots`, `is_agent_running`, `_pueue_add` |
 | `orchestrator_backlog.py` | 303 | `_parse_backlog` (ADR-026), `_bump_unparsable_counter`, `bootstrap_new_specs`, `_parse_priority_kind`, `cleanup_stale_stashes` |
 | `orchestrator_inbox.py` | 136 | `_parse_inbox_file`, `scan_inbox` (ADR-021/022) |
-| `orchestrator_queue.py` | 338 | `_backlog_deps`, `_unmet_dependencies`, the decomposed `scan_queued` steps, `dispatch_night_review` |
+| `orchestrator_queue.py` | 400 | `_backlog_deps` (deprecated fallback), `_spec_deps` (TECH-222 — lifecycle `depends_on` ∪ backlog `AFTER`, logs `DEP_VIA`/`DEP_SHAPE`), `_unmet_dependencies`, the decomposed `scan_queued` steps, `dispatch_night_review` |
 
 **Two contracts that look stylistic and are not:**
 
@@ -266,11 +266,12 @@ No sibling imports `orchestrator` (enforced by a test). Edges: `orchestrator` �
 
 ## scripts/vps/callback.py
 
-**Path:** `scripts/vps/callback.py` (397 LOC — was 1438, TECH-216 split, 2026-08-30)
+**Path:** `scripts/vps/callback.py` (371 LOC — was 1438, TECH-216 split, 2026-08-30; the dead
+`_render_and_commit_backlog` and its `import lifecycle` were deleted in TECH-222)
 
 Split into five flat siblings; `callback.py` keeps bootstrap, `resolve_label`/`parse_label`/
-`map_result`, `write_event_for_skill`, `_render_and_commit_backlog`, `main`, and **re-exports
-every moved name** — root `tests/` and `spec_operator.py` reach them as `callback.<name>`.
+`map_result`, `write_event_for_skill`, `main`, and **re-exports every moved name** — root
+`tests/` and `spec_operator.py` reach them as `callback.<name>`.
 
 | Module | LOC | Holds |
 |---|---|---|
