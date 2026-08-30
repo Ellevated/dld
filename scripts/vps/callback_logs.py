@@ -225,3 +225,29 @@ def extract_agent_output(pueue_id: str, project_id: str = "") -> tuple:
         pass
 
     return "", "", ""
+
+
+def runner_exit_code(pueue_id: str, project_id: str) -> int | None:
+    """Exit code claude-runner recorded in its own JSON log, or None.
+
+    2026-08-30 audit: pueue 4.0.4 on the VPS never filled `{{ exit_code }}`, so
+    map_result flattened every TIMEOUT kill (124) to exit_code=1 in task_log —
+    two months without a single recorded timeout. The runner's log carries the
+    real code; read it when pueue does not.
+    """
+    if not project_id:
+        return None
+    try:
+        state = db.get_project_state(project_id)
+        project_name = Path((state or {}).get("path", "")).name
+        if not project_name:
+            return None
+        _, start_ts = _skill_from_pueue_command(pueue_id)
+        log_path = _find_log_file(project_name, after_ts=start_ts)
+        if not log_path:
+            return None
+        code = json.loads(log_path.read_text()).get("exit_code")
+        return int(code) if code is not None else None
+    except Exception as exc:  # noqa: BLE001 — telemetry only, never fail the callback
+        log.warning("runner_exit_code: %s", exc)
+        return None

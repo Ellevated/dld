@@ -142,10 +142,8 @@ def map_result(result: str, raw_exit_code: str | None = None) -> tuple:
     return "failed", 1
 
 
-# --- TECH-216: re-exports from the sibling modules ------------------------------
-# Not copies. Root tests/ (outside this spec's Allowed Files) and spec_operator.py
-# reach these as `callback.<name>`; main() calls them by bare name so a monkeypatch
-# on `callback` still intercepts. New code binds to the owning module.
+# --- TECH-216 re-exports: root tests/ and spec_operator.py reach these as
+# `callback.<name>`; main() calls them by bare name so a monkeypatch still hits.
 _find_log_file = callback_logs._find_log_file
 _skill_from_pueue_command = callback_logs._skill_from_pueue_command
 _parse_log_file = callback_logs._parse_log_file
@@ -283,6 +281,12 @@ def main() -> None:  # pragma: no cover
 
         label = resolve_label(pueue_id)
         project_id, task_label = parse_label(label)
+        if raw_exit_code is None and "Success" not in result:
+            # pueue passed no {{ exit_code }} — the runner's log has the real one
+            runner_code = callback_logs.runner_exit_code(pueue_id, project_id)
+            if runner_code is not None:
+                raw_exit_code = str(runner_code)
+                log.info("exit_code from runner log: %s", raw_exit_code)
         status, exit_code = map_result(result, raw_exit_code)
 
         log.info("parsed: project=%s task=%s status=%s", project_id, task_label, status)

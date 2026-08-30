@@ -783,3 +783,31 @@ class TestParseLogTaskStatus:
         log = self._write_log(tmp_path, {"skill": "autopilot", "result_preview": "no signal here"})
         _skill, _preview, task_status = callback._parse_log_file(log)
         assert task_status == ""
+
+
+class TestRunnerExitCode:
+    """2026-08-30 audit: pueued never restarted after {{ exit_code }} landed in
+    pueue.yml, so TIMEOUT kills (124) were recorded as exit 1 for two months."""
+
+    def _setup(self, tmp_path, monkeypatch, payload):
+        (tmp_path / "logs").mkdir()
+        p = tmp_path / "logs" / "proj-20260830-000000.log"
+        p.write_text(json.dumps(payload), encoding="utf-8")
+        monkeypatch.setattr(callback_logs, "SCRIPT_DIR", tmp_path)
+        monkeypatch.setattr(callback_logs.db, "get_project_state", lambda pid: {"path": "/x/proj"})
+        monkeypatch.setattr(
+            callback_logs, "_skill_from_pueue_command", lambda pid: ("autopilot", 0.0)
+        )
+
+    def test_reads_timeout_code_from_runner_log(self, tmp_path, monkeypatch):
+        self._setup(tmp_path, monkeypatch, {"skill": "autopilot", "exit_code": 124})
+        assert callback_logs.runner_exit_code("7", "proj") == 124
+
+    def test_none_without_log(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(callback_logs, "SCRIPT_DIR", tmp_path)
+        monkeypatch.setattr(callback_logs.db, "get_project_state", lambda pid: {"path": "/x/proj"})
+        monkeypatch.setattr(callback_logs, "_skill_from_pueue_command", lambda pid: ("", 0.0))
+        assert callback_logs.runner_exit_code("7", "proj") is None
+
+    def test_map_result_uses_real_code(self):
+        assert callback.map_result("Failed", "124") == ("failed", 124)
