@@ -1,18 +1,24 @@
 allowed_files_hash: null
 blocked_reason: null
-finished_at: null
+depends_on: []
+finished_at: '2026-08-30T16:44:10Z'
 kind: TECH
 priority: p1
 pueue_id: 1269
 spec_id: TECH-222
 started_at: '2026-08-30T14:54:37Z'
-status: in_progress
+status: done
 transitions:
 - at: '2026-08-30T14:54:37Z'
   by: orchestrator
   from: queued
   pueue_id: 1269
   to: in_progress
-updated_at: '2026-08-30T14:54:37Z'
-updated_by: orchestrator
-version: 2
+- at: '2026-08-30T16:44:10Z'
+  by: callback
+  from: in_progress
+  pueue_id: 1269
+  to: done
+updated_at: '2026-08-30T16:44:10Z'
+updated_by: callback
+version: 3
