@@ -17,40 +17,14 @@ claude-sonnet-4-6 subagents underneath, for weeks, unnoticed.
 
 from __future__ import annotations
 
-import ast
 import sys
-import textwrap
-import types
 from pathlib import Path
 
 VPS_DIR = Path(__file__).resolve().parent.parent
 if str(VPS_DIR) not in sys.path:
     sys.path.insert(0, str(VPS_DIR))
 
-# claude-runner.py imports the Agent SDK at module scope, which this environment
-# may not have. Lift the functions under test out of the source instead of
-# importing the module — the same approach as test_claude_runner_cli_resolution.
-# These must run everywhere: they cover the metric every later before/after
-# measurement will be judged against.
-_SOURCE = (VPS_DIR / "claude-runner.py").read_text(encoding="utf-8")
-_TREE = ast.parse(_SOURCE)
-
-_WANTED = ("_usage_field", "_session_totals")
-_FUNCS: dict[str, str] = {}
-for _node in ast.walk(_TREE):
-    if isinstance(_node, ast.FunctionDef) and _node.name in _WANTED:
-        _FUNCS[_node.name] = ast.get_source_segment(_SOURCE, _node)
-for _name in _WANTED:
-    assert _name in _FUNCS, f"{_name} not found in claude-runner.py"
-
-cr = types.SimpleNamespace(
-    _EXPECTED_MODELS=frozenset({"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"})
-)
-_NS: dict = {"_EXPECTED_MODELS": cr._EXPECTED_MODELS}
-for _name in _WANTED:
-    exec(textwrap.dedent(_FUNCS[_name]), _NS)  # noqa: S102 — test harness
-cr._usage_field = _NS["_usage_field"]
-cr._session_totals = _NS["_session_totals"]
+import runner_result as cr
 
 
 # --- rollup -----------------------------------------------------------------
@@ -153,8 +127,17 @@ def test_no_drift_for_expected_generation():
     assert t["model_drift"] == []
 
 
-def test_previous_generation_subagents_are_flagged():
-    """The real incident: a 4-8 main loop with 4-6 subagents underneath."""
+def test_previous_generation_subagents_are_flagged(monkeypatch):
+    """The real incident: a 4-8 main loop with 4-6 subagents underneath.
+
+    Pinned: _EXPECTED_MODELS is computed from AUTOPILOT_EXPECTED_MODELS at
+    import time, so an ambient env value could silently invert this test.
+    """
+    monkeypatch.setattr(
+        cr,
+        "_EXPECTED_MODELS",
+        frozenset({"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"}),
+    )
     t = cr._session_totals(
         {
             "claude-opus-4-8": {"costUSD": 19.49},
@@ -169,6 +152,12 @@ def test_previous_generation_subagents_are_flagged():
     ]
 
 
-def test_drift_lists_only_the_unexpected_model():
+def test_drift_lists_only_the_unexpected_model(monkeypatch):
+    """Pinned: see test_previous_generation_subagents_are_flagged."""
+    monkeypatch.setattr(
+        cr,
+        "_EXPECTED_MODELS",
+        frozenset({"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"}),
+    )
     t = cr._session_totals({"claude-opus-5": {}, "claude-sonnet-4-6": {}})
     assert t["model_drift"] == ["claude-sonnet-4-6"]

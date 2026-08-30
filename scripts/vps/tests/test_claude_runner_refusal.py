@@ -473,7 +473,9 @@ class TestADR024Intact:
 
     def test_refusal_upgrade_is_guarded_on_exit_code_zero(self):
         source = RUNNER_PATH.read_text(encoding="utf-8")
-        assert 'if refusal["unrecovered"] and exit_code == 0:' in source
+        # TECH-213: the run loop keeps its counters in `state`, so the guard reads
+        # state["exit_code"]. The invariant is untouched — upgrade to 4 ONLY from 0.
+        assert 'if refusal["unrecovered"] and state["exit_code"] == 0:' in source
 
 
 class TestTelemetry:

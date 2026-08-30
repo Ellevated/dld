@@ -8,58 +8,14 @@ on tmp_path — no mocks (ADR-013).
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
-
-
-# Import the function under test
-import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import runner_heartbeat
 
-# claude-runner has a hyphen in the name — can't import directly
-import importlib.util
-
-_spec = importlib.util.spec_from_file_location(
-    "claude_runner",
-    str(Path(__file__).resolve().parent.parent / "claude-runner.py"),
-)
-_mod = importlib.util.module_from_spec(_spec)
-# Patch out the SDK import and load_env to avoid import errors in test
-_mod.__dict__["load_env"] = lambda: None
-sys.modules["claude_runner"] = _mod
-
-# We need to load only _write_heartbeat, not the whole module (SDK deps).
-# Extract it by reading the source and exec-ing just the function.
-import ast
-import textwrap
-
-_source = (Path(__file__).resolve().parent.parent / "claude-runner.py").read_text(encoding="utf-8")
-_tree = ast.parse(_source)
-
-# Find _write_heartbeat function
-_func_source = None
-for node in ast.walk(_tree):
-    if isinstance(node, ast.FunctionDef) and node.name == "_write_heartbeat":
-        _func_source = ast.get_source_segment(_source, node)
-        break
-
-assert _func_source is not None, "_write_heartbeat not found in claude-runner.py"
-
-# Build a minimal namespace with required imports
-_ns: dict = {}
-exec(
-    textwrap.dedent("""
-import json
-import os
-import time
-from datetime import datetime, timezone
-from pathlib import Path
-"""),
-    _ns,
-)
-exec(_func_source, _ns)
-_write_heartbeat = _ns["_write_heartbeat"]
+_write_heartbeat = runner_heartbeat._write_heartbeat
 
 
 class TestWriteHeartbeat:

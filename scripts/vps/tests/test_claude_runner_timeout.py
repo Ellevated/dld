@@ -61,7 +61,19 @@ class TestAsyncioTimeoutStructure:
                     for child in ast.walk(node):
                         if isinstance(child, ast.Assign):
                             for target in child.targets:
-                                if isinstance(target, ast.Name) and target.id == "exit_code":
+                                # TECH-213 moved the run loop's counters into `state`, so
+                                # the assignment reads state["exit_code"] = 124 rather than
+                                # a bare name. Both shapes satisfy the property under test:
+                                # a TimeoutError handler sets 124.
+                                is_name = isinstance(target, ast.Name) and target.id == "exit_code"
+                                is_state = (
+                                    isinstance(target, ast.Subscript)
+                                    and isinstance(target.value, ast.Name)
+                                    and target.value.id == "state"
+                                    and isinstance(target.slice, ast.Constant)
+                                    and target.slice.value == "exit_code"
+                                )
+                                if is_name or is_state:
                                     if (
                                         isinstance(child.value, ast.Constant)
                                         and child.value.value == 124
