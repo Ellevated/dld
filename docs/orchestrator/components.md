@@ -31,14 +31,23 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
   `list_by_status` устаревает (callback — отдельный процесс; git_pull пропущен пока агент работает).
 - **Dependency gate (BUG-206, `:782-795`):** spec с `AFTER <ID>` в backlog-строке диспатчится только
   когда все зависимости `done` (status из lifecycle SoT). Отсутствующая зависимость = MET (анти-stall).
-- **Reconciliation gate (2026-06-26, ancestry-gate TECH-220):** ПЕРЕД `pueue add` —
-  `gate_ancestry.find_implementation` (`orchestrator_queue.reconcile_if_implemented`; та же проверка,
-  что callback-guard и gate-daemon). Если работа уже на develop →
-  orchestrator сам пишет `done` (`by="orchestrator"`, reason `already_implemented_on_develop:<sha>`),
-  сессию НЕ запускает. Закрывает дыру single-writer (ADR-023): работа, пришедшая мимо callback (другой
-  разработчик / другое окно / другой узел / сессия, чей callback не сработал), оставляла lifecycle
-  `queued`, и оркестратор переделывал готовое. Fail-closed: реконсилит только при позитивном allowlist
-  И позитивном совпадении коммита; иначе диспатчит как раньше.
+- **Reconciliation gate (2026-06-26, ancestry-gate TECH-220; three-way TECH-221):** ПЕРЕД `pueue add` —
+  `orchestrator_queue.reconcile()` возвращает `"done"` / `"continue"` / `"fresh"` (та же проверка,
+  что callback-guard и gate-daemon, plus `gate_ancestry.branch_state()` когда `find_implementation`
+  ничего не находит). `"done"` — работа уже на develop, orchestrator сам пишет `done`
+  (`by="orchestrator"`, reason `already_implemented_on_develop:<sha>`), сессию НЕ запускает. Закрывает
+  дыру single-writer (ADR-023): работа, пришедшая мимо callback (другой разработчик / другое окно /
+  другой узел / сессия, чей callback не сработал), оставляла lifecycle `queued`, и оркестратор
+  переделывал готовое. `"continue"` — `origin/<type>/<ID>` существует и ahead develop (сессия умерла
+  после salvage-пуша, до мержа, TECH-221): `reconcile_if_implemented` (bool-facade вокруг `reconcile`,
+  единственная сигнатура, которую читает `scan_queued`) выставляет `CLAUDE_CONTINUE_BRANCH=1` в
+  `os.environ` перед `_pueue_add` — телеметрия на диспатч, не gate. Autopilot-промпты сами детектят
+  continuation через `git ls-remote --heads origin <type>/<ID>` в PHASE 0 (не читают этот env var)
+  и строят worktree из этой ветки вместо чистого develop — см.
+  [status-model.md](status-model.md#guard) `branch_pushed_not_merged`.
+  `"fresh"` — ничего не найдено, диспатчит как раньше (env-флаг явно очищается, не только не
+  ставится). Fail-closed: `"done"` только при позитивном allowlist И позитивном совпадении коммита;
+  `"continue"` только при доказанно ahead ветке на origin.
 - **Dup-guard:** `pueue_has_active_label` (project:spec) + `pueue_has_active_spec` (Rule 8 —
   кросс-проектный double-dispatch одного spec_id).
 - **CLAUDE_CURRENT_SPEC_PATH (BUG-199):** pin spec path в pueue env для pre-edit hook Allowed Files.

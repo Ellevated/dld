@@ -231,6 +231,23 @@ activity-окна, нет `--all`, нет auto-close.** Fail-closed: любая 
 - **degrade-closed → blocked:** нет секции → reason `missing_allowed_files`; пустой allowlist (`[]`)
   → `empty_allowed_files` (`:1192-1196`). Никогда не `done` без позитивного совпадения (ancestry
   ИЛИ subject).
+- **`branch_pushed_not_merged:<N>` (TECH-221) — не путать с `no_merged_implementation`.** После
+  grace-retry, если ни ancestry, ни subject не нашли мёрж, `_decide_status` дополнительно читает
+  `gate_ancestry.branch_state(project_path, spec_id)` (read-only, без fetch — Rule 4 уже
+  зафетчила выше). `state.exists ∧ state.ahead > 0` → сессия умерла ДО мержа, но ПОСЛЕ того, как
+  salvage успел запушить `origin/<type>/<ID>` (обычно таймаут) — работа жива, ничего не потеряно.
+  Reason: `branch_pushed_not_merged:{ahead} ahead — origin/{ref} carries the work; re-dispatch
+  continues that branch`. **Force-done здесь — неверный совет** (в отличие от plain
+  `no_merged_implementation`): правильное действие — обычный `demote` в `queued`. Следующий
+  диспатч проходит через `orchestrator_queue.reconcile()`, который читает тот же `branch_state()`
+  и возвращает `"continue"` вместо `"fresh"`; `reconcile_if_implemented` (facade) выставляет
+  `CLAUDE_CONTINUE_BRANCH=1` в `os.environ` для этого диспатча (сигнал/телеметрия на будущее —
+  не gate). Независимо от флага, оба дерева autopilot-промптов (`worktree-setup.md` /
+  `autopilot-git.md`) сами проверяют `git ls-remote --heads origin <type>/<ID>` при PHASE 0
+  (worktree setup) и, если ветка на origin существует, строят worktree ИЗ неё (`-b <branch>
+  origin/<branch>`, rebase на develop, `push --force-with-lease` re-sync) вместо чистого
+  `develop` — сессия продолжает уже сделанные коммиты, не начинает заново. См.
+  [runbook.md](runbook.md), Сценарий 4.
 - **Self-block outranks any positive verdict.** Если автопилот сам сигналил `blocked`/`needs_review`
   (`autopilot_signaled=True`, `target="blocked"`), а гейт (любой ступенью) нашёл `done` —
   побеждает self-block: `callback_sync.verify_status_sync` перезаписывает вердикт в `blocked`,

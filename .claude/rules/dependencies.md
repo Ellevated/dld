@@ -248,7 +248,7 @@ No sibling imports `orchestrator` (enforced by a test). Edges: `orchestrator` �
 | projects.json | PROJECTS_JSON env | hot-reload project list each cycle |
 | lifecycle.py | scripts/vps/lifecycle.py | list_by_status(), read_lifecycle(), create_initial(), write_lifecycle() — reconciliation gate marks done by="orchestrator"; dispatch in scan_queued marks in_progress with pueue_id right after pueue add succeeds (BUG-218) |
 | gate_logic.py | scripts/vps/gate_logic.py | parse_allowed_files(), fetch_develop() — scan_queued reconciliation gate (pre-dispatch "already on develop" check), delegated to `orchestrator_queue.reconcile_if_implemented` |
-| gate_ancestry.py | scripts/vps/gate_ancestry.py | fetch_branch(), find_implementation() — THE gate as of TECH-220 (ancestry primary, `gate_logic.find_implementation_commit` subject fallback); called from `orchestrator_queue.reconcile_if_implemented` / `record_dispatch` |
+| gate_ancestry.py | scripts/vps/gate_ancestry.py | fetch_branch(), find_implementation(), branch_state() (TECH-221) — THE gate as of TECH-220 (ancestry primary, `gate_logic.find_implementation_commit` subject fallback); called from `orchestrator_queue.reconcile` (bool facade `reconcile_if_implemented`, which also sets/clears `CLAUDE_CONTINUE_BRANCH` in `os.environ`) / `record_dispatch` |
 
 ### Used by (←)
 
@@ -615,6 +615,14 @@ regex and returns `(sha, "subject")` or `(None, "none")`. Every caller records t
 its audit line — the field that decides when the subject fallback (and `gate_logic.match_subject`/
 `find_implementation_commit`) can be deleted.
 
+`branch_state(project_path, spec_id)` (TECH-221) is the second public surface: a read-only,
+fail-closed `BranchState(ref, exists, merged, ahead, behind)` verdict on `origin/<type>/<ID>`,
+called when `find_implementation` comes back empty to tell "nothing was ever pushed" apart from
+"pushed, just not merged yet" (a session salvaged its worktree and died before merge). It never
+fetches — every caller already ran `fetch_branch` a few lines earlier — and only ever reads
+`refs/remotes/origin/<ref>`, never a local branch (a stale local left by a swept worktree is
+exactly the false-positive this exists to avoid).
+
 ### Uses (→)
 
 | What | Where | Function |
@@ -627,18 +635,20 @@ its audit line — the field that decides when the subject fallback (and `gate_l
 
 | Who | File:line | Function |
 |-----|-----------|----------|
-| callback_sync.py | scripts/vps/callback_sync.py `_decide_status` | fetch_branch(), find_implementation() — Rule 1 gate + grace-retry loop |
+| callback_sync.py | scripts/vps/callback_sync.py `_decide_status` | fetch_branch(), find_implementation() — Rule 1 gate + grace-retry loop; branch_state() (TECH-221) — after grace-retry exhausts, turns a no-merge verdict into `blocked:branch_pushed_not_merged:<N> ahead` instead of `no_merged_implementation` when origin carries unmerged commits — demote-to-queued is the right operator response here, force-done is not |
 | callback_dispatch.py | scripts/vps/callback_dispatch.py `_merge_confirmed` | fetch_branch(), find_implementation() — gates the QA/Reflect dispatch, same verdict as the status gate |
-| orchestrator_queue.py | scripts/vps/orchestrator_queue.py `reconcile_if_implemented` | fetch_branch(), find_implementation() — pre-dispatch "already on develop" check |
+| orchestrator_queue.py | scripts/vps/orchestrator_queue.py `reconcile` (TECH-221; bool facade `reconcile_if_implemented`, the only name `scan_queued` calls) | fetch_branch(), find_implementation() — pre-dispatch "already on develop" check; branch_state() when nothing is found — distinguishes verdict `"continue"` (origin branch ahead of develop) from `"fresh"` (nothing pushed). `reconcile_if_implemented` sets/clears `CLAUDE_CONTINUE_BRANCH` in `os.environ` as a side effect, ALWAYS written (never only set). Telemetry only — `worktree-setup.md`/`autopilot-git.md` do NOT read this var; they detect continuation independently via `git ls-remote --heads origin <type>/<ID>` |
 | orchestrator_queue.py | scripts/vps/orchestrator_queue.py `record_dispatch` | branch_ref_for() — writes the real `<type>/<ID>` branch prefix into `task_log.branch` instead of a hardcoded `feature/` |
 | gate-daemon.py | scripts/vps/gate-daemon.py `_evaluate_project` | fetch_branch(), find_implementation() — shadow verdict, same gate as the enforcing callers |
 
 ### When changing API, check
 
 - [ ] callback_sync.py, callback_dispatch.py, orchestrator_queue.py, gate-daemon.py (all four `find_implementation` call sites — same 3-arg signature, same `(sha, via)` return shape)
+- [ ] `BranchState` field names (TECH-221) — `callback_sync._decide_status` and `orchestrator_queue.reconcile` both read `.exists`/`.ahead`/`.ref` by attribute, not positionally, but the dataclass is frozen and has no version marker; renaming a field breaks both silently until the next dispatch
+- [ ] `CLAUDE_CONTINUE_BRANCH` env var (TECH-221) — written/popped in `orchestrator_queue.reconcile_if_implemented`, lands in the pueue dispatch env. NOT currently read by either `worktree-setup.md` or `autopilot-git.md` in either tree — both detect an existing pushed branch independently via `git ls-remote --heads origin <type>/<ID>` and reuse `origin/<type>/<ID>` on that basis alone. If a future change makes the prompts read the flag (or drops the independent git check), this row and the "when changing API" story go stale together — keep them in sync
 - [ ] `_BRANCH_PREFIX` map — two prose copies exist and already disagree: `.claude/skills/autopilot/worktree-setup.md` (Type mapping table) and `autopilot-git.md` (bash `case`, falls through to `task/` and has no GROWTH row)
 - [ ] `gate_logic.find_implementation_commit` (called positionally, as a module attribute — tests monkeypatch that attribute directly)
-- [ ] scripts/vps/tests/test_gate_ancestry.py
+- [ ] scripts/vps/tests/test_gate_ancestry.py, scripts/vps/tests/test_orchestrator_in_progress.py (branch_state / reconcile three-way EC-1..EC-6, TECH-221)
 
 ---
 

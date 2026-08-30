@@ -152,7 +152,34 @@ python3 scripts/vps/spec_operator.py force-done /home/dld/projects/<proj> <SPEC_
 
 ---
 
-## Сценарий 4: Спека помечена done, но работа не сделана (bootstrap-as-done)
+## Сценарий 4: `branch_pushed_not_merged` — сессия умерла, но ветка запушена (TECH-221)
+
+**Симптом:** `blocked` с reason `branch_pushed_not_merged:<N> ahead — origin/<type>/<ID> carries the
+work; re-dispatch continues that branch`. Отличается от Сценария 3: guard (`find_implementation`) не
+нашёл мёрж, но `gate_ancestry.branch_state()` видит `origin/<type>/<ID>` с `ahead > 0` — сессия
+умерла (обычно таймаут) уже ПОСЛЕ того, как salvage успел запушить ветку, просто до мержа.
+
+**НЕ применяй Сценарий 3 fix здесь.** `force-done` — неверный совет: работа реально не смёржена,
+а `verification.md` просит верифицировать смёрженный код, которого ещё нет на `origin/develop`.
+
+**Fix:** обычный demote → re-dispatch. Новый `orchestrator_queue.reconcile()` увидит ту же
+`branch_state()` (verdict `"continue"`), выставит `CLAUDE_CONTINUE_BRANCH=1` в окружение диспатча
+(телеметрия, не gate). Независимо от флага — оба дерева autopilot-промптов (`worktree-setup.md` /
+`autopilot-git.md`) сами проверяют `git ls-remote --heads origin <type>/<ID>` при setup worktree и
+заберут `origin/<type>/<ID>` вместо чистого нового `develop` — сессия продолжает уже сделанные
+коммиты, а не начинает с нуля:
+```bash
+python3 scripts/vps/spec_operator.py demote /home/dld/projects/<proj> <SPEC_ID> \
+  "branch pushed, not yet merged — re-dispatch to continue" --by=operator
+```
+Диагностика (что именно на ветке):
+```bash
+git -C /home/dld/projects/<proj> log origin/develop..origin/<type>/<SPEC_ID> --oneline
+```
+
+---
+
+## Сценарий 5: Спека помечена done, но работа не сделана (bootstrap-as-done)
 
 **Симптом:** `lifecycle_audit` показывает `bootstrap_as_done` — спека `done`, но без истории
 (`transitions=[]`, `pueue_id=None`, `finished_at=None`). Никогда не выполнялась, и Rule 7 не даёт
@@ -170,7 +197,7 @@ python3 scripts/vps/recover_bootstrap_as_done.py --project=<proj> --confirm
 
 ---
 
-## Сценарий 5: Push-race — статус закоммичен локально, но вечно «queued» у читателей
+## Сценарий 6: Push-race — статус закоммичен локально, но вечно «queued» у читателей
 
 **Симптом:** callback записал `done` локально, но push reject (non-ff), develop разошёлся с origin;
 другие узлы (через `git pull`) видят старый статус. `lifecycle_audit` → `git_divergence` и/или
@@ -188,7 +215,7 @@ git -C /home/dld/projects/<proj> log origin/develop..develop --oneline    # чт
 
 ---
 
-## Сценарий 6: Добавить новый проект
+## Сценарий 7: Добавить новый проект
 
 ```bash
 # 1. projects.json

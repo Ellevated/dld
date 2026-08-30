@@ -217,6 +217,7 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 | TECH-204 | night-reviewer notify cap (10) + confidence filter (medium+) | актуально |
 | TECH-206 | CI-parity merge-gate (`./test ci` перед push, needs_review на red) | актуально |
 | TECH-220 | Implementation guard: branch-ancestry primary (`gate_ancestry.find_implementation`), subject-regex deprecated fallback, `gate_via` telemetry | актуально |
+| TECH-221 | Re-dispatch after a timeout continues the salvaged branch: `gate_ancestry.branch_state()`, `blocked_reason=branch_pushed_not_merged:<N>`, three-way `orchestrator_queue.reconcile()` ("done"\|"continue"\|"fresh"), `CLAUDE_CONTINUE_BRANCH` env | актуально |
 
 > ⚠️ **Известный дрейф в in-repo ADR-таблице** (`.claude/rules/architecture.md`): TECH-170/176
 > там описаны как актуальные, но текущий код (`gate_ancestry.find_implementation`, TECH-220) их не
