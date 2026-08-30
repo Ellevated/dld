@@ -98,6 +98,16 @@ jobs:
       - name: Allowlist parity (linter vs parser)
         run: pytest scripts/vps/tests/test_allowlist_parity.py -v
 
+      # Blocking: the 400/600 LOC ceiling. It lived only in rules/architecture.md and
+      # four modules grew past it anyway — callback.py to 1438, orchestrator.py to 1078,
+      # claude-runner.py to 912, db.py to 602 — each costing a spec of its own to cut
+      # back. Pre-existing debt is listed in loc-limit-baseline.txt, so this fails on
+      # new debt and on stale permission, not on history.
+      - name: LOC ceiling (scripts/vps)
+        run: |
+          bash scripts/vps/check-loc-limit.sh
+          pytest scripts/vps/tests/test_check_loc_limit.py -v
+
       # Blocking since 2026-08-02. It shipped as reporting-only because 13 findings
       # were open and failing a build on pre-existing debt only teaches people to
       # ignore a red check. All 13 are closed, so the tree is clean and the next

@@ -125,9 +125,17 @@ Hooks must never crash — a crashing hook breaks Claude Code. See ADR-004.
 
 ## Limits
 
-| What | Limit | Reason |
-|------|-------|--------|
-| LOC per file | 400 (600 for tests) | LLM context window |
-| Exports in __init__.py | 5 | Explicit public API |
-| Nesting depth | 3 levels | Readability |
-| Function arguments | 5 | Cognitive load |
+| What | Limit | Reason | Enforced by |
+|------|-------|--------|-------------|
+| LOC per file | 400 (600 for tests) | LLM context window | `scripts/vps/check-loc-limit.sh`, blocking in CI (ARCH-209) |
+| Exports in __init__.py | 5 | Explicit public API | — |
+| Nesting depth | 3 levels | Readability | — |
+| Function arguments | 5 | Cognitive load | — |
+
+**The LOC limit was prose only until 2026-08-30, and prose did not hold it:** `callback.py`
+reached 1438 lines, `orchestrator.py` 1078, `claude-runner.py` 912, `db.py` 602 — four specs
+(TECH-212, TECH-215, TECH-216, TECH-213) spent real runs cutting them back. The gate now runs
+`wc -l` in CI, which needs no judgement. Debt that predates it is registered in
+`scripts/vps/loc-limit-baseline.txt`; the gate fails on a new violation, on a baselined file
+that grew, and on a stale entry whose file is back under the limit — a permission nobody
+removed is where the next regression hides.

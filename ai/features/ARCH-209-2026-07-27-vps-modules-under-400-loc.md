@@ -118,6 +118,8 @@ ONLY the files listed below may be modified during implementation.
 
 - `scripts/vps/check-loc-limit.sh` — сторож лимита 400 LOC (NEW)
 - `scripts/vps/tests/test_check_loc_limit.py` — тесты сторожа (NEW)
+- `scripts/vps/loc-limit-baseline.txt` — реестр долга: 5 тестовых сьютов, которые уже были над 600 (NEW)
+- `scripts/vps/tests/test_doc_symbol_refs.py` — каждая цитата `module.py::symbol` в docs/orchestrator резолвится (NEW)
 - `.github/workflows/ci.yml` — вызов сторожа в CI (modify)
 - `docs/orchestrator/status-model.md` — 10 цитат `file.py:NNN` (modify)
 - `docs/orchestrator/components.md` — покомпонентный справочник под новые модули (modify)

@@ -1,0 +1,21 @@
+# scripts/vps/loc-limit-baseline.txt
+#
+# Files already over the ceiling when the gate was introduced (ARCH-209, 2026-08-30).
+# The gate fails on anything NOT listed here, so this file is the debt register: a line
+# is permission to stay over the limit, not permission to grow.
+#
+# Format: <path relative to repo root> <line count when baselined>
+# A file over its limit but ABSENT here fails the gate. A file listed here that has
+# since come back under the limit also fails it — stale entries hide regressions.
+#
+# All five are test suites. ARCH-209's scope was the production modules
+# (TECH-210..216 + TECH-213 brought callback.py, orchestrator.py, db.py and
+# claude-runner.py under 400); splitting the suites is separate work, because a
+# test file's size is dominated by fixtures and scenario tables rather than by
+# logic, and cutting one badly loses coverage rather than gaining clarity.
+
+scripts/vps/tests/test_callback.py 813
+scripts/vps/tests/test_db.py 761
+scripts/vps/tests/test_lifecycle.py 827
+scripts/vps/tests/test_orchestrator.py 1703
+scripts/vps/tests/test_orchestrator_bootstrap.py 692
