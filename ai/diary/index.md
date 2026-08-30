@@ -33,3 +33,7 @@
 | 2026-08-30 | TECH-220 | success | Task 2/5: callback contour через find_implementation + gate_via | 0 | 2 | done |
 | 2026-08-30 | TECH-220 | success | Task 3/5: orchestrator contour + record_dispatch префикс | 0 | 3 | done |
 | 2026-08-30 | TECH-220 | advisory | Task 2+3: gate-daemon.py 398/400 LOC | 0 | 5 | done |
+| 2026-08-30 | TECH-221 | success | branch_state + branch_pushed_not_merged verdict + three-way reconcile | 0 | 3 | pending |
+| 2026-08-30 | TECH-221 | success | EC-1..EC-6 tests; reuse-aware prompts in both trees, EC-7 on throwaway repos | 0 | 5 | pending |
+| 2026-08-30 | TECH-221 | advisory | 4 advisory findings across tasks 1-4 | 0 | 0 | pending |
+| 2026-08-30 | TECH-221 | problem | Exa verify found a real data-loss hole in the shipped Task 4 push (bare lease) | 0 | 4 | pending |

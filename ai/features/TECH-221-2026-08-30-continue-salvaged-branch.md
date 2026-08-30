@@ -904,3 +904,60 @@ Operator protocol, first spec that salvages after this lands:
 4. `grep 'continue dispatch' scripts/vps/logs/orchestrator.log` — one line for that spec.
 5. If that run also dies: its salvage push must succeed (fast-forward), because PHASE 0
    force-with-lease-pushed the rebased branch before any work started.
+
+### Task 1/5: branch_state — 2026-08-30
+- Coder: completed (1 file: scripts/vps/gate_ancestry.py, 212→266 LOC)
+- Tester: passed (316 in filtered subset, no regression; FF-09 invariant intact)
+- Spec compliance: matches (§Design BranchState fields + fail-closed)
+- Code Quality: approved (0 blocking, 1 advisory — dependencies.md, resolved in PHASE 3)
+- Local Verify: AV-S1 pass
+- Commit: b4f85ae9
+
+### Task 2/5: verdict + three-way reconcile — 2026-08-30
+- Coder: completed (2 files: callback_sync.py 379 LOC, orchestrator_queue.py 400 LOC)
+- Tester: passed (636 + 259, 1 pre-existing out-of-scope failure in test_lifecycle_push_rebase.py)
+- Pre-check: 2 BARE_EXCEPT — both verified pre-existing at baseline via git stash
+- Spec compliance: matches (§Вердикт, §Диспатч via Drift D1/D2)
+- Code Quality: approved (0 blocking, 1 advisory — orchestrator_queue at 400/400 LOC)
+- Commit: 13c393f7
+
+### Task 3/5: EC-1..EC-6 — 2026-08-30
+- Coder: completed (1 file: test_orchestrator_in_progress.py, 235→457 LOC, 9 tests)
+- Tester: passed (645); audited assertion strength — EC-4 fails on two independent grounds if reverted
+- Spec compliance: matches; test_gate_logic.py correctly untouched (Drift D5, it is at 598/600)
+- Code Quality: approved (0 blocking, 1 advisory — EC-6 stubs _pueue_add)
+- Commit: ff317da7
+
+### Task 4/5: prompts, both trees — 2026-08-30
+- Coder: completed (4 files: worktree-setup.md + autopilot-git.md × 2 trees)
+- Tester: n/a (markdown); bash -n clean on every block
+- Spec compliance: matches all four Scope bullets; GROWTH row matches gate_ancestry._BRANCH_PREFIX
+- Code Quality: approved (0 blocking, 2 advisory)
+- Tree parity: measured by direct diff — autopilot-git 12→12 hunks (zero new divergence),
+  worktree-setup 1→2 (the one addition is the intended TECH-221 citation strip, template-sync)
+- EC-7: PASS on throwaway repos, incl. an advanced-develop variant — worktree lands ON the
+  branch (not detached), HEAD == origin tip, both salvaged commits rebased onto new develop
+- Commit: 7c50d6e8
+
+### Task 5/5: EC-8 operator protocol — 2026-08-30
+- Doc-only, written inline. EC-8 is NOT executable from an autopilot session.
+- Commit: 0b868829
+
+### PHASE 3 — 2026-08-30
+- Final test: `./test ci` absent by design → CI_PARITY_UNAVAILABLE fallback. Ran the real
+  gates instead: ruff clean; scripts/vps/tests 645 passed / 1 pre-existing failure;
+  tests/ 259 passed; 4/4 node harness suites pass; check-prompt-integrity clean;
+  check-rules-loading clean.
+- **Exa Verify: WARNING → FIXED.** Found that the continuation push shipped as a bare
+  `--force-with-lease`, which a BACKGROUND fetch nullifies — and `orchestrator.py:106`
+  documents that the gate-daemon fetches these repos concurrently. Reproduced the loss on a
+  throwaway repo: bare lease exit 0, a third party's reviewed commit destroyed. Added
+  `--force-if-includes` (git 2.30+; host runs 2.43) to all 6 push sites in both trees plus a
+  fail-closed `PUSH_REJECTED → exit 2` handler. Re-verified: guard holds, happy path still
+  exit 0 with both salvaged commits preserved. Commit 0d09706b.
+- Documenter: completed — dependencies.md, docs/orchestrator/{status-model,components,runbook,README}.md,
+  docs/dependencies-changelog.md. Commit bdbd7e26. It also corrected its own first draft after
+  reading the diffs: `CLAUDE_CONTINUE_BRANCH` is telemetry, NOT consumed — the prompts detect
+  continuation independently via `git ls-remote`.
+- AV-S1 pass · AV-S2 TREE_SYNC_UNAVAILABLE (cannot see markdown — replaced by direct diff) ·
+  AV-F1 pass · AV-F2 (EC-8) deferred to operator, protocol recorded above.

@@ -478,3 +478,35 @@ GROWTH падает в `task/`). В Python её нет; `orchestrator_queue.reco
 - **Type:** gap
 - **Message:** `## Allowed Files` дважды оказался неполон, оба раза детерминированно предсказуемо. (1) `scripts/vps/tests/test_gate_logic.py` внесён как «дописать серию тестов» при 598 LOC из лимита 600 — дописывать было некуда, потребовался новый файл. (2) Тест `test_claude_runner_timeout.py::test_push_local_is_best_effort_not_gate` ассертит ИМЯ точки входа гейта строкой в исходнике; спека переименовывала точку входа и не внесла файл в allowlist — гарантированный красный тест. Оба случая ловятся механически на этапе Spark Phase 5.5: (а) `wc -l` каждого файла в allowlist против лимита, (б) grep исходников тестов на имена функций, которые спека переименовывает/перенацеливает.
 - **Evidence:** `scripts/vps/tests/test_gate_logic.py` = 598/600; `scripts/vps/tests/test_claude_runner_timeout.py:225`; Drift Log пп. 13-15 в спеке
+
+---
+### SIGNAL-2026-08-30-1830
+- **Source:** autopilot (TECH-221)
+- **Target:** spark
+- **Type:** gap
+- **Message:** The spec's `## Design` block shipped a bash snippet that does not work: `git worktree add <path> <branch>` without `-b` produces a DETACHED HEAD (`worktree.guessRemote` is off by default). The planner caught it (Drift D3) only because it re-read the codebase; a spec whose Design section contains literal, copy-pasteable commands should have those commands executed once before the spec is queued.
+- **Evidence:** ai/features/TECH-221-2026-08-30-continue-salvaged-branch.md §Design vs .claude/skills/autopilot/worktree-setup.md:120-124
+
+---
+### SIGNAL-2026-08-30-1831
+- **Source:** autopilot (TECH-221)
+- **Target:** spark
+- **Type:** contradiction
+- **Message:** Spec named `python scripts/check-tree-sync.py` as the acceptance gate (AV-S2) for keeping two markdown prompt trees in sync. That script only diffs function bodies in .mjs/.js/.py/.sh — it cannot see markdown, and in a fresh worktree it exits 0 with TREE_SYNC_UNAVAILABLE. An acceptance check that structurally cannot fail is worse than none: it reads as green. The real gate is `diff <tree-a> <tree-b>` with a known-divergence baseline.
+- **Evidence:** scripts/check-tree-sync.py; AV-S2 row in the spec; verified by measuring divergence hunk counts (worktree-setup 1→2 intended, autopilot-git 12→12) instead.
+
+---
+### SIGNAL-2026-08-30-1832
+- **Source:** autopilot (TECH-221)
+- **Target:** architect
+- **Type:** missing_rule
+- **Message:** PHASE 3 Exa verification found a real data-loss defect (bare `--force-with-lease` nullified by the gate-daemon's concurrent fetch) that had already passed tester + pre-check + spec compliance + code quality. Nothing in the review checklist asks "does this git command lose commits under a concurrent writer?" — for any spec whose Blueprint Reference names data loss as the cross-cutting risk, the force-push/rebase/reset family deserves an explicit checklist item rather than relying on a non-blocking PHASE 3 web search to catch it.
+- **Evidence:** .claude/agents/review.md has no git-safety category; the defect shipped through all of Task 4's gates and was caught at finishing.md Step 2.
+
+---
+### SIGNAL-2026-08-30-1833
+- **Source:** autopilot (TECH-221)
+- **Target:** architect
+- **Type:** gap
+- **Message:** `.claude/scripts/test-wrapper.mjs` reports `FAIL: 0 failure(s)` (exit 126) when `./test` exists as a DIRECTORY rather than being absent. CLAUDE.md documents the absent-command case as fixed 2026-08-02 (TEST_COMMAND_UNAVAILABLE + exit 2), but this repo has a `test/` directory, so every autopilot run here hits the misleading branch and must be told out-of-band to ignore it.
+- **Evidence:** observed by the tester subagent twice this run; `test/agents/`, `test/scripts/` are real directories in this repo.
