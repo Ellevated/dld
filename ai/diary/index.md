@@ -28,3 +28,5 @@
 | 2026-07-28 | BUG-218 | advisory | Девятая приватная копия фикстуры tmp_git_repo — хойст в conftest.py = отдельная TECH-спека | 0 | 0 | done |
 | 2026-07-28 | BUG-218 | advisory | startup_reconcile fail-closed одноразовый: pueue лёг на старте и поднялся без рестарта → сироты не демоутятся никогда | 0 | 0 | done |
 | 2026-07-28 | BUG-218 | advisory | Корневой tests/ красный на develop (3 pre-existing) + ruff format красный там же | 0 | 0 | done |
+| 2026-08-30 | TECH-220 | success | Task 1/5: gate_ancestry ancestry gate + EC-1..EC-8 tests | 0 | 2 | pending |
+| 2026-08-30 | TECH-220 | advisory | Task 1/5: dependencies.md lacks gate_ancestry entry | 0 | 2 | pending |
