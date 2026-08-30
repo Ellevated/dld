@@ -4,6 +4,8 @@ Module: callback
 Role: Pueue completion callback — release slot, update phase, dispatch QA/Reflect, write audit log.
 
 Uses:
+  - callback_logs: extract_agent_output  (TECH-216)
+  - callback_dispatch: resolve_spec_id, dispatch_qa, dispatch_reflect  (TECH-216)
   - db: release_slot, finish_task, update_project_phase, record_decision, count_demotes_since
   - event_writer: notify, notify_circuit_event
   - lifecycle: read_lifecycle, write_lifecycle  (ADR-023 — sole status writer)
@@ -24,7 +26,6 @@ TECH-207: _step6_dispatch_qa_reflect — merge-confirmed QA dispatch fallback.
 import json
 import logging
 import os
-import re
 import subprocess
 import sys
 import time
@@ -33,16 +34,14 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
+import callback_dispatch  # noqa: E402  — QA/reflect dispatch (TECH-216)
+import callback_logs  # noqa: E402  — agent output extraction (TECH-216)
 import db  # noqa: E402
 import event_writer  # noqa: E402
 import gate_logic  # noqa: E402 — single source of gate logic (TECH-210)
 import lifecycle  # noqa: E402  — atomic YAML writer (ADR-023)
 
 log = logging.getLogger("callback")
-
-# Spec-id regex (TECH-182). `[a-z]*` captures sub-spec suffixes (ARCH-176a/b/c).
-# Mirrors orchestrator.scan_backlog regex (v3.15.8).
-_SPEC_ID_RE = re.compile(r"(TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*")
 
 
 def _load_env() -> None:
@@ -139,316 +138,22 @@ def map_result(result: str, raw_exit_code: str | None = None) -> tuple:
     return "failed", 1
 
 
-def _find_log_file(project_name: str, after_ts: float = 0.0) -> Path | None:
-    """Find most recent log file for project in logs/ dir.
-
-    `after_ts` (Unix epoch) — if given, only return a file whose mtime is
-    strictly later. Prevents picking up stale logs from previous tasks when
-    the current task's runner was SIGKILL'd before it could write its own.
-    """
-    log_dir = SCRIPT_DIR / "logs"
-    if not log_dir.is_dir():
-        return None
-    pattern = f"{project_name}-*.log"
-    files = sorted(log_dir.glob(pattern), key=lambda f: f.stat().st_mtime, reverse=True)
-    for f in files:
-        if f.stat().st_mtime > after_ts:
-            return f
-    return None
-
-
-def _skill_from_pueue_command(pueue_id: str) -> tuple[str, float]:
-    """Read skill + task start_time from `pueue status --json`.
-
-    Pueue stores the original launch command. Our run-agent.sh signature is:
-        run-agent.sh <project_dir> <provider> <skill> <task...>
-    So the 4th argv is always the skill.
-
-    This is the only deterministic source of truth for skill on a
-    SIGKILL'd run (TIMEOUT_SECONDS) — claude-runner.py never reaches its
-    finally-clause to write the JSON log file, so log-file inference picks
-    up a stale neighbour's log.
-
-    Returns (skill, start_ts). Both empty/0.0 on failure (caller falls back).
-    """
-    try:
-        r = subprocess.run(
-            ["pueue", "status", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if r.returncode != 0:
-            return "", 0.0
-        data = json.loads(r.stdout)
-        task = data.get("tasks", {}).get(str(pueue_id), {})
-        cmd = task.get("command") or task.get("original_command") or ""
-        # Extract 4th token (after run-agent.sh project_dir provider <skill>)
-        # Tolerant to absolute / relative path of run-agent.sh.
-        parts = cmd.split()
-        skill = ""
-        for i, p in enumerate(parts):
-            if p.endswith("run-agent.sh") and i + 3 < len(parts):
-                skill = parts[i + 3]
-                break
-        # Parse start_ts to filter stale neighbour logs
-        start_ts = 0.0
-        s = task.get("status", {})
-        if isinstance(s, dict):
-            inner = s.get("Running") or s.get("Done") or {}
-            start_str = inner.get("start") if isinstance(inner, dict) else None
-            if start_str:
-                try:
-                    from datetime import datetime
-
-                    start_ts = datetime.fromisoformat(start_str.replace("Z", "+00:00")).timestamp()
-                except Exception:
-                    pass
-        return skill, start_ts
-    except Exception as exc:
-        log.warning("_skill_from_pueue_command failed: %s", exc)
-        return "", 0.0
-
-
-def _parse_log_file(log_path: Path) -> tuple:
-    """Parse JSON log file → (skill, result_preview, task_status). Logs cache metrics."""
-    try:
-        data = json.loads(log_path.read_text())
-        skill = data.get("skill", "")
-        full_preview = str(data.get("result_preview", ""))
-        preview = full_preview[:500]
-
-        # task_status resolution (most→least reliable):
-        #   1. top-level field — claude-runner._extract_task_status writes it
-        #      from the FULL result text (untruncated, format-agnostic).
-        #   2. whole-preview JSON — legacy bare-JSON final message.
-        #   3. regex scan of full preview — agent wrapped task_status in a
-        #      markdown ```json fence (Opus 4.x). Scans full_preview (up to
-        #      1000 chars) NOT the 500-char display preview, so the token is
-        #      not lost to truncation.
-        task_status = str(data.get("task_status", "") or "")
-        if not task_status and preview:
-            try:
-                inner = json.loads(preview)
-                task_status = str(inner.get("task_status", "") or "")
-            except json.JSONDecodeError:
-                pass
-        if not task_status and full_preview:
-            m = re.search(r'"task_status"\s*:\s*"([a-z_]+)"', full_preview)
-            if m:
-                task_status = m.group(1)
-
-        input_tokens = int(data.get("input_tokens", 0) or 0)
-        output_tokens = int(data.get("output_tokens", 0) or 0)
-        cache_creation_input_tokens = int(data.get("cache_creation_input_tokens", 0) or 0)
-        cache_read_input_tokens = int(data.get("cache_read_input_tokens", 0) or 0)
-        denom = cache_read_input_tokens + input_tokens
-        cache_hit_rate = round(cache_read_input_tokens / denom, 4) if denom > 0 else 0.0
-        log.info(
-            "USAGE %s: in=%d out=%d cache_creation=%d cache_read=%d cache_hit_rate=%.4f",
-            log_path.name,
-            input_tokens,
-            output_tokens,
-            cache_creation_input_tokens,
-            cache_read_input_tokens,
-            cache_hit_rate,
-        )
-
-        return skill, preview, task_status
-    except Exception:
-        return "", "", ""
-
-
-def extract_agent_output(pueue_id: str, project_id: str = "") -> tuple:
-    """Extract skill, result_preview, and task_status.
-
-    Resolution order (skill first, preview second, task_status third):
-      0. pueue command — deterministic, survives SIGKILL'd runners
-      1. log file (newer than task start) — reliable for clean exits
-      2. DB task_log row
-      3. pueue raw log
-    """
-    # Layer 0: skill from pueue command (deterministic, never fooled by stale logs)
-    pueue_skill, start_ts = _skill_from_pueue_command(pueue_id)
-
-    # Layer 1: Read from log file (reliable — written by claude-runner.py at end of run)
-    if project_id:
-        try:
-            state = db.get_project_state(project_id)
-            if state:
-                project_name = Path(state.get("path", "")).name
-                if project_name:
-                    log_path = _find_log_file(project_name, after_ts=start_ts)
-                    if log_path:
-                        skill, preview, task_status = _parse_log_file(log_path)
-                        # If pueue gave us a skill, trust it over the log file's
-                        # (covers edge case of a still-stale log slipping through).
-                        if pueue_skill:
-                            skill = pueue_skill
-                        if skill:
-                            log.info("extract_agent_output from log: %s", log_path.name)
-                            return skill, preview, task_status
-        except Exception as exc:
-            log.warning("extract_agent_output log file failed: %s", exc)
-
-    # If log file missing/stale but pueue knew the skill — return it now.
-    if pueue_skill:
-        log.info("extract_agent_output skill from pueue command: %s", pueue_skill)
-        return pueue_skill, "", ""
-
-    # Layer 1b: Try DB task_log for skill (if no log file found)
-    try:
-        row = db.get_task_by_pueue_id(int(pueue_id))
-        if row and row.get("skill"):
-            log.info("extract_agent_output skill from DB: %s", row["skill"])
-            return row["skill"], "", ""
-    except Exception as exc:
-        log.warning("extract_agent_output DB failed: %s", exc)
-
-    # Layer 2: pueue log (fallback — may fail due to socket mismatch)
-    try:
-        result = subprocess.run(
-            ["pueue", "log", pueue_id, "--json"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        data = json.loads(result.stdout)
-        task_data = data.get("tasks", {}).get(pueue_id, {})
-        output = task_data.get("output", "")
-        if not output:
-            output = result.stdout
-
-        for line in output.splitlines():
-            line = line.strip()
-            if line.startswith("{") and '"skill"' in line:
-                try:
-                    obj = json.loads(line)
-                    skill = obj.get("skill", "")
-                    preview = str(obj.get("result_preview", ""))[:500]
-                    task_status = str(obj.get("task_status", "") or "")
-                    return skill, preview, task_status
-                except json.JSONDecodeError:
-                    continue
-    except Exception:
-        pass
-
-    return "", "", ""
-
-
-def resolve_spec_id(task_label: str, preview: str, project_path: str) -> str | None:
-    """Multi-layer spec_id resolution."""
-    # Layer 1: from task label
-    m = _SPEC_ID_RE.search(task_label)
-    if m:
-        return m.group(0)
-
-    # Layer 2: from preview text
-    if preview:
-        m = _SPEC_ID_RE.search(preview)
-        if m:
-            return m.group(0)
-
-    # Layer 3: from inbox done files
-    if task_label.startswith("inbox-") and project_path:
-        done_dir = Path(project_path) / "ai" / "inbox" / "done"
-        if done_dir.is_dir():
-            for f in sorted(done_dir.glob("*.md"), reverse=True):
-                text = f.read_text(errors="replace")
-                m = re.search(r"\*\*SpecID:\*\*\s*(\S+)", text)
-                if m:
-                    sm = _SPEC_ID_RE.search(m.group(1))
-                    if sm:
-                        return sm.group(0)
-    return None
-
-
-def is_already_queued(label: str) -> bool:
-    """Check if a task with this label is Running or Queued."""
-    try:
-        result = subprocess.run(
-            ["pueue", "status", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        data = json.loads(result.stdout)
-        for task in data.get("tasks", {}).values():
-            if task.get("label") == label:
-                status = task.get("status", {})
-                if isinstance(status, dict) and ("Running" in status or "Queued" in status):
-                    return True
-        return False
-    except Exception:
-        return False
-
-
-def _pueue_add(group: str, label: str, cmd: list) -> int | None:
-    """Submit task to pueue. Returns task ID or None."""
-    try:
-        pueue_cmd = [
-            "pueue",
-            "add",
-            "--group",
-            group,
-            "--label",
-            label,
-            "--print-task-id",
-            "--",
-        ] + cmd
-        result = subprocess.run(
-            pueue_cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        for line in result.stdout.strip().splitlines():
-            m = re.search(r"(\d+)", line.strip())
-            if m:
-                return int(m.group(1))
-        return None
-    except Exception:
-        return None
-
-
-def dispatch_qa(project_id: str, project_path: str, spec_id: str, provider: str) -> None:
-    """Dispatch QA task via pueue."""
-    qa_label = f"{project_id}:qa-{spec_id}"
-    if is_already_queued(qa_label):
-        log.info("skip duplicate QA: %s", qa_label)
-        return
-    runner_group = f"{provider}-runner"
-    pueue_id = _pueue_add(
-        runner_group,
-        qa_label,
-        [str(SCRIPT_DIR / "run-agent.sh"), project_path, provider, "qa", f"/qa {spec_id}"],
-    )
-    if pueue_id:
-        db.try_acquire_slot(project_id, provider, pueue_id)
-        db.log_task(project_id, qa_label, "qa", "running", pueue_id)
-        log.info("QA dispatched: %s pueue_id=%d", qa_label, pueue_id)
-    else:
-        log.warning("QA dispatch failed: %s", qa_label)
-
-
-def dispatch_reflect(project_id: str, project_path: str, task_label: str, provider: str) -> None:
-    """Dispatch reflect task via pueue."""
-    reflect_label = f"{project_id}:reflect-{task_label}"
-    if is_already_queued(reflect_label):
-        log.info("skip duplicate reflect: %s", reflect_label)
-        return
-    runner_group = f"{provider}-runner"
-    pueue_id = _pueue_add(
-        runner_group,
-        reflect_label,
-        [str(SCRIPT_DIR / "run-agent.sh"), project_path, provider, "reflect", "/reflect"],
-    )
-    if pueue_id:
-        db.try_acquire_slot(project_id, provider, pueue_id)
-        db.log_task(project_id, reflect_label, "reflect", "running", pueue_id)
-        log.info("reflect dispatched: %s pueue_id=%d", reflect_label, pueue_id)
-    else:
-        log.warning("reflect dispatch failed: %s", reflect_label)
+# --- TECH-216: logs + dispatch live in sibling modules ------------------------
+#
+# Re-exports, not copies. Root tests/ (unit + integration, outside this spec's
+# Allowed Files) reach these through `callback.<name>`, and main() below calls
+# them by bare name so `monkeypatch.setattr(callback, "extract_agent_output", …)`
+# in tests/integration/test_callback_blocked_no_dispatch.py keeps intercepting.
+# New code binds to the owning module (`callback_logs.…`, `callback_dispatch.…`).
+_find_log_file = callback_logs._find_log_file
+_skill_from_pueue_command = callback_logs._skill_from_pueue_command
+_parse_log_file = callback_logs._parse_log_file
+extract_agent_output = callback_logs.extract_agent_output
+resolve_spec_id = callback_dispatch.resolve_spec_id
+is_already_queued = callback_dispatch.is_already_queued
+_pueue_add = callback_dispatch._pueue_add
+dispatch_qa = callback_dispatch.dispatch_qa
+dispatch_reflect = callback_dispatch.dispatch_reflect
 
 
 # --- TECH-166 / TECH-167: Implementation guard helpers ----------------------

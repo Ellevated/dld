@@ -22,6 +22,7 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import callback  # noqa: E402
+import callback_logs  # noqa: E402
 import db  # noqa: E402
 import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
@@ -362,9 +363,9 @@ class TestFindLogFileFiltersStale:
 
         os.utime(old, (1000, 1000))
         # Patch SCRIPT_DIR
-        monkeypatch.setattr(callback, "SCRIPT_DIR", tmp_path)
+        monkeypatch.setattr(callback_logs, "SCRIPT_DIR", tmp_path)
         # Task started after mtime — old log must be skipped
-        result = callback._find_log_file("proj", after_ts=2000.0)
+        result = callback_logs._find_log_file("proj", after_ts=2000.0)
         assert result is None
 
     def test_returns_log_newer_than_after_ts(self, tmp_path, monkeypatch):
@@ -375,8 +376,8 @@ class TestFindLogFileFiltersStale:
         import os
 
         os.utime(new, (5000, 5000))
-        monkeypatch.setattr(callback, "SCRIPT_DIR", tmp_path)
-        result = callback._find_log_file("proj", after_ts=2000.0)
+        monkeypatch.setattr(callback_logs, "SCRIPT_DIR", tmp_path)
+        result = callback_logs._find_log_file("proj", after_ts=2000.0)
         assert result == new
 
     def test_default_after_ts_zero_returns_any_log(self, tmp_path, monkeypatch):
@@ -385,8 +386,8 @@ class TestFindLogFileFiltersStale:
         log_dir.mkdir()
         f = log_dir / "proj-x.log"
         f.write_text("{}", encoding="utf-8")
-        monkeypatch.setattr(callback, "SCRIPT_DIR", tmp_path)
-        result = callback._find_log_file("proj")
+        monkeypatch.setattr(callback_logs, "SCRIPT_DIR", tmp_path)
+        result = callback_logs._find_log_file("proj")
         assert result == f
 
 

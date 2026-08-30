@@ -31,6 +31,7 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import callback  # noqa: E402
+import callback_dispatch  # noqa: E402
 import db  # noqa: E402
 
 
@@ -357,8 +358,8 @@ class TestDedupIntact:
             pueue_add_calls.append(label)
             return 42  # fake pueue_id
 
-        monkeypatch.setattr(callback, "is_already_queued", _mock_is_already_queued)
-        monkeypatch.setattr(callback, "_pueue_add", _mock_pueue_add)
+        monkeypatch.setattr(callback_dispatch, "is_already_queued", _mock_is_already_queued)
+        monkeypatch.setattr(callback_dispatch, "_pueue_add", _mock_pueue_add)
         # Prevent DB calls in dispatch_qa
         monkeypatch.setattr(db, "try_acquire_slot", lambda *a, **kw: None)
         monkeypatch.setattr(db, "log_task", lambda *a, **kw: None)
@@ -367,9 +368,9 @@ class TestDedupIntact:
         qa_label_second = "testproj:qa-BUG-901"
 
         # First dispatch: not yet queued → should call _pueue_add
-        callback.dispatch_qa("testproj", "/some/path", "BUG-901", "claude")
+        callback_dispatch.dispatch_qa("testproj", "/some/path", "BUG-901", "claude")
         # Second dispatch: already queued → should NOT call _pueue_add
-        callback.dispatch_qa("testproj", "/some/path", "BUG-901", "claude")
+        callback_dispatch.dispatch_qa("testproj", "/some/path", "BUG-901", "claude")
 
         assert len(pueue_add_calls) == 1, (
             f"_pueue_add called {len(pueue_add_calls)} times; expected exactly 1 "
