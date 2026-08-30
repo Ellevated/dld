@@ -12,22 +12,22 @@
 спеки, не `ai/backlog.md`, не working tree.
 
 - Все читатели читают **HEAD**, не WT: `lifecycle.read_lifecycle` → `git show HEAD:ai/lifecycle/{spec}.yaml`
-  (`lifecycle.py:155-162, 549-556`); `list_by_status` → `git ls-tree HEAD:ai/lifecycle` (`:660-694`).
+  (`lifecycle.py::create_initial`); `list_by_status` → `git ls-tree HEAD:ai/lifecycle` (`lifecycle.py::list_by_status`).
 - Markdown — **read-only render**: `ai/backlog.md` синхронизируется только по ячейке `Status`
   (см. §6); тело спеки `**Status:**` никем не пишется автоматически.
 - **Следствие:** ручная правка `ai/lifecycle/*.yaml` в рабочем дереве **невидима** оркестратору
   (он читает HEAD). Чинить статус руками — только через `spec_operator.py` (см. [runbook.md](runbook.md)).
 
-`LIFECYCLE_DIR = "ai/lifecycle"` (`lifecycle.py:46`).
+`LIFECYCLE_DIR = "ai/lifecycle"` (`lifecycle_const.py::LIFECYCLE_DIR`).
 
 ---
 
 ## 2. Как пишется статус (атомарный CAS git-plumbing)
 
 `write_lifecycle(repo_dir, spec_id, status, *, reason=None, by="callback", pueue_id=None, allowed_files_hash=None)`
-— `lifecycle.py:559`. **Никогда не трогает working tree** — пишет прямо в git-объекты и двигает ref.
+— `lifecycle.py::write_lifecycle`. **Никогда не трогает working tree** — пишет прямо в git-объекты и двигает ref.
 
-Один CAS-attempt (`_atomic_write`, `lifecycle.py:228-362`):
+Один CAS-attempt (`lifecycle_cas.py::_atomic_write`):
 
 1. Приватный индекс: `tempfile` в `.git/` → `GIT_INDEX_FILE=idx_path` (`:232-236`) — изоляция от
    дефолтного `.git/index`.
@@ -61,8 +61,8 @@ Pin-once закрывает окно.
 ## 3. Кто может писать (identity gate)
 
 ```python
-_ALLOWED_WRITERS              = {callback, orchestrator, operator, qa, audit, migration}   # lifecycle.py:59
-_ALLOWED_WRITERS_FOR_CREATE  = {spark} | _ALLOWED_WRITERS                                  # lifecycle.py:66
+_ALLOWED_WRITERS              = {callback, orchestrator, operator, qa, audit, migration}   # lifecycle_const.py
+_ALLOWED_WRITERS_FOR_CREATE  = {spark} | _ALLOWED_WRITERS                                  # lifecycle_const.py
 ```
 
 - `write_lifecycle` гейтит `by`: вне `_ALLOWED_WRITERS` → `ValueError` (`:576`).
@@ -73,7 +73,7 @@ _ALLOWED_WRITERS_FOR_CREATE  = {spark} | _ALLOWED_WRITERS                       
   origin/develop → `done`, `reason=already_implemented_on_develop:<sha>`, без сессии), и **диспатч**
   в `scan_queued` — после успешного `pueue add` пишет `in_progress` с `pueue_id` (BUG-218). Отказ этой
   записи логируется и НЕ отменяет диспатч: задача уже в очереди pueue. Это единственная запись
-  `in_progress` во всей системе — она включает `started_at` (`lifecycle.py:254-259`) и делает
+  `in_progress` во всей системе — она включает `started_at` (`lifecycle.py::write_lifecycle`) и делает
   `reconcile_orphans` работоспособным. Все три — легитимны, `orchestrator ∈ _ALLOWED_WRITERS`.
   Reconciliation использует ту же `gate_logic`-проверку, что guard.
 - `spark` может **только `create_initial`** (claim ID через CAS), не `write_lifecycle` —
@@ -82,7 +82,7 @@ _ALLOWED_WRITERS_FOR_CREATE  = {spark} | _ALLOWED_WRITERS                       
 ### create_initial — spec-first ID claim (ADR-027)
 
 `create_initial(repo_dir, spec_id, priority, kind, status="queued", *, by="orchestrator")` —
-`lifecycle.py:603`. Spark клеймит ID, пытаясь создать yaml через тот же CAS (Kafka-паттерн): две
+`lifecycle.py::create_initial`. Spark клеймит ID, пытаясь создать yaml через тот же CAS (Kafka-паттерн): две
 машины зовут одновременно → CAS-проигравший получает `LifecycleWriteRaceError`, spark ретраит
 (до 5 раз, retry на стороне spark). Priority нормализуется к lower-case, невалид → `p1` (TECH-200,
 `:626-634`).
@@ -99,7 +99,7 @@ dowry FTR-1333 — spark написал спеку и заблокировал �
 ## 4. Write-once-done (Rule 7) — терминальность `done`
 
 `done` — **терминальный** статус. Любая попытка `done → !done` бросает `LifecycleAlreadyDoneError`
-(`lifecycle.py:86-100`). Проверка **структурно в примитиве** (`write_lifecycle:581-584` и
+(`lifecycle_const.py::_ALLOWED_WRITERS`). Проверка **структурно в примитиве** (`lifecycle.py::write_lifecycle` и
 `create_initial:638-642`) → защищает ВСЕХ writers (callback, operator, qa, audit, migration, spark-claim).
 
 **Единственный escape — `recover_bootstrap_artifact`** (`:852-940`, TECH-195): демоутит
@@ -120,7 +120,7 @@ status == "done"  ∧  transitions == []  ∧  pueue_id is None  ∧  finished_a
 
 ## 5. Push-divergence self-heal (`_push_best_effort`)
 
-`_push_best_effort(repo_dir, branch)` — `lifecycle.py:365-398`. После успешного CAS пушит статус-коммит.
+`_push_best_effort(repo_dir, branch)` — `lifecycle_push.py::_push_best_effort`. После успешного CAS пушит статус-коммит.
 
 **Failure mode (push-race divergence, чинено `de4f434`):** пока агент работает, оркестратор пропускает
 `git pull`; callback коммитит статус на устаревший локальный `develop`; код-коммиты агента уже на
@@ -171,7 +171,7 @@ status-only. `backlog.md` — read-only render статуса, не SoT. Full `r
 ### verify_status_sync (текущий, ужат с 2026-05-21)
 
 `verify_status_sync(project_path, spec_id, target="done", pueue_id=None, autopilot_signaled=False)` —
-`callback.py:1067-1357`. **Не редактирует markdown.** Решение — чистая функция от (origin/develop после
+`callback_sync.py::verify_status_sync`. **Не редактирует markdown.** Решение — чистая функция от (origin/develop после
 fetch, allowed_files, существующий lifecycle); pueue exit-code и activity-окна НЕ влияют. Запись —
 только через `lifecycle.write_lifecycle(by="callback")`.
 

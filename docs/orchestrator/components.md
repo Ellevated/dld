@@ -77,26 +77,34 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 
 ## <a name="claude-runnerpy"></a>claude-runner.py — autopilot-сессия (Agent SDK)
 
-`query()` + `ClaudeAgentOptions` (`:222-247`). Аргументы `main`: `<project_dir> <task> [skill]`.
+Аргументы `main`: `<project_dir> <task> [skill]`. С TECH-213 это точка входа на 329 строк;
+сам цикл и разбор результата живут в шести соседних модулях (см. `.claude/rules/dependencies.md`
+→ claude-runner.py). Цитаты ниже — по символам, а не по номерам строк: номера тут уже врали
+один раз, после расколов TECH-210..216.
 
-| Параметр | Значение | file:line |
-|----------|----------|-----------|
-| `MODEL` | `AUTOPILOT_MODEL` env, default **`claude-opus-4-8`** | `:73` |
-| `effort` | `AUTOPILOT_EFFORT` env, default **`high`**, enum `{low,medium,high,max}` (no xhigh в SDK) | `:77-80` |
-| `max_turns` | **120** | `:68` |
-| `setting_sources` | `["user","project"]` — грузит CLAUDE.md + .claude/skills/ | `:227` |
-| `permission_mode` | `bypassPermissions` | `:229` |
-| `cli_path` | force system `claude` над bundled SDK копией (иначе stale-Opus резолв) | `:83-104` |
-| `TIMEOUT_SECONDS` | **5400 (90 мин)** hard limit (`asyncio.timeout`) → exit 124 | `:69, 269` |
+| Параметр | Значение | Где |
+|----------|----------|-----|
+| `MODEL` | `AUTOPILOT_MODEL` env, default **`claude-opus-5`** | `claude-runner.py::MODEL` |
+| `effort` | `AUTOPILOT_EFFORT` env, default **`high`**, enum `{low,medium,high,max}` (xhigh нет в SDK) | `claude-runner.py::AUTOPILOT_EFFORT` |
+| `max_turns` | **300** (ADR-031; было 120 — стало бы новым узким местом после подъёма таймаута) | `claude-runner.py::MAX_TURNS` |
+| `setting_sources` | `["user","project"]` — грузит CLAUDE.md + .claude/skills/ | `runner_loop.py::build_options` |
+| `permission_mode` | `bypassPermissions` | `runner_loop.py::build_options` |
+| `cli_path` | НОВЕЙШИЙ `claude` на машине, не первый в PATH (иначе тихо резолвится модель прошлого поколения) | `runner_cli.py::_resolve_cli_path` |
+| `TIMEOUT_SECONDS` | **10800 (3 ч)** hard limit (`asyncio.timeout`) → exit 124 (ADR-031; на 5400 падал верхний дециль нормальных прогонов) | `claude-runner.py::TIMEOUT_SECONDS` |
+| Bash-таймаут внутри сессии | `BASH_DEFAULT_TIMEOUT_MS=900000`, `BASH_MAX_TIMEOUT_MS=1800000` — дефолт CLI 120 с убивал прогон тестов внутри tool call, и подъём внешнего таймаута этого не лечил | `runner_loop.py::build_options` |
 
-- **Heartbeat (TECH-198, `:277-289`):** на КАЖДОМ SDK-сообщении (не только Assistant) пишет
+- **Heartbeat (TECH-198):** на КАЖДОМ SDK-сообщении (не только Assistant) пишет
   `logs/{project}-{ts}.heartbeat.json` (поля: `turn`, `elapsed_s`, `last_tool`, `started_at`, `model`,
-  `updated_at`). Этот файл читает reaper.
-- **exit_code contract (ADR-024, BUG-188, `:375-399`):** после `ResultMessage(is_error=False)` ран —
+  `updated_at`). Этот файл читает reaper. — `runner_heartbeat.py::_write_heartbeat`
+- **exit_code contract (ADR-024, BUG-188):** после `ResultMessage(is_error=False)` ран —
   успешен; последующее SDK-исключение → **WARNING** (не ERROR) + телеметрия в `sdk_post_result_errors`,
   `exit_code=0` не оверрайдится. Нарушение = ре-блок готовой спеки + ретрай (+$5).
+  — `runner_loop.py::handle_sdk_exception`
+- **Classifier refusal (ADR-029):** отказ приходит как HTTP 200 с `stop_reason: "refusal"`, поэтому
+  не попадает ни в один except. `unrecovered > 0` → **exit 4**, но только с нуля: таймаут и
+  process error сохраняют свой код. — `runner_refusal.py::_refusal_summary`
 - **JSON-контракт вывода:** `exit_code`, `turns`, `cost_usd`, токены, `task_status` (`complete`/
-  `blocked`/`needs_review`), `result_preview`.
+  `blocked`/`needs_review`), `result_preview`, `refusal`, `salvage`. — `runner_result.py::build_log_data`
 
 **Прочие runner'ы:** `codex-runner.sh` (timeout 900с/15м, `--sandbox workspace-write --json`);
 `gemini-runner.sh` (timeout 1800с/30м, требует `GEMINI_API_KEY`).
