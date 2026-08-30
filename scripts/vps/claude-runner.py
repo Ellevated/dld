@@ -568,6 +568,14 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
                 "SKIP",
                 "trailing-whitespace,end-of-file-fixer,mixed-line-ending",
             ),
+            # 2026-08-30 audit: CLI default Bash timeout is 120 s (max 600 s).
+            # awardybot tests/architecture alone takes 325-423 s on the VPS, so
+            # tester agents saw their pytest killed at 5:01, waited on pgrep and
+            # re-ran it — three 5-minute suites per tester, 82 of 180 min in the
+            # FTR-1467 run that TIMEOUT_SECONDS then killed. Raising the run
+            # timeout (23.08) could not help: the loop is inside the tool call.
+            "BASH_DEFAULT_TIMEOUT_MS": os.environ.get("BASH_DEFAULT_TIMEOUT_MS", "900000"),
+            "BASH_MAX_TIMEOUT_MS": os.environ.get("BASH_MAX_TIMEOUT_MS", "1800000"),
         },
         stderr=_stderr_collector,
     )
