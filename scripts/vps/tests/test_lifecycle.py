@@ -786,3 +786,42 @@ def test_write_lifecycle_preserves_depends_on(tmp_git_repo):
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-507")
     assert data["depends_on"] == ["TECH-220"]
     assert data["status"] == "in_progress"
+
+
+def test_set_depends_on_preserves_concurrent_status_write(tmp_git_repo):
+    """EC-7 (devil DA-6): статус, записанный между чтением и коммитом, обязан выжить.
+
+    Инжектим сырым git-коммитом, а НЕ через write_lifecycle: _write_lock —
+    обычный threading.Lock, вызов публичного writer'а изнутри CAS-петли = дедлок.
+    """
+    lifecycle.create_initial(tmp_git_repo, "TECH-580", "p1", "tech")
+    yaml_path = tmp_git_repo / "ai" / "lifecycle" / "TECH-580.yaml"
+    state = {"injected": False}
+    real_run = lifecycle_git._run
+
+    def injecting_run(cmd, **kwargs):
+        if not state["injected"] and cmd[:2] == ["git", "write-tree"]:
+            state["injected"] = True
+            yaml_path.write_text(
+                yaml_path.read_text(encoding="utf-8").replace(
+                    "status: queued", "status: in_progress"
+                ),
+                encoding="utf-8",
+            )
+            _git(tmp_git_repo, "add", "ai/lifecycle/TECH-580.yaml")
+            _git(tmp_git_repo, "commit", "-m", "lifecycle(TECH-580): in_progress")
+        return real_run(cmd, **kwargs)
+
+    with patch.object(lifecycle_git, "_run", injecting_run):
+        lifecycle.set_depends_on(tmp_git_repo, "TECH-580", ["TECH-220"], by="operator")
+
+    data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-580")
+    assert data["status"] == "in_progress", "параллельная смена статуса откатилась"
+    assert data["depends_on"] == ["TECH-220"]
+
+
+def test_set_depends_on_rejects_unknown_writer(tmp_git_repo):
+    """ADR-024: by обязателен и проверяется по _ALLOWED_WRITERS."""
+    lifecycle.create_initial(tmp_git_repo, "TECH-581", "p1", "tech")
+    with pytest.raises(ValueError, match="invalid by='autopilot'"):
+        lifecycle.set_depends_on(tmp_git_repo, "TECH-581", ["TECH-220"], by="autopilot")

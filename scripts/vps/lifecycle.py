@@ -1,9 +1,9 @@
 """
 Module: lifecycle
 Role: Facade over the lifecycle module group (TECH-214 split). Holds the public
-      API — read_lifecycle, write_lifecycle, create_initial, list_by_status,
-      assert_clean_lifecycle_tree, write_file_atomic, reconcile_orphans, now_iso,
-      build_initial_yaml — and delegates every git/CAS/push/recovery mechanic to
+      API — read_lifecycle, write_lifecycle, create_initial, set_depends_on,
+      list_by_status, assert_clean_lifecycle_tree, write_file_atomic, reconcile_orphans,
+      now_iso, build_initial_yaml — and delegates every git/CAS/push/recovery mechanic to
       the siblings below. State lives in ai/lifecycle/{spec_id}.yaml.
       Rule 7 (ADR-025, ARCH-193) stays HERE, structurally inside write_lifecycle
       and mirrored in create_initial: done is terminal, so any non-done transition
@@ -201,6 +201,29 @@ def create_initial(
             priority=priority,
             kind=kind,
             depends_on=depends_on,
+        )
+
+    lifecycle_cas._cas_loop(repo_dir, spec_id, branch, make_yaml)
+
+
+def set_depends_on(repo_dir, spec_id: str, deps: list, *, by: str) -> None:
+    """Rewrite `depends_on` on an existing entry without losing a concurrent status write.
+
+    Callable-CAS, not write_file_atomic: the latter re-sends a statically computed
+    body on every retry, so a status written between read and commit is reverted.
+    `by` is required (ADR-024) and gated by _ALLOWED_WRITERS.
+    """
+    if by not in _ALLOWED_WRITERS:
+        raise ValueError(f"set_depends_on: invalid by={by!r}; allowed={sorted(_ALLOWED_WRITERS)}")
+    repo_dir = str(repo_dir)
+    branch = lifecycle_git._current_branch(repo_dir)
+
+    def make_yaml():
+        existing = lifecycle_git._read_yaml_from_head(repo_dir, spec_id)
+        if existing is None:
+            raise KeyError(f"set_depends_on: no lifecycle entry for {spec_id}")
+        return lifecycle_git._build_yaml_content(
+            spec_id, existing.get("status", "queued"), existing=existing, by=by, depends_on=deps
         )
 
     lifecycle_cas._cas_loop(repo_dir, spec_id, branch, make_yaml)
