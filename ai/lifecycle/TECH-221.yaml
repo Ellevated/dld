@@ -1,12 +1,12 @@
 allowed_files_hash: null
 blocked_reason: TECH-220 done — зависимость снята
-finished_at: null
+finished_at: '2026-08-30T14:41:44Z'
 kind: TECH
 priority: p0
 pueue_id: 1266
 spec_id: TECH-221
 started_at: '2026-08-30T13:14:37Z'
-status: in_progress
+status: done
 transitions:
 - at: '2026-08-30T11:13:15Z'
   by: operator
@@ -23,6 +23,11 @@ transitions:
   from: queued
   pueue_id: 1266
   to: in_progress
-updated_at: '2026-08-30T13:14:37Z'
-updated_by: orchestrator
-version: 4
+- at: '2026-08-30T14:41:44Z'
+  by: callback
+  from: in_progress
+  pueue_id: 1266
+  to: done
+updated_at: '2026-08-30T14:41:44Z'
+updated_by: callback
+version: 5
