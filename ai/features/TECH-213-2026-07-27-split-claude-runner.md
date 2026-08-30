@@ -195,15 +195,19 @@ Sibling-импорт по голому имени уже является раб
 
 ONLY the files listed below may be modified during implementation.
 
-- `scripts/vps/claude-runner.py` — оставить `run_task` (разобранную) и `main` (modify)
+- `scripts/vps/claude-runner.py` — оставить конфиг, `run_task`, `main`; ре-экспорт вынесенных имён (modify)
 - `scripts/vps/runner_env.py` — загрузка окружения (NEW)
-- `scripts/vps/runner_cli.py` — резолв бинаря CLI по версии (NEW)
+- `scripts/vps/runner_cli.py` — резолв бинаря CLI по версии + `ALLOWED_TOOLS` (NEW)
 - `scripts/vps/runner_heartbeat.py` — запись heartbeat-файла (NEW)
-- `scripts/vps/runner_result.py` — разбор ResultMessage и подсчёт токенов (NEW)
+- `scripts/vps/runner_refusal.py` — детект classifier-отказов; владеет решением об exit 4 (NEW)
+- `scripts/vps/runner_result.py` — run state, usage-rollup, сборка run-лога, телеметрия (NEW)
+- `scripts/vps/runner_loop.py` — SDK-цикл: options, consume, маппинг исключений на exit-код (NEW)
 - `scripts/vps/tests/test_claude_runner_cli_resolution.py` — импорт вместо AST/exec (modify)
 - `scripts/vps/tests/test_claude_runner_heartbeat.py` — импорт вместо AST/exec (modify)
 - `scripts/vps/tests/test_claude_runner_session_totals.py` — импорт вместо AST/exec (modify)
-- `scripts/vps/tests/test_claude_runner_timeout.py` — перенацелить source-ассерты (modify)
+- `scripts/vps/tests/test_claude_runner_timeout.py` — перенацелить source-ассерты на `runner_loop.py` (modify)
+- `scripts/vps/tests/test_claude_runner_refusal.py` — фикстура перезагружает `runner_loop`; подмена `query` там же (modify)
+- `.claude/rules/dependencies.md` — карта модулей раннера (modify)
 
 **FORBIDDEN:** All other files. Autopilot must refuse changes outside this list.
 

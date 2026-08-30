@@ -86,12 +86,14 @@ class TestBUG188GuardIntact:
     """EC-2: result_received and not result_is_error → exit_code stays 0."""
 
     def test_bug188_guard_present_in_source(self):
-        source = (Path(VPS_DIR) / "claude-runner.py").read_text(encoding="utf-8")
+        # TECH-213: the loop and its exception mapping live in runner_loop.py.
+        source = (Path(VPS_DIR) / "runner_loop.py").read_text(encoding="utf-8")
         assert "result_received and not result_is_error" in source, "BUG-188 guard must be present"
 
     def test_bug188_exit_code_stays_zero(self):
         """Verify the guard does NOT reassign exit_code in the BUG-188 branch."""
-        source = (Path(VPS_DIR) / "claude-runner.py").read_text(encoding="utf-8")
+        # TECH-213: the loop and its exception mapping live in runner_loop.py.
+        source = (Path(VPS_DIR) / "runner_loop.py").read_text(encoding="utf-8")
         # Find the BUG-188 block: between 'result_received and not result_is_error'
         # and 'elif "timeout"' — exit_code must NOT be reassigned
         idx_start = source.index("result_received and not result_is_error")
@@ -129,6 +131,8 @@ class TestHeartbeatWriter:
         fake_errors.ProcessError = Exception
         sys.modules.setdefault("claude_agent_sdk._errors", fake_errors)
 
+        # runner_loop binds SDK names at import; reload it with the fake too.
+        sys.modules.pop("runner_loop", None)
         spec = importlib.util.spec_from_file_location(
             f"claude_runner_{id(self)}",
             str(Path(VPS_DIR) / "claude-runner.py"),
@@ -194,7 +198,8 @@ class TestHeartbeatWriter:
         BEFORE the isinstance(AssistantMessage) branch, so updated_at stays
         fresh during long tool-execution phases.
         """
-        source = (Path(VPS_DIR) / "claude-runner.py").read_text(encoding="utf-8")
+        # TECH-213: the loop and its exception mapping live in runner_loop.py.
+        source = (Path(VPS_DIR) / "runner_loop.py").read_text(encoding="utf-8")
         # The heartbeat call must appear inside the async for loop,
         # BEFORE the AssistantMessage check (TECH-198 Layer A)
         idx_hb = source.index("_write_heartbeat(")

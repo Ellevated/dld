@@ -173,6 +173,9 @@ def runner(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDE_CLI_PATH", str(Path(__file__).resolve()))
     monkeypatch.delenv("CLAUDE_CURRENT_SPEC_PATH", raising=False)
 
+    # runner_loop binds the SDK names at import time, so it must be reloaded with the
+    # fake alongside claude-runner.py — otherwise it keeps whichever SDK it saw first.
+    sys.modules.pop("runner_loop", None)
     try:
         spec = importlib.util.spec_from_file_location("claude_runner_refusal", RUNNER_PATH)
         mod = importlib.util.module_from_spec(spec)
@@ -199,7 +202,8 @@ def run(mod, messages, project="proj", task="/autopilot TECH-1", skill="autopilo
         for m in messages:
             yield m
 
-    mod.query = _query
+    # TECH-213: the loop that consumes `query` is runner_loop, not the runner.
+    mod.runner_loop.query = _query
     return asyncio.run(mod.run_task(str(Path.cwd()), task, skill))
 
 
@@ -416,7 +420,8 @@ class TestRunTaskExitCode:
             yield FakeAssistantMessage(content=[], stop_reason="refusal")
             raise FakeProcessError("cli died")
 
-        runner.query = _query
+        # TECH-213: the message loop lives in runner_loop now — patch it there.
+        runner.runner_loop.query = _query
         out = asyncio.run(runner.run_task(str(Path.cwd()), "/autopilot T", "autopilot"))
         assert out["exit_code"] == 3
         assert out["refusal"]["unrecovered"] == 1
@@ -446,7 +451,8 @@ class TestADR024Intact:
             yield FakeResultMessage(result='{"task_status": "complete"}', num_turns=2)
             raise RuntimeError("SDK threw after the result")
 
-        runner.query = _query
+        # TECH-213: the message loop lives in runner_loop now — patch it there.
+        runner.runner_loop.query = _query
         out = asyncio.run(runner.run_task(str(Path.cwd()), "/autopilot T", "autopilot"))
         assert out["exit_code"] == 0
         assert out["refusal"]["detected"] is False
@@ -458,14 +464,16 @@ class TestADR024Intact:
             yield FakeResultMessage(result='{"task_status": "complete"}', num_turns=3)
             raise RuntimeError("SDK threw after the result")
 
-        runner.query = _query
+        # TECH-213: the message loop lives in runner_loop now — patch it there.
+        runner.runner_loop.query = _query
         out = asyncio.run(runner.run_task(str(Path.cwd()), "/autopilot T", "autopilot"))
         assert out["exit_code"] == 0
         assert out["refusal"]["fallbacks_served"] == 1
 
     def test_bug188_branch_does_not_assign_exit_code(self):
         """Source-level guard: the refusal upgrade lives outside the BUG-188 block."""
-        source = RUNNER_PATH.read_text(encoding="utf-8")
+        # TECH-213: the BUG-188 branch lives in runner_loop.handle_sdk_exception.
+        source = (VPS_DIR / "runner_loop.py").read_text(encoding="utf-8")
         start = source.index("result_received and not result_is_error")
         end = source.index('elif "timeout"', start)
         block = source[start:end]

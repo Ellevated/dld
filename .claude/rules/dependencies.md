@@ -138,7 +138,34 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 
 ## scripts/vps/claude-runner.py
 
-**Path:** `scripts/vps/claude-runner.py`
+**Path:** `scripts/vps/claude-runner.py` (329 LOC — was 912, TECH-213 split)
+
+Entry point only: pinned config (`MODEL`/`AUTOPILOT_EFFORT`/`TIMEOUT_SECONDS`/`MAX_TURNS`
+and the measurements behind them), `_salvage_if_needed`, `run_task`, `main` — plus a
+re-export block, because the runner's tests reach the moved names as `runner.<name>`.
+
+| Module | LOC | Holds |
+|---|---|---|
+| `runner_env.py` | 31 | `load_env` — `.env` next to the script into `os.environ` |
+| `runner_cli.py` | 129 | `_MIN_CLI_VERSION`, `_SYSTEM_CLI_FALLBACK`, `_cli_version`, `_resolve_cli_path` (newest CLI, not first on PATH), `warn_if_stale`, `ALLOWED_TOOLS` |
+| `runner_heartbeat.py` | 42 | `_write_heartbeat` — atomic per-turn heartbeat (TECH-198) |
+| `runner_refusal.py` | 113 | `_refusal_from_message`, `_refusal_summary`, `_REFUSAL_*` — classifier declines; owns the exit-4 decision (ADR-029). stdlib only, duck-typed, never imports the SDK |
+| `runner_result.py` | 367 | `new_run_state` + `apply_*`, `_session_totals`, `build_log_data`, `write_run_log`, `_EXIT_REASONS`, `log_post_result_error`, `log_refusal_telemetry`. Also SDK-free — the caller does the isinstance checks |
+| `runner_loop.py` | 220 | `build_options`, `consume` (the `async for` over `query`), `handle_sdk_exception` (ADR-024 BUG-188 branch, SDK-init-timeout → 124) |
+
+**The split line is the SDK.** `runner_loop` is the only sibling that imports
+`claude_agent_sdk`, and that is not a style choice: the runner's tests load
+`claude-runner.py` from source with a fake SDK in `sys.modules`, so any module that binds
+SDK names at import time must be reloaded with it. The three fixtures do
+`sys.modules.pop("runner_loop", None)` before `exec_module` for exactly that reason, and
+`test_claude_runner_refusal.py` patches `mod.runner_loop.query`, not `mod.query`.
+Moving `consume` back into a module the fixtures do not reload silently returns the real
+(absent) SDK — 16 tests failed that way during TECH-213 before the fixtures were fixed.
+
+**Telemetry takes `db` as a parameter**, never a self-import: the tests substitute
+`runner._orch_db` to assert what a run records, and an import inside `runner_result`
+would make that substitution a no-op.
+
 
 ### Uses (→)
 

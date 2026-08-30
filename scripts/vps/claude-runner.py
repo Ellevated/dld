@@ -24,6 +24,7 @@ from pathlib import Path
 import runner_cli  # noqa: E402 — CLI resolution + ALLOWED_TOOLS (TECH-213)
 import runner_env  # noqa: E402 — .env loader (TECH-213)
 import runner_heartbeat  # noqa: E402 — per-turn heartbeat file (TECH-213)
+import runner_loop  # noqa: E402 — the SDK message loop (TECH-213)
 import runner_refusal  # noqa: E402 — classifier-decline detection (TECH-213)
 import runner_result  # noqa: E402 — run state, usage rollup, run log (TECH-213)
 
@@ -53,14 +54,10 @@ _usage_field = runner_result._usage_field
 load_env()
 
 try:
-    from claude_agent_sdk import (
-        AssistantMessage,
-        ClaudeAgentOptions,
-        ResultMessage,
-        TaskNotificationMessage,
-        query,
-    )
-    from claude_agent_sdk._errors import CLIConnectionError, ProcessError
+    # Presence check only — the message loop (runner_loop) imports the names it needs.
+    # Kept here so a missing dependency fails at the entry point with an instruction,
+    # rather than as an ImportError from a module the operator has never heard of.
+    import claude_agent_sdk  # noqa: F401
 except ImportError:
     sys.exit("claude-agent-sdk not installed. Run: pip install claude-agent-sdk")
 
@@ -166,185 +163,6 @@ def _salvage_if_needed(project_path, exit_code: int) -> dict | None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-def _make_stderr_collector():
-    """BUG-188 Layer 2: capture subprocess CLI stderr via SDK callback.
-
-    Returns (stderr_lines, collector); capped at 200 lines to bound memory on a
-    misbehaving CLI.
-    """
-    stderr_lines: list[str] = []
-
-    def _collector(line: str) -> None:
-        if len(stderr_lines) < 200:
-            stderr_lines.append(line)
-
-    return stderr_lines, _collector
-
-
-def _build_options(project_path: Path, stderr_collector):
-    """Assemble ClaudeAgentOptions for one run."""
-    return ClaudeAgentOptions(
-        cwd=str(project_path),
-        model=MODEL,  # pin main loop to Opus 5 (env: AUTOPILOT_MODEL)
-        effort=AUTOPILOT_EFFORT,  # pin effort (default high); see ADR-028
-        cli_path=CLI_PATH,  # use system CLI, not stale bundled (else model pin drifts)
-        setting_sources=["user", "project"],  # Loads CLAUDE.md + .claude/skills/
-        allowed_tools=ALLOWED_TOOLS,
-        permission_mode="bypassPermissions",
-        max_turns=MAX_TURNS,
-        env={
-            "PROJECT_DIR": str(project_path),
-            "CLAUDE_PROJECT_DIR": str(project_path),
-            "CLAUDE_CURRENT_SPEC_PATH": os.environ.get("CLAUDE_CURRENT_SPEC_PATH", ""),
-            "ENABLE_PROMPT_CACHING_1H": os.environ.get("ENABLE_PROMPT_CACHING_1H", "1"),
-            # TECH-178: bypass cosmetic pre-commit fixers that auto-fix + exit 1
-            # (trailing-whitespace, end-of-file-fixer, mixed-line-ending) so that
-            # research-md commits don't trigger autopilot retry-loops. Lint-only
-            # hooks (ruff/mypy/etc.) remain active. Operators can override per-task
-            # by exporting SKIP="" before pueue add.
-            "SKIP": os.environ.get(
-                "SKIP", "trailing-whitespace,end-of-file-fixer,mixed-line-ending"
-            ),
-            # 2026-08-30 audit: CLI default Bash timeout is 120 s (max 600 s).
-            # awardybot tests/architecture alone takes 325-423 s on the VPS, so
-            # tester agents saw their pytest killed at 5:01, waited on pgrep and
-            # re-ran it — three 5-minute suites per tester, 82 of 180 min in the
-            # FTR-1467 run that TIMEOUT_SECONDS then killed. Raising the run
-            # timeout (23.08) could not help: the loop is inside the tool call.
-            "BASH_DEFAULT_TIMEOUT_MS": os.environ.get("BASH_DEFAULT_TIMEOUT_MS", "900000"),
-            "BASH_MAX_TIMEOUT_MS": os.environ.get("BASH_MAX_TIMEOUT_MS", "1800000"),
-        },
-        stderr=stderr_collector,
-    )
-
-
-async def _consume(
-    state: dict,
-    prompt: str,
-    options,
-    project_name: str,
-    ts_label: str,
-    started_mono: float,
-    started_at_iso: str,
-) -> None:
-    """Drain the SDK message stream into `state`.
-
-    `state` is mutated in place so that a TimeoutError raised by asyncio.timeout
-    still leaves the partial turn_count / cost_usd visible to run_task.
-    """
-    async with asyncio.timeout(TIMEOUT_SECONDS):
-        async for message in query(prompt=prompt, options=options):
-            msg_line = str(message)
-            if len(msg_line) > 500:
-                msg_line = msg_line[:500] + "..."
-            logger.debug(msg_line)
-
-            # TECH-198 Layer A: heartbeat on EVERY message (not just
-            # AssistantMessage) so updated_at stays fresh during long
-            # tool-execution phases between assistant turns.
-            runner_heartbeat._write_heartbeat(
-                LOG_DIR,
-                project_name,
-                ts_label,
-                state["turn_count"],
-                int(time.monotonic() - started_mono),
-                state["last_tool_name"],
-                started_at_iso,
-                MODEL,
-            )
-
-            # A classifier decline arrives inside a normal HTTP 200, so it
-            # never reaches an except-branch. Check every message: the raw
-            # decline lands on the assistant turn or on the result, while
-            # the fallback notice is a `system` message and is the only
-            # carrier of the refusal category (_refusal_from_message).
-            refusal_event = runner_refusal._refusal_from_message(message)
-            if refusal_event is not None:
-                state["refusal_events"].append(refusal_event)
-
-            if isinstance(message, AssistantMessage):
-                runner_result.apply_assistant_message(state, message)
-            if isinstance(message, TaskNotificationMessage):
-                runner_result.apply_task_notification(state, message)
-            if isinstance(message, ResultMessage):
-                runner_result.apply_result_message(state, message)
-
-    # Fallback: use last assistant message if no result_text
-    if not state["result_text"] and state["last_assistant_text"]:
-        state["result_text"] = state["last_assistant_text"]
-
-
-def _handle_sdk_exception(
-    exc: Exception, state: dict, stderr_lines: list, task: str, project_name: str
-) -> None:
-    """Map an SDK exception onto exit_code / result_text, honouring ADR-024.
-
-    Dispatches CLIConnectionError, ProcessError and everything else the SDK raises
-    without a dedicated class (including "Control request timeout: initialize").
-    The one branch that is NOT a failure: an exception raised after a successful
-    ResultMessage — the work is done and its metrics are already in `state`, so
-    overriding exit_code would re-block a finished spec and pay for the retry
-    (BUG-188).
-    """
-    if isinstance(exc, CLIConnectionError):
-        logger.error("CLI connection error: %s", exc)
-        state["exit_code"] = 2
-        state["result_text"] = f"Connection error: {exc}"
-        return
-
-    if isinstance(exc, ProcessError):
-        logger.error("Process error: %s", exc)
-        state["exit_code"] = 3
-        stderr = getattr(exc, "stderr", None)
-        if stderr:
-            state["result_text"] = f"Process error: {exc}\nSTDERR:\n{stderr}"
-        elif stderr_lines:
-            captured = "\n".join(stderr_lines[-100:])
-            state["result_text"] = f"Process error: {exc}\nSTDERR (captured):\n{captured}"
-        else:
-            state["result_text"] = f"Process error: {exc}"
-        return
-
-    err_str = str(exc)
-    stderr_from_exc = getattr(exc, "stderr", None)
-    if stderr_from_exc:
-        err_str = f"{err_str}\nSTDERR:\n{stderr_from_exc}"
-    elif stderr_lines:
-        # Layer 2: fall back to lines captured via SDK stderr callback
-        captured = "\n".join(stderr_lines[-100:])  # last 100 lines
-        err_str = f"{err_str}\nSTDERR (captured):\n{captured}"
-
-    result_received = state["result_received"]
-    result_is_error = state["result_is_error"]
-    if result_received and not result_is_error:
-        # BUG-188: SDK threw AFTER successful ResultMessage. Work is done
-        # (turns/cost/result_text already captured). Do NOT override
-        # exit_code to 1 — that would re-block an already-done spec
-        # and burn another $5+/run on retry.
-        logger.warning(
-            "SDK post-ResultMessage exception (work completed): %s",
-            err_str[:500],
-        )
-        # exit_code stays 0; result_text already populated from ResultMessage
-        # BUG-188 Layer 4: telemetry for SDK post-ResultMessage drift.
-        runner_result.log_post_result_error(
-            exc,
-            state,
-            db=_orch_db,
-            task=task,
-            project_name=project_name,
-            stderr_lines=stderr_lines,
-        )
-    elif "timeout" in err_str.lower():
-        logger.error("SDK init timeout: %s", exc)
-        state["exit_code"] = 124
-        state["result_text"] = err_str
-    else:
-        logger.error("SDK error: %s", exc, exc_info=True)
-        state["exit_code"] = 1
-        state["result_text"] = err_str
-
-
 async def run_task(project_dir: str, task: str, skill: str) -> dict:
     """Run a Claude Code task with Skills via Agent SDK. Returns the run-log dict."""
     project_path = Path(project_dir).resolve()
@@ -369,12 +187,30 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     )
     runner_cli.warn_if_stale(CLI_PATH, CLI_VERSION, MODEL)
 
-    stderr_lines, stderr_collector = _make_stderr_collector()
-    options = _build_options(project_path, stderr_collector)
+    stderr_lines, stderr_collector = runner_loop.make_stderr_collector()
+    options = runner_loop.build_options(
+        project_path,
+        stderr_collector,
+        model=MODEL,
+        effort=AUTOPILOT_EFFORT,
+        cli_path=CLI_PATH,
+        max_turns=MAX_TURNS,
+    )
 
     state = runner_result.new_run_state()
     try:
-        await _consume(state, prompt, options, project_name, ts_label, started_mono, started_at_iso)
+        await runner_loop.consume(
+            state,
+            prompt,
+            options,
+            log_dir=LOG_DIR,
+            project_name=project_name,
+            ts_label=ts_label,
+            started_mono=started_mono,
+            started_at_iso=started_at_iso,
+            model=MODEL,
+            timeout_seconds=TIMEOUT_SECONDS,
+        )
     except TimeoutError:
         # asyncio.timeout() (Python 3.11+) — partial metrics are already in `state`
         elapsed = int(time.monotonic() - started_mono)
@@ -390,7 +226,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
             f"${state['cost_usd']:.4f}, last_tool={state['last_tool_name']!r})"
         )
     except Exception as e:  # noqa: BLE001 — mapped to an exit code, never swallowed
-        _handle_sdk_exception(e, state, stderr_lines, task, project_name)
+        runner_loop.handle_sdk_exception(e, state, stderr_lines, task, project_name, _orch_db)
 
     # A run that dies before ResultMessage reports turns=0 and cost=0.0, because
     # both come from that message. That is how a 575-turn, 90-minute timeout came
