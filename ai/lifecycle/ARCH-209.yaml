@@ -1,18 +1,24 @@
 allowed_files_hash: null
 blocked_reason: null
-finished_at: null
+depends_on: []
+finished_at: '2026-08-30T19:34:56Z'
 kind: arch
 priority: p1
 pueue_id: 1277
 spec_id: ARCH-209
 started_at: '2026-08-30T19:20:06Z'
-status: in_progress
+status: done
 transitions:
 - at: '2026-08-30T19:20:06Z'
   by: orchestrator
   from: queued
   pueue_id: 1277
   to: in_progress
-updated_at: '2026-08-30T19:20:06Z'
-updated_by: orchestrator
-version: 2
+- at: '2026-08-30T19:34:56Z'
+  by: callback
+  from: in_progress
+  pueue_id: 1277
+  to: done
+updated_at: '2026-08-30T19:34:56Z'
+updated_by: callback
+version: 3
