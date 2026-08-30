@@ -1,32 +1,45 @@
-# Fleet drift debt register — scripts/check-fleet-drift.py
+# Fleet drift register — scripts/check-fleet-drift.py
 #
 # One line per downstream project: how many synced files may differ from `template/`
 # before the gate fails. Same contract as `scripts/vps/loc-limit-baseline.txt` — the
 # gate fails on a project that got WORSE than its entry, never on the history.
 #
-# **These numbers are not a target, they are today's damage.** DLD's prompt tree has
-# reached projects by hand since `upgrade.mjs` was deleted 2026-05-25, and on
-# 2026-08-31 that came to ~95 diverged files per project. The absent files were
-# delivered that day (`--apply-absent`: 91 files across 7 repos, nothing overwritten),
-# which is why every `absent` count is now 0 and only `differs` remains.
+# **These numbers changed meaning on 2026-08-31.** They started as raw damage: ~95
+# diverged files per project after three months of hand-copying. Then every drifted
+# file was checked against the full history of `template/` in git, which answers the
+# only question that matters — is this content something template once shipped, or
+# something the project wrote itself?
 #
-# `differs` is deliberately NOT swept. Each of those files exists in both places and
-# says something different, and some of the differences are the project's own work —
-# AwardyBot alone carries 364 local commits under `.claude/`. Overwriting them blind
-# is precisely what got the auto-apply script deleted. Bringing a project to zero is a
-# per-project job done with the diff in hand:
+#   805 drifted files  ->  720 pure snapshots (dated Jan..Aug, nobody's work)
+#                          85 holding real local edits
 #
-#     python scripts/check-fleet-drift.py D:/dev/<project>        # see what differs
-#     git -C D:/dev/<project> diff --stat                         # then decide, file by file
-#     python scripts/check-fleet-drift.py D:/dev/<project> --apply  # only when the diff is understood
+# The 720 were refreshed (`--apply-clean`); the 85 were left alone. So what these
+# numbers now count is **deliberate project-specific content**, not neglect:
 #
-# Lower the number here when a project is brought closer. Raising one is an admission
-# that a project drifted further — say why in a comment when you do.
+#   AwardyBot   session-end.mjs guard against losing an autopilot worktree (three runs
+#               died that way on the night of 2026-08-21, $58.80 of finished work);
+#               check_domain_imports/check_docs_sync rewritten for its own bots/+agents/
+#               layering; validate-blueprint-compliance with a domain-token normaliser;
+#               pre-edit.mjs LOC exemptions for prose; local-Spark SSH claim protocol
+#   PLPilot     review.md section 3.6 — mutation proof for security/money invariants,
+#               wired to its own scripts/fitness/ and scripts/mutation/ registry
+#   Dowry       seed-lessons extended to FTR/TECH/ARCH (the file says so in a comment)
+#   Dowry-mc    autopilot with the spec-reviewer folded inline
+#   gipotenuza  coder.md pointing at .claude/rules/domains/{domain}.md for history
+#
+# Raising a number is an admission that a project drifted further — say why in a
+# comment. Lowering one means real convergence. To see what a project still holds:
+#
+#     python scripts/check-fleet-drift.py D:/dev/<project> --json
+#     python scripts/check-fleet-drift.py D:/dev/<project> --apply-clean   # safe refresh
+#
+# `--apply` (overwrite everything) stays a per-file human decision. It is the mode
+# that got `upgrade.mjs` deleted on 2026-05-25.
 
-AwardyBot   = 92
-Dowry       = 94
-Dowry-mc    = 99
-PLPilot     = 94
-wb          = 95
-gipotenuza  = 94
-MishkinLyap = 91
+AwardyBot   = 42
+Dowry       = 11
+Dowry-mc    = 12
+PLPilot     = 6
+wb          = 5
+gipotenuza  = 7
+MishkinLyap = 2

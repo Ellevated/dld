@@ -50,6 +50,7 @@ SYNCED_GLOBS = (
     "scripts/check_domain_imports.py",
     "scripts/check_docs_sync.py",
     "scripts/pre-review-check.py",
+    "scripts/build-lessons-index.py",
 )
 
 # Never compared: the project owns these outright (`skills/upgrade/SKILL.md` section 5).
@@ -172,27 +173,63 @@ def write_marker(project: Path, manifest: dict[str, str], commit: str) -> None:
     )
 
 
+def template_history(rel: str, repo_root: Path = REPO_ROOT) -> set[str]:
+    """Digests of every version `template/<rel>` has ever had in this repo's history.
+
+    This is what makes "the project has edits of its own" a checkable fact rather than a
+    guess. A downstream file whose content equals SOME past template version is a pure
+    snapshot — nobody touched it after it was copied, and replacing it destroys nothing.
+    A file matching no version has content that came from somewhere else, and only a
+    human can say whether that is the project's own work or ancient sludge.
+
+    Measured across the fleet on 2026-08-31: 720 of 805 drifted files (89%) were pure
+    snapshots, dated from January through August. The remaining 85 held real edits —
+    AwardyBot's `session-end.mjs` guard against losing an autopilot worktree ($58.80 in
+    one night), its gate scripts rewritten for its own `bots/`+`agents/` layering, and
+    Dowry's `seed-lessons` extension, which even carries a comment saying so.
+    """
+    log = subprocess.run(
+        ["git", "-C", str(repo_root), "log", "--all", "--format=%H", "--", f"template/{rel}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.split()
+    seen = set()
+    for sha in log:
+        blob = subprocess.run(
+            ["git", "-C", str(repo_root), "show", f"{sha}:template/{rel}"],
+            capture_output=True,
+            check=False,
+        ).stdout
+        if blob:
+            seen.add(hashlib.sha256(blob.replace(b"\r\n", b"\n")).hexdigest())
+    return seen
+
+
 def apply_sync(
     project: Path,
     manifest: dict[str, str],
     commit: str,
     template: Path = TEMPLATE,
     absent_only: bool = False,
+    clean_only: bool = False,
 ) -> tuple[int, int]:
     """Copy synced files into the project. Returns (updated, created).
 
-    `absent_only` delivers files the project does not have and touches nothing it does.
-    That distinction is the whole safety argument. A missing file is unambiguous — a
-    prompt names a gate script, the script is not there, the run exits 127 — and creating
-    it cannot destroy anything. An *existing* file that differs is ambiguous: AwardyBot
-    alone carries 364 local commits under `.claude/`, so some of those differences are
-    the project's own work and overwriting them is exactly what got `upgrade.mjs` deleted
-    on 2026-05-25. Full `--apply` is therefore a per-project decision made with the diff
-    in hand, never a fleet-wide sweep.
+    Three levels of nerve, and the difference between them is what the project loses if
+    the judgement is wrong:
 
-    No marker is written in `absent_only` mode: the project is not at this template
-    version, and a marker claiming otherwise would be the lie this design exists to
-    prevent.
+    - `absent_only` — deliver only what the project does not have. A missing file is
+      unambiguous: a prompt names a gate script, the script is not there, the run exits
+      127. Creating it destroys nothing.
+    - `clean_only` — additionally replace files whose current content matches some past
+      `template/` version (see `template_history`). Provably nobody's work.
+    - neither — replace everything that differs. This is the mode that got `upgrade.mjs`
+      deleted on 2026-05-25 and it belongs to a human with the diff in hand.
+
+    A marker is stamped only when the project is actually brought to this template
+    version — a partial sync that claimed otherwise would be the lie this design exists
+    to prevent.
     """
     updated = created = 0
     for rel in manifest:
@@ -200,6 +237,8 @@ def apply_sync(
         if dst.is_file():
             if absent_only or _digest(dst) == manifest[rel]:
                 continue
+            if clean_only and _digest(dst) not in template_history(rel, template.parent):
+                continue  # holds edits that were never in template — leave it alone
             updated += 1
         else:
             created += 1
@@ -207,7 +246,7 @@ def apply_sync(
         dst.write_bytes(_norm(src))
         if src.stat().st_mode & 0o111:
             dst.chmod(dst.stat().st_mode | 0o111)
-    if not absent_only:
+    if not (absent_only or clean_only):
         write_marker(project, manifest, commit)
     return updated, created
 
@@ -243,6 +282,12 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="deliver only files the project lacks; never overwrite, never stamp a marker",
     )
+    ap.add_argument(
+        "--apply-clean",
+        action="store_true",
+        help="also refresh files that still match some past template version "
+        "(provably nobody's work); leaves locally edited files untouched",
+    )
     ap.add_argument("--json", action="store_true")
     ap.add_argument(
         "--template", type=Path, default=TEMPLATE, help="template tree to compare against"
@@ -276,9 +321,14 @@ def main(argv: list[str]) -> int:
         if not (project / ".claude").is_dir():
             print(f"SKIP  {project} — no .claude/", file=sys.stderr if args.json else sys.stdout)
             continue
-        if args.apply or args.apply_absent:
+        if args.apply or args.apply_absent or args.apply_clean:
             updated, created = apply_sync(
-                project, manifest, commit, args.template, absent_only=args.apply_absent
+                project,
+                manifest,
+                commit,
+                args.template,
+                absent_only=args.apply_absent,
+                clean_only=args.apply_clean,
             )
             # stderr under --json: stdout must stay parseable by whoever called us.
             print(

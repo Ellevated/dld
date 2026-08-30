@@ -206,3 +206,76 @@ def test_apply_absent_does_not_stamp_a_marker(project, template):
     assert not (project / ".claude/DLD_VERSION").exists(), (
         "absent-only sync stamped a version marker — the project is not at that version"
     )
+
+
+# --- --apply-clean: the mode that tells a stale copy from someone's work ------------
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+
+@pytest.fixture
+def versioned_template(tmp_path: Path) -> Path:
+    """A template tree with two committed generations, so history is real."""
+    repo = tmp_path / "dld"
+    template = repo / "template"
+    _tree(template, FILES)
+    _git(repo.parent, "init", "-q", str(repo))
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "v1")
+
+    (template / ".claude/agents/coder.md").write_text("# coder v2\n", encoding="utf-8", newline="\n")
+    (template / ".claude/skills/spark/SKILL.md").write_text(
+        "# spark v2\n", encoding="utf-8", newline="\n"
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "v2")
+    return template
+
+
+def test_apply_clean_refreshes_stale_snapshots_but_spares_local_work(
+    versioned_template, tmp_path
+):
+    """The distinction the whole fleet rollout turns on.
+
+    `coder.md` still holds template v1 — a snapshot nobody touched, so replacing it
+    destroys nothing. `spark/SKILL.md` holds content that was never in template at all:
+    that is the shape of AwardyBot's session-end guard and Dowry's seed-lessons
+    extension, and overwriting it is the mistake `upgrade.mjs` was deleted for.
+    """
+    project = _tree(tmp_path / "proj", FILES)  # both files at v1
+    project_own = project / ".claude/skills/spark/SKILL.md"
+    project_own.write_text("# spark, our own version\n", encoding="utf-8", newline="\n")
+
+    res = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), str(project),
+            "--template", str(versioned_template), "--json", "--apply-clean",
+        ],
+        capture_output=True, text=True, check=False,
+    )
+
+    coder = (project / ".claude/agents/coder.md").read_text(encoding="utf-8")
+    assert coder == "# coder v2\n", "a pure v1 snapshot should have been refreshed"
+    assert project_own.read_text(encoding="utf-8") == "# spark, our own version\n", (
+        "local work was overwritten — this is the upgrade.mjs failure"
+    )
+    assert json.loads(res.stdout)[0]["differs"] == [".claude/skills/spark/SKILL.md"]
+
+
+def test_apply_clean_does_not_stamp_a_marker(versioned_template, tmp_path):
+    """Still a partial sync: files with local edits stay behind, so no version claim."""
+    project = _tree(tmp_path / "proj", FILES)
+    (project / ".claude/skills/spark/SKILL.md").write_text("# ours\n", encoding="utf-8")
+
+    subprocess.run(
+        [
+            sys.executable, str(SCRIPT), str(project),
+            "--template", str(versioned_template), "--json", "--apply-clean",
+        ],
+        capture_output=True, text=True, check=False,
+    )
+    assert not (project / ".claude/DLD_VERSION").exists()
