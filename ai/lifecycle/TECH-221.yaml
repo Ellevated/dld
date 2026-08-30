@@ -1,0 +1,13 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: null
+kind: TECH
+priority: p0
+pueue_id: null
+spec_id: TECH-221
+started_at: null
+status: queued
+transitions: []
+updated_at: '2026-08-30T10:57:26Z'
+updated_by: spark
+version: 1
