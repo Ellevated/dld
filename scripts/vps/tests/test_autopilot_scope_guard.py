@@ -262,10 +262,11 @@ class TestFixCOutOfScopeDetection:
 
     def test_does_not_block_status(self) -> None:
         """Out-of-scope detection must NOT change the status outcome (WARNING only)."""
-        import callback
+        import callback_sync
         import inspect
 
-        source = inspect.getsource(callback.verify_status_sync)
+        # TECH-216: the call sits in step 2 (_collect_scope); the decision in step 4.
+        source = inspect.getsource(callback_sync)
         assert "_detect_out_of_scope_files" in source, (
             "verify_status_sync should call _detect_out_of_scope_files"
         )

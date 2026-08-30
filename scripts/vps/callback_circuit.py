@@ -185,3 +185,18 @@ def _record(project_id, spec_id, action, reason, *, demoted=False):
         db.record_decision(project_id, spec_id, action, reason, demoted=demoted)
     except Exception as exc:  # noqa: BLE001
         log.warning("CIRCUIT: record_decision failed: %s", exc)
+
+
+def note_demote(project_id: str, spec_id: str, reason: str) -> None:
+    """Record one demote and trip the circuit when the window overflows.
+
+    The threshold (>CIRCUIT_THRESHOLD demotes within CIRCUIT_WINDOW_MIN) is
+    the TECH-169 contract; verify_status_sync used to inline this.
+    """
+    _record(project_id, spec_id, "demote", reason, demoted=True)
+    try:
+        count = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
+        if count > CIRCUIT_THRESHOLD:
+            _trip_circuit(project_id, spec_id, count)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("CIRCUIT: count/trip failed: %s", exc)

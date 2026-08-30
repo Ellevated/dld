@@ -5,9 +5,10 @@ Role: Pueue completion callback — release slot, update phase, dispatch QA/Refl
 
 Uses:
   - callback_logs: extract_agent_output  (TECH-216)
-  - callback_dispatch: resolve_spec_id, dispatch_qa, dispatch_reflect  (TECH-216)
+  - callback_dispatch: resolve_spec_id, _step6_dispatch_qa_reflect  (TECH-216)
   - callback_scope: _commit_stats, _detect_out_of_scope_files, _emit_audit  (TECH-216)
   - callback_circuit: is_circuit_open, _trip_circuit, _record, _reset_circuit_cli  (TECH-216)
+  - callback_sync: verify_status_sync  (TECH-216)
   - db: release_slot, finish_task, update_project_phase, record_decision, count_demotes_since
   - event_writer: notify, notify_circuit_event
   - lifecycle: read_lifecycle, write_lifecycle  (ADR-023 — sole status writer)
@@ -30,7 +31,6 @@ import logging
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -39,6 +39,7 @@ import callback_circuit  # noqa: E402  — circuit-breaker (TECH-216)
 import callback_dispatch  # noqa: E402  — QA/reflect dispatch (TECH-216)
 import callback_logs  # noqa: E402  — agent output extraction (TECH-216)
 import callback_scope  # noqa: E402  — allowlist telemetry + audit log (TECH-216)
+import callback_sync  # noqa: E402  — the status gate + Step 6 (TECH-216)
 import db  # noqa: E402
 import event_writer  # noqa: E402
 import gate_logic  # noqa: E402 — single source of gate logic (TECH-210)
@@ -141,13 +142,10 @@ def map_result(result: str, raw_exit_code: str | None = None) -> tuple:
     return "failed", 1
 
 
-# --- TECH-216: logs + dispatch live in sibling modules ------------------------
-#
-# Re-exports, not copies. Root tests/ (unit + integration, outside this spec's
-# Allowed Files) reach these through `callback.<name>`, and main() below calls
-# them by bare name so `monkeypatch.setattr(callback, "extract_agent_output", …)`
-# in tests/integration/test_callback_blocked_no_dispatch.py keeps intercepting.
-# New code binds to the owning module (`callback_logs.…`, `callback_dispatch.…`).
+# --- TECH-216: re-exports from the sibling modules ------------------------------
+# Not copies. Root tests/ (outside this spec's Allowed Files) and spec_operator.py
+# reach these as `callback.<name>`; main() calls them by bare name so a monkeypatch
+# on `callback` still intercepts. New code binds to the owning module.
 _find_log_file = callback_logs._find_log_file
 _skill_from_pueue_command = callback_logs._skill_from_pueue_command
 _parse_log_file = callback_logs._parse_log_file
@@ -167,14 +165,6 @@ dispatch_reflect = callback_dispatch.dispatch_reflect
 _parse_allowed_files = gate_logic.parse_allowed_files
 
 
-# --- TECH-216: scope telemetry + circuit-breaker live in sibling modules -----
-#
-# Re-exports for root tests/ and spec_operator.py (both outside Allowed Files):
-# tests/unit/test_audit_log_format.py, tests/integration/test_callback_status_sync.py
-# and test_callback_circuit_breaker.py call these as `callback.<name>`;
-# spec_operator.py:119 calls `callback._reset_circuit_cli()`. verify_status_sync
-# below still binds them by bare name so `monkeypatch.setattr(callback, "_commit_stats", …)`
-# keeps working until Task 3 moves it to callback_sync.
 _get_started_at = callback_scope._get_started_at
 _audit_log_path = callback_scope._audit_log_path
 _write_audit = callback_scope._write_audit
@@ -224,297 +214,8 @@ def _render_and_commit_backlog(project_path: str, project_id: str) -> None:
         log.warning("RENDER: write_file_atomic raised for %s: %s", project_id, exc)
 
 
-def verify_status_sync(
-    project_path: str,
-    spec_id: str,
-    target: str = "done",
-    pueue_id: int | None = None,
-    autopilot_signaled: bool = False,
-) -> None:
-    """Single gate: lifecycle.status = done iff origin/develop contains a commit
-    with `<spec_id>:` in its subject AND touching at least one allowed file.
-
-    Implements the 2026-05-21 redesign (8 rules). The decision is a pure
-    function of (origin/develop after fetch, allowed_files, existing lifecycle).
-    Pueue exit code and activity windows do NOT factor into done/blocked.
-
-    Rules enforced here:
-      1. done iff commit on origin/develop with `<spec_id>:` subject + allowed_files
-      3. noop if no ai/lifecycle/<spec_id>.yaml in this project
-      4. fetch origin/develop before evaluating
-      5. inline render of ai/backlog.md after every lifecycle write
-      7. done is terminal — never demote done
-
-    Preserves:
-      - Circuit breaker (TECH-169) on mass-demote
-      - Audit log (TECH-171) one JSONL line per call
-    """
-    target_in = target
-    start_wall = time.monotonic()
-    project_id = Path(project_path).name
-
-    # Circuit breaker (TECH-169)
-    if is_circuit_open():
-        log.warning("CIRCUIT_OPEN: skip verify_status_sync(%s)", spec_id)
-        _record(project_id, spec_id, "noop", "circuit_open")
-        _emit_audit(
-            project_id,
-            spec_id,
-            pueue_id,
-            target_in,
-            "noop",
-            "circuit_open",
-            0,
-            0,
-            0,
-            0,
-            None,
-            start_wall,
-        )
-        return
-
-    # Rule 3: project boundary
-    existing = lifecycle.read_lifecycle(project_path, spec_id)
-    if not existing:
-        log.info("NOOP: %s — no lifecycle.yaml in %s", spec_id, project_id)
-        _record(project_id, spec_id, "noop", "not_in_project")
-        _emit_audit(
-            project_id,
-            spec_id,
-            pueue_id,
-            target_in,
-            "noop",
-            "not_in_project",
-            0,
-            0,
-            0,
-            0,
-            None,
-            start_wall,
-        )
-        return
-
-    existing_status = existing.get("status")
-
-    # Rule 7: done is terminal
-    if existing_status == "done":
-        log.info("NOOP: %s — already done (terminal)", spec_id)
-        _record(project_id, spec_id, "noop", "already_done_terminal")
-        _emit_audit(
-            project_id,
-            spec_id,
-            pueue_id,
-            target_in,
-            "done",
-            "already_done_terminal",
-            0,
-            0,
-            0,
-            0,
-            None,
-            start_wall,
-        )
-        return
-
-    # Allowed files (used by gate + telemetry)
-    spec_file = next(iter(Path(project_path).glob(f"ai/features/{spec_id}*.md")), None)
-    allowed = gate_logic.parse_allowed_files(spec_file) if spec_file else None
-    started_at = _get_started_at(int(pueue_id)) if pueue_id else None
-    code_loc, test_loc, code_commits = _commit_stats(project_path, allowed, started_at)
-
-    # BUG-199 Fix C: detect out-of-scope files touched by spec-attributed commits
-    out_of_scope_files = _detect_out_of_scope_files(project_path, spec_id, allowed, started_at)
-    if out_of_scope_files:
-        log.warning(
-            "OUT_OF_SCOPE: %s — commits attributed to %s touched %d file(s) outside allowlist: %s",
-            project_id,
-            spec_id,
-            len(out_of_scope_files),
-            ", ".join(out_of_scope_files[:10]),
-        )
-
-    # TECH-197: push-local-before-gate — flush timeout-interrupted merge
-    # When timeout kills autopilot between "git merge" and "git push develop",
-    # implementation sits in local develop but NOT origin. Push it now.
-    if not autopilot_signaled and target == "blocked":
-        try:
-            subprocess.run(
-                ["git", "-C", project_path, "push", "origin", "develop"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
-            )
-            log.info("PUSH_LOCAL: %s — best-effort push develop for %s", spec_id, project_id)
-        except (OSError, subprocess.SubprocessError) as exc:
-            log.warning("PUSH_LOCAL: %s — failed: %s", spec_id, exc)
-
-    if not allowed:
-        # Cannot evaluate the gate → block with explicit reason.
-        new_status = "blocked"
-        reason = "missing_allowed_files" if allowed is None else "empty_allowed_files"
-        log.warning("GATE: %s — %s, blocking", spec_id, reason)
-    else:
-        # Rule 4: fetch before evaluating the gate
-        gate_logic.fetch_develop(project_path)
-        # Rule 1: THE gate
-        if gate_logic.find_implementation_commit(project_path, spec_id, allowed):
-            new_status = "done"
-            reason = ""
-        else:
-            # Default: blocked with operator recovery hint
-            blocked_reason = (
-                f"no_merged_implementation — if implementation IS real, run: "
-                f"python3 scripts/vps/spec_operator.py force-done {project_id} {spec_id} "
-                f"'gate regex bug, verified manually' --by=operator"
-            )
-            # TECH-197: grace-retry — network race (impl pushed but not yet visible)
-            # Only retry when push-local was attempted or result=done (normal success)
-            if not autopilot_signaled:
-                for attempt in range(1, 4):  # up to 3 retries
-                    time.sleep(5)
-                    gate_logic.fetch_develop(project_path)
-                    if gate_logic.find_implementation_commit(project_path, spec_id, allowed):
-                        new_status = "done"
-                        reason = ""
-                        log.info("GRACE_RETRY: %s — resolved on attempt %d", spec_id, attempt)
-                        break
-                else:
-                    new_status = "blocked"
-                    reason = blocked_reason
-            else:
-                # Autopilot EXPLICITLY signaled blocked/needs_review and the gate
-                # finds no merged implementation — this is the expected, correct
-                # outcome of a deliberate self-block (e.g. unmet dependency), NOT
-                # a gate/guard anomaly. Surface the real cause instead of the
-                # misleading no_merged_implementation hint (which tells the
-                # operator to force-done a spec the autopilot intentionally held).
-                new_status = "blocked"
-                reason = "autopilot_signaled_blocked"
-
-    # Autopilot explicitly signaled blocked/needs_review → honor over gate=done
-    # (autopilot saw something the gate can't infer: tests failed, need human, etc.)
-    # TECH-197: only override when autopilot EXPLICITLY signaled (not timeout/crash)
-    if autopilot_signaled and target == "blocked" and new_status == "done":
-        new_status = "blocked"
-        reason = "autopilot_signaled_blocked"
-
-    # No-op if state already matches
-    if existing_status == new_status:
-        log.info("NOOP: %s — already %s", spec_id, new_status)
-        _record(project_id, spec_id, "noop", "already_correct")
-        _emit_audit(
-            project_id,
-            spec_id,
-            pueue_id,
-            target_in,
-            new_status,
-            "already_correct",
-            len(allowed) if allowed else 0,
-            code_loc,
-            test_loc,
-            code_commits,
-            started_at,
-            start_wall,
-        )
-        return
-
-    # Demote accounting (circuit breaker)
-    if new_status == "blocked":
-        _record(project_id, spec_id, "demote", reason, demoted=True)
-        try:
-            count = db.count_demotes_since(CIRCUIT_WINDOW_MIN)
-            if count > CIRCUIT_THRESHOLD:
-                _trip_circuit(project_id, spec_id, count)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("CIRCUIT: count/trip failed: %s", exc)
-    else:
-        _record(project_id, spec_id, "sync", "fixed")
-
-    log.warning(
-        "STATUS_SYNC: %s — %s → %s (%s)",
-        spec_id,
-        existing_status,
-        new_status,
-        reason or "ok",
-    )
-    try:
-        lifecycle.write_lifecycle(
-            project_path,
-            spec_id,
-            new_status,
-            reason=reason or None,
-            by="callback",
-            pueue_id=pueue_id,
-        )
-    except lifecycle.LifecycleAlreadyDoneError as exc:
-        # Rule 7 structural guard (ADR-025): race between Rule 7 fast-path read
-        # (lines ~1074-1092) and write — another writer flipped to done in between.
-        # Benign NOOP — emit warning for investigation.
-        log.warning("STATUS_SYNC: %s — Rule 7 structural save (%s)", spec_id, exc)
-        _record(project_id, spec_id, "noop", "rule_7_saved")
-        try:
-            event_writer.notify(
-                project_path,
-                "callback",
-                "failed",
-                f"rule_7_saved: {spec_id} — callback attempted '{new_status}', "
-                f"spec already done. Investigate who wrote lifecycle({spec_id}): done.",
-            )
-        except Exception:  # noqa: BLE001
-            pass  # notify is best-effort
-        _emit_audit(
-            project_id,
-            spec_id,
-            pueue_id,
-            target_in,
-            "done",
-            "rule_7_saved",
-            len(allowed) if allowed else 0,
-            code_loc,
-            test_loc,
-            code_commits,
-            started_at,
-            start_wall,
-        )
-        return
-    except Exception as exc:  # noqa: BLE001
-        log.warning("STATUS_SYNC: lifecycle.write failed for %s: %s", spec_id, exc)
-        _emit_audit(
-            project_id,
-            spec_id,
-            pueue_id,
-            target_in,
-            "error",
-            f"write_failed:{exc}",
-            len(allowed) if allowed else 0,
-            code_loc,
-            test_loc,
-            code_commits,
-            started_at,
-            start_wall,
-        )
-        return
-
-    # Rule 5 (ARCH-196): inline backlog render REMOVED — backlog.md is now
-    # single-writer (spark/autopilot Edit). The render helper is retained
-    # at line ~975 as an operator emergency CLI tool only.
-
-    _emit_audit(
-        project_id,
-        spec_id,
-        pueue_id,
-        target_in,
-        new_status,
-        reason or "ok",
-        len(allowed) if allowed else 0,
-        code_loc,
-        test_loc,
-        code_commits,
-        started_at,
-        start_wall,
-        out_of_scope_files=out_of_scope_files if out_of_scope_files else None,
-    )
+verify_status_sync = callback_sync.verify_status_sync
+_step6_dispatch_qa_reflect = callback_dispatch._step6_dispatch_qa_reflect
 
 
 def write_event_for_skill(project_path: str, skill: str, status: str, task_label: str) -> None:
@@ -542,121 +243,6 @@ def write_event_for_skill(project_path: str, skill: str, status: str, task_label
         f"{skill} {status} for {task_label}",
         artifact_rel,
     )
-
-
-def _step6_dispatch_qa_reflect(
-    skill: str,
-    status: str,
-    task_status: str,
-    project_id: str,
-    task_label: str,
-    preview: str,
-) -> None:
-    """Step 6: Post-autopilot tail — dispatch QA + Reflect.
-
-    TECH-194 Layer E: allowlist gate — only dispatch when completion is confirmed.
-    TECH-207: merge-confirmed fallback — when task_status is missing/displaced
-    but the implementation IS confirmed merged on origin/develop, dispatch anyway.
-
-    Dispatch conditions (any of):
-      1. task_status == "complete" (explicit signal — original path)
-      2. task_status not in ("blocked", "needs_review") AND implementation
-         confirmed merged on origin/develop (merge fallback)
-
-    Skip conditions:
-      - skill != "autopilot" or status != "done"
-      - task_status in ("blocked", "needs_review") — deliberate hold
-      - No merge confirmed and task_status != "complete" — SIGKILL/abort
-    """
-    if skill != "autopilot" or status != "done":
-        return
-
-    # Explicit block signals — never dispatch (TECH-194 Layer E preserved)
-    if task_status in ("blocked", "needs_review"):
-        log.info(
-            "skip QA+reflect dispatch: task_status=%r (explicit block signal)",
-            task_status,
-        )
-        return
-
-    # Resolve state once — reused by both explicit_complete and merge fallback paths.
-    try:
-        state = db.get_project_state(project_id)
-    except Exception as exc:
-        log.warning("skip QA+reflect: get_project_state failed for %s: %s", project_id, exc)
-        return
-    if not state:
-        log.info("skip QA+reflect: no project_state for %s", project_id)
-        return
-    project_path = state.get("path", "")
-    provider = state.get("provider", "claude") or "claude"
-    if not project_path:
-        log.info("skip QA+reflect: empty project_path for %s", project_id)
-        return
-
-    spec_id = resolve_spec_id(task_label, preview, project_path)
-
-    dispatch_via = ""  # tracks which path triggered dispatch
-
-    if task_status == "complete":
-        dispatch_via = "explicit_complete"
-    else:
-        # TECH-207: merge-confirmed fallback — check origin/develop.
-        # Reuses the same gate logic as Step 7 (verify_status_sync).
-        if not spec_id:
-            log.info(
-                "skip QA+reflect merge fallback: no spec_id for %s",
-                task_label,
-            )
-            return
-
-        try:
-            spec_file = next(
-                iter(Path(project_path).glob(f"ai/features/{spec_id}*.md")),
-                None,
-            )
-            allowed = gate_logic.parse_allowed_files(spec_file) if spec_file else None
-            if not allowed:
-                log.info(
-                    "skip QA+reflect merge fallback: no allowed_files for %s",
-                    spec_id,
-                )
-                return
-
-            gate_logic.fetch_develop(project_path)
-            if gate_logic.find_implementation_commit(project_path, spec_id, allowed):
-                dispatch_via = "QA_DISPATCH_MERGE_FALLBACK"
-                log.info(
-                    "QA_DISPATCH_MERGE_FALLBACK: task_status=%r but impl confirmed "
-                    "merged on origin/develop for %s — dispatching QA+Reflect",
-                    task_status,
-                    spec_id,
-                )
-            else:
-                log.info(
-                    "skip QA+reflect dispatch: task_status=%r, no merge confirmed "
-                    "for %s (SIGKILL/abort/incomplete)",
-                    task_status,
-                    spec_id,
-                )
-                return
-        except Exception as exc:
-            log.warning(
-                "QA_DISPATCH_MERGE_FALLBACK: error checking merge for %s: %s",
-                task_label,
-                exc,
-            )
-            return
-
-    # Dispatch QA + Reflect (shared path for both explicit_complete and merge fallback)
-    try:
-        if spec_id:
-            dispatch_qa(project_id, project_path, spec_id, provider)
-        else:
-            log.info("skip QA: no spec_id resolved for %s", task_label)
-        dispatch_reflect(project_id, project_path, task_label, provider)
-    except Exception as exc:
-        log.warning("post-autopilot dispatch failed (%s): %s", dispatch_via, exc)
 
 
 def main() -> None:  # pragma: no cover

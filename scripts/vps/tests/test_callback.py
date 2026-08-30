@@ -25,6 +25,7 @@ import callback  # noqa: E402
 import callback_circuit  # noqa: E402
 import callback_logs  # noqa: E402
 import callback_scope  # noqa: E402
+import callback_sync  # noqa: E402
 import db  # noqa: E402
 import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
@@ -221,7 +222,7 @@ class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
         # Gate stubs
         monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
         monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: "deadbee")
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (10, 0, 1))
 
         # Need spec file with ## Allowed Files so gate branch is entered
         (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
@@ -261,7 +262,7 @@ class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
 
         monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
         monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (0, 0, 0))
 
         (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
         (git_repo / "ai" / "features" / "TECH-Y-spec.md").write_text(
@@ -444,7 +445,7 @@ class TestPushLocalBeforeGate:
         _git(repo, "commit", "-m", "feat(TECH-T6): implement feature")
 
         # Stub _commit_stats — no pueue_id so started_at=None anyway
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (10, 0, 1))
         # Do NOT stub gate_logic.fetch_develop or find_implementation_commit — let them run real
 
         # autopilot_signaled=False, target=blocked → push-local should flush
@@ -478,9 +479,9 @@ class TestPushLocalBeforeGate:
         _git(repo, "checkout", "develop")
 
         # Stub _commit_stats
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (0, 0, 0))
         # Speed up grace-retry sleep
-        monkeypatch.setattr(callback.time, "sleep", lambda s: None)
+        monkeypatch.setattr(callback_sync.time, "sleep", lambda s: None)
         # Mock db for circuit-breaker accounting
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
@@ -515,8 +516,8 @@ class TestPushLocalBeforeGate:
         )
         lifecycle.write_lifecycle(str(repo), "TECH-T9", "in_progress")
 
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
-        monkeypatch.setattr(callback.time, "sleep", lambda s: None)
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (0, 0, 0))
+        monkeypatch.setattr(callback_sync.time, "sleep", lambda s: None)
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)
@@ -554,9 +555,9 @@ class TestDemoteOnce:
         lifecycle.write_lifecycle(str(repo), "TECH-D4", "in_progress")
 
         # Gate always returns False (nothing implemented on origin/develop)
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (0, 0, 0))
         # Speed up: reduce sleep to 0
-        monkeypatch.setattr(callback.time, "sleep", lambda s: None)
+        monkeypatch.setattr(callback_sync.time, "sleep", lambda s: None)
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)
@@ -612,8 +613,8 @@ class TestGraceRetry:
             return original_is_done(pp, sid, af)
 
         monkeypatch.setattr(gate_logic, "find_implementation_commit", _delayed_is_done)
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
-        monkeypatch.setattr(callback.time, "sleep", lambda s: None)
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (10, 0, 1))
+        monkeypatch.setattr(callback_sync.time, "sleep", lambda s: None)
 
         callback.verify_status_sync(
             str(repo),
@@ -647,7 +648,7 @@ class TestAutopilotSignaledOverride:
         _git(repo, "commit", "-m", "feat(TECH-AS): implement")
         _git(repo, "push", "origin", "develop")
 
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (10, 0, 1))
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)
@@ -681,7 +682,7 @@ class TestAutopilotSignaledOverride:
         _git(repo, "commit", "-m", "feat(TECH-NS): implement")
         _git(repo, "push", "origin", "develop")
 
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (10, 0, 1))
 
         # autopilot_signaled=False + target=blocked → gate decides (done)
         callback.verify_status_sync(
@@ -711,7 +712,7 @@ class TestAutopilotSignaledOverride:
         # Gate is FALSE (no impl on origin) + autopilot explicitly blocked.
         monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
         monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (0, 0, 0))
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)

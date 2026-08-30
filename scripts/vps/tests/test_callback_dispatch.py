@@ -163,8 +163,8 @@ class TestMergedNoCompleteSignal:
         def _mock_dispatch_reflect(project_id, project_path, task_label, provider):
             reflect_calls.append({"project_id": project_id, "task_label": task_label})
 
-        monkeypatch.setattr(callback, "dispatch_qa", _mock_dispatch_qa)
-        monkeypatch.setattr(callback, "dispatch_reflect", _mock_dispatch_reflect)
+        monkeypatch.setattr(callback_dispatch, "dispatch_qa", _mock_dispatch_qa)
+        monkeypatch.setattr(callback_dispatch, "dispatch_reflect", _mock_dispatch_reflect)
 
         callback._step6_dispatch_qa_reflect(
             skill="autopilot",
@@ -208,8 +208,8 @@ class TestNoMergeNoComplete:
         def _mock_dispatch_reflect(project_id, project_path, task_label, provider):
             reflect_calls.append(task_label)
 
-        monkeypatch.setattr(callback, "dispatch_qa", _mock_dispatch_qa)
-        monkeypatch.setattr(callback, "dispatch_reflect", _mock_dispatch_reflect)
+        monkeypatch.setattr(callback_dispatch, "dispatch_qa", _mock_dispatch_qa)
+        monkeypatch.setattr(callback_dispatch, "dispatch_reflect", _mock_dispatch_reflect)
 
         callback._step6_dispatch_qa_reflect(
             skill="autopilot",
@@ -248,8 +248,8 @@ class TestExplicitCompleteUnchanged:
         def _mock_dispatch_reflect(project_id, project_path, task_label, provider):
             reflect_calls.append(task_label)
 
-        monkeypatch.setattr(callback, "dispatch_qa", _mock_dispatch_qa)
-        monkeypatch.setattr(callback, "dispatch_reflect", _mock_dispatch_reflect)
+        monkeypatch.setattr(callback_dispatch, "dispatch_qa", _mock_dispatch_qa)
+        monkeypatch.setattr(callback_dispatch, "dispatch_reflect", _mock_dispatch_reflect)
 
         callback._step6_dispatch_qa_reflect(
             skill="autopilot",
@@ -285,8 +285,10 @@ class TestBlockedNeverDispatches:
         qa_calls = []
         reflect_calls = []
 
-        monkeypatch.setattr(callback, "dispatch_qa", lambda *a, **kw: qa_calls.append(a))
-        monkeypatch.setattr(callback, "dispatch_reflect", lambda *a, **kw: reflect_calls.append(a))
+        monkeypatch.setattr(callback_dispatch, "dispatch_qa", lambda *a, **kw: qa_calls.append(a))
+        monkeypatch.setattr(
+            callback_dispatch, "dispatch_reflect", lambda *a, **kw: reflect_calls.append(a)
+        )
 
         callback._step6_dispatch_qa_reflect(
             skill="autopilot",
@@ -316,8 +318,10 @@ class TestBlockedNeverDispatches:
         qa_calls = []
         reflect_calls = []
 
-        monkeypatch.setattr(callback, "dispatch_qa", lambda *a, **kw: qa_calls.append(a))
-        monkeypatch.setattr(callback, "dispatch_reflect", lambda *a, **kw: reflect_calls.append(a))
+        monkeypatch.setattr(callback_dispatch, "dispatch_qa", lambda *a, **kw: qa_calls.append(a))
+        monkeypatch.setattr(
+            callback_dispatch, "dispatch_reflect", lambda *a, **kw: reflect_calls.append(a)
+        )
 
         callback._step6_dispatch_qa_reflect(
             skill="autopilot",
