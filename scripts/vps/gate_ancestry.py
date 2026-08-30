@@ -23,6 +23,8 @@ Used by:
   - callback_dispatch._merge_confirmed
   - orchestrator_queue.reconcile_if_implemented / record_dispatch
   - gate-daemon._evaluate_project
+  - orchestrator_queue.reconcile (branch_state)
+  - callback_sync._decide_status (branch_state)
 
 FF-09 invariant: ZERO imports from callback, lifecycle, db, orchestrator.
 gate_logic is the single exception and is itself stdlib-only and import-safe.
@@ -40,6 +42,7 @@ import time or passing keywords turns every one of them into a silent no-op.
 import logging
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -108,6 +111,57 @@ def fetch_branch(project_path: str, spec_id: str, timeout: int = 15) -> bool:
         return False
     refspec = f"refs/heads/{branch}:refs/remotes/origin/{branch}"
     return _git(project_path, "fetch", "origin", refspec, "--quiet", timeout=timeout) is not None
+
+
+@dataclass(frozen=True)
+class BranchState:
+    """What origin knows about <type>/<ID> right now (TECH-221).
+
+    ref     — "fix/BUG-9"; "" when the spec id carries no known prefix
+    exists  — refs/remotes/origin/<ref> resolves (call fetch_branch first)
+    merged  — <ref> is an ancestor of origin/develop
+    ahead   — commits on <ref> that origin/develop does not have
+    behind  — commits on origin/develop that <ref> does not have
+    """
+
+    ref: str
+    exists: bool
+    merged: bool
+    ahead: int
+    behind: int
+
+
+def branch_state(project_path: str, spec_id: str) -> BranchState:
+    """Read-only verdict on origin/<type>/<ID>. Never raises.
+
+    Deliberately does NOT fetch: every caller runs fetch_branch as part of the
+    gate a few lines earlier, and a second fetch would double the cost of the
+    hot path. Fail-closed by construction — any git failure collapses to
+    exists=False, which routes back to the old no_merged_implementation
+    verdict rather than to a continuation that has nothing to continue.
+
+    Exact remote ref, never a glob, and never a LOCAL branch: a stale
+    refs/heads/<ref> left behind by a swept worktree is precisely the state
+    this spec exists to survive, and treating it as evidence would re-create
+    the bug (devil DA-8, and the same rule find_merged_branch follows).
+    """
+    try:
+        ref = branch_ref_for(spec_id)
+    except ValueError:
+        return BranchState(ref="", exists=False, merged=False, ahead=0, behind=0)
+    remote = f"refs/remotes/origin/{ref}"
+    if not _git(project_path, "rev-parse", "--verify", "--quiet", remote):
+        return BranchState(ref=ref, exists=False, merged=False, ahead=0, behind=0)
+    # rc 0 = ancestor -> "" (not None); rc 1 / error -> None. Same reading as
+    # find_merged_branch: only an explicit rc 0 counts as merged.
+    merged = _git(project_path, "merge-base", "--is-ancestor", remote, "origin/develop") is not None
+    ahead = behind = 0
+    counts = _git(project_path, "rev-list", "--left-right", "--count", f"origin/develop...{remote}")
+    if counts:
+        parts = counts.split()
+        if len(parts) == 2 and all(p.isdigit() for p in parts):
+            behind, ahead = int(parts[0]), int(parts[1])
+    return BranchState(ref=ref, exists=True, merged=merged, ahead=ahead, behind=behind)
 
 
 def _base_for_diff(project_path: str, ref: str, tip: str, spec_id: str) -> str | None:
