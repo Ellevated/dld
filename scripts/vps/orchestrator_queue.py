@@ -10,7 +10,7 @@ coupling: nothing in this module is a monkeypatch target, so each step is
 called by the wrapper as `orchestrator_queue.<name>(...)`, never re-exported
 by bare name.
 
-Uses: db (import), lifecycle (import), gate_logic (import),
+Uses: db (import), lifecycle (import), gate_logic (import), gate_ancestry (import),
       orchestrator_slots._pueue_add
 Used by: orchestrator (facade re-export of dep helpers; attribute calls into
          the six scan_queued steps from the wrapper)
@@ -27,6 +27,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
+import gate_ancestry  # noqa: E402
 import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 from orchestrator_slots import _pueue_add  # noqa: E402,F401
@@ -273,7 +274,8 @@ def reconcile_if_implemented(project_dir: str, spec_id: str, spec_file: Path) ->
     if not allowed_files:
         return False
     gate_logic.fetch_develop(project_dir)
-    impl_sha = gate_logic.find_implementation_commit(project_dir, spec_id, allowed_files)
+    gate_ancestry.fetch_branch(project_dir, spec_id)
+    impl_sha, via = gate_ancestry.find_implementation(project_dir, spec_id, allowed_files)
     if not impl_sha:
         return False
     try:
@@ -285,9 +287,11 @@ def reconcile_if_implemented(project_dir: str, spec_id: str, spec_file: Path) ->
             reason=f"already_implemented_on_develop:{impl_sha[:12]}",
         )
         log.info(
-            "reconciled: %s already implemented on develop (%s) — marked done, no dispatch",
+            "reconciled: %s already implemented on develop (%s, gate_via=%s) — "
+            "marked done, no dispatch",
             spec_id,
             impl_sha[:12],
+            via,
         )
     except lifecycle.LifecycleAlreadyDoneError:
         log.info("reconcile noop: %s already done (race)", spec_id)
@@ -318,6 +322,10 @@ def record_dispatch(
     pueue_has_active_label already tolerates. So: log and continue, never
     re-raise, never signal failure to the caller.
     """
+    try:
+        branch = gate_ancestry.branch_ref_for(spec_id)
+    except ValueError:
+        branch = f"task/{spec_id}"  # mirrors the bash fallback in autopilot-git.md:57
     db.try_acquire_slot(project_id, provider, pueue_id)
     db.log_task(
         project_id,
@@ -325,7 +333,7 @@ def record_dispatch(
         "autopilot",
         "running",
         pueue_id,
-        branch=f"feature/{spec_id}",
+        branch=branch,
     )
     db.update_project_phase(project_id, "autopilot", spec_id)
     try:

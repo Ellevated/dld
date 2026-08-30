@@ -6,7 +6,8 @@ Role: Post-autopilot tail — resolve the spec id, decide whether completion is
 
 Uses:
   - db: get_project_state, try_acquire_slot, log_task
-  - gate_logic: parse_allowed_files, fetch_develop, find_implementation_commit
+  - gate_logic: parse_allowed_files, fetch_develop
+  - gate_ancestry: fetch_branch, find_implementation (TECH-220 — ancestry primary, subject fallback)
   - subprocess: `pueue status --json`, `pueue add`
 
 Used by:
@@ -27,6 +28,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
+import gate_ancestry  # noqa: E402
 import gate_logic  # noqa: E402
 
 log = logging.getLogger("callback")
@@ -160,8 +162,9 @@ _HOLD_SIGNALS = ("blocked", "needs_review")
 def _merge_confirmed(project_path: str, spec_id: str, task_label: str, task_status: str) -> bool:
     """TECH-207 fallback: is the implementation already on origin/develop?
 
-    Reuses the same gate logic as Step 7. Any error → False (never dispatch on
-    doubt; a QA run against nothing burned $2.50 in TECH-194).
+    Reuses the same gate as Step 7 (TECH-220: branch ancestry primary, subject
+    match deprecated fallback). Any error → False (never dispatch on doubt; a
+    QA run against nothing burned $2.50 in TECH-194).
     """
     try:
         spec_file = next(iter(Path(project_path).glob(f"ai/features/{spec_id}*.md")), None)
@@ -170,12 +173,15 @@ def _merge_confirmed(project_path: str, spec_id: str, task_label: str, task_stat
             log.info("skip QA+reflect merge fallback: no allowed_files for %s", spec_id)
             return False
         gate_logic.fetch_develop(project_path)
-        if gate_logic.find_implementation_commit(project_path, spec_id, allowed):
+        gate_ancestry.fetch_branch(project_path, spec_id)
+        sha, via = gate_ancestry.find_implementation(project_path, spec_id, allowed)
+        if sha:
             log.info(
                 "QA_DISPATCH_MERGE_FALLBACK: task_status=%r but impl confirmed "
-                "merged on origin/develop for %s — dispatching QA+Reflect",
+                "merged on origin/develop for %s (gate_via=%s) — dispatching QA+Reflect",
                 task_status,
                 spec_id,
+                via,
             )
             return True
         log.info(

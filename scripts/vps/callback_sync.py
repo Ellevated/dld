@@ -6,7 +6,8 @@ Role: The status gate — decide done | blocked for a finished autopilot run and
 
 Uses:
   - lifecycle: read_lifecycle, write_lifecycle, LifecycleAlreadyDoneError
-  - gate_logic: parse_allowed_files, fetch_develop, find_implementation_commit
+  - gate_logic: parse_allowed_files, fetch_develop
+  - gate_ancestry: fetch_branch, find_implementation (TECH-220 — ancestry primary, subject fallback)
   - callback_scope: _get_started_at, _commit_stats, _detect_out_of_scope_files, _emit_audit
   - callback_circuit: is_circuit_open, _record, note_demote
   - event_writer: notify (Rule 7 structural save)
@@ -34,6 +35,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 import callback_circuit  # noqa: E402
 import callback_scope  # noqa: E402
 import event_writer  # noqa: E402
+import gate_ancestry  # noqa: E402
 import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 
@@ -58,6 +60,7 @@ class _Audit:
     test_loc: int = 0
     code_commits: int = 0
     started_at: str | None = None
+    gate_via: str = "none"
 
     def emit(self, target_out: str, reason: str, **extra: object) -> None:
         callback_scope._emit_audit(
@@ -73,6 +76,7 @@ class _Audit:
             self.code_commits,
             self.started_at,
             self.start_wall,
+            gate_via=self.gate_via,
             **extra,
         )
 
@@ -181,42 +185,56 @@ def _decide_status(
     allowed: list[str] | None,
     *,
     autopilot_signaled: bool,
-) -> tuple[str, str]:
-    """Rule 1: done iff origin/develop carries an implementation commit.
+) -> tuple[str, str, str]:
+    """Rule 1: done iff origin/develop carries the implementation — via branch
+    ancestry (TECH-220 primary) or, failing that, a subject-matching commit
+    (deprecated fallback).
 
-    Returns (new_status, reason). Grace-retry (TECH-197) covers the network
-    race where the push landed but origin has not caught up yet; it runs only
-    when the autopilot did NOT deliberately hold the spec.
+    Returns (new_status, reason, gate_via). `gate_via` is `"ancestry"` |
+    `"subject"` | `"none"` — the caller records it on every audit line
+    regardless of the final status, so a self-block that overrides a positive
+    verdict still leaves a trace of what the gate found. Grace-retry
+    (TECH-197) covers the network race where the push landed but origin has
+    not caught up yet; it runs only when the autopilot did NOT deliberately
+    hold the spec.
     """
     if not allowed:
         # Cannot evaluate the gate → block with explicit reason.
         reason = "missing_allowed_files" if allowed is None else "empty_allowed_files"
         log.warning("GATE: %s — %s, blocking", spec_id, reason)
-        return "blocked", reason
+        return "blocked", reason, "none"
 
     # Rule 4: fetch before evaluating the gate
     gate_logic.fetch_develop(project_path)
-    if gate_logic.find_implementation_commit(project_path, spec_id, allowed):
-        return "done", ""
+    gate_ancestry.fetch_branch(project_path, spec_id)
+    sha, via = gate_ancestry.find_implementation(project_path, spec_id, allowed)
+    if sha:
+        return "done", "", via
 
     if autopilot_signaled:
         # Autopilot EXPLICITLY signaled blocked/needs_review and the gate finds
         # no merged implementation — the expected outcome of a deliberate
         # self-block (e.g. unmet dependency), NOT a gate anomaly. Surface the
         # real cause instead of the misleading force-done hint.
-        return "blocked", "autopilot_signaled_blocked"
+        return "blocked", "autopilot_signaled_blocked", via
 
     for attempt in range(1, 4):  # up to 3 retries
         time.sleep(5)
         gate_logic.fetch_develop(project_path)
-        if gate_logic.find_implementation_commit(project_path, spec_id, allowed):
-            log.info("GRACE_RETRY: %s — resolved on attempt %d", spec_id, attempt)
-            return "done", ""
+        gate_ancestry.fetch_branch(project_path, spec_id)
+        sha, via = gate_ancestry.find_implementation(project_path, spec_id, allowed)
+        if sha:
+            log.info("GRACE_RETRY: %s — resolved on attempt %d (via=%s)", spec_id, attempt, via)
+            return "done", "", via
 
-    return "blocked", (
-        f"no_merged_implementation — if implementation IS real, run: "
-        f"python3 scripts/vps/spec_operator.py force-done {project_id} {spec_id} "
-        f"'gate regex bug, verified manually' --by=operator"
+    return (
+        "blocked",
+        (
+            f"no_merged_implementation — if implementation IS real, run: "
+            f"python3 scripts/vps/spec_operator.py force-done {project_id} {spec_id} "
+            f"'gate regex bug, verified manually' --by=operator"
+        ),
+        via,
     )
 
 
@@ -312,9 +330,10 @@ def verify_status_sync(
         _push_local_develop(project_path, spec_id, project_id)
 
     # Step 4: THE gate
-    new_status, reason = _decide_status(
+    new_status, reason, gate_via = _decide_status(
         project_path, spec_id, project_id, allowed, autopilot_signaled=autopilot_signaled
     )
+    audit.gate_via = gate_via
     # Autopilot explicitly signaled blocked/needs_review → honor over gate=done
     # (autopilot saw something the gate can't infer: tests failed, need human).
     if autopilot_signaled and target == "blocked" and new_status == "done":

@@ -132,6 +132,7 @@ ONLY the files listed below may be modified during implementation.
 - `scripts/vps/tests/test_gate_ancestry.py` — ancestry-серия EC-1..EC-6, EC-8 на throwaway-репо (NEW)
 - `tests/unit/test_callback_branch_awareness.py` — EC-серия ancestry через публичный callback.verify_status_sync (modify)
 - `tests/unit/test_callback_implementation_guard.py` — самоблок перебивает ancestry (modify)
+- `scripts/vps/tests/test_claude_runner_timeout.py` — `test_push_local_is_best_effort_not_gate`: имя точки входа гейта (modify)
 - `docs/orchestrator/status-model.md` — §7 Implementation guard (modify)
 
 **FORBIDDEN:** All other files. Autopilot must refuse changes outside this list.
@@ -1169,6 +1170,7 @@ Task 1 ──► Task 2 ──► Task 4 ──► Task 5
 | 12 | «Ветка удалена после merge (§0a sweep)» | **неточно: свип делает только `git branch -d`, `push origin --delete` в дереве промптов отсутствует** | Design дополнен: `origin/<type>/<ID>` переживает merge, фолбэк по удалённой ветке — редкий случай, а не основной |
 | 13 | `scripts/vps/tests/test_gate_logic.py` = 598 LOC при лимите 600 | **ancestry-серия (101 строка) даёт 700 — hard-block `pre-review-check.py`** | ancestry-тесты вынесены в новый `scripts/vps/tests/test_gate_ancestry.py`; существующий файл не трогается вовсе |
 | 14 | Allowed Files: `gate_logic.py` (modify), `test_gate_logic.py` (modify) | **оба стали лишними после п.10 и п.13** | заменены на `scripts/vps/tests/test_gate_ancestry.py` (NEW); allowlist сужен, а не расширен по существу |
+| 15 | `test_claude_runner_timeout.py::test_push_local_is_best_effort_not_gate` | **красный: ассертит строку `gate_logic.find_implementation_commit(` в исходнике `callback_sync.py`** | инвариант (push-local — не гейт, гейт бьёт по origin) сохранён, переехало только имя точки входа — ровно как при TECH-216 (комментарий на строке 221). Ассерт обновлён на `gate_ancestry.find_implementation(` + добавлена проверка, что ancestry тоже ходит в `origin/develop`; файл добавлен в Allowed Files |
 
 Пункты 10-12 — дефекты дизайна спеки, найденные при сверке с кодом, а не дрейф кода под спекой.
 Ни один не меняет выбранный Approach 1 и ни один не выходит за Allowed Files, поэтому

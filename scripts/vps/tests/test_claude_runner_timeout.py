@@ -219,9 +219,26 @@ class TestVariantCNeverIntroduced:
     def test_push_local_is_best_effort_not_gate(self):
         """push-local is a flush helper, NOT a gate — gate must still check origin."""
         # TECH-216: the gate moved from callback.py into callback_sync.py
+        # TECH-220: the gate entry point moved from gate_logic.find_implementation_commit
+        # to gate_ancestry.find_implementation (ancestry first, that same subject call
+        # as the fallback). The invariant under test is unchanged: push-local must not
+        # replace the gate, and the gate must still resolve against origin.
         source = (Path(VPS_DIR) / "callback_sync.py").read_text(encoding="utf-8")
-        # push-local block must NOT skip the gate_logic gate calls
-        assert "gate_logic.fetch_develop(" in source, "gate_logic.fetch_develop must still be called"
-        assert "gate_logic.find_implementation_commit(" in source, (
-            "gate_logic.find_implementation_commit must still be the gate"
+        # push-local block must NOT skip the gate calls
+        assert "gate_logic.fetch_develop(" in source, (
+            "gate_logic.fetch_develop must still be called"
         )
+        assert "gate_ancestry.find_implementation(" in source, (
+            "gate_ancestry.find_implementation must still be the gate"
+        )
+
+    def test_ancestry_gate_resolves_against_origin(self):
+        """TECH-220: the ancestry path must compare against origin/develop, never bare 'develop'."""
+        source = (Path(VPS_DIR) / "gate_ancestry.py").read_text(encoding="utf-8")
+        assert "origin/develop" in source, "ancestry gate must check origin/develop"
+        bare = [
+            line
+            for line in source.split("\n")
+            if '"develop"' in line and "origin/develop" not in line and "fetch" not in line.lower()
+        ]
+        assert bare == [], f"ancestry gate must not use a bare 'develop' ref: {bare}"
