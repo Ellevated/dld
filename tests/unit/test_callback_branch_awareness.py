@@ -148,3 +148,42 @@ def test_ec6_empty_allowed_list(repo_with_remote):
     _git(repo_with_remote, "fetch", "-q", "origin", "develop")
 
     assert gate_logic.find_implementation_commit(str(repo_with_remote), "TECH-170", []) is None
+
+
+# --- TECH-220: ancestry verdict reaches lifecycle ----------------------------
+
+import gate_ancestry  # noqa: E402
+
+
+def _merge_ff(repo, branch: str, rel: str, msg: str) -> str:
+    _git(repo, "checkout", "-q", "-b", branch)
+    _commit_on(repo, rel, "y=1\n", msg)
+    _git(repo, "push", "-q", "-u", "origin", branch)
+    _git(repo, "checkout", "-q", "develop")
+    _git(repo, "merge", "--ff-only", "-q", branch)
+    _git(repo, "push", "-q", "origin", "develop")
+    _git(repo, "fetch", "-q", "origin")
+    return _git(repo, "rev-parse", branch).stdout.strip()
+
+
+def test_tech220_ancestry_beats_unreadable_subject(repo_with_remote):
+    """EC-1 через публичный контракт: subject `feat(managed): …` невидим
+    старому гейту, ancestry находит ветку."""
+    repo = repo_with_remote
+    _commit_on(repo, "ai/features/TECH-170-2026-08-30-x.md", "s\n", "docs(TECH-170): spec")
+    _git(repo, "push", "-q", "origin", "develop")
+    tip = _merge_ff(repo, "tech/TECH-170", "src/x.py", "feat(managed): real work")
+
+    assert gate_logic.find_implementation_commit(str(repo), "TECH-170", ["src/x.py"]) is None
+    assert gate_ancestry.find_implementation(str(repo), "TECH-170", ["src/x.py"]) == (
+        tip,
+        "ancestry",
+    )
+
+
+def test_tech220_record_dispatch_branch_uses_real_prefix():
+    """EC-10 (devil DA-10): task_log.branch перестаёт быть литералом feature/."""
+    assert gate_ancestry.branch_ref_for("TECH-9") == "tech/TECH-9"
+    assert gate_ancestry.branch_ref_for("BUG-9") == "fix/BUG-9"
+    assert gate_ancestry.branch_ref_for("ARCH-9") == "arch/ARCH-9"
+    assert gate_ancestry.branch_ref_for("GROWTH-9") == "growth/GROWTH-9"
