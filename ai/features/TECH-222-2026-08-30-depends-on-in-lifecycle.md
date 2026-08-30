@@ -1180,4 +1180,69 @@ wc -l scripts/vps/orchestrator_queue.py scripts/vps/lifecycle.py scripts/vps/cal
 
 ## Autopilot Log
 
-_(заполняется автопилотом)_
+**2026-08-30 — autopilot, ветка `tech/TECH-222`, 9 задач, 0 debug-ретраев, 0 эскалаций.**
+
+| Task | Коммит | Что сделано |
+|---|---|---|
+| 1 | `fd36f9b5` | `depends_on` в схеме: `create_initial(..., depends_on=None)`, `_build_yaml_content` пишет поле в create- и update-ветках |
+| 2 | `0001d44b` | `_spec_deps` = YAML ∪ backlog, метрики `DEP_VIA` / `DEP_SHAPE`; файл остался ровно 400 LOC |
+| 3 | `4745d848` | `set_depends_on` через callable-CAS (`_cas_loop`), `by` обязателен |
+| 4 | `0899f65e` | `TestDependencyGate` переписан на YAML-фикстуры |
+| 5-6 | `601b4d95` | Producer: Spark собирает `AFTER` из шапки → `depends_on`; оба дерева |
+| 7-8 | `15fdc688` | Мёртвая `_render_and_commit_backlog` удалена (400→371 LOC); доки оркестратора |
+| — | `4db42d6b` | documenter: `dependencies.md` LOC/dead-code drift, ADR-индекс, changelog-запись |
+
+**Гейт (Task 9):** `ruff check .` чисто · `pytest scripts/vps/tests/` 658 passed ·
+`pytest tests/` 259 passed, 1 skipped · prompt-integrity оба дерева exit 0 ·
+`orchestrator_queue.py` 400 / `lifecycle.py` 399 / `callback.py` 371 — все ≤400.
+
+**EC-1/EC-12 на живом репо (до операторской миграции):**
+`_unmet_dependencies('.', 'ARCH-209') == ['TECH-213']` + `DEP_VIA: ARCH-209 deps_via=backlog`.
+Гейт, державший ARCH-209 с 07.08, переживает правку — как и требует спека.
+
+**EC-13 доказан мутацией, а не прогоном:** обнуление YAML-ветки `_spec_deps` роняет
+4 теста (`test_reads_depends_on_from_yaml`, `test_union_does_not_double_log`,
+`test_unmet_when_yaml_dep_not_done`, `test_dependency_cycle_skips_both_without_raising`).
+До Task 4 не краснел ни один — ровно тот мёртвый путь, что описан в §Why.
+
+### Отклонения от плана (исправлены в ходе)
+
+1. **`$DEPS` в промпте Spark был неопределён.** План давал цикл `for D in $DEPS`, но нигде
+   не задавал `DEPS` — Spark выполнил бы пустой цикл и молча положил `depends_on=[]`, то есть
+   ровно тот баг, который спека чинит. Добавлена реальная экстракция из шапки и сборка
+   `PY_DEPS`; проверено на шапке самой TECH-222 → `['TECH-220', 'TECH-221']`, пустой случай → `[]`.
+2. **Пример claim'а содержал живой `depends_on=['TECH-220']`.** Риск буквального копирования
+   Spark'ом в чужую спеку. Заменён на подстановку `$PY_DEPS`.
+3. **`test_write_lifecycle_preserves_depends_on` из плана был заменён кодером** на тест
+   legacy-YAML. Оба нужны: сохранение непустого значения при смене статуса — то, без чего гейт
+   умирает на первом же диспатче. Тест возвращён.
+
+### ⚠ WARNING (Exa-верификация) — цикл зависимостей не детектируется
+
+Внешняя практика (Ledgenter, LLMCompiler-харнессы, Luigi) единогласна в том, чего здесь нет:
+**ребро, замыкающее цикл, отклоняется на записи**. TECH-222 сознательно fail-open, и EC-10
+фиксирует поведение «обе спеки пропускаются, исключения нет» как правильное. Но лог при этом —
+`DEP_GATE: skip`, то есть **неотличим от легитимного ожидания**: `A ↔ B` встанут навсегда, и
+единственный симптом — спека, которая никогда не диспатчится. Это тот же класс тихой поломки,
+что и мёртвый DEP_GATE, который чинит эта спека.
+
+Не блокер (цикл сейчас создать может только человек вручную), но просится отдельная TECH:
+проверка на цикл в `set_depends_on`/Spark-claim + `log.error` вместо `skip` при обнаружении.
+Сигнал записан в `ai/reflect/upstream-signals.md`.
+
+Поиск по security-уязвимостям не проводился осознанно: изменение не вводит внешних зависимостей
+и не расширяет поверхность атаки — только внутренний YAML-ключ и чтение git HEAD.
+
+### Правки вне Allowed Files (осознанно, документация)
+
+Коммит documenter'а `4db42d6b` тронул `.claude/rules/dependencies.md` и
+`docs/dependencies-changelog.md`, которых нет в Allowed Files. Причина: `dependencies.md`
+перечислял `_render_and_commit_backlog` среди функций `callback.py` — функции, которую
+удаляет эта же спека. Оставить = отгрузить доку, которая врёт. Guard это не ломает
+(`find_implementation_commit` ищет наличие коммита по allowed-путям, а не отсутствие лишних).
+
+### Операторский шаг — НЕ выполнен автопилотом (по дизайну спеки)
+
+Миграция `ARCH-209` (`lifecycle.set_depends_on`) требует записи в `ai/lifecycle/*.yaml`,
+которых нет в Allowed Files намеренно. Выполняется оператором после мержа — команда в
+разделе «Операторский шаг». До неё гейт держится legacy-фолбэком, что и подтверждено выше.

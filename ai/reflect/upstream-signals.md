@@ -510,3 +510,35 @@ GROWTH падает в `task/`). В Python её нет; `orchestrator_queue.reco
 - **Type:** gap
 - **Message:** `.claude/scripts/test-wrapper.mjs` reports `FAIL: 0 failure(s)` (exit 126) when `./test` exists as a DIRECTORY rather than being absent. CLAUDE.md documents the absent-command case as fixed 2026-08-02 (TEST_COMMAND_UNAVAILABLE + exit 2), but this repo has a `test/` directory, so every autopilot run here hits the misleading branch and must be told out-of-band to ignore it.
 - **Evidence:** observed by the tester subagent twice this run; `test/agents/`, `test/scripts/` are real directories in this repo.
+
+---
+### SIGNAL-2026-08-30-2210
+- **Source:** autopilot (TECH-222)
+- **Target:** spark
+- **Type:** gap
+- **Message:** Спека вводит граф зависимостей (`depends_on`), но не вводит проверку на цикл.
+  `A.depends_on=[B]` + `B.depends_on=[A]` → обе спеки пропускаются каждый цикл навсегда, и в
+  логе это `DEP_GATE: skip` — ровно та же строка, что у легитимно ожидающей спеки. Тихий вечный
+  стоп неотличим от нормальной работы. Это тот же класс дефекта («контракт молчит, и молчание
+  неотличимо от здоровья»), который сама TECH-222 чинит в §Why про мёртвый DEP_GATE. Внешняя
+  практика единогласна в обратном: Ledgenter отклоняет ребро, замыкающее цикл, на записи;
+  LLMCompiler-харнессы валидируют DAG до диспатча; Luigi логирует `Circular dependency detected`.
+- **Evidence:** ai/features/TECH-222-*.md EC-10 фиксирует «обе пропускаются, исключения нет» как
+  ожидаемое поведение; scripts/vps/orchestrator_queue.py:62-73 (`_spec_deps` не смотрит на
+  обратные рёбра); scripts/vps/lifecycle.py:209 (`set_depends_on` принимает любой список).
+  Предложение: проверка цикла в `set_depends_on` и в Spark-claim + `log.error` вместо `skip`.
+
+---
+### SIGNAL-2026-08-31-2215
+- **Source:** autopilot (TECH-222)
+- **Target:** spark
+- **Type:** gap
+- **Message:** План Spark'а выдал неисполнимый bash: цикл `for D in $DEPS` без единого места,
+  где `DEPS` присваивается. Промпт выглядит правильным при чтении и молча делает ничего при
+  исполнении — Spark положил бы `depends_on=[]` в каждую спеку, то есть воспроизвёл бы ровно тот
+  баг, который спека чинит. Спека, чей продюсер — промпт, обязана включать прогон этого промпта
+  на реальном входе в Eval Criteria; EC-8 сформулирован как «create_initial вызван с
+  depends_on=[...]», что не проверяет добычу списка.
+- **Evidence:** ai/features/TECH-222-*.md Task 5 шаг 1 (исходный блок); исправлено в
+  .claude/skills/spark/completion.md:23-32 — экстракция проверена на шапке самой TECH-222
+  (`AFTER TECH-220, AFTER TECH-221` → `['TECH-220','TECH-221']`) и на пустом входе (`[]`).
