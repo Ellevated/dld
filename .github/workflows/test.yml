@@ -52,13 +52,16 @@ jobs:
       - name: Regression corpus
         run: pytest tests/regression/ -v -n auto
 
-      - name: Coverage gate (callback.py >= 54%)
+      - name: Coverage gate (callback + callback_* >= 54%)
         # Baseline lowered from 65% → 54% after ARCH-193 added the
-        # LifecycleAlreadyDoneError catch branch (lines ~1174-1221) without
-        # a dedicated callback-level wiring test — the structural guard
-        # lives in lifecycle.write_lifecycle and is covered there
+        # LifecycleAlreadyDoneError catch branch without a dedicated
+        # callback-level wiring test — the structural guard lives in
+        # lifecycle.write_lifecycle and is covered there
         # (test_lifecycle_done_terminal.py, 15 cases). main() is excluded
         # via pragma: no cover (pueue daemon entry point).
+        # TECH-216 split callback.py into six modules; --cov is keyed by
+        # module name, so each new module is listed or its code silently
+        # drops out of the measurement. Threshold unchanged.
         # TODO: regain 65% by mocking event_writer.notify + monkeypatching
         # write_lifecycle to raise inside verify_status_sync.
         run: |
@@ -67,6 +70,11 @@ jobs:
             tests/integration/test_callback_*.py \
             tests/regression/ \
             --cov=callback \
+            --cov=callback_logs \
+            --cov=callback_dispatch \
+            --cov=callback_scope \
+            --cov=callback_circuit \
+            --cov=callback_sync \
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-fail-under=54

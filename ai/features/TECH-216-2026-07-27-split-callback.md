@@ -449,3 +449,27 @@ DEPLOY_URL=local-only
 ---
 
 ## Autopilot Log
+
+### 2026-08-30 — interactive (founder decision 29.08: not dispatched to autopilot)
+
+Commits on develop: `148a3b5` Task 1 (logs + dispatch), `d11d8a5` Task 2 (scope + circuit),
+`684fb59` Task 3 (gate → `callback_sync`, step 6 → `callback_dispatch`), plus Task 4-5.
+
+| Check | Result |
+|---|---|
+| EC-10 max function body | 75 lines (`verify_status_sync`, `extract_agent_output`) |
+| EC-11 `wc -l callback*.py` | 397 / 349 / 260 / 241 / 227 / 202 |
+| EC-12 live callback on VPS (`callback.py 1251 claude-runner Success`, before vs after) | audit JSONL identical (only `ts`/`duration_ms` differ) |
+| EC-13 coverage gate, six modules | **66 %** (threshold 54 unchanged; old single-module baseline was 65) |
+| AV-F1 `scripts/vps/tests -k callback` | 83 passed |
+| AV-F2 root `tests/` callback set incl. `regression/` untouched | 169 passed |
+| AV-F4 `spec_operator.py reset-circuit` (local + VPS) | exit 0 |
+
+Deviations from Design, both deliberate: `_emit_audit` lives in `callback_scope` (with its
+only sink `_write_audit`), not in `callback_circuit`; `_step6_dispatch_qa_reflect` lives in
+`callback_dispatch`, not `callback_sync` — it is the dispatch decision, and `callback_sync`
+would have been 462 LOC otherwise. Re-exports in `callback.py` are all names root `tests/`
+and `spec_operator.py` reach as `callback.<name>` (the spec counted only `_reset_circuit_cli`;
+`tests/unit/test_callback_helpers.py` and `tests/integration/*` were missed by its Step 1).
+The "seven steps in `docs/orchestrator/README.md:114-126`" citation in § Design is wrong —
+those are the seven steps of `main()`, not of `verify_status_sync`.

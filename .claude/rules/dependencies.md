@@ -265,7 +265,26 @@ No sibling imports `orchestrator` (enforced by a test). Edges: `orchestrator` �
 
 ## scripts/vps/callback.py
 
-**Path:** `scripts/vps/callback.py`
+**Path:** `scripts/vps/callback.py` (397 LOC — was 1438, TECH-216 split, 2026-08-30)
+
+Split into five flat siblings; `callback.py` keeps bootstrap, `resolve_label`/`parse_label`/
+`map_result`, `write_event_for_skill`, `_render_and_commit_backlog`, `main`, and **re-exports
+every moved name** — root `tests/` and `spec_operator.py` reach them as `callback.<name>`.
+
+| Module | LOC | Holds |
+|---|---|---|
+| `callback_logs.py` | 227 | `_find_log_file`, `_skill_from_pueue_command`, `_parse_log_file`, `extract_agent_output` |
+| `callback_dispatch.py` | 260 | `resolve_spec_id`, `is_already_queued`, `_pueue_add`, `dispatch_qa`, `dispatch_reflect`, `_merge_confirmed`, `_step6_dispatch_qa_reflect` (TECH-194 E / TECH-207) |
+| `callback_scope.py` | 241 | `_get_started_at`, `_commit_stats`, `_is_test_path`, `_detect_out_of_scope_files` (BUG-199), `_audit_log_path`/`_write_audit`/`_emit_audit` (TECH-171) |
+| `callback_circuit.py` | 202 | `CIRCUIT_*`, `is_circuit_open`, `_pueue_pause/_resume`, `_trip_circuit`, `_reset_circuit_cli`, `_record`, `note_demote` (TECH-169) |
+| `callback_sync.py` | 349 | `verify_status_sync` as six named steps (`_read_existing_status` → `_collect_scope` → `_push_local_develop` → `_decide_status` → `_write_status` → `_Audit.emit`) |
+
+**Same two contracts as the orchestrator split:** `main()` calls the re-exports by bare name,
+so `monkeypatch.setattr(callback, "extract_agent_output", …)` still intercepts; the siblings
+call each other as MODULE ATTRIBUTES (`callback_scope._commit_stats(...)`), so a test that
+wants to reach `verify_status_sync` patches `callback_scope`/`callback_circuit`/`callback_sync`,
+not `callback`. `SCRIPT_DIR` and `db` are per-module — patch the owning module.
+CI coverage gate lists all six modules (`--cov` is keyed by module name).
 
 ### Uses (→)
 
