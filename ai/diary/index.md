@@ -37,10 +37,10 @@
 | 2026-08-30 | TECH-221 | success | EC-1..EC-6 tests; reuse-aware prompts in both trees, EC-7 on throwaway repos | 0 | 5 | done |
 | 2026-08-30 | TECH-221 | advisory | 4 advisory findings across tasks 1-4 | 0 | 0 | done |
 | 2026-08-30 | TECH-221 | problem | Exa verify found a real data-loss hole in the shipped Task 4 push (bare lease) | 0 | 4 | done |
-| 2026-08-30 | TECH-222 | success | Task 1/9: depends_on schema in lifecycle YAML | 0 | 3 | pending |
-| 2026-08-30 | TECH-222 | advisory | Task 1/9: test_lifecycle.py 788 LOC > 600 guideline (pre-existing 730) | 0 | 1 | pending |
-| 2026-08-30 | TECH-222 | success | Task 2/9: _spec_deps YAML u backlog, LOC-neutral | 0 | 2 | pending |
-| 2026-08-30 | TECH-222 | success | Task 3/9: set_depends_on via callable-CAS | 0 | 2 | pending |
-| 2026-08-30 | TECH-222 | success | Task 4/9: TestDependencyGate on YAML fixtures (mutation-proven) | 0 | 1 | pending |
-| 2026-08-30 | TECH-222 | success | Tasks 5-6/9: Spark producer depends_on, both trees | 0 | 4 | pending |
-| 2026-08-30 | TECH-222 | success | Tasks 7-8/9: dead renderer deleted, orchestrator docs corrected | 0 | 3 | pending |
+| 2026-08-30 | TECH-222 | success | Task 1/9: depends_on schema in lifecycle YAML | 0 | 3 | done |
+| 2026-08-30 | TECH-222 | advisory | Task 1/9: test_lifecycle.py 788 LOC > 600 guideline (pre-existing 730) | 0 | 1 | done |
+| 2026-08-30 | TECH-222 | success | Task 2/9: _spec_deps YAML u backlog, LOC-neutral | 0 | 2 | done |
+| 2026-08-30 | TECH-222 | success | Task 3/9: set_depends_on via callable-CAS | 0 | 2 | done |
+| 2026-08-30 | TECH-222 | success | Task 4/9: TestDependencyGate on YAML fixtures (mutation-proven) | 0 | 1 | done |
+| 2026-08-30 | TECH-222 | success | Tasks 5-6/9: Spark producer depends_on, both trees | 0 | 4 | done |
+| 2026-08-30 | TECH-222 | success | Tasks 7-8/9: dead renderer deleted, orchestrator docs corrected | 0 | 3 | done |
