@@ -3,11 +3,16 @@ blocked_reason: null
 finished_at: null
 kind: ARCH
 priority: p0
-pueue_id: null
+pueue_id: 1256
 spec_id: ARCH-219
-started_at: null
-status: queued
-transitions: []
-updated_at: '2026-08-30T10:56:59Z'
-updated_by: spark
-version: 1
+started_at: '2026-08-30T11:04:37Z'
+status: in_progress
+transitions:
+- at: '2026-08-30T11:04:37Z'
+  by: orchestrator
+  from: queued
+  pueue_id: 1256
+  to: in_progress
+updated_at: '2026-08-30T11:04:37Z'
+updated_by: orchestrator
+version: 2
