@@ -851,6 +851,8 @@ class TestDependencyGate:
     Regression: ARCH-1246 / FTR-1245 (awardybot 2026-06-20) were dispatched
     while their prerequisite TECH-1244 was still queued (alphabetical-first
     selection is dependency-blind), and the autopilot burned a run self-blocking.
+
+    TECH-222: ребро теперь в lifecycle YAML; backlog-строка проверяется отдельно выше.
     """
 
     def _write_backlog(self, tmp_path, rows):
@@ -889,33 +891,40 @@ class TestDependencyGate:
         self._write_backlog(tmp_path, ["| X-1 | queued | ftr | 2026-06-20 | no deps here |"])
         assert orchestrator._backlog_deps(str(tmp_path), "X-1") == set()  # no marker
 
-    # --- _unmet_dependencies ---
+    # --- _unmet_dependencies поверх YAML (TECH-222) ---
 
-    def test_unmet_when_dep_not_done(self, tmp_path):
-        self._write_backlog(
-            tmp_path, ["| ARCH-1246 | queued | arch | 2026-06-20 | x. AFTER TECH-1244 |"]
-        )
-        with patch.object(
-            orchestrator.lifecycle, "read_lifecycle", return_value={"status": "queued"}
-        ):
-            assert orchestrator._unmet_dependencies(str(tmp_path), "ARCH-1246") == ["TECH-1244"]
+    def test_unmet_when_yaml_dep_not_done(self, dep_repo):
+        import lifecycle
 
-    def test_met_when_dep_done(self, tmp_path):
-        self._write_backlog(
-            tmp_path, ["| ARCH-1246 | queued | arch | 2026-06-20 | x. AFTER TECH-1244 |"]
-        )
-        with patch.object(
-            orchestrator.lifecycle, "read_lifecycle", return_value={"status": "done"}
-        ):
-            assert orchestrator._unmet_dependencies(str(tmp_path), "ARCH-1246") == []
+        lifecycle.create_initial(dep_repo, "TECH-1244", "p1", "tech")
+        lifecycle.create_initial(dep_repo, "ARCH-1246", "p1", "arch", depends_on=["TECH-1244"])
+        assert orchestrator._unmet_dependencies(str(dep_repo), "ARCH-1246") == ["TECH-1244"]
 
-    def test_met_when_dep_absent_from_lifecycle(self, tmp_path):
-        """Stale/archived reference → treated as met (avoid permanent stall)."""
-        self._write_backlog(
-            tmp_path, ["| ARCH-1246 | queued | arch | 2026-06-20 | x. AFTER TECH-999 |"]
-        )
-        with patch.object(orchestrator.lifecycle, "read_lifecycle", return_value=None):
-            assert orchestrator._unmet_dependencies(str(tmp_path), "ARCH-1246") == []
+    def test_met_when_yaml_dep_done(self, dep_repo):
+        import lifecycle
+
+        lifecycle.create_initial(dep_repo, "TECH-1244", "p1", "tech")
+        lifecycle.write_lifecycle(dep_repo, "TECH-1244", "done", by="callback")
+        lifecycle.create_initial(dep_repo, "ARCH-1246", "p1", "arch", depends_on=["TECH-1244"])
+        assert orchestrator._unmet_dependencies(str(dep_repo), "ARCH-1246") == []
+
+    def test_met_when_dep_absent_from_lifecycle(self, dep_repo):
+        """Висячая/архивная ссылка → считается выполненной (анти-stall, EC-2)."""
+        import lifecycle
+
+        lifecycle.create_initial(dep_repo, "ARCH-1246", "p1", "arch", depends_on=["TECH-999"])
+        assert orchestrator._unmet_dependencies(str(dep_repo), "ARCH-1246") == []
+
+    def test_dependency_cycle_skips_both_without_raising(self, dep_repo):
+        """EC-10: A↔B, обе queued → кандидата нет, исключения нет, диспатч не виснет."""
+        import lifecycle
+
+        lifecycle.create_initial(dep_repo, "TECH-810", "p1", "tech", depends_on=["TECH-811"])
+        lifecycle.create_initial(dep_repo, "TECH-811", "p1", "tech", depends_on=["TECH-810"])
+        assert orchestrator._unmet_dependencies(str(dep_repo), "TECH-810") == ["TECH-811"]
+        assert orchestrator._unmet_dependencies(str(dep_repo), "TECH-811") == ["TECH-810"]
+        queued = [{"spec_id": "TECH-810"}, {"spec_id": "TECH-811"}]
+        assert orchestrator._select_dispatchable_spec(str(dep_repo), queued) is None
 
     # --- scan_queued integration ---
 
