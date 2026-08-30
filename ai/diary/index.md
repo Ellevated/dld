@@ -30,3 +30,6 @@
 | 2026-07-28 | BUG-218 | advisory | Корневой tests/ красный на develop (3 pre-existing) + ruff format красный там же | 0 | 0 | done |
 | 2026-08-30 | TECH-220 | success | Task 1/5: gate_ancestry ancestry gate + EC-1..EC-8 tests | 0 | 2 | pending |
 | 2026-08-30 | TECH-220 | advisory | Task 1/5: dependencies.md lacks gate_ancestry entry | 0 | 2 | pending |
+| 2026-08-30 | TECH-220 | success | Task 2/5: callback contour через find_implementation + gate_via | 0 | 2 | pending |
+| 2026-08-30 | TECH-220 | success | Task 3/5: orchestrator contour + record_dispatch префикс | 0 | 3 | pending |
+| 2026-08-30 | TECH-220 | advisory | Task 2+3: gate-daemon.py 398/400 LOC | 0 | 5 | pending |
