@@ -218,7 +218,8 @@ class TestVariantCNeverIntroduced:
 
     def test_push_local_is_best_effort_not_gate(self):
         """push-local is a flush helper, NOT a gate — gate must still check origin."""
-        source = (Path(VPS_DIR) / "callback.py").read_text(encoding="utf-8")
+        # TECH-216: the gate moved from callback.py into callback_sync.py
+        source = (Path(VPS_DIR) / "callback_sync.py").read_text(encoding="utf-8")
         # push-local block must NOT skip the gate_logic gate calls
         assert "gate_logic.fetch_develop(" in source, "gate_logic.fetch_develop must still be called"
         assert "gate_logic.find_implementation_commit(" in source, (
