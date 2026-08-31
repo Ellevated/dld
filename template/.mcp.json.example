@@ -14,11 +14,14 @@
     // ===========================================
     "context7": {
       "command": "npx",
-      "args": ["-y", "@context7/mcp-server"]
+      "args": ["-y", "@upstash/context7-mcp"]
     },
+    // Exa serves web_search_exa + web_fetch_exa by default — no ?tools= needed.
+    // Older tool names (get_code_context_exa, crawling_exa, deep_researcher_*)
+    // were consolidated away upstream and no longer resolve.
     "exa": {
       "type": "http",
-      "url": "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
+      "url": "https://mcp.exa.ai/mcp"
     }
 
     // ===========================================

@@ -1,0 +1,40 @@
+allowed_files_hash: null
+blocked_reason: 'раскол выполнен в интерактиве: claude-runner.py 912 -> 329 LOC, 6
+  модулей, 662 теста зелёные, влито af6ac11'
+depends_on: []
+finished_at: '2026-08-30T19:15:12Z'
+kind: tech
+priority: p1
+pueue_id: 1049
+spec_id: TECH-213
+started_at: '2026-08-07T01:10:25Z'
+status: done
+transitions:
+- at: '2026-07-28T10:18:47Z'
+  by: callback
+  from: queued
+  pueue_id: 1033
+  to: blocked
+- at: '2026-08-06T23:09:52Z'
+  by: operator
+  from: blocked
+  pueue_id: null
+  to: queued
+- at: '2026-08-07T01:10:25Z'
+  by: orchestrator
+  from: queued
+  pueue_id: 1049
+  to: in_progress
+- at: '2026-08-07T01:34:49Z'
+  by: callback
+  from: in_progress
+  pueue_id: 1049
+  to: blocked
+- at: '2026-08-30T19:15:12Z'
+  by: operator
+  from: blocked
+  pueue_id: null
+  to: done
+updated_at: '2026-08-30T19:15:12Z'
+updated_by: operator
+version: 6

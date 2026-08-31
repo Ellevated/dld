@@ -196,3 +196,7 @@ Write to: `ai/audit/report-scout.md`
 3. **Timeouts are mandatory** — no timeout = potential cascade failure
 4. **Quote the integration code** — show exact error handling (or lack thereof)
 5. **Map every env var** — if it's not in .env.example, it's a deployment trap
+
+---
+
+@.claude/agents/_shared/output-conventions.md

@@ -35,11 +35,18 @@
 
 ## Quick Start
 
-1. **Configure MCP servers** (recommended):
+1. **Configure research providers** (recommended):
    ```bash
-   claude mcp add context7 -- npx -y @context7/mcp-server
-   claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
+   claude plugin install context7@claude-plugins-official --scope user
+   claude mcp add --transport http exa "https://mcp.exa.ai/mcp"
    ```
+
+   `--scope user` matters: a plugin installed at project scope is bound to the directory
+   it was installed from and is silently invisible everywhere else.
+
+   Exa serves `web_search_exa` + `web_fetch_exa` by default — no `?tools=` needed. Older
+   names (`get_code_context_exa`, `crawling_exa`, `deep_researcher_*`,
+   `company_research_exa`, `deep_search_exa`) were consolidated away upstream.
 
    > **Alternative:** Copy `.mcp.json.example` to `~/.claude/.mcp.json` for pre-configured MCP setup.
 
@@ -48,12 +55,16 @@
 4. Create domains structure
 5. Run `/spark` for first feature
 
-> MCP enables `/scout` research with Exa (web search, deep research) and Context7 (library docs).
->
-> **Tiers:**
-> - **Standard** (default): Context7 + Exa — research and docs lookup
-> - **Power**: Adds Sequential Thinking — unlocks `/council` and `/autopilot`
-> For Power tier: `./scripts/setup-mcp.sh --tier 3`
+### Verifying the research stack
+
+Agents degrade *silently* when a provider is missing — they just search worse. Check it
+directly rather than trusting that setup once succeeded:
+
+```bash
+python scripts/check-research-stack.py
+```
+
+Run it after any MCP/plugin change, and when research quality feels off.
 
 ---
 
@@ -81,6 +92,40 @@ See `ai/ARCHITECTURE.md` after bootstrap.
 | DB, LLM, infra | `.claude/contexts/shared.md` | `src/infra/**`, `db/**` |
 
 > **Note:** `.claude/contexts/` and `.claude/rules/` domain files are created during `/bootstrap` when you define your project's domains. They don't exist in the template out of the box.
+
+### Rules loading — `paths:` is mandatory
+
+A `.claude/rules/*.md` file **with** a YAML `paths:` header loads only when the session touches
+files matching those globs. **Without** the header it loads into **every** session, forever.
+
+```yaml
+---
+paths:
+  - "src/**"
+  - "tests/**"
+---
+```
+
+Only `localization.md` is exempt — skill triggers must be reachable in any session.
+
+**Writing a new rule:** give it `paths:`. If it is triggered by *intent* rather than by editing a
+file ("разбери выплаты", "сделай страницу"), the answer is still `paths:` — plus a short pointer in
+CLAUDE.md that tells the session to open the file. A permanently loaded rule buys discoverability
+at the price of every unrelated session; measured 2026-07-26 in a real project, four unmarked files
+cost **37k tokens per session** for 25 days before anyone noticed.
+
+A file that genuinely must always load declares `always_on: true` instead, so the intent lives in
+the file rather than in someone's memory.
+
+**Check it, don't assume it** — across nine projects this cost ~87k tokens/session and was found
+by accident, not by looking:
+
+```bash
+python scripts/check-rules-loading.py .
+```
+
+Exits non-zero on any rule that is neither scoped nor declared. Run it after adding a rule, and
+once in every repo bootstrapped from this template before trusting its context budget.
 
 ---
 
@@ -112,15 +157,30 @@ ai/glossary/
 
 ### Impact Tree Algorithm (5 steps)
 
-On any change:
+On any change. Steps 1-2 run on the **code graph** if one is indexed, on `grep` if not.
 
-1. **UP** — who uses the changed code? (`grep -r "from.*{module}" .`)
-2. **DOWN** — what does it depend on? (imports in file)
-3. **BY TERM** — grep old name across entire project
+**Graph** = a code-graph MCP (`codebase-memory` or equivalent: `list_projects`, `search_graph`,
+`trace_path`, `index_repository`). **Rebuild before you trust it** — an incremental rebuild after
+a few edits is sub-second, which is cheaper than reasoning about whether the index is current.
+A *first* index is not: it scales with the repo, from ~1 s at 5k graph nodes to ~4 min at 130k
+(measured across eight repos, 2026-08-28). Pay that once per session, not once per question.
+
+Do not hunt for a staleness field. In `codebase-memory` neither `head_sha` (read live from git,
+so always equal to `HEAD`) nor `detect_changes` (a git diff against the base branch) reports
+index drift. Rebuilding is the check.
+
+1. **UP** — who uses the changed code? → `trace_path(function_name, direction="inbound", depth=2)`
+   gives transitive callers, not just direct imports · fallback `grep -r "from.*{module}" .`
+2. **DOWN** — what does it depend on? → the same call with `direction="outbound"` · fallback:
+   imports in the file
+3. **BY TERM** — `grep -rn "{old_term}" .` — **always grep here.** The graph indexes definitions;
+   a rename survives in configs, migrations, docs and prompts, which it does not index
 4. **CHECKLIST** — mandatory folders (tests/, migrations/, edge functions/)
 5. **DUAL SYSTEM** — if changing data source, who reads from old/new?
 
-**Rule:** After changes `grep "{old_term}" .` = 0 results!
+**Rule:** After changes `grep "{old_term}" .` = 0 results! Grep stays the acceptance check even
+when the graph found the call sites — it narrows the search, it does not close it. It misses
+dynamic dispatch, string-keyed lookups, and (in most indexers) hidden directories.
 
 ### Module Headers
 
@@ -146,7 +206,7 @@ Glossary: ai/glossary/{domain}.md
 | **bootstrap** | Day 0 — extract idea from founder's head (interviewer, not decider) |
 | **board** | Business architecture — revenue, channels, org model (after bootstrap) |
 | **architect** | System architecture — domains, data, APIs, cross-cutting (after board) |
-| **spark** | Feature spec — multi-agent with 4 scouts + tests mandatory (within blueprint) |
+| **spark** | Feature spec — multi-agent with 3 scouts + tests mandatory (within blueprint) |
 | **autopilot** | Execute tasks (plan + coder/tester per task + reflect upstream) |
 | **council** | Complex/controversial decisions (5 experts + cross-critique) |
 | **audit** | Code analysis, consistency check (READ-ONLY) |
@@ -198,6 +258,8 @@ Hotfix:       <5 LOC → fix directly with user approval
 Escalation:   Autopilot → Spark → Architect → Board → Founder
 Brownfield:   /retrofit → /audit deep → /architect → /board → stabilize → normal
 ```
+
+**Interactive `/spark` workflow:** Run `/spark` interactive sessions from ONE machine at a time (laptop preferred). VPS spark runs only via orchestrator dispatch (headless). The spec-first ID CAS (ARCH-196) handles concurrent claims structurally, but this convention prevents push contention races.
 
 **New in v3.7:**
 - Spark auto-hands off to autopilot (no manual "plan" step)
@@ -276,19 +338,15 @@ For human teams, adjust these estimates to your team's velocity. The key princip
 
 Use Risk as the second decision axis (instead of effort):
 
+> **Scope:** R0/R1/R2 are inputs for **Spark Phase 4 only**. Coder, tester, and autopilot agents do NOT route on this classification.
+
 | Risk | Definition | Examples |
 |------|-----------|----------|
 | **R0** | Irreversible | Data loss, schema migration, security exposure, public API break |
 | **R1** | High blast radius | 3+ files, cross-domain, external dependency, state machine change |
 | **R2** | Contained | 1-2 files, single domain, internal, trivially rollbackable |
 
-### Impact x Risk Routing
-
-| Impact \ Risk | R0 (Irreversible) | R1 (Blast radius) | R2 (Contained) |
-|---|---|---|---|
-| **P0** | COUNCIL | HUMAN | AUTO |
-| **P1** | COUNCIL | AUTO | AUTO |
-| **P2** | HUMAN | AUTO | AUTO |
+For Impact × Risk routing matrix, see `.claude/skills/spark/feature-mode.md` Phase 4 DECIDE — matrix applies ONLY during spec design, not during autopilot execution.
 
 ---
 
@@ -326,7 +384,7 @@ Runbook:   `~/.claude/projects/-root/memory/orchestrator-runbook.md`
 - **Prefixes:** BUG, FTR, TECH, ARCH only (4 types)
 - **Numbering:** Sequential across all types
 - **Archive:** Weekly check, if >50 → archive to 30
-- **Bug Hunt:** Creates a READ-ONLY report (`BUG-XXX-bughunt.md`, not in backlog) + standalone grouped specs (each with own sequential ID and own backlog entry).
+- **Bug Hunt:** Saves a read-only report to `ai/bughunt/{YYYY-MM-DD}-report.md`. It creates **no** specs, **no** inbox items and **no** backlog rows — the report is reviewed first, and only then does anything become work. `skills/bughunt/completion.md` is the contract.
 
 ---
 

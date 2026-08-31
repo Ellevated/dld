@@ -1,0 +1,24 @@
+allowed_files_hash: null
+blocked_reason: 'TECH-216 done interactively 30.08: six modules <=400 LOC, EC-10..13
+  verified, coverage 66%'
+finished_at: '2026-08-30T10:03:51Z'
+kind: tech
+priority: p1
+pueue_id: null
+spec_id: TECH-216
+started_at: null
+status: done
+transitions:
+- at: '2026-08-28T22:07:32Z'
+  by: operator
+  from: queued
+  pueue_id: null
+  to: blocked
+- at: '2026-08-30T10:03:51Z'
+  by: operator
+  from: blocked
+  pueue_id: null
+  to: done
+updated_at: '2026-08-30T10:03:51Z'
+updated_by: operator
+version: 3

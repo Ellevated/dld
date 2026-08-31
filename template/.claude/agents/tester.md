@@ -24,8 +24,20 @@ For LLM-optimized output, use the test-wrapper:
 node .claude/scripts/test-wrapper.mjs ./test fast
 ```
 
-- **Pass:** Single summary line (e.g., `PASS: 15 tests passed (2.3s)`)
-- **Fail:** Compact failure summary + path to full output file
+| Exit | Output | Meaning |
+|---|---|---|
+| 0 | `PASS: 15 tests passed (2.3s)` | Tests ran and passed |
+| 1 | `FAIL: N failure(s)` + path to full output | Tests ran and failed |
+| 2 | `TEST_COMMAND_UNAVAILABLE: <command>` | **Nothing ran.** The project ships no such test command |
+
+**Exit 2 is not a test failure.** `./test` is a per-project artifact — some repos ship
+one, this one may not — so its absence is an expected state. Fall back to the project's
+real command (`pytest`, `npm test`, `cargo test`) and report what that returns. Never
+report exit 2 as a failing suite, and never treat it as a green one.
+
+A missing command used to be reported as `FAIL: 0 failure(s)` — a failing suite with no
+failures in it — which sends the reader hunting for failures that never ran.
+
 - Reduces context noise significantly vs raw test output
 
 **When to use:** Always prefer test-wrapper in autopilot task loop. Use raw commands only for debugging.
@@ -42,13 +54,16 @@ node .claude/scripts/test-wrapper.mjs ./test fast
 
 ### Domain Tests
 
+Selection is positional — run the tests that live with the code you changed:
+
 | Changed file | Tests to run |
 |--------------|--------------|
-| `src/domains/billing/*` | `pytest src/domains/billing/ -v -n auto` |
-| `src/domains/campaigns/*` | `pytest src/domains/campaigns/ -v -n auto` |
-| `src/domains/seller/*` (not prompts/) | `pytest src/domains/seller/ -v -n auto --ignore=src/domains/seller/prompts` |
-| `src/domains/buyer/*` | `pytest src/domains/buyer/ -v -n auto` |
-| `src/domains/outreach/*` | `pytest src/domains/outreach/ -v -n auto` |
+| `src/domains/{domain}/*` | `pytest src/domains/{domain}/ -v -n auto` |
+| A domain that keeps non-code assets (prompts, fixtures) | same, with `--ignore=` on that subdirectory — it holds no tests |
+
+**Read the repository for its domain names.** A hardcoded list of domains belongs to
+whichever project it was written for; elsewhere those paths do not exist, and `pytest`
+against a missing path exits non-zero for a reason unrelated to the code under test.
 
 ### Infrastructure Tests
 
@@ -64,9 +79,9 @@ node .claude/scripts/test-wrapper.mjs ./test fast
 
 | Changed file | Tests to run |
 |--------------|--------------|
-| `src/domains/seller/prompts/*` | `./test llm -- -k "seller"` |
-| `src/domains/seller/tools/*` | `./test llm -- -k "seller"` |
-| `src/config/prompts/*` | `./test llm` |
+| `src/domains/{domain}/prompts/*` | LLM suite, filtered to that domain (`-k "{domain}"`) |
+| `src/domains/{domain}/tools/*` | LLM suite, filtered to that domain |
+| `src/config/prompts/*` | Full LLM suite |
 
 ### E2E Tests
 
@@ -247,3 +262,7 @@ If any llm-judge criterion fails → report as `failed_in_scope`.
 ## Limits
 - `./test fast`: max 5 fails
 - `./test llm`: max 2 fails
+
+---
+
+@.claude/agents/_shared/output-conventions.md

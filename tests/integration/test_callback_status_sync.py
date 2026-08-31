@@ -30,6 +30,7 @@ import yaml  # noqa: E402
 
 import callback  # noqa: E402
 import db  # noqa: E402
+import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 
 
@@ -60,6 +61,15 @@ def _head_count(repo: Path) -> int:
         text=True,
     )
     return int(r.stdout.strip()) if r.returncode == 0 else 0
+
+
+def _head_sha(repo: Path) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
 
 
 def _head_file(repo: Path, rel: str) -> str | None:
@@ -331,14 +341,16 @@ def test_ec15_operator_uncommitted_edits_in_spec_survive(tmp_path, tmp_db, monke
     _suppress_push(monkeypatch)
 
     # Gate stubs: gate=True so lifecycle becomes done
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: "deadbee")
 
     # Operator adds notes to working tree (not committed)
     spec_workdir = repo / "ai" / "features" / f"{spec_id}.md"
     original_content = spec_workdir.read_text()
     operator_note = "\n## Notes by operator\n\noperator note here\n"
     spec_workdir.write_text(original_content + operator_note)
+
+    before_head = _head_sha(repo)
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=115)
 
@@ -356,13 +368,19 @@ def test_ec15_operator_uncommitted_edits_in_spec_survive(tmp_path, tmp_db, monke
     assert head_content is not None
     assert "operator note here" not in head_content
 
-    # Callback commits touch ai/lifecycle/ but never ai/features/
-    # (backlog render may add another commit, so check all recent commits)
+    # Everything callback committed touches ai/lifecycle/ (plus the folded
+    # ai/backlog.md status render) and never ai/features/. Anchored on the SHA
+    # captured above: a fixed `HEAD~3` outlived the extra commit it counted on
+    # — ARCH-196 dropped the separate backlog-render commit, leaving only three
+    # in the repo, so the range named a revision that does not exist and git
+    # answered with empty stdout the assertion below then read as a pass.
     new_commit_files = subprocess.run(
-        ["git", "-C", str(repo), "log", "--name-only", "--format=", "HEAD~3..HEAD"],
+        ["git", "-C", str(repo), "log", "--name-only", "--format=", f"{before_head}..HEAD"],
         capture_output=True,
         text=True,
+        check=True,
     ).stdout.strip()
+    assert new_commit_files, "callback must have committed something"
     assert "ai/lifecycle/" in new_commit_files
     assert "ai/features/" not in new_commit_files
 

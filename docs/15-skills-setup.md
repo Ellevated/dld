@@ -63,7 +63,6 @@ spark → autopilot (plan is subagent inside autopilot)
 │   ├── coder.md                ← sonnet (code writing)
 │   ├── tester.md               ← sonnet (test running)
 │   ├── debugger.md             ← opus (root cause analysis)
-│   ├── spec-reviewer.md        ← sonnet (spec matching)
 │   ├── review.md               ← opus (code quality)
 │   ├── scout.md                ← sonnet (research)
 │   ├── documenter.md           ← sonnet (docs update)
@@ -83,8 +82,7 @@ spark → autopilot (plan is subagent inside autopilot)
 │       ├── qa-engineer.md           ← sonnet (edge cases, boundaries)
 │       ├── toc-analyst.md           ← opus (constraints, CRT)
 │       ├── triz-analyst.md          ← opus (contradictions, IFR)
-│       ├── validator.md             ← opus (triage, dedup)
-│       └── solution-architect.md    ← opus (sub-specs, Impact Tree)
+│       └── validator.md             ← opus (triage, dedup)
 │
 ├── skills/                     ← USER INTERFACE (wrappers + orchestrators)
 │   ├── spark/SKILL.md          ← Orchestrator
@@ -143,7 +141,6 @@ tools: Read, Glob, Grep, Edit, Write, Bash, mcp__exa__*, mcp__plugin_context7_*
 - `agents/coder.md` — sonnet (code writing)
 - `agents/tester.md` — sonnet (test running)
 - `agents/debugger.md` — opus (root cause)
-- `agents/spec-reviewer.md` — sonnet (spec matching)
 - `agents/review.md` — opus (code quality)
 - `agents/scout.md` — sonnet (research)
 - `agents/documenter.md` — sonnet (docs)
@@ -224,7 +221,6 @@ agent: .claude/agents/tester.md
 | council/* | opus | Complex decisions |
 | coder | **sonnet** | 90% capability, 2x speed |
 | tester | **sonnet** | Running tests, parsing |
-| spec-reviewer | **sonnet** | Spec matching |
 | scout | **sonnet** | Research aggregation |
 | documenter | **sonnet** | Routine updates |
 | diary-recorder | **haiku** | Simple logging |

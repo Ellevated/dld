@@ -19,6 +19,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
+import console_safe  # noqa: E402
 import event_writer  # noqa: E402
 
 # ── Audit log path ────────────────────────────────────────────────────────────
@@ -144,6 +145,7 @@ def _find_project_path() -> str:
 
 def main() -> None:
     """CLI entry point."""
+    console_safe.enable()
     parser = argparse.ArgumentParser(description="Daily callback audit digest")
     parser.add_argument(
         "--since-hours",

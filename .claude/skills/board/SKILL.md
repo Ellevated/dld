@@ -34,7 +34,6 @@ Business architecture: revenue model, channels, org structure, risks — BEFORE 
 | **COO** | Keith Rabois (COO Square) | Triage. Barrels vs ammo | "What breaks at ×10? What's agent, what's human?" |
 | **CTO** | Piyush Gupta (DBS Bank) | Think like a startup | "If building from scratch — same stack?" |
 | **Devil** | Peter Thiel | Contrarian | "What do you know that nobody agrees with?" |
-| **Facilitator** | Chief of Staff | Process, NO vote | Agenda + artifacts + gates |
 
 ---
 

@@ -58,7 +58,7 @@ def tmp_git_repo(tmp_path):
 
     lc_dir = repo / "ai" / "lifecycle"
     lc_dir.mkdir(parents=True)
-    (lc_dir / ".gitkeep").write_text("")
+    (lc_dir / ".gitkeep").write_text("", encoding="utf-8")
     git("add", ".")
     git("commit", "-m", "init")
 
@@ -284,18 +284,18 @@ def _make_hook_repo(tmp_path: Path) -> Path:
     git("config", "user.name", "Test User")
 
     # Initial commit so HEAD exists
-    (repo / "README.md").write_text("init")
+    (repo / "README.md").write_text("init", encoding="utf-8")
     git("add", "README.md")
     git("commit", "-m", "init")
 
     # Stage a lifecycle yaml file
     lc_dir = repo / "ai" / "lifecycle"
     lc_dir.mkdir(parents=True)
-    (lc_dir / "SPEC-123.yaml").write_text("spec_id: SPEC-123\nstatus: done\n")
+    (lc_dir / "SPEC-123.yaml").write_text("spec_id: SPEC-123\nstatus: done\n", encoding="utf-8")
     git("add", str(lc_dir / "SPEC-123.yaml"))
 
     # Write COMMIT_EDITMSG
-    (repo / ".git" / "COMMIT_EDITMSG").write_text("lifecycle(SPEC-123): done")
+    (repo / ".git" / "COMMIT_EDITMSG").write_text("lifecycle(SPEC-123): done", encoding="utf-8")
 
     return repo
 
@@ -360,7 +360,7 @@ def test_pre_commit_hook_logs_authorized_bypass(tmp_path):
             f.write(" ".join(sys.argv) + "\\n")
     """)
     shim_py = shim_dir / "python3"
-    shim_py.write_text(shim_script)
+    shim_py.write_text(shim_script, encoding="utf-8")
     shim_py.chmod(0o755)
 
     env = {**os.environ, "GIT_DIR": str(repo / ".git")}
@@ -384,7 +384,7 @@ def test_pre_commit_hook_logs_authorized_bypass(tmp_path):
     # If it wasn't invoked (node used system python3), we skip the log assertion
     # but the rc=0 is the primary guarantee.
     if audit_log.exists():
-        log_content = audit_log.read_text()
+        log_content = audit_log.read_text(encoding="utf-8")
         assert (
             "event_writer.py" in log_content
             or "LIFECYCLE_AUTHORIZED_BYPASS" in log_content

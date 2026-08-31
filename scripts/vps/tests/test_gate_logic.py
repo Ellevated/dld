@@ -1,8 +1,8 @@
 # scripts/vps/tests/test_gate_logic.py
 """Pure-function tests for gate_logic.py (ARCH-190 Task 5 — Wave 1 MP-001).
 
-Covers all P0 Devil's Advocate cases (DA-series) from the acceptance criteria
-plus unit coverage for match_subject, parse_allowed_files_v1/legacy, fetch_develop.
+Covers all P0 Devil's Advocate cases (DA-series) plus unit coverage for
+parse_allowed_files_v1/legacy, fetch_develop (match_subject → test_gate_logic_subject.py).
 
 ADR-013: NO mocks. Real git repos via subprocess in tmp_path (mirror test_callback.py).
 """
@@ -23,8 +23,8 @@ from gate_logic import (  # noqa: E402
     _parse_allowed_files_v1,
     fetch_develop,
     find_implementation_commit,
-    match_subject,
     parse_allowed_files,
+    strip_bookkeeping_paths,
 )
 
 # ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ def git_repo(tmp_path):
     _git(repo, "init", "-q", "-b", "develop")
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
-    (repo / "README.md").write_text("init\n")
+    (repo / "README.md").write_text("init\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
@@ -93,7 +93,7 @@ def git_repo_with_remote(tmp_path):
     _git(local, "config", "user.name", "t")
     _git(local, "remote", "add", "origin", str(remote))
     # First commit + push so origin/develop exists
-    (local / "README.md").write_text("init\n")
+    (local / "README.md").write_text("init\n", encoding="utf-8")
     _git(local, "add", "README.md")
     _git(local, "commit", "-q", "-m", "init")
     _git(local, "push", "-q", "origin", "develop")
@@ -114,7 +114,7 @@ def _add_commit(
     """Create a file, stage it, and commit. Returns the commit SHA."""
     fpath = repo / filename
     fpath.parent.mkdir(parents=True, exist_ok=True)
-    fpath.write_text(f"content for {filename}\n")
+    fpath.write_text(f"content for {filename}\n", encoding="utf-8")
     _git(repo, "add", filename)
     msg = subject if not body else f"{subject}\n\n{body}"
     _git(repo, "commit", "-q", "-m", msg)
@@ -126,45 +126,7 @@ def _push_to_remote(repo: Path) -> None:
     _git(repo, "push", "-q", "origin", "develop")
 
 
-# ===========================================================================
-# Part 1: match_subject — unit tests (no git)
-# ===========================================================================
-
-
-def test_match_subject_conventional_feat():
-    """Conventional Commits form: feat(SPEC-A): description."""
-    assert match_subject("feat(SPEC-A): implement the feature", "SPEC-A") is True
-
-
-def test_match_subject_conventional_fix():
-    """Conventional Commits form: fix(SPEC-A)!: description."""
-    assert match_subject("fix(SPEC-A)!: critical fix", "SPEC-A") is True
-
-
-def test_match_subject_merge_form():
-    """Merge commit form: merge SPEC-A (spec_id directly after 'merge')."""
-    # The regex is ^merge\s+{spec_id}\b — spec_id must come right after 'merge'.
-    assert match_subject("Merge SPEC-A", "SPEC-A") is True
-
-
-def test_match_subject_bare_prefix():
-    """Legacy bare prefix form: SPEC-A: description."""
-    assert match_subject("SPEC-A: implement the feature", "SPEC-A") is True
-
-
-def test_match_subject_wrong_spec_id():
-    """Negative: feat(BUG-200): work should NOT match TECH-189."""
-    assert match_subject("feat(BUG-200): work", "TECH-189") is False
-
-
-def test_DA4_growth_spec_id_match_subject():
-    """DA-4: GROWTH-042 spec_id must be matched by match_subject."""
-    assert match_subject("feat(GROWTH-042): add growth metric", "GROWTH-042") is True
-
-
-# ===========================================================================
-# Part 2: _parse_allowed_files_v1 — unit tests (no git)
-# ===========================================================================
+# --- Part 2: _parse_allowed_files_v1 — unit tests (no git) ---
 
 _V1_SPEC_HAPPY = """\
 ## Spec heading
@@ -193,6 +155,42 @@ _V1_SPEC_NO_MARKER = """\
 
 """
 
+# --- TECH-208: numbered-list format regression cases --------------------------
+
+_V1_SPEC_NUMBERED = """\
+## Spec heading
+
+## Allowed Files
+<!-- callback-allowlist v1 -->
+
+1. `scripts/vps/callback.py` — extend regex
+2. `scripts/vps/gate_logic.py` — same extension
+
+## Next Section
+"""
+
+_V1_SPEC_NUMBERED_GAPS = """\
+## Allowed Files
+<!-- callback-allowlist v1 -->
+
+1. `scripts/vps/callback.py` — first file
+5. `scripts/vps/gate_logic.py` — gap in numbering
+10. `scripts/vps/tests/test_gate_logic.py` — bigger number
+
+## Definition of Done
+"""
+
+_V1_SPEC_MIXED_BULLETS = """\
+## Allowed Files
+<!-- callback-allowlist v1 -->
+
+- `scripts/vps/callback.py` — dash bullet
+1. `scripts/vps/gate_logic.py` — numbered item
+- `scripts/vps/tests/test_gate_logic.py` — dash again
+
+## End
+"""
+
 
 def test_parse_allowed_files_v1_happy_path():
     """v1 happy path: marker present + two canonical bullets."""
@@ -215,9 +213,39 @@ def test_parse_allowed_files_v1_no_marker_returns_none():
     assert result is None
 
 
-# ===========================================================================
-# Part 3: _parse_allowed_files_legacy — unit tests (no git)
-# ===========================================================================
+# --- TECH-208: numbered-list format regression --------------------------------
+
+
+def test_parse_allowed_files_v1_numbered_list():
+    """TECH-208: v1 parser accepts numbered-list items (1. `path`)."""
+    result = _parse_allowed_files_v1(_V1_SPEC_NUMBERED)
+    assert result == [
+        "scripts/vps/callback.py",
+        "scripts/vps/gate_logic.py",
+    ]
+
+
+def test_parse_allowed_files_v1_numbered_gaps():
+    """TECH-208: numbering gaps (1, 5, 10) are tolerated."""
+    result = _parse_allowed_files_v1(_V1_SPEC_NUMBERED_GAPS)
+    assert result == [
+        "scripts/vps/callback.py",
+        "scripts/vps/gate_logic.py",
+        "scripts/vps/tests/test_gate_logic.py",
+    ]
+
+
+def test_parse_allowed_files_v1_mixed_bullets_and_numbered():
+    """TECH-208: mixed dash-bullets and numbered items both parse."""
+    result = _parse_allowed_files_v1(_V1_SPEC_MIXED_BULLETS)
+    assert result == [
+        "scripts/vps/callback.py",
+        "scripts/vps/gate_logic.py",
+        "scripts/vps/tests/test_gate_logic.py",
+    ]
+
+
+# --- Part 3: _parse_allowed_files_legacy — unit tests (no git) ---
 
 _LEGACY_SPEC_STANDARD_HEADING = """\
 ## Spec
@@ -266,22 +294,20 @@ def test_parse_allowed_files_legacy_no_section_returns_none():
     assert result is None
 
 
-# ===========================================================================
-# Part 4: parse_allowed_files (public API, file-based) — unit tests
-# ===========================================================================
+# --- Part 4: parse_allowed_files (public API, file-based) — unit tests ---
 
 
 def test_DA5_spec_without_allowed_files_returns_none(tmp_path):
     """DA-5: spec file without ## Allowed Files section → parse_allowed_files returns None."""
     spec = tmp_path / "SPEC-A.md"
-    spec.write_text("# Feature\n\nNo allowed files section.\n")
+    spec.write_text("# Feature\n\nNo allowed files section.\n", encoding="utf-8")
     assert parse_allowed_files(spec) is None
 
 
 def test_parse_allowed_files_v1_from_file(tmp_path):
     """parse_allowed_files reads file and returns v1 canonical paths."""
     spec = tmp_path / "SPEC-B.md"
-    spec.write_text(_V1_SPEC_HAPPY)
+    spec.write_text(_V1_SPEC_HAPPY, encoding="utf-8")
     result = parse_allowed_files(spec)
     assert result == [
         "scripts/vps/gate_logic.py",
@@ -295,9 +321,18 @@ def test_parse_allowed_files_missing_file_returns_none(tmp_path):
     assert result is None
 
 
-# ===========================================================================
-# Part 5: fetch_develop — uses real git repo
-# ===========================================================================
+def test_parse_allowed_files_v1_numbered_from_file(tmp_path):
+    """TECH-208: parse_allowed_files reads numbered-list spec and returns paths."""
+    spec = tmp_path / "BUG-355.md"
+    spec.write_text(_V1_SPEC_NUMBERED, encoding="utf-8")
+    result = parse_allowed_files(spec)
+    assert result == [
+        "scripts/vps/callback.py",
+        "scripts/vps/gate_logic.py",
+    ]
+
+
+# --- Part 5: fetch_develop — uses real git repo ---
 
 
 def test_fetch_develop_succeeds_with_valid_remote(git_repo_with_remote):
@@ -316,9 +351,7 @@ def test_fetch_develop_timeout_returns_false(git_repo_with_remote):
     assert result is False
 
 
-# ===========================================================================
-# Part 6: find_implementation_commit — real git repos
-# ===========================================================================
+# --- Part 6: find_implementation_commit — real git repos ---
 
 
 def test_DA6_golden_oracle_commit_on_allowed_file(git_repo_with_remote):
@@ -408,3 +441,158 @@ def test_find_implementation_commit_wrong_file_returns_none(git_repo_with_remote
     # Allowed list does NOT include unrelated.py
     result = find_implementation_commit(str(repo), "SPEC-A", ["scripts/vps/gate_logic.py"])
     assert result is None
+
+
+# --- 2026-07-02 merge-commit visibility regression (plpilot BUG-338) --------
+
+
+def _merge_feature_branch(
+    repo: Path,
+    branch: str,
+    filename: str,
+    feature_subject: str,
+    merge_subject: str,
+) -> str:
+    """Create a feature branch with one commit, no-ff merge it into develop.
+
+    Returns the merge commit SHA.
+    """
+    _git(repo, "checkout", "-q", "-b", branch)
+    _add_commit(repo, filename, feature_subject)
+    _git(repo, "checkout", "-q", "develop")
+    _git(repo, "merge", "--no-ff", "-q", "-m", merge_subject, branch)
+    return _git(repo, "rev-parse", "HEAD").strip()
+
+
+def test_merge_commit_subject_found_via_first_parent(git_repo_with_remote):
+    """Regression (plpilot BUG-338): feature commit has NO spec id in subject,
+    only the no-ff merge commit declares it (`Merge SPEC-ID: ...`).
+
+    Default path-filtered `git log` simplifies the merge away (TREESAME to the
+    feature parent) — the `--first-parent` pass must still find it.
+    """
+    repo = git_repo_with_remote
+    merge_sha = _merge_feature_branch(
+        repo,
+        "feature/BUG-338",
+        "src/text-safety.ts",
+        "fix: HTML-aware truncation without spec id anywhere",
+        "Merge BUG-338: HTML-aware TG text truncation",
+    )
+    _push_to_remote(repo)
+
+    result = find_implementation_commit(str(repo), "BUG-338", ["src/text-safety.ts"])
+    assert result == merge_sha
+
+
+def test_merge_branch_default_subject_found(git_repo_with_remote):
+    """Regression (plpilot BUG-346): git default `Merge branch 'fix/SPEC-ID-slug'`
+    merge subject is found even when the feature commit subject has no scope."""
+    repo = git_repo_with_remote
+    merge_sha = _merge_feature_branch(
+        repo,
+        "fix/BUG-346-one-time-receipt-phantom",
+        "src/receipt-service.ts",
+        "fix: one-time receipt phantom recurring",
+        "Merge branch 'fix/BUG-346-one-time-receipt-phantom' into develop",
+    )
+    _push_to_remote(repo)
+
+    result = find_implementation_commit(str(repo), "BUG-346", ["src/receipt-service.ts"])
+    assert result == merge_sha
+
+
+def test_merge_of_unrelated_spec_not_matched(git_repo_with_remote):
+    """Fail-closed: a merge bringing changes into an allowed file but declaring
+    a DIFFERENT spec id must not match."""
+    repo = git_repo_with_remote
+    _merge_feature_branch(
+        repo,
+        "feature/BUG-777",
+        "src/shared.ts",
+        "fix: shared change",
+        "Merge BUG-777: unrelated work touching shared file",
+    )
+    _push_to_remote(repo)
+
+    result = find_implementation_commit(str(repo), "BUG-888", ["src/shared.ts"])
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Regression: a spec must not reconcile against its own birth commit
+#
+# 2026-07-27. Spark writes `ai/lifecycle/<ID>.yaml` at ID-claim time with the
+# subject `lifecycle(BUG-460): queued`, and puts that same path in the spec's
+# `## Allowed Files`. The path filter admitted the commit, match_subject read
+# `lifecycle(BUG-460):` as a conventional commit with the id in scope, and the
+# reconciliation gate marked the spec done before it was ever dispatched.
+# Observed on dowry BUG-460/TECH-461/TECH-462, wb FTR-182, plpilot TECH-352 —
+# five specs, one of them P0, closed having merged nothing.
+# ---------------------------------------------------------------------------
+
+
+class TestBookkeepingPathsAreNotEvidence:
+    def test_strips_lifecycle_backlog_and_spec_paths(self):
+        assert (
+            strip_bookkeeping_paths(
+                [
+                    "ai/lifecycle/BUG-460.yaml",
+                    "ai/backlog.md",
+                    "ai/features/BUG-460-2026-07-26-x.md",
+                    "ai/diary/index.md",
+                ]
+            )
+            == []
+        )
+
+    def test_keeps_implementation_and_docs_paths(self):
+        # docs are NOT stripped: a documentation spec's implementation lives there
+        kept = strip_bookkeeping_paths(
+            ["src/api/copy.py", "docs/guide.md", "README.md", "ai/backlog.md"]
+        )
+        assert kept == ["src/api/copy.py", "docs/guide.md", "README.md"]
+
+    def test_normalises_leading_dot_slash_and_backslashes(self):
+        assert strip_bookkeeping_paths(["./ai/lifecycle/X.yaml", r"ai\lifecycle\Y.yaml"]) == []
+
+    def test_lifecycle_birth_commit_does_not_reconcile(self, git_repo_with_remote):
+        """The exact dowry BUG-460 shape: only the lifecycle commit exists."""
+        repo = git_repo_with_remote
+        lifecycle_dir = repo / "ai" / "lifecycle"
+        lifecycle_dir.mkdir(parents=True)
+        (lifecycle_dir / "BUG-460.yaml").write_text("status: queued\n", encoding="utf-8")
+        _git(repo, "add", "ai/lifecycle/BUG-460.yaml")
+        _git(repo, "commit", "-q", "-m", "lifecycle(BUG-460): queued")
+        _git(repo, "push", "-q", "origin", "develop")
+        _git(repo, "fetch", "-q", "origin", "develop")
+
+        allowed = ["src/api/awardy_bot/copy.py", "ai/lifecycle/BUG-460.yaml", "ai/backlog.md"]
+        assert find_implementation_commit(str(repo), "BUG-460", allowed) is None
+
+    def test_real_implementation_still_reconciles(self, git_repo_with_remote):
+        """The fix must not blind the gate to actual work."""
+        repo = git_repo_with_remote
+        src = repo / "src"
+        src.mkdir()
+        (src / "copy.py").write_text("x = 1\n", encoding="utf-8")
+        _git(repo, "add", "src/copy.py")
+        _git(repo, "commit", "-q", "-m", "fix(BUG-460): escape first_name")
+        _git(repo, "push", "-q", "origin", "develop")
+        _git(repo, "fetch", "-q", "origin", "develop")
+
+        allowed = ["src/copy.py", "ai/lifecycle/BUG-460.yaml", "ai/backlog.md"]
+        assert find_implementation_commit(str(repo), "BUG-460", allowed) is not None
+
+    def test_bookkeeping_only_allowlist_returns_none(self, git_repo_with_remote):
+        """Nothing in the allowlist could carry an implementation → fail closed."""
+        repo = git_repo_with_remote
+        lifecycle_dir = repo / "ai" / "lifecycle"
+        lifecycle_dir.mkdir(parents=True)
+        (lifecycle_dir / "TECH-1.yaml").write_text("status: queued\n", encoding="utf-8")
+        _git(repo, "add", "ai/lifecycle/TECH-1.yaml")
+        _git(repo, "commit", "-q", "-m", "lifecycle(TECH-1): queued")
+        _git(repo, "push", "-q", "origin", "develop")
+        _git(repo, "fetch", "-q", "origin", "develop")
+
+        assert find_implementation_commit(str(repo), "TECH-1", ["ai/lifecycle/TECH-1.yaml"]) is None

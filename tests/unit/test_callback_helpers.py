@@ -68,6 +68,28 @@ def test_map_result(result_str, expected):
     assert callback.map_result(result_str) == expected
 
 
+@pytest.mark.parametrize(
+    "result_str,raw,expected",
+    [
+        # The case this exists for: a 90-minute TIMEOUT_SECONDS kill must reach
+        # task_log as 124, not as an anonymous 1.
+        ("Failed", "124", ("failed", 124)),
+        ("Failed", "1", ("failed", 1)),
+        ("Failed", "78", ("failed", 78)),
+        # Success wins regardless — pueue never pairs Success with non-zero.
+        ("Success", "124", ("done", 0)),
+        # Un-migrated pueue.yml sends no 4th argv at all.
+        ("Failed", None, ("failed", 1)),
+        ("Failed", "", ("failed", 1)),
+        # Garbage must degrade, not crash the callback.
+        ("Failed", "not-a-number", ("failed", 1)),
+    ],
+)
+def test_map_result_preserves_real_exit_code(result_str, raw, expected):
+    """pueue's {{ exit_code }} survives into task_log when present."""
+    assert callback.map_result(result_str, raw) == expected
+
+
 # --- _skill_from_pueue_command (monkeypatched subprocess) -------------------
 
 

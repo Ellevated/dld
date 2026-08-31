@@ -22,13 +22,24 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 
 # ── Shared function: sync DLD skills to global ~/.claude/skills/ ─────────────
 update_skills() {
-    local DLD_REPO="${DLD_REPO:-$HOME/dev/dld}"
+    local DLD_REPO="${DLD_REPO:-}"
+    if [[ -z "$DLD_REPO" ]]; then
+        # The repo is not always at ~/dev/dld — on tietokettu-claude it lives in
+        # ~/projects/dld, where the old hardcoded default silently warned and returned 1.
+        local candidate
+        for candidate in "$HOME/dev/dld" "$HOME/projects/dld"; do
+            if [[ -d "$candidate/.claude/skills" ]]; then DLD_REPO="$candidate"; break; fi
+        done
+    fi
     if [[ ! -d "$DLD_REPO/.claude/skills" ]]; then
-        warn "DLD repo not found at $DLD_REPO — cannot sync skills"
+        warn "DLD repo not found (tried \$DLD_REPO, ~/dev/dld, ~/projects/dld) — cannot sync skills"
         return 1
     fi
     mkdir -p ~/.claude/skills ~/.claude/rules
-    rsync -a --delete "$DLD_REPO/.claude/skills/" ~/.claude/skills/
+    # NO --delete here. ~/.claude/skills/ is shared with the operator's own global
+    # skills (tasks, agent-reach, nexus, …); --delete removed every one of them that
+    # DLD does not ship. Found 2026-08-17 before it fired on a populated machine.
+    rsync -a "$DLD_REPO/.claude/skills/" ~/.claude/skills/
     cp "$DLD_REPO/.claude/rules/localization.md" ~/.claude/rules/localization.md 2>/dev/null || true
     ok "DLD skills synced to ~/.claude/skills/ ($(ls ~/.claude/skills/ | wc -l) skills)"
 }
@@ -42,38 +53,19 @@ fi
 # ── --phase4-hooks: idempotent per-project pre-commit hook install (ARCH-193) ─
 if [[ "${1:-}" == "--phase4-hooks" ]]; then
     echo "=== Phase 4 Hooks Setup ==="
-    PROJECTS_FILE="${SCRIPT_DIR}/projects.json"
-
-    if ! command -v jq &>/dev/null; then
-        warn "jq not found — cannot install hooks (install: apt install jq)"
+    # Delegates to install-lifecycle-guard.sh — there is exactly one hook
+    # installer, so a full setup run cannot undo what the installer did.
+    #
+    # This block used to point core.hooksPath at each repo's own .git-hooks/,
+    # which silently skipped every project that did not carry the wrapper and
+    # the guard as checked-in files. Six of ten did not, and the audit on
+    # 2026-07-27 found the ADR-025 guard running in exactly one repo.
+    GUARD_INSTALLER="${SCRIPT_DIR}/install-lifecycle-guard.sh"
+    if [[ ! -f "$GUARD_INSTALLER" ]]; then
+        warn "install-lifecycle-guard.sh not found at ${GUARD_INSTALLER} — hooks NOT installed"
         exit 0
     fi
-
-    if [[ ! -f "$PROJECTS_FILE" ]]; then
-        warn "projects.json not found at ${PROJECTS_FILE} — skipping hook install"
-        exit 0
-    fi
-
-    # Iterate via jq → null-separated (handles paths with spaces).
-    while IFS= read -r -d '' proj_path; do
-        if [[ ! -d "${proj_path}/.git" ]]; then
-            warn "skip: ${proj_path} has no .git/"
-            continue
-        fi
-        if [[ ! -f "${proj_path}/.git-hooks/pre-commit" ]]; then
-            warn "skip: ${proj_path} has no .git-hooks/pre-commit (expected checked-in wrapper)"
-            continue
-        fi
-        if [[ ! -f "${proj_path}/.claude/hooks/pre-commit-lifecycle-guard.mjs" ]]; then
-            warn "skip: ${proj_path} has no .claude/hooks/pre-commit-lifecycle-guard.mjs"
-            continue
-        fi
-        # Idempotent: set hooksPath + chmod
-        git -C "${proj_path}" config core.hooksPath .git-hooks
-        chmod +x "${proj_path}/.git-hooks/pre-commit"
-        chmod +x "${proj_path}/.claude/hooks/pre-commit-lifecycle-guard.mjs"
-        ok "installed hook: ${proj_path} (core.hooksPath=.git-hooks)"
-    done < <(jq -r '.[].path' "$PROJECTS_FILE" | tr '\n' '\0')
+    bash "$GUARD_INSTALLER" || warn "guard install reported an error — check output above"
 
     echo "=== Phase 4 Hooks Setup complete ==="
     exit 0
@@ -154,6 +146,29 @@ if [[ "${1:-}" == "--phase3" ]]; then
         warn "heartbeat_monitor.py not found — cron not installed"
     fi
 
+    # 8d. Cron for per-session heartbeat reaper (TECH-198)
+    # Kills wedged claude-runner sessions whose heartbeat is stale + process idle.
+    REAPER_SCRIPT="${SCRIPT_DIR}/heartbeat_reaper.py"
+    if [[ -f "$REAPER_SCRIPT" ]]; then
+        REAPER_CRON_LINE="*/5 * * * * ${SCRIPT_DIR}/venv/bin/python3 ${REAPER_SCRIPT} >> /var/log/dld-orchestrator/heartbeat-reaper.log 2>&1"
+        (crontab -l 2>/dev/null | grep -v "heartbeat_reaper.py"; echo "$REAPER_CRON_LINE") | crontab -
+        ok "Cron installed: heartbeat_reaper.py every 5 min"
+    else
+        warn "heartbeat_reaper.py not found — cron not installed"
+    fi
+
+    # 8c. Cron for orchestrator full-status monitor (every 30 min)
+    # Checks service alive, circuit breaker, active tasks, recent demotes.
+    ORCH_MONITOR_SCRIPT="${SCRIPT_DIR}/orchestrator_monitor.py"
+    if [[ -f "$ORCH_MONITOR_SCRIPT" ]]; then
+        ORCH_MONITOR_LOG="${LOG_DIR:-/var/log/dld-orchestrator}/orchestrator-monitor.log"
+        ORCH_MONITOR_CRON="*/30 * * * * ${SCRIPT_DIR}/venv/bin/python3 ${ORCH_MONITOR_SCRIPT} >> ${ORCH_MONITOR_LOG} 2>&1"
+        (crontab -l 2>/dev/null | grep -v "orchestrator_monitor.py"; echo "$ORCH_MONITOR_CRON") | crontab -
+        ok "Cron installed: orchestrator_monitor.py every 30 min"
+    else
+        warn "orchestrator_monitor.py not found — cron not installed"
+    fi
+
     # 9. Logrotate config for callback-audit.jsonl (TECH-171)
     LOGROTATE_TEMPLATE="${SCRIPT_DIR}/logrotate.callback-audit"
     LOGROTATE_DEST="/etc/logrotate.d/dld-callback-audit"
@@ -188,13 +203,16 @@ echo ""
 # ── Pre-flight checks ──────────────────────────────────────────────────────────
 echo "--- Pre-flight checks ---"
 
-# DA-1: loginctl enable-linger so pueued survives SSH disconnect
+# DA-1: loginctl enable-linger so the user's systemd units (pueued,
+# dld-orchestrator, dld-gate-daemon) start at boot and keep running with nobody
+# logged in. Linger alone is NOT what makes pueued reboot-safe — being a unit
+# is; linger is what lets that unit start without a login session.
 if command -v loginctl &>/dev/null; then
     loginctl enable-linger "$(whoami)" 2>/dev/null \
         && ok "loginctl enable-linger set for $(whoami)" \
         || warn "loginctl enable-linger failed (may need sudo; run manually if needed)"
 else
-    warn "loginctl not found — pueued may stop on SSH disconnect (non-systemd system?)"
+    warn "loginctl not found — user units will not start at boot (non-systemd system?)"
 fi
 
 # Python 3.12+
@@ -282,12 +300,54 @@ else
     ok "pueue already installed (${FOUND_VER})"
 fi
 
-# Start pueued if not running
-if ! pueue status &>/dev/null; then
+# Install pueued as a systemd user unit, not `pueued --daemonize`.
+#
+# `--daemonize` forks the daemon away from whatever started it. Combined with
+# linger that survives an SSH disconnect, which is what it was chosen for — but
+# it does NOT survive a reboot, and nothing brings it back. On 2026-08-23 the
+# host rebooted at 14:37:06; dld-orchestrator and dld-gate-daemon returned
+# (they are units), the queue did not. The orchestrator then dispatched into a
+# void every 300s for hours and every spec silently timed out. pueued's own
+# --help says as much: "This should be avoided and rather be properly done
+# using a service manager."
+PUEUED_PATH="$(command -v pueued)"
+if command -v systemctl &>/dev/null && [[ -n "$PUEUED_PATH" ]]; then
+    mkdir -p "${HOME}/.config/systemd/user"
+    cat > "${HOME}/.config/systemd/user/pueued.service" <<EOF
+[Unit]
+Description=Pueue Daemon — task queue for the DLD orchestrator
+Documentation=https://github.com/Nukesor/pueue
+After=network.target
+
+[Service]
+Type=simple
+# Foreground on purpose — see setup-vps.sh for why --daemonize is wrong here.
+ExecStart=${PUEUED_PATH}
+Restart=always
+RestartSec=2s
+StartLimitBurst=10
+StartLimitIntervalSec=300s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pueued
+
+[Install]
+WantedBy=default.target
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable --now pueued.service 2>/dev/null || true
+    sleep 2
+    if pueue status &>/dev/null; then
+        ok "pueued running under systemd (survives reboot)"
+    else
+        warn "pueued unit installed but queue unreachable — check 'systemctl --user status pueued'"
+    fi
+elif ! pueue status &>/dev/null; then
+    # No systemd (non-Linux dev box): fall back, and say plainly what is lost.
     pueued --daemonize 2>/dev/null || true
     sleep 1
     if pueue status &>/dev/null; then
-        ok "pueued started"
+        warn "pueued started via --daemonize — NOT reboot-safe (no systemctl on this host)"
     else
         warn "pueued may not have started — check 'pueue status' manually"
     fi
@@ -308,7 +368,12 @@ ok "Pueue groups configured (claude-runner=2, codex-runner=1, night-reviewer=1)"
 PUEUE_CONFIG_DIR="${HOME}/.config/pueue"
 mkdir -p "$PUEUE_CONFIG_DIR"
 PUEUE_CONFIG="${PUEUE_CONFIG_DIR}/pueue.yml"
-CALLBACK_LINE="${SCRIPT_DIR}/venv/bin/python3 ${SCRIPT_DIR}/callback.py {{ id }} '{{ group }}' '{{ result }}'"
+# `{{ result }}` is only ever "Success" / "Failed" / "Killed" — it cannot tell a
+# 90-minute timeout (124) from a lint failure (1), so every failure landed in
+# task_log as exit_code=1 and timeouts were invisible as timeouts. `{{ exit_code }}`
+# carries the real code; verified on pueue 4.0.4 (a task exiting 42 renders
+# result=Failed exit_code=42). callback.py treats argv[4] as optional.
+CALLBACK_LINE="${SCRIPT_DIR}/venv/bin/python3 ${SCRIPT_DIR}/callback.py {{ id }} '{{ group }}' '{{ result }}' '{{ exit_code }}'"
 
 if [[ -f "$PUEUE_CONFIG" ]]; then
     # Patch existing file — update callback line if present, otherwise append to daemon section
@@ -398,8 +463,16 @@ echo "--- Global CLAUDE.md ---"
 GLOBAL_CLAUDE_DIR="${HOME}/.claude"
 mkdir -p "$GLOBAL_CLAUDE_DIR"
 if [[ -f "${SCRIPT_DIR}/global-claude-md.template" ]]; then
-    cp "${SCRIPT_DIR}/global-claude-md.template" "${GLOBAL_CLAUDE_DIR}/CLAUDE.md"
-    ok "Global CLAUDE.md installed at ${GLOBAL_CLAUDE_DIR}/CLAUDE.md"
+    if [[ -f "${GLOBAL_CLAUDE_DIR}/CLAUDE.md" ]]; then
+        # Never clobber an existing file: the operator merges personal rules into it,
+        # and a plain cp silently reverted that on every setup run. Ship the template
+        # alongside instead, so the VDS rules stay available to diff and merge.
+        cp "${SCRIPT_DIR}/global-claude-md.template" "${GLOBAL_CLAUDE_DIR}/CLAUDE.vds.md"
+        warn "CLAUDE.md already exists — template written to ${GLOBAL_CLAUDE_DIR}/CLAUDE.vds.md instead. Merge by hand if the VDS rules are missing there."
+    else
+        cp "${SCRIPT_DIR}/global-claude-md.template" "${GLOBAL_CLAUDE_DIR}/CLAUDE.md"
+        ok "Global CLAUDE.md installed at ${GLOBAL_CLAUDE_DIR}/CLAUDE.md"
+    fi
 else
     warn "global-claude-md.template not found — skip"
 fi

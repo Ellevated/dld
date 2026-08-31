@@ -24,6 +24,11 @@ addopts = "-v --tb=short"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# Ruff's pre-0.15 default, stated explicitly. 0.15 added Markdown to the default set, which
+# put the prompt tree, the /eval golden datasets and tests/regression/spec_corpus/ under a
+# formatter — `ruff format .` would have rewritten frozen fixtures. Scope is ours to declare,
+# not a version's to widen.
+include = ["*.py", "*.pyi", "**/pyproject.toml"]
 exclude = [
     "ai",
     "template",

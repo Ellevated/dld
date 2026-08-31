@@ -36,7 +36,7 @@ When a bug is found that should have been caught by review:
 **Action taken:**
 - [ ] Added check to `scripts/pre-review-check.py`
 - [ ] Added to Code Quality checklist (`.claude/agents/review.md`)
-- [ ] Added to Spec Reviewer checklist (`.claude/agents/spec-reviewer.md`)
+- [ ] Added to the inline spec check (`.claude/skills/autopilot/task-loop.md` Step 4)
 - [ ] Added to architecture.md anti-patterns
 - [ ] Other: ___
 

@@ -2,7 +2,6 @@
 name: diary-recorder
 description: "DEPRECATED: Diary entries are now written inline by autopilot (ADR-007). This file is kept as format reference only."
 model: haiku
-effort: low
 tools: Read, Write, Edit
 ---
 
@@ -72,3 +71,7 @@ These formats are used by autopilot inline writes and by `/reflect` for reading.
 - **Readable** — problems in plain language for human review
 - **No fix** — just record, don't try to solve
 - **Always index** — every entry must have index row
+
+---
+
+@.claude/agents/_shared/output-conventions.md

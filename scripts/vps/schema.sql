@@ -114,3 +114,26 @@ CREATE TABLE IF NOT EXISTS gate_health (
 );
 
 CREATE INDEX IF NOT EXISTS idx_gate_health_ts ON gate_health(ts);
+
+-- Safety-classifier refusals (Opus 5 / Fable 5). A decline is `stop_reason:
+-- "refusal"` inside a normal HTTP 200, so it never appears in any error metric
+-- — it needs a counter of its own. Separate from sdk_post_result_errors: that
+-- table measures post-ResultMessage SDK drift and has no room for category or
+-- fallback model.
+CREATE TABLE IF NOT EXISTS classifier_refusals (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts               TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    project_id       TEXT NOT NULL,
+    task             TEXT NOT NULL,
+    skill            TEXT,
+    model            TEXT,
+    category         TEXT,
+    declines         INTEGER NOT NULL DEFAULT 0,
+    fallbacks_served INTEGER NOT NULL DEFAULT 0,
+    unrecovered      INTEGER NOT NULL DEFAULT 0,
+    exit_code        INTEGER,
+    detail           TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_classifier_refusals_ts
+    ON classifier_refusals(ts);

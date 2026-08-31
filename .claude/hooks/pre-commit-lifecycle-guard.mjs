@@ -15,6 +15,14 @@
 //   0 — no lifecycle changes staged, or bypass active
 //   1 — staged lifecycle changes detected (no bypass)
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+// TECH-194 C3: resolve event_writer.py relative to this file, not CWD.
+// guard.mjs lives at .claude/hooks/ -> ../../scripts/vps/ = repo root/scripts/vps/
+// This makes audit logging work for DLD repo regardless of worktree CWD.
+const _guardDir = dirname(fileURLToPath(import.meta.url));
+const _eventWriter = resolve(_guardDir, '../../scripts/vps/event_writer.py');
 
 function staged() {
     try {
@@ -42,7 +50,7 @@ if (process.env.LIFECYCLE_WRITE_AUTHORIZED === '1') {
                 { encoding: 'utf-8', timeout: 2000 }).trim();
         } catch {}
         execFileSync('python3', [
-            'scripts/vps/event_writer.py',
+            _eventWriter,
             process.cwd(),    // project_path
             'callback',       // skill
             'warning',        // status

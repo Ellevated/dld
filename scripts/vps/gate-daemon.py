@@ -7,6 +7,8 @@ Role: Shadow polling daemon — evaluates gate verdicts for in_progress/queued s
 
 Uses:
   - gate_logic: fetch_develop, parse_allowed_files, find_implementation_commit
+  - gate_ancestry: fetch_branch, find_implementation (TECH-220 — same verdict as
+    the pre-dispatch reconciliation gate; SHADOW MODE unchanged, JSONL-only)
   - lifecycle: list_by_status
   - db: log_gate_cycle, get_all_projects
   - logging.handlers: RotatingFileHandler (shadow JSONL writer)
@@ -40,6 +42,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import db  # noqa: E402
+import gate_ancestry  # noqa: E402
 import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 
@@ -205,6 +208,7 @@ def _evaluate_project(
                     "spec_id": spec_id,
                     "gate_verdict": "skipped",
                     "gate_reason": "sha_unchanged",
+                    "gate_via": "none",
                     "matching_commit_sha": None,
                     "allowed_files_count": 0,
                     "shadow_only": True,
@@ -223,6 +227,7 @@ def _evaluate_project(
                     "spec_id": spec_id,
                     "gate_verdict": "blocked",
                     "gate_reason": "spec_file_not_found",
+                    "gate_via": "none",
                     "matching_commit_sha": None,
                     "allowed_files_count": 0,
                     "shadow_only": True,
@@ -241,6 +246,7 @@ def _evaluate_project(
                     "spec_id": spec_id,
                     "gate_verdict": "blocked",
                     "gate_reason": "missing_allowed_files",
+                    "gate_via": "none",
                     "matching_commit_sha": None,
                     "allowed_files_count": 0,
                     "shadow_only": True,
@@ -249,10 +255,11 @@ def _evaluate_project(
             verdicts_written += 1
             continue
 
-        sha = gate_logic.find_implementation_commit(project_path, spec_id, allowed)
+        gate_ancestry.fetch_branch(project_path, spec_id)
+        sha, via = gate_ancestry.find_implementation(project_path, spec_id, allowed)
         if sha:
             verdict = "done"
-            reason = f"subject_matched:{sha[:12]}"
+            reason = f"{via}_matched:{sha[:12]}"
         else:
             verdict = "in_progress"
             reason = "no_matching_commit"
@@ -265,6 +272,7 @@ def _evaluate_project(
                 "spec_id": spec_id,
                 "gate_verdict": verdict,
                 "gate_reason": reason,
+                "gate_via": via,
                 "matching_commit_sha": sha,
                 "allowed_files_count": len(allowed),
                 "shadow_only": True,

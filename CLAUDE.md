@@ -1,139 +1,169 @@
-# {Project Name}
+# DLD
 
-{One-line description — fill after /bootstrap}
+The framework itself — the skills, agents and prompts that other projects consume, plus the
+VPS orchestrator that runs them. **This repo is not a project bootstrapped from DLD; it is
+DLD.** Instructions written for a downstream project do not apply here.
 
-**Stack:** {Your stack here — e.g., Python 3.12 + FastAPI + PostgreSQL}
-**Not using:** {Optional: list frameworks you're avoiding}
+**Stack:** Python 3.12 (`scripts/vps/` — orchestrator, callback, lifecycle, pueue + SQLite)
+· Node 20 (`.claude/scripts/`, `.claude/hooks/`) · Markdown prompt tree
+**No `src/`, no `src/domains/`** — this repo's product is the prompt tree, not an application.
 
-**Commands:**
-- `./test fast` — lint + unit tests
-- `./test` — full tests
-
-> **Note:** Create `./test` script for your project's stack (e.g., `pytest`, `npm test`, `cargo test`). See examples in `/bootstrap` output.
-
----
-
-## DLD Tier
-
-**Current:** ⭐ Standard
-
-**What's included:**
-- MCP: Context7 + Exa
-- Skills: spark, scout, audit, review
-- Hooks: Safety validation
-
-**Upgrade:** Run `./scripts/setup-mcp.sh --power` for Power tier (council, autopilot, planner)
-
----
-
-## Prerequisites
-
-- Node.js 18+ (required for hooks)
-- Claude Code CLI
-
----
-
-## Quick Start
-
-1. **Configure MCP servers** (recommended):
-   ```bash
-   claude mcp add context7 -- npx -y @context7/mcp-server
-   claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_search_advanced_exa,get_code_context_exa,deep_search_exa,crawling_exa,company_research_exa,deep_researcher_start,deep_researcher_check"
-   ```
-
-   > **Alternative:** Copy `.mcp.json.example` to `~/.claude/.mcp.json` for pre-configured MCP setup.
-
-2. Run `/bootstrap` to unpack your idea
-3. Fill this file based on `ai/idea/*.md`
-4. Create domains structure
-5. Run `/spark` for first feature
-
-> MCP enables `/scout` research with Exa (web search, deep research) and Context7 (library docs).
->
-> **Tiers:**
-> - **Standard** (default): Context7 + Exa — research and docs lookup
-> - **Power**: Adds Sequential Thinking — unlocks `/council` and `/autopilot`
-> For Power tier: `./scripts/setup-mcp.sh --tier 3`
-
----
-
-## Architecture
-
-```
-Entry Points:  {your entry points — e.g., API | CLI | Bot}
-                    ↓              ↓
-Domains:       {domain1} | {domain2} | {domain3}
-                    ↓              ↓
-Infra:              db | cache | external APIs
+**Commands** (there is no `./test` here — see below):
+```bash
+pip install ruff==0.16.1                           # CI's pin; other versions format differently
+ruff check . && ruff format --check .              # lint
+pip install -r scripts/vps/requirements.txt        # else 7 integration tests silently skip
+pytest tests/ -v                                   # unit + integration + regression
+pytest scripts/vps/tests/ -v                       # orchestrator
+for f in test/scripts/*.test.mjs; do node "$f"; done   # skill harness
+node .claude/scripts/check-prompt-integrity.mjs --tree .claude
+python scripts/check-tree-sync.py                  # .claude/ vs template/.claude/ drift
 ```
 
-**Dependencies:** `shared → infra → domains → api`
+> **Run the gates with CI's own versions, or they lie.** `ruff format` output is
+> version-dependent by design and the pin lives in `.github/workflows/ci.yml`; a local
+> 0.14.x reports a different file set than the 0.16.1 CI runs, in both directions.
+> `tests/integration/test_claude_runner_post_result_exception.py` `importorskip`s
+> `claude_agent_sdk`, so without `scripts/vps/requirements.txt` its seven tests do not
+> run locally at all — that is how they stayed red in CI for two days while a local
+> `pytest tests/` was green.
 
-See `ai/ARCHITECTURE.md` after bootstrap.
+<!-- markdownlint-disable-next-line MD028 -->
+
+> **`./test` does not exist in this repo, by decision.** It is a per-project artifact
+> (`rules/template-sync.md`, "Files Only in Template"). Prompts still name it because
+> downstream projects have one. `test-wrapper.mjs` reports its absence as
+> `TEST_COMMAND_UNAVAILABLE` + **exit 2** — that is "nothing ran", not a failing suite.
+> Until 2026-08-02 it reported `FAIL: 0 failure(s)` instead, and a test asserted that
+> was fine.
+
+---
+
+## Two trees
+
+```
+.claude/     ← what DLD itself runs
+template/    ← what downstream projects receive
+```
+
+Editing one without the other is the most common defect class here. `rules/template-sync.md`
+is the contract: it names what must stay identical, what deliberately differs, and why.
+
+---
+
+## Research providers
+
+Agents degrade *silently* when a provider is missing — they just search worse. Check it
+directly rather than trusting that setup once succeeded:
+
+```bash
+python scripts/check-research-stack.py
+```
+
+Run it after any MCP/plugin change, and when research quality feels off.
 
 ---
 
 ## Contexts (conditional loading)
 
-| Task | Context | Triggers |
-|------|---------|----------|
-| {domain1} | `.claude/contexts/{domain1}.md` | `src/domains/{domain1}/**` |
-| DB, LLM, infra | `.claude/contexts/shared.md` | `src/infra/**`, `db/**` |
+`.claude/contexts/` does not exist in this repo — it is created by `/bootstrap` in a
+downstream project, keyed to that project's domains. Nothing here loads from it.
 
-> **Note:** `.claude/contexts/` and `.claude/rules/` domain files are created during `/bootstrap` when you define your project's domains. They don't exist in the template out of the box.
+### Rules loading — `paths:` is mandatory
+
+A `.claude/rules/*.md` file **with** a YAML `paths:` header loads only when the session touches
+files matching those globs. **Without** the header it loads into **every** session, forever.
+
+```yaml
+---
+paths:
+  - "src/**"
+  - "tests/**"
+---
+```
+
+| Rule | Loads when |
+|------|-----------|
+| `architecture.md` | `packages/**`, `scripts/**`, `tests/**`, `test/**` |
+| `dependencies.md` | `scripts/**`, `packages/**`, `tests/**` |
+| `model-capabilities.md` | `.claude/{agents,skills}/**`, `template/.claude/{agents,skills}/**`, `scripts/vps/claude-runner.py`, `run-agent.sh` |
+| `template-sync.md` | `.claude/**`, `template/**` |
+| `localization.md` | **always** — skill triggers must be reachable in any session |
+
+**Writing a new rule:** give it `paths:`. If it is triggered by *intent* rather than by editing a
+file ("разбери выплаты", "сделай страницу"), the answer is still `paths:` — plus a short pointer in
+CLAUDE.md that tells the session to open the file. A permanently loaded rule buys discoverability
+at the price of every unrelated session; measured 2026-07-26 in AwardyBot, four unmarked files cost
+**37k tokens per session** for 25 days.
+
+A file that genuinely must always load declares `always_on: true` instead, so the intent lives in
+the file rather than in someone's memory. `localization.md` is the only one.
+
+**Check it, don't assume it** — this cost nine projects ~87k tokens/session and was found by
+accident, not by looking:
+
+```bash
+python scripts/check-rules-loading.py .
+```
+
+Exits non-zero on any rule that is neither scoped nor declared. Run it after adding a rule, and
+in any repo bootstrapped from this template before trusting its context budget.
 
 ---
 
-## Project Context System (v3.7)
+## Project Context System
 
-Three-tier knowledge system for preventing breakage during refactoring.
+Knowledge that prevents breakage during refactoring. In **this** repo it is two files:
 
-### Structure
+| File | Holds |
+|---|---|
+| `.claude/rules/dependencies.md` | Dependency map for `scripts/vps/*`, `.claude/scripts/*`, and the prompts that call them |
+| `.claude/rules/architecture.md` | Patterns, ADR table, anti-patterns |
 
-```
-.claude/rules/
-├── dependencies.md     # Dependency graph between components
-├── architecture.md     # Patterns, ADR, anti-patterns
-└── domains/            # Per-domain context
-    └── {domain}.md
-
-ai/glossary/
-├── {domain1}.md        # Domain terms and rules
-├── {domain2}.md
-└── ...
-```
-
-### Protocols (agents use automatically)
-
-| Protocol | When | Who |
-|----------|------|-----|
-| `context-loader.md` | BEFORE work | spark, planner, coder, review, debugger, council |
-| `context-updater.md` | AFTER work | spark, coder |
+`ai/glossary/` and `.claude/rules/domains/{domain}.md` are downstream artifacts — created by
+`/bootstrap` per project. Prompts reference them with an "if exists" guard; here they do not.
 
 ### Impact Tree Algorithm (5 steps)
 
-On any change:
+On any change. Steps 1-2 run on the **code graph** if it is fresh, on `grep` if it is not.
 
-1. **UP** — who uses the changed code? (`grep -r "from.*{module}" .`)
-2. **DOWN** — what does it depend on? (imports in file)
-3. **BY TERM** — grep old name across entire project
-4. **CHECKLIST** — mandatory folders (tests/, migrations/, edge functions/)
+**The graph here** is the `codebase-memory` MCP (external OSS, `DeusData/codebase-memory-mcp`),
+project `D-dev-dld`. **Rebuild it, don't check it:** re-indexing dld from scratch costs
+**17 s** on 0.10.8 — cheaper than working out whether you need to. Node count is a poor
+predictor of that cost: a full rebuild of every project on this machine (2026-08-28, CLI
+0.10.8, cold — the 0.9.0→0.10.8 upgrade wipes all indexes) took 14 s for 130k nodes
+(AwardyBot) but 65 s for 68k (Dowry), 47 s for 92k (wb), 13-17 s for everything else.
+File mix dominates, not size. The older numbers here (687 ms, 235 s) were 0.9.0
+*incremental* runs and no longer apply.
+
+Both plausible freshness signals lie, verified 2026-08-27: `index_status.head_sha` is read live
+from git, so it equals `HEAD` whether the graph was built a second ago or a month ago, and
+`detect_changes` returns a git diff against `main` (812 files here), not index drift. `mode`
+matters too — `fast` drops `scripts/`, `docs/` and `tests/integration` from the graph entirely.
+
+1. **UP** — who uses the changed code? →
+   `trace_path(project="D-dev-dld", function_name="write_lifecycle", direction="inbound", depth=2)`
+   returns 10 callers (0.10.8; 0.9.0 found 9) across `callback.py`,
+   `orchestrator_queue.py`, `spec_operator.py` and `orchestrator.py`,
+   including 2-hop ones a single grep never sees ·
+   fallback `grep -r "from.*{module}" .`
+2. **DOWN** — what does it depend on? → the same call with `direction="outbound"` · fallback:
+   imports in the file
+3. **BY TERM** — `grep -rn "{old_term}" .` — **always grep here**, graph or no graph
+4. **CHECKLIST** — mandatory folders (`tests/`, `scripts/vps/tests/`, `template/`)
 5. **DUAL SYSTEM** — if changing data source, who reads from old/new?
 
-**Rule:** After changes `grep "{old_term}" .` = 0 results!
+**Rule:** After changes `grep "{old_term}" .` = 0 results! Grep stays the acceptance check even
+when the graph found the call sites.
 
-### Module Headers
+**What the graph does not cover here** (verified 2026-08-27): the indexer skips hidden
+directories, so `.claude/**` and `template/.claude/**` — the whole prompt tree, which is this
+repo's actual product — have **zero** nodes. It covers `scripts/`, `tests/`, `packages/`,
+`docs/`, `ai/` and root-level `*.md`.
 
-At the start of significant files:
-```python
-"""
-Module: {module_name}
-Role: {brief description}
-Uses: {dependencies}
-Used by: {dependents}
-Glossary: ai/glossary/{domain}.md
-"""
-```
+**In this repo, step 4 always includes `template/`.** A rename finished in one tree and not
+the other is the defect this framework produces most often — and it is exactly the case the
+graph cannot catch, because neither tree's `.claude/` is indexed.
 
 ---
 
@@ -141,54 +171,12 @@ Glossary: ai/glossary/{domain}.md
 
 **Rule:** If skill applies — MUST use it.
 
-| Skill | When |
-|-------|------|
-| **bootstrap** | Day 0 — extract idea from founder's head (interviewer, not decider) |
-| **board** | Business architecture — revenue, channels, org model (after bootstrap) |
-| **architect** | System architecture — domains, data, APIs, cross-cutting (after board) |
-| **spark** | Feature spec — multi-agent with 4 scouts + tests mandatory (within blueprint) |
-| **autopilot** | Execute tasks (plan + coder/tester per task + reflect upstream) |
-| **council** | Complex/controversial decisions (5 experts + cross-critique) |
-| **audit** | Code analysis, consistency check (READ-ONLY) |
-| **reflect** | Synthesize diary + upstream signals into rules |
-| **scout** | Isolated research via Exa + Context7 |
-| **release** | Update CHANGELOG, README, docs after changes (fully automatic) |
-| **skill-creator** | Create agents/skills or optimize CLAUDE.md, rules, prompts |
-| **retrofit** | Brownfield lifecycle — reassess existing projects (audit -> architect -> board -> stabilize) |
-| **brandbook** | Brand identity system — anti-convergence, design tokens, coder handoff |
-| **diagram** | Generate professional Excalidraw diagrams from description or code analysis |
-| **eval** | Agent prompt eval suite — golden datasets + LLM-as-Judge scoring |
-| **upgrade** | Upgrade DLD framework from latest GitHub template |
-| **qa** | Manual QA tester — tests product behavior like a real user, not code |
+The roster (name + when to use) is already in the session's skill list, and Russian triggers live in
+`.claude/rules/localization.md` — neither is repeated here. What is NOT derivable from a description
+is the **order** skills run in, so that is all this section keeps.
 
-### Skill Auto-Selection
-
-Claude auto-selects skills based on user intent. Each skill has semantic triggers in its description.
-
-**How it works:**
-- User says "add login feature" → Claude activates `/spark`
-- User says "implement TECH-055" → Claude activates `/autopilot`
-- User says "how does X work?" → Claude activates `/scout`
-
-**Override:** Always use explicit `/command` to force specific skill.
-
-**Trigger examples:**
-
-| User says | Skill activated |
-|-----------|-----------------|
-| "new project", "day 0" | bootstrap |
-| "business strategy", "revenue model" | board |
-| "system design", "architecture" | architect |
-| "add feature", "create spec", "bug" | spark |
-| "implement", "execute", "build this" | autopilot |
-| "should we", "which approach", "debate" | council |
-| "research", "find docs", "how does X work" | scout |
-| "find all", "analyze code", "check for" | audit |
-| "reflect", "what did we learn" | reflect |
-| "diagram", "draw", "visualize architecture" | diagram |
-| "retrofit", "brownfield", "reassess project" | retrofit |
-| "upgrade DLD", "update framework", "обнови DLD" | upgrade |
-| "протестируй", "проверь как работает", "QA", "потыкай" | qa |
+Auto-selection happens on intent ("add login feature" → `/spark`); an explicit `/command` always
+overrides it.
 
 **Flows:**
 ```
@@ -200,21 +188,16 @@ Escalation:   Autopilot → Spark → Architect → Board → Founder
 Brownfield:   /retrofit → /audit deep → /architect → /board → stabilize → normal
 ```
 
-**New in v3.7:**
-- Spark auto-hands off to autopilot (no manual "plan" step)
-- Autopilot always uses worktree (isolation)
-- Fresh subagent per task (context stays clean)
-- Agent/Skill separation (agents/*.md = prompts, skills/*.md = UX)
-- Diary captures learnings → reflect synthesizes rules
-- Council decomposition (5 separate expert agents)
-- Diary-recorder for automatic problem capture
+**Interactive `/spark` workflow:** Run `/spark` interactive sessions from ONE machine at a time (laptop preferred). VPS spark runs only via orchestrator dispatch (headless). The spec-first ID CAS (ARCH-196) handles concurrent claims structurally, but this convention prevents push contention races.
 
 ---
 
 ## Key Rules
 
 ### Imports Direction
-`shared → infra → domains → api` (never reverse)
+`shared → infra → domains → api` (never reverse). Enforced by
+`scripts/check_domain_imports.py`, which **exits 0 here** — this repo has no `src/`, so the
+rule is one DLD ships downstream rather than one it obeys.
 
 ### File Limits
 - Max 400 LOC per file (600 for tests)
@@ -246,13 +229,10 @@ When user says "commit/push" — execute without asking:
 - Variables: quote all `"$var"`, no bare `$var`
 - CLI flags: verify flag exists in tool version before using
 
-### Tool Preferences (API Error Prevention)
-Some tools may trigger API content filtering errors. Use fallbacks:
-- **File search:** Use `Glob` instead of `Search` for pattern matching
-- **Content search:** Use `Grep` tool, not bash `grep`
-- **File listing:** Use `Glob` or `ls` via Bash, avoid recursive Search
-
-If a tool returns "content filtering policy" error — retry with alternative tool.
+### Tool Preferences
+Prefer `Glob` for path patterns and `Grep` for content over shell `find`/`grep` — they
+return structured results and integrate with the permission UI. (This section used to
+name a `Search` tool to avoid; no such tool exists.)
 
 ---
 
@@ -288,19 +268,15 @@ Implementation effort is near-zero for AI agents. **Never deprioritize a task ba
 
 Risk replaces effort as the second axis of decision-making:
 
+> **Scope:** R0/R1/R2 are inputs for **Spark Phase 4 only**. Coder, tester, and autopilot agents do NOT route on this classification.
+
 | Risk | Definition | Examples |
 |------|-----------|----------|
 | **R0** | Irreversible | Data loss, schema migration, security exposure, public API break |
 | **R1** | High blast radius | 3+ files, cross-domain, external dependency, state machine change |
 | **R2** | Contained | 1-2 files, single domain, internal, trivially rollbackable |
 
-### Impact x Risk Routing
-
-| Impact \ Risk | R0 (Irreversible) | R1 (Blast radius) | R2 (Contained) |
-|---|---|---|---|
-| **P0** | COUNCIL | HUMAN | AUTO |
-| **P1** | COUNCIL | AUTO | AUTO |
-| **P2** | HUMAN | AUTO | AUTO |
+For Impact × Risk routing matrix, see `.claude/skills/spark/feature-mode.md` Phase 4 DECIDE — matrix applies ONLY during spec design, not during autopilot execution.
 
 ---
 
@@ -321,18 +297,23 @@ Risk replaces effort as the second axis of decision-making:
 
 **Callback Enforcement (DLD-specific):**
 После завершения pueue задачи `callback.py` — единственный writer статусов спек.
-Implementation guard проверяет коммиты в Allowed Files. См. dld-orchestrator.md§5
+Статус живёт в `ai/lifecycle/*.yaml` (git HEAD = SoT), пишется атомарным CAS-plumbing.
+Implementation guard проверяет коммиты в Allowed Files. См. `docs/orchestrator/status-model.md`
 
 ---
 
 ## DLD Orchestrator Reference
 
-VPS daemon координирующий multi-project AI execution через pueue + SQLite SoT.
-Callback enforces spec/backlog status атомарно (ADR-018). Critical path:
-pueue completion → callback.py → verify_status_sync → plumbing commit.
+VPS daemon координирующий multi-project AI execution через pueue + SQLite (рантайм) + git
+per-spec YAML (статус SoT, ADR-023). Critical path:
+pueue completion → callback.py → guard → lifecycle.write_lifecycle (CAS) → push.
 
-Full docs: `~/.claude/projects/-root/memory/dld-orchestrator.md`
-Runbook:   `~/.claude/projects/-root/memory/orchestrator-runbook.md`
+**Канонические доки (in-repo, версионируются с кодом):** `docs/orchestrator/`
+- `README.md` — что/зачем, архитектура, поток задачи, два контракта, ADR-индекс
+- `status-model.md` — lifecycle-SoT, запись статуса, write-once-done, guard, инварианты
+- `components.md` — покомпонентный справочник + инварианты диспатча
+- `runbook.md` — операционка, инцидент-восстановление, drift-инструменты
+- `verification.md` — протокол ручной верификации спеки
 
 ---
 
@@ -342,37 +323,44 @@ Runbook:   `~/.claude/projects/-root/memory/orchestrator-runbook.md`
 - **Prefixes:** BUG, FTR, TECH, ARCH only (4 types)
 - **Numbering:** Sequential across all types
 - **Archive:** Weekly check, if >50 → archive to 30
-- **Bug Hunt:** Creates a READ-ONLY report (`BUG-XXX-bughunt.md`, not in backlog) + standalone grouped specs (each with own sequential ID and own backlog entry).
+- **Bug Hunt:** Saves a read-only report to `ai/bughunt/{YYYY-MM-DD}-report.md`. It creates **no** specs, **no** inbox items and **no** backlog rows — Hermes reviews the report and decides what becomes work (ADR-021/022). This line used to promise "standalone grouped specs, each with own sequential ID and own backlog entry", which stopped being true when intake moved behind the Hermes gate; `skills/bughunt/completion.md` is the contract.
 
 ---
 
 ## Project Structure
 
 ```
-src/
-├── shared/     # Result, exceptions, types
-├── infra/      # db, llm, external
-├── domains/    # {fill after bootstrap}
-└── api/        # entry points
+.claude/            # what DLD itself runs
+├── agents/         # Subagent prompts (planner, coder, tester, review, personas)
+├── rules/          # Conditional context — see "Rules loading" above
+├── scripts/        # Node gates called from prompts (validate-*, check-prompt-integrity)
+├── hooks/          # PreToolUse / PostToolUse / Stop validation
+└── skills/         # spark, autopilot, council, audit, …
 
-.claude/
-├── agents/     # Subagent prompts (planner, coder, tester, etc.)
-├── contexts/   # Domain contexts (conditional)
-├── rules/      # Testing/operations rules (conditional)
-└── skills/     # spark, autopilot, council, etc.
+template/           # what downstream projects receive (mirror of the above + scaffold)
+
+scripts/
+├── vps/            # Orchestrator: orchestrator.py, callback.py, lifecycle.py, db.py, gate_logic.py
+└── check_*.py      # Quality gates agents invoke (domain imports, docs sync)
+
+tests/              # pytest — unit, integration, regression, contracts
+test/
+├── agents/         # Golden datasets for /eval (planner, coder, review, devil)
+├── agents-harvested/  # Mined from real subagent traces; curate before use
+└── scripts/        # Node harness suites
+
+docs/orchestrator/  # Canonical orchestrator docs, versioned with the code
 
 ai/
-├── idea/       # From /bootstrap (raw founder input)
-├── board/      # From /board (director research, strategies)
-├── architect/  # From /architect (persona research, architectures)
-├── blueprint/  # Business Blueprint + System Blueprint
-│   ├── business-blueprint.md
-│   └── system-blueprint/
-├── lessons/    # Domain-scoped lessons bank (Historical Risks)
-│   ├── index.jsonl          # Machine-readable index
-│   └── {domain}/L-NNN.md   # Individual lessons
-├── reflect/    # Upstream signals between levels
-├── diary/      # Session learnings
-├── features/   # Task specs from /spark
-└── backlog.md
+├── features/       # Specs from /spark
+├── lifecycle/      # {SPEC-ID}.yaml — status SoT (ADR-023), callback is the only writer
+├── backlog.md      # Rendered view, not the source of truth
+├── lessons/        # Lessons bank (Historical Risks) — index.jsonl + per-domain files
+├── diary/          # Session learnings → /reflect
+├── inbox/          # Hermes intake gate (ADR-021/022)
+└── bughunt/        # Read-only reports from /bughunt
 ```
+
+`src/`, `ai/glossary/`, `.claude/contexts/`, `ai/ARCHITECTURE.md` and `.mcp.json.example`
+belong to a **downstream** project's layout. They do not exist here; prompts that name them
+guard with "if exists".

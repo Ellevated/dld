@@ -1,12 +1,12 @@
 ---
 name: scout
-description: Isolated research agent for external sources (Exa + Context7).
+description: Isolated research agent for external sources — provider cascade with fallback, answers from knowledge when a search isn't warranted.
 agent: .claude/agents/scout.md
 ---
 
 # Scout Skill (Wrapper)
 
-Invokes scout subagent for isolated research via Exa + Context7.
+Invokes scout subagent for isolated research across a fallback cascade of providers.
 
 > **Architecture:** This skill is a WRAPPER over `.claude/agents/scout.md`.
 > The agent file is the source of truth for the scout prompt.
@@ -32,17 +32,17 @@ Task tool:
 
 ## Research Tools
 
-Scout has access to:
+Scout works down a cascade so one provider's rate limit can't end the research:
+**Context7** (library questions) → **Exa** (primary semantic search) → **Jina** via WebFetch
+(`s.jina.ai` / `r.jina.ai` — no key, no account) → **WebSearch** (built-in, no quota, last rung).
 
-**Exa (web research):**
-- `mcp__exa__web_search_exa` — web search with clean content
-- `mcp__exa__web_search_advanced_exa` — filtered search (date, domain)
-- `mcp__exa__get_code_context_exa` — code from GitHub, StackOverflow
-- `mcp__exa__deep_search_exa` — deep search with query expansion
-- `mcp__exa__crawling_exa` — extract content from specific URL
-- `mcp__exa__company_research_exa` — company information
-- `mcp__exa__deep_researcher_start` — start AI researcher (complex topics)
-- `mcp__exa__deep_researcher_check` — get deep research results
+It also decides whether to search at all: training data runs to ~May 2026, so settled
+questions get answered directly with `provider_used: knowledge` and an empty `sources` list.
+Full rules in the agent file.
+
+**Exa (web research)** — the server serves exactly two tools:
+- `mcp__exa__web_search_exa` — find pages. Semantic: describe the ideal page, not keywords
+- `mcp__exa__web_fetch_exa` — read pages in full when search highlights are too thin
 
 **Context7 (library docs):**
 - `mcp__plugin_context7_context7__resolve-library-id` — find library ID

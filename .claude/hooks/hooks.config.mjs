@@ -129,6 +129,23 @@ export default {
       '.gitignore',
       'pyproject.toml',
       '.claude/**',
+
+      // Documentation. The `documenter` agent runs in PHASE 3 and has to reach
+      // these; a spec's Allowed Files lists the code being changed, never the
+      // docs that describe it, so without this the agent is blocked on its own
+      // first edit. That is why it sat unwired: not a forgotten dispatch, a
+      // dispatch that could not have worked.
+      //
+      // Scope is documentation only — source stays gated by the spec allowlist.
+      '.env.example',
+      'README.md',
+      'CHANGELOG.md',
+      'docs/**',
+      'ai/ARCHITECTURE.md',
+      'ai/architecture/**',
+      'ai/changelog/**',
+      'ai/decisions/**',
+      'ai/glossary/**',
     ],
   },
 
@@ -138,7 +155,10 @@ export default {
     requireTestsInSpec: true,
     requireEvalCriteria: true,
     requireIntegrationTests: true,
-    requireAcceptanceVerification: false,
+    // On since 2026-08-04. Gate 6 in feature-mode.md has always required this section,
+    // and the check below has always existed — it was simply never switched on, so the
+    // gate had no machine behind it. Safe to enforce: the check accepts `N/A: {reason}`.
+    requireAcceptanceVerification: true,
     minTestCases: 3,
     minEvalCriteria: 3,
     minResearchFiles: 2,

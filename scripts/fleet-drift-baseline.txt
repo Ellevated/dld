@@ -1,0 +1,72 @@
+# Fleet drift register — scripts/check-fleet-drift.py
+#
+# One line per downstream project: how many synced files may differ from `template/`
+# before the gate fails. Same contract as `scripts/vps/loc-limit-baseline.txt` — the
+# gate fails on a project that got WORSE than its entry, never on the history.
+#
+# **These numbers changed meaning on 2026-08-31.** They started as raw damage: ~95
+# diverged files per project after three months of hand-copying. Then every drifted
+# file was checked against the full history of `template/` in git, which answers the
+# only question that matters — is this content something template once shipped, or
+# something the project wrote itself?
+#
+#   805 drifted files  ->  720 pure snapshots (dated Jan..Aug, nobody's work)
+#                          85 holding real local edits
+#
+# The 720 were refreshed (`--apply-clean`); the 85 were left alone. So what these
+# numbers now count is **deliberate project-specific content**, not neglect:
+#
+#   AwardyBot   session-end.mjs guard against losing an autopilot worktree (three runs
+#               died that way on the night of 2026-08-21, $58.80 of finished work);
+#               check_domain_imports/check_docs_sync rewritten for its own bots/+agents/
+#               layering; validate-blueprint-compliance with a domain-token normaliser;
+#               pre-edit.mjs LOC exemptions for prose; local-Spark SSH claim protocol
+#   PLPilot     review.md section 3.6 — mutation proof for security/money invariants,
+#               wired to its own scripts/fitness/ and scripts/mutation/ registry
+#   Dowry       seed-lessons extended to FTR/TECH/ARCH (the file says so in a comment)
+#   Dowry-mc    autopilot with the spec-reviewer folded inline
+#   gipotenuza  coder.md pointing at .claude/rules/domains/{domain}.md for history
+#
+# **MishkinLyap is at 0** and carries a stamped `.claude/DLD_VERSION`. That is what the
+# end state looks like: the marker is only written when a project actually reaches this
+# template version, and it is re-verified from disk on every run.
+#
+# Raising a number is an admission that a project drifted further — say why in a
+# comment. Lowering one means real convergence. To see what a project still holds:
+#
+#     python scripts/check-fleet-drift.py D:/dev/<project> --json
+#     python scripts/check-fleet-drift.py D:/dev/<project> --apply-clean   # safe refresh
+#
+# `--apply` (overwrite everything) stays a per-file human decision. It is the mode
+# that got `upgrade.mjs` deleted on 2026-05-25.
+#
+# **A routing override is not drift debt and no number here covers it.** Eight of
+# AwardyBot's 35 differed from template by nothing but `model:`/`effort:` — three
+# synthesizers running on opus where template says sonnet, five headers that were just
+# February template nobody had refreshed. Both shapes hid inside a count of paths, so the
+# gate now names them (`OVERRIDE:`) and fails on them whatever this file says. Which model
+# an agent runs on is a measured framework decision (ADR-029): change template and the
+# fleet moves together, or the project's copy goes back to template.
+
+# **Membership is declared here, and the run fails on a project this file names that no
+# `--root` reached.** Until 2026-08-31 the guard scanned `D:/dev` flat and reported
+# cleanly on 7 projects while the orchestrator dispatched 10: `nexus` and `MeMyselfAndI`
+# live in `D:/dev/RIS/` and had never been measured at all. That is where the broken
+# commit template — the top cause of failed specs — survived a fleet-wide fix. Recursing
+# into subdirectories was the wrong answer (`D:/dev/Archive/`, `D:/dev/Ellevated/` are
+# full of repos nobody manages); naming the fleet and failing on a gap is the right one.
+#
+# Canonical invocation on Oleg's Windows box:
+#
+#     python scripts/check-fleet-drift.py --root D:/dev --root D:/dev/RIS
+#
+
+AwardyBot    = 27
+Dowry        = 10
+Dowry-mc     = 11
+PLPilot      = 5
+wb           = 4
+gipotenuza   = 6
+MishkinLyap  = 0
+nexus        = 0
+MeMyselfAndI = 0

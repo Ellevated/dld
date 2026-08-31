@@ -39,7 +39,7 @@ def tmp_git_repo(tmp_path):
     git("config", "user.email", "test@example.com")
     git("config", "user.name", "Test User")
     (repo / "ai" / "lifecycle").mkdir(parents=True)
-    (repo / "ai" / "lifecycle" / ".gitkeep").write_text("")
+    (repo / "ai" / "lifecycle" / ".gitkeep").write_text("", encoding="utf-8")
     (repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
     git("add", ".")
     git("commit", "-m", "init")
@@ -67,7 +67,9 @@ def test_dirty_lifecycle_aborts_orchestrator_startup(tmp_git_repo):
         cwd=str(tmp_git_repo),
         check=True,
     )
-    (tmp_git_repo / "ai" / "lifecycle" / "TECH-400.yaml").write_text("manually corrupted\n")
+    (tmp_git_repo / "ai" / "lifecycle" / "TECH-400.yaml").write_text(
+        "manually corrupted\n", encoding="utf-8"
+    )
     with pytest.raises(RuntimeError, match="Dirty lifecycle"):
         lifecycle.assert_clean_lifecycle_tree(tmp_git_repo)
 
@@ -76,11 +78,25 @@ def test_dirty_lifecycle_aborts_orchestrator_startup(tmp_git_repo):
 def test_bootstrap_creates_lifecycle_for_new_spec(tmp_git_repo):
     """Spark created spec.md without lifecycle.yaml → orchestrator creates initial."""
     spec = tmp_git_repo / "ai" / "features" / "TECH-500-foo.md"
-    spec.write_text("# TECH-500\n**Priority:** P1\n**Kind:** tech\n")
-    # bootstrap_new_specs requires backlog.md to guard against orphan spec.md files
+    spec.write_text("# TECH-500\n**Priority:** P1\n**Kind:** tech\n", encoding="utf-8")
+    # bootstrap_new_specs requires backlog.md to guard against orphan spec.md files.
+    # CR-5 (ARCH-196): backlog is now read from HEAD via `git show HEAD:ai/backlog.md`,
+    # so we must commit it before calling bootstrap_new_specs.
     (tmp_git_repo / "ai").mkdir(parents=True, exist_ok=True)
     (tmp_git_repo / "ai" / "backlog.md").write_text(
         "| ID | Title | Status | P |\n|---|---|---|---|\n| TECH-500 | foo | queued | P1 |\n"
+    )
+    subprocess.check_call(
+        ["git", "add", "ai/backlog.md"],
+        cwd=str(tmp_git_repo),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.check_call(
+        ["git", "commit", "-m", "test: add backlog"],
+        cwd=str(tmp_git_repo),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     assert not (tmp_git_repo / "ai" / "lifecycle" / "TECH-500.yaml").exists()
     orchestrator.bootstrap_new_specs(str(tmp_git_repo))
@@ -93,10 +109,32 @@ def test_bootstrap_creates_lifecycle_for_new_spec(tmp_git_repo):
 
 # Bonus: bootstrap is idempotent
 def test_bootstrap_idempotent_when_lifecycle_exists(tmp_git_repo):
-    """Lifecycle already exists → bootstrap_new_specs does not overwrite it."""
+    """Lifecycle already exists → bootstrap_new_specs does not overwrite it.
+
+    TECH-501 is in backlog HEAD AND has a lifecycle → bootstrap must skip it.
+    Previously the test had no backlog in HEAD so CalledProcessError → empty
+    backlog → spurious pass (QA-005 false pass).
+    """
     lifecycle.create_initial(tmp_git_repo, "TECH-501", "p0", "ftr")
+    # Put TECH-501 in backlog and commit to HEAD so bootstrap actually finds it
+    backlog = tmp_git_repo / "ai" / "backlog.md"
+    backlog.write_text(
+        "| ID | Title | Status | P |\n|---|---|---|---|\n| TECH-501 | bar | queued | P0 |\n"
+    )
+    subprocess.check_call(
+        ["git", "add", "ai/backlog.md"],
+        cwd=str(tmp_git_repo),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.check_call(
+        ["git", "commit", "-m", "test: add backlog with TECH-501"],
+        cwd=str(tmp_git_repo),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     spec = tmp_git_repo / "ai" / "features" / "TECH-501-bar.md"
-    spec.write_text("# TECH-501\n**Priority:** P2\n**Kind:** bug\n")
+    spec.write_text("# TECH-501\n**Priority:** P2\n**Kind:** bug\n", encoding="utf-8")
     orchestrator.bootstrap_new_specs(str(tmp_git_repo))  # no-op expected
     data = lifecycle.read_lifecycle(tmp_git_repo, "TECH-501")
     # Original priority p0/kind ftr preserved, NOT overwritten with spec.md's p2/bug

@@ -1,0 +1,18 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: '2026-07-27T22:32:27Z'
+kind: tech
+priority: p1
+pueue_id: 1026
+spec_id: TECH-212
+started_at: null
+status: done
+transitions:
+- at: '2026-07-27T22:32:27Z'
+  by: callback
+  from: queued
+  pueue_id: 1026
+  to: done
+updated_at: '2026-07-27T22:32:27Z'
+updated_by: callback
+version: 2

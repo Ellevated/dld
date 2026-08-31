@@ -2,7 +2,6 @@
 name: bughunt-report-updater
 description: Bug Hunt Step 5 - Updates report with validator results, executive summary, and out-of-scope ideas.
 model: haiku
-effort: low
 tools: Read, Write, Edit
 ---
 
@@ -92,3 +91,7 @@ report_updated:
       findings: ["{F-002}", "{F-011}"]
       priority: "{P1}"
 ```
+
+---
+
+@.claude/agents/_shared/output-conventions.md

@@ -194,3 +194,7 @@ Write to: `ai/audit/report-geologist.md`
 3. **Quote the schema** — show actual column definitions, type annotations
 4. **Trace data flow** — from entry to storage to retrieval
 5. **Check migration reversibility** — irreversible migrations = high risk
+
+---
+
+@.claude/agents/_shared/output-conventions.md

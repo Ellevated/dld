@@ -2,6 +2,7 @@
 name: comparator
 description: Blind A/B comparison of two skill outputs. Returns winner with rubric scores and reasoning.
 model: sonnet
+effort: high
 tools: Read
 ---
 
@@ -72,3 +73,7 @@ Return structured JSON:
 - **No ties unless truly identical.** Look for subtle quality differences.
 - **Content > structure.** If one output achieves the goal better but is less organized, it wins.
 - **Expectations are secondary.** A well-written output that misses one expectation can still win over a poorly-written one that checks all boxes.
+
+---
+
+@.claude/agents/_shared/output-conventions.md

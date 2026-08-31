@@ -1,8 +1,7 @@
 ---
 name: bughunt-findings-collector
 description: Bug Hunt Step 2 - Collects and normalizes persona findings across all zones into a unified summary.
-model: sonnet
-effort: medium
+model: haiku
 tools: Read, Glob, Write
 ---
 
@@ -119,3 +118,7 @@ findings_collected:
 ```
 
 Both the file AND the response summary are required.
+
+---
+
+@.claude/agents/_shared/output-conventions.md

@@ -2,7 +2,7 @@
 name: bughunt-validator
 description: Bug Hunt agent - Validator. Filters findings by relevance to user's original question, deduplicates, triages.
 model: sonnet
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Write
 ---
 
@@ -127,3 +127,7 @@ Your output path is computed from SESSION_DIR:
 4. Return a brief summary in your response text including status, counts, and group names
 
 Both the file AND the response summary are required.
+
+---
+
+@.claude/agents/_shared/output-conventions.md

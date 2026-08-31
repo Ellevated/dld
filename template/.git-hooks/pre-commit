@@ -9,8 +9,18 @@ set -uo pipefail
 # start with "lifecycle(<SPEC-ID>):" and lacks LIFECYCLE_WRITE_AUTHORIZED=1.
 # Callback / spec_operator commit via git plumbing and never stage these,
 # so they bypass naturally.
-if [[ -x ".claude/hooks/pre-commit-lifecycle-guard.mjs" ]] && command -v node >/dev/null 2>&1; then
-    if ! node .claude/hooks/pre-commit-lifecycle-guard.mjs; then
+# TECH-194 C2: resolve guard.mjs via GIT_COMMON_DIR to handle worktrees.
+# git rev-parse --git-common-dir returns the main repo's .git/ path (absolute).
+# In a worktree this differs from --git-dir; in the main repo they are equal.
+_COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")
+if [[ "${_COMMON_DIR}" == ".git" ]]; then
+    _REPO_ROOT="$(pwd)"
+else
+    _REPO_ROOT="$(dirname "${_COMMON_DIR}")"
+fi
+_GUARD="${_REPO_ROOT}/.claude/hooks/pre-commit-lifecycle-guard.mjs"
+if [[ -x "${_GUARD}" ]] && command -v node >/dev/null 2>&1; then
+    if ! node "${_GUARD}"; then
         exit 1
     fi
 fi

@@ -411,10 +411,33 @@ ai/glossary/                            # TERMS (self-contained per domain)
 
 ### Impact Tree Algorithm (5 Steps)
 
-For any code change execute:
+For any code change execute. Steps 1-2 run on the code graph when one is indexed, on `grep`
+when it is not; Steps 3-5 are grep either way.
+
+#### Step 0: Is a graph available?
+
+`list_projects()` on a code-graph MCP (`codebase-memory` or equivalent), then rebuild it:
+`index_repository(repo_path=".", mode="full")` is sub-second incrementally, but a first index
+scales with the repo — measured 2026-08-28 from ~1 s at 5k graph nodes to ~4 min at 130k. No MCP, or
+the rebuild fails → grep path, and say so in the output rather than letting a silent fallback
+read as a thorough search.
+
+There is no freshness field to check instead. `head_sha` is read live from git and equals `HEAD`
+regardless of when the graph was built; `detect_changes` returns a git diff against the base
+branch, not index drift. Rebuilding is both cheaper and the only honest check.
+
+The indexer skips hidden directories, so in this repo `.claude/**` and `template/.claude/**`
+are not in the graph at all — the prompt tree is grep-only territory.
 
 #### Step 1: UP — who uses?
 
+Graph:
+```
+trace_path(project="{project}", function_name="{name}", direction="inbound", depth=2)
+```
+Hop-1 and hop-2 callers — the transitive ones a single grep cannot see.
+
+Fallback:
 ```bash
 # Find all module importers
 grep -r "from.*{module}" . --include="*.py" --include="*.ts" --include="*.sql"
@@ -424,6 +447,9 @@ grep -r "from.*{module}" . --include="*.py" --include="*.ts" --include="*.sql"
 
 #### Step 2: DOWN — what depends on?
 
+Graph: the same call with `direction="outbound"`.
+
+Fallback:
 ```bash
 # In file being changed — what imports?
 grep "^from\|^import" {file}

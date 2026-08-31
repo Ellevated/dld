@@ -46,15 +46,17 @@ PHASE 3: Finish
 | BUG-XXX | `fix/BUG-XXX` | `.worktrees/BUG-XXX/` |
 | TECH-XXX | `tech/TECH-XXX` | `.worktrees/TECH-XXX/` |
 | ARCH-XXX | `arch/ARCH-XXX` | `.worktrees/ARCH-XXX/` |
+| GROWTH-XXX | `growth/GROWTH-XXX` | `.worktrees/GROWTH-XXX/` |
 
 **Branch prefix by type:**
 ```bash
 case $TASK_TYPE in
-  FTR)  BRANCH_PREFIX="feature" ;;
-  BUG)  BRANCH_PREFIX="fix" ;;
-  TECH) BRANCH_PREFIX="tech" ;;
-  ARCH) BRANCH_PREFIX="arch" ;;
-  *)    BRANCH_PREFIX="task" ;;
+  FTR)    BRANCH_PREFIX="feature" ;;
+  BUG)    BRANCH_PREFIX="fix" ;;
+  TECH)   BRANCH_PREFIX="tech" ;;
+  ARCH)   BRANCH_PREFIX="arch" ;;
+  GROWTH) BRANCH_PREFIX="growth" ;;
+  *)      BRANCH_PREFIX="task" ;;
 esac
 ```
 
@@ -65,13 +67,19 @@ esac
 ### 2.1 CI Health Check (FIRST!)
 
 ```bash
-./scripts/ci-status.sh
+./scripts/ci-status.sh   # per-project artifact — not every repo ships one
 ```
 
 | Exit | Meaning | Action |
 |------|---------|--------|
-| 0 | Green or CI-only failures | Continue |
+| 0 | Green (all CI checks pass) | Continue |
+| 0 | CI-only red (lint, spec compliance, file size — not deploy) | Continue in **REGRESSION-ONLY mode**: record baseline red set. Merge gate (§5.4) requires no NEW failures vs this baseline. Log `CI_BASELINE_RED: {failing checks}`. |
 | 2 | Deploy failure | DEPLOY ERROR PROTOCOL |
+| 127 / "No such file or directory" | The project has no `scripts/ci-status.sh`. It is a **per-project** artifact (awardybot has one, dld does not) and its absence is an expected state, not a signal about CI | Log `CI_STATUS_UNAVAILABLE` and continue. **Not** a deploy failure: do not open the DEPLOY ERROR PROTOCOL, do not block the spec, do not create a BUG. The §5.4 merge gate still applies |
+
+Never substitute a stub that prints OK for a missing script. A stub cannot return 2, so
+it converts "no CI signal" into "CI is green" on the one path that exists to catch a
+broken deploy.
 
 **Deploy failure → BLOCKING:**
 1. Create BUG spec inline (next BUG-XXX)
@@ -107,16 +115,63 @@ WORKTREE_PATH="${WORKTREE_DIR}/${TASK_ID}"
 # Refresh remote — branch base MUST be fresh origin/develop, not stale local ref
 git fetch origin develop
 
-# WHY origin/develop explicit (not implicit HEAD):
-#   `git worktree add -b new-branch path` without a base ref branches off
-#   the CWD's current HEAD. If anything left cwd HEAD on main (broken prior
-#   worktree, manual `git checkout main`, recovery state, orchestrator
-#   improvisation) — the new branch inherits main and PHASE 3 merge into
-#   develop drags unrelated main-only commits (dependabot bumps, release
-#   merge-backs). Pin to origin/develop to guarantee base regardless of
-#   CWD state. Reference: awardybot TECH-1063 incident, commit 833e5994.
-git worktree add "$WORKTREE_PATH" -b "${BRANCH_PREFIX}/${TASK_ID}" origin/develop
-cd "$WORKTREE_PATH"
+if git ls-remote --exit-code --heads origin "${BRANCH_PREFIX}/${TASK_ID}" >/dev/null 2>&1; then
+  # CONTINUATION: a previous run was killed by timeout and its salvage pushed
+  # the commits. Starting fresh here burns them and makes the next salvage
+  # push non-fast-forward.
+  git fetch origin "${BRANCH_PREFIX}/${TASK_ID}"
+
+  # A local ref may survive from a swept worktree. Drop it only when origin
+  # already has everything it holds; otherwise STOP — never discard commits.
+  if git show-ref --verify --quiet "refs/heads/${BRANCH_PREFIX}/${TASK_ID}"; then
+    if [[ -z "$(git log --oneline "origin/${BRANCH_PREFIX}/${TASK_ID}..${BRANCH_PREFIX}/${TASK_ID}" 2>/dev/null)" ]]; then
+      git branch -D "${BRANCH_PREFIX}/${TASK_ID}"
+    else
+      echo "LOCAL_BRANCH_AHEAD: ${BRANCH_PREFIX}/${TASK_ID} has commits origin lacks — needs_review"
+      exit 2
+    fi
+  fi
+
+  # -b <branch> <start-point> is the only non-detached form: plain
+  # `worktree add <path> <branch>` detaches HEAD unless the local branch
+  # already exists (worktree.guessRemote is off by default).
+  git worktree add "$WORKTREE_PATH" -b "${BRANCH_PREFIX}/${TASK_ID}" "origin/${BRANCH_PREFIX}/${TASK_ID}"
+  cd "$WORKTREE_PATH"
+
+  git rebase origin/develop || {
+    git rebase --abort
+    echo "REBASE_CONFLICT: ${BRANCH_PREFIX}/${TASK_ID} vs origin/develop"
+    # STOP. Emit task_status="needs_review". NEVER reset --hard: those
+    # commits are the work this spec exists to save.
+    exit 2
+  }
+
+  # Re-sync origin immediately: the rebase rewrote the salvaged commits, so
+  # until this lands origin and local have diverged and the NEXT salvage
+  # push would be rejected non-fast-forward — the exact loss this fixes.
+  # --force-if-includes: a bare lease is satisfied by a BACKGROUND fetch that
+  # never integrated the remote tip, and the gate-daemon fetches concurrently.
+  git push --force-with-lease --force-if-includes origin "${BRANCH_PREFIX}/${TASK_ID}" || {
+    echo "PUSH_REJECTED: origin/${BRANCH_PREFIX}/${TASK_ID} moved under us"
+    # STOP. Emit task_status="needs_review". NEVER retry with plain --force.
+    exit 2
+  }
+
+  echo "CONTINUING ${BRANCH_PREFIX}/${TASK_ID} — commits already done:"
+  git log --oneline origin/develop..HEAD
+  # Read that list before planning. Those tasks are DONE — do not redo them.
+else
+  # WHY origin/develop explicit (not implicit HEAD):
+  #   `git worktree add -b new-branch path` without a base ref branches off
+  #   the CWD's current HEAD. If anything left cwd HEAD on main (broken prior
+  #   worktree, manual `git checkout main`, recovery state, orchestrator
+  #   improvisation) — the new branch inherits main and PHASE 3 merge into
+  #   develop drags unrelated main-only commits (dependabot bumps, release
+  #   merge-backs). Pin to origin/develop to guarantee base regardless of
+  #   CWD state. This has bitten a real run — do not skip the check.
+  git worktree add "$WORKTREE_PATH" -b "${BRANCH_PREFIX}/${TASK_ID}" origin/develop
+  cd "$WORKTREE_PATH"
+fi
 ```
 
 ### 2.5 Copy Environment
@@ -131,7 +186,7 @@ cp "${MAIN_REPO}/.env" .env 2>/dev/null || true
 
 ```bash
 ./test fast
-# FAIL → STOP, don't proceed
+# FAIL → STOP. Quick smoke only — CI-parity gate is `./test ci` (§5.1).
 ```
 
 ### Skip Worktree (rare)
@@ -150,7 +205,7 @@ Only for: hotfixes <5 LOC, doc-only, config tweaks.
 
 ```
 NO COMMIT without BOTH:
-  1. SPEC REVIEWER: approved
+  1. SPEC COMPLIANCE: checked inline (task-loop.md Step 4)
   2. CODE QUALITY REVIEWER: approved
 ```
 
@@ -162,7 +217,7 @@ Before `git commit`, verify ALL:
 [ ] CODER completed — files created/modified
 [ ] TESTER completed — tests passed
 [ ] DOCUMENTER completed — docs updated (if needed)
-[ ] SPEC REVIEWER — approved
+[ ] SPEC COMPLIANCE — checked inline, spec line + file:line named
 [ ] CODE QUALITY REVIEWER — approved
 ```
 
@@ -175,7 +230,7 @@ Say out loud before commit:
 ```
 "Coder: completed — files: [list]"
 "Tester: passed"
-"Spec Reviewer: approved"
+"Spec compliance: checked — {requirement} -> {file}:{line}"
 "Code Quality: approved"
 ```
 
@@ -183,7 +238,7 @@ Creates explicit checkpoint in conversation.
 
 ---
 
-## 4. Push Strategy (TECH-085)
+## 4. Push Strategy
 
 **Rule:** Minimize pushes. ONE push per spec = 80% CI cost reduction.
 
@@ -199,13 +254,14 @@ End of spec: Push feature → Merge develop → Push develop
 ### 5.1 Final Test
 
 ```bash
-./test fast
-# FAIL → STOP, fix first
+./test ci
+# FAIL → STOP, fix first. Mirrors project's GitHub CI exactly.
+# No `./test ci` case? → see §5.6 CI_PARITY_UNAVAILABLE fallback.
 ```
 
-### 5.2 Update Status — REMOVED (ARCH-187 / ADR-024 / ADR-025)
+### 5.2 Update Status — REMOVED
 
-Status writes are exclusive to `callback.py` (ADR-023). Do **NOT** commit
+Status writes are exclusive to `callback.py`. Do **NOT** commit
 spec / backlog / lifecycle status changes manually. Callback fires on
 pueue task completion and atomically updates `ai/lifecycle/{spec}.yaml`
 via git plumbing. See `finishing.md`.
@@ -217,8 +273,31 @@ may then run:
 ```
 python3 scripts/vps/spec_operator.py force-done <project> <SPEC_ID> "<reason>" --by=operator
 ```
+#### task_status JSON contract
 
-The `--by=autopilot` and `--by=spark` choices have been REMOVED (ADR-025).
+Autopilot's final JSON output MUST include `task_status`. Callback gates the
+post-autopilot dispatch of QA + reflect on this field — without it (or with
+an unknown value), callback falls back to "done" dispatch and burns ~$2.50
+on QA+reflect for non-done tasks.
+
+| value | semantics | callback action |
+|-------|-----------|-----------------|
+| `complete` | Spec finished, all tasks done | lifecycle → done, dispatch QA + reflect |
+| `blocked` | Needs human (write `## ACTION REQUIRED` in spec) | lifecycle → blocked, SKIP QA + reflect |
+| `needs_review` | Ambiguous result, human triage | lifecycle → blocked, SKIP QA + reflect |
+| `skipped` | Pre-flight early-exit (already merged) | lifecycle untouched, SKIP QA + reflect |
+| missing / unknown | (legacy) | lifecycle → done, dispatch QA + reflect (backward compat) |
+
+Final JSON shape:
+```json
+{
+  "task_status": "complete" | "blocked" | "needs_review" | "skipped",
+  "result_preview": "..."
+}
+```
+
+
+The `--by=autopilot` and `--by=spark` choices have been REMOVED.
 
 NEVER `git add ai/lifecycle/*.yaml` — direct commits to lifecycle yaml are HARD-BLOCKED by
 `.claude/hooks/pre-commit-lifecycle-guard.mjs` (no subject-allowlist exception).
@@ -226,7 +305,14 @@ NEVER `git add ai/lifecycle/*.yaml` — direct commits to lifecycle yaml are HAR
 ### 5.3 Push Feature Branch (backup)
 
 ```bash
-git push -u origin ${BRANCH_PREFIX}/${TASK_ID}
+# A continued branch (PHASE 0) was rebased onto develop, so its first push is
+# non-fast-forward by construction. --force-with-lease refuses if origin moved
+# under us; never plain --force. --force-if-includes (git 2.30+) closes the
+# lease's one hole: a BACKGROUND fetch updates refs/remotes/origin/<branch>
+# without integrating it, which satisfies a bare lease. The gate-daemon fetches
+# these repos concurrently, so that is a live race here, not a theoretical one.
+git push -u origin ${BRANCH_PREFIX}/${TASK_ID} ||
+  git push --force-with-lease --force-if-includes origin ${BRANCH_PREFIX}/${TASK_ID}
 ```
 
 ### 5.4 Merge to Develop
@@ -248,14 +334,31 @@ git pull --rebase origin develop
 # Fast-forward merge
 git merge --ff-only ${BRANCH_PREFIX}/${TASK_ID}
 
-# Push with retry
-git push origin develop || {
+# CI-parity merge gate: red → abort, no push, needs_review.
+# REGRESSION-ONLY mode: only NEW failures vs PHASE-0 baseline count.
+if ! ./test ci; then
+  git reset --hard origin/develop   # abort: develop stays at origin state
+  echo "BLOCKED: ./test ci red on merged develop — emitting needs_review"
+  # Set task_status="needs_review" in final JSON. Do NOT push.
+fi
+
+# Push with retry — track success for push guard
+PUSH_OK=false
+git push origin develop && PUSH_OK=true || {
   git pull --rebase origin develop
-  git push origin develop
+  git push origin develop && PUSH_OK=true
 }
 
 # Restore stash
 [ "$STASHED" = true ] && git stash pop
+
+# PUSH GUARD: if develop push failed after retry,
+# emit "needs_review" instead of "complete" in final JSON.
+# Work is merged locally; callback push-local will attempt recovery.
+if [ "$PUSH_OK" = false ]; then
+  echo "WARNING: develop push failed — emitting needs_review"
+  # Autopilot must set task_status="needs_review" in final JSON
+fi
 ```
 
 ### 5.5 Cleanup
@@ -266,6 +369,12 @@ git worktree remove "${WORKTREE_DIR}/${TASK_ID}" --force
 git branch -d ${BRANCH_PREFIX}/${TASK_ID}  # safe delete (-d not -D)
 git worktree prune
 ```
+
+### 5.6 CI-Parity Fallback
+
+If `./test ci` is absent (exit 127): log `CI_PARITY_UNAVAILABLE`, run `./test`
+(full suite) or `./test fast`, emit `needs_review` on any red. **NEVER** silently
+degrade to `./test fast` alone. Projects adopt `./test ci` via Wave 2 specs.
 
 ---
 

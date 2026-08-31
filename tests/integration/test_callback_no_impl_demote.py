@@ -27,6 +27,7 @@ import yaml  # noqa: E402
 
 import callback  # noqa: E402
 import db  # noqa: E402
+import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 
 
@@ -177,8 +178,8 @@ def test_ec9_happy_path_with_impl_commit(tmp_path, tmp_db, monkeypatch):
     _suppress_push(monkeypatch)
 
     # Gate stub: implementation found on origin/develop
-    monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-    monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
+    monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+    monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: "deadbee")
 
     callback.verify_status_sync(str(repo), spec_id, target="done", pueue_id=43)
 

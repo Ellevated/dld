@@ -2,7 +2,7 @@
 name: triz-toc-analyst
 description: /triz Phase 2 - TOC analyst. Current Reality Tree from system metrics, constraint identification, Evaporating Cloud.
 model: opus
-effort: max
+effort: high
 tools: Read, Write
 ---
 
@@ -148,3 +148,7 @@ udes_found: N
 core_constraint: "brief description"
 constraint_type: "physical|policy|paradigm"
 ```
+
+---
+
+@.claude/agents/_shared/output-conventions.md

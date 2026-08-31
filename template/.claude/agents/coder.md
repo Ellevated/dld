@@ -3,7 +3,7 @@ name: coder
 description: Write/modify code for autopilot tasks
 model: sonnet
 effort: high
-tools: Read, Glob, Grep, Edit, Write, Bash, mcp__exa__web_search_exa, mcp__exa__get_code_context_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+tools: Read, Glob, Grep, Edit, Write, Bash, mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
 ---
 
 # Coder Agent
@@ -70,10 +70,12 @@ BEFORE modifying ANY file:
 3. NO EXCEPTIONS — even for "small fixes"
 ```
 
+## How to write the code
+
+@.claude/agents/_shared/minimal-code.md
+
 ## Rules
-- **Minimal changes** — only what's in spec
 - **Use Research Sources** — see below
-- **No gold plating** — don't add extras
 - **Follow project style** — type hints, async, Google docstrings
 - **Prompt versions** — NEVER edit existing, always create new vX.Y.md
 - **Test placement** — unit tests next to code: `foo.py` → `foo_test.py`
@@ -84,7 +86,8 @@ BEFORE modifying ANY file:
 
 | Tool | When to Use |
 |------|-------------|
-| `mcp__exa__get_code_context_exa` | Code examples, patterns from web |
+| `mcp__exa__web_search_exa` | Code examples, patterns from web |
+| `mcp__exa__web_fetch_exa` | Read a specific page in full (docs, GitHub file, SO answer) |
 | `mcp__plugin_context7_context7__resolve-library-id` | Find library ID (required first!) |
 | `mcp__plugin_context7_context7__query-docs` | **Official docs** for your framework, pydantic, requests, etc. |
 
@@ -137,14 +140,14 @@ chore(ARCH-186): bootstrap epic tracker
 ❌ **Forbidden:**
 ```
 feat(ftr-1076): ...                    # lowercase scope — historically rejected; now accepted by gate (BUG-192) but still write UPPERCASE for consistency
-feat(billing): ... (FTR-1076 Task 3)   # component scope, spec_id in trail
-fix(db): ... (BUG-439)                 # trailing-only spec_id — rejected by TECH-177 invariant
-feat: FTR-1076 description             # no scope, spec_id in message body
+feat(billing): ... (FTR-1076 Task 3)   # free text in trailing parens — gate rejects
+fix(db): ... (BUG-439)                 # trailing-only spec_id — tolerated by gate since 2026-07-02, but scope form is canonical
+feat: FTR-1076 description             # no scope, no parens — INVISIBLE to gate, guaranteed false demote
 ```
 
-**Why:** callback gate (`scripts/vps/callback.py:_subject_implements`) parses ONLY the scope. Trailing mentions trigger false-positives from cross-references (TECH-177 incident 2026-05-04 — awardybot). Compliance is enforced by gate — non-compliant commits cause false demote and burn compute on re-dispatch (BUG-192 night incident 2026-05-24/25 — 5 specs demoted blind to lowercase scope).
+**Why:** the callback gate (DLD `scripts/vps/callback.py:_subject_implements`) matches the SUBJECT LINE only. Scope form is canonical. Since 2026-07-02 the gate also tolerates a pure trailing `(SPEC_ID)` — every element inside the parens must be a spec id; free text like `(FTR-X Task 3)` or `(see BUG-439)` stays rejected (TECH-177 discipline). A subject with NO spec_id anywhere can NEVER match — that commit is invisible to the gate, the spec gets a false `no_merged_implementation` demote and compute burns on re-dispatch (BUG-192, night of 2026-05-24/25; the plpilot false-blocked wave BUG-338..347 + TECH-349 on 2026-07-01/02; 31 of 61 verdicts across the fleet 2026-08-16..30).
 
-**Merge commits (PHASE 3):** `Merge feature/SPEC_ID: <description>` (or `Merge autopilot/SPEC_ID …`, `Merge fix/SPEC_ID …`) is accepted by gate (BUG-192 Level 1b fix).
+**Merge commits (PHASE 3):** `Merge feature/SPEC_ID: <description>` (also `Merge autopilot/SPEC_ID …`, `Merge fix/SPEC_ID …`, `merge: feature/SPEC_ID — …`, git-default `Merge branch 'fix/SPEC_ID-slug'`) is accepted; since 2026-07-02 the gate sees merge commits via a `--first-parent` pass (BUG-192 Level 1b + plpilot BUG-338 fix).
 
 ---
 
@@ -165,7 +168,7 @@ When writing tests, follow strict mock boundaries:
 
 **Why:** Mocked row shapes drift from real SQL schema silently. Tests pass, prod breaks.
 
-## Forbidden — Lifecycle writes (ADR-025 / ARCH-193)
+## Forbidden — Lifecycle writes
 
 - NEVER Edit `**Status:**` in `ai/features/*.md` or status column in `ai/backlog.md`.
 - NEVER Edit `ai/lifecycle/*.yaml` directly.
@@ -186,28 +189,23 @@ responsibility. Autopilot does NOT have `force-done` permission. Operator runs:
 - Edit existing prompt versions
 - Mocking DB result shapes in unit tests (ADR-014)
 
-## Module Headers Workflow (MANDATORY)
+## Module Headers
 
-When working with a file:
+**Follow the convention where the surrounding files already use it.** Check the directory
+you are editing: if its files carry a module header, a file you add or substantially change
+gets one too, and one you touch gets its `Uses` / `Used by` kept accurate. If they do not,
+adding one imports a convention the file does not use — which `@_shared/minimal-code.md`
+tells you not to do.
 
-```
-1. OPENED file
-   └── Read module header (if exists)
+It is genuinely conditional, not politeness: measured across one real repository, its
+`_shared/content/*.ts` carried headers 18 times out of 18, while `migrations/*.sql` had 0
+of 74 and `tests/*.ts` 0 of 75.
 
-2. CHECKED consistency
-   ├── Header empty? → Fill before working
-   ├── Uses/Used by up to date?
-   └── Glossary references valid?
+Two things this does **not** license, both from `@_shared/minimal-code.md`: filling in a
+header on a file you were not otherwise changing, and documenting code you did not touch.
 
-3. MADE changes to code
-
-4. RE-READ module header
-   ├── Added new dependencies to Uses?
-   ├── Role changed?
-   └── Need to update Used by? (grep who uses it)
-
-5. SAVED file
-```
+When you do change a module's dependencies or role, update its header in the same edit —
+`Used by` is the half that rots, so grep for callers rather than guessing.
 
 ### Module Header Format
 
@@ -224,61 +222,44 @@ Uses:
 Used by:
   - {caller}:{function}
   - {caller}:{function}
-
-Glossary: ai/glossary/{domain}.md
 """
 ```
 
----
-
-## LLM-Friendly Code Gates (MANDATORY)
-
-Before completing ANY file, verify:
-
-### 1. Size Check
-```bash
-wc -l {file}
-```
-- ≤ 400 LOC → OK (≤ 600 for tests)
-- > 400 LOC → STOP! Split into multiple files
-
-### 2. Export Check (for `__init__.py`)
-Count exports in `__all__`:
-- ≤ 5 → OK
-- > 5 → STOP! Reduce public API
-
-### 3. Domain Placement Check
-New file location:
-- `src/domains/` → OK
-- `src/infra/` → OK
-- `src/shared/` → OK (if truly shared)
-- `src/services/`, `src/db/`, `src/utils/` → ⛔ WRONG! Use domains/
-
-### 4. Import Direction Check
-Verify imports follow: `shared ← infra ← domains ← api`
-- `from src.domains.X import Y` in `src/infra/` → ⛔ WRONG!
-- `from src.infra.X import Y` in `src/domains/` → OK
-
-### 5. Integration Test Check
-
-If task involves DB or infra changes:
-- [ ] Integration test exists in `tests/integration/`?
-- [ ] Test uses real dependencies (no mocks)?
-If NO → create integration test before completing.
-
-**If ANY check fails:**
-```yaml
-status: blocked
-reason: "LLM-friendly violation: {check} failed"
-action_required: "Split file / reduce exports / move to correct domain"
-```
+A `Glossary:` line pointing at `ai/glossary/{domain}.md` belongs in projects that keep a
+glossary. Omit it where there is none rather than writing a path that resolves nowhere.
 
 ---
 
-## Migration Rules — Git-First (TECH-059)
+## Architectural invariants
+
+These are enforced downstream by `pre-review-check.py`, the review agent, and hooks —
+you don't need to run the checks yourself. Just don't write code that violates them:
+
+- **File size:** 400 LOC (600 for tests). Over → split.
+- **`__init__.py` exports:** max 5. Over → the domain's public API is too wide.
+- **Placement:** `src/domains/` | `src/infra/` | `src/shared/`. Never `src/services/`,
+  `src/db/`, `src/utils/`.
+- **Import direction:** `shared ← infra ← domains ← api`, never the reverse.
+- **DB/infra changes** need an integration test in `tests/integration/` against real
+  dependencies. No mocks there (hook-enforced).
+
+If a task can't be done without breaking one of these, that's a spec problem — return
+`status: blocked` with the conflict rather than working around it.
+
+---
+
+## Migration Rules — Git-First
 
 ⛔ **Autopilot NEVER applies migrations! CI is the only source of apply.**
 
 ```
 CODER → VALIDATE (squawk) → COMMIT → PUSH → CI applies
 ```
+
+---
+
+@.claude/agents/_shared/search-cascade.md
+
+---
+
+@.claude/agents/_shared/output-conventions.md

@@ -1,0 +1,62 @@
+{
+  "spec_id": "TECH-212",
+  "spec_path": "ai/features/TECH-212-2026-07-27-split-db-module.md",
+  "started": "2026-07-27T21:21:32.541Z",
+  "plan_exists": true,
+  "tasks": [
+    {
+      "id": 1,
+      "name": "CLI characterization tests",
+      "status": "done",
+      "coder": "done",
+      "tester": "pass",
+      "reviewer": "approved",
+      "commit": "7519519",
+      "verify": "pending",
+      "ts": "2026-07-27T21:29:51.505Z"
+    },
+    {
+      "id": 2,
+      "name": "Extract db_decisions.py",
+      "status": "done",
+      "coder": "done",
+      "tester": "pass",
+      "reviewer": "approved",
+      "commit": null,
+      "verify": "pending",
+      "ts": "2026-07-27T21:45:17.230Z"
+    },
+    {
+      "id": 3,
+      "name": "Extract db_findings.py",
+      "status": "done",
+      "coder": "done",
+      "tester": "pass",
+      "reviewer": "approved",
+      "commit": null,
+      "verify": "pending",
+      "ts": "2026-07-27T21:51:14.338Z"
+    },
+    {
+      "id": 4,
+      "name": "Extract db_cli.py",
+      "status": "done",
+      "coder": "done",
+      "tester": "pass",
+      "reviewer": "approved",
+      "commit": null,
+      "verify": "pending",
+      "ts": "2026-07-27T21:57:14.306Z"
+    },
+    {
+      "id": 5,
+      "name": "Contract regression tests",
+      "status": "pending",
+      "coder": "pending",
+      "tester": "pending",
+      "reviewer": "pending",
+      "commit": null,
+      "verify": "pending"
+    }
+  ]
+}

@@ -54,6 +54,39 @@ function countLines(filePath) {
   }
 }
 
+/**
+ * Whether the pending edit leaves the file no larger than it already is.
+ *
+ * A file already past the limit is otherwise unfixable: every edit is denied,
+ * while the hook's own advice ("split the file") requires editing that same
+ * file. Growth stays blocked; shrinking edits — the split itself, deletions,
+ * refactors — are allowed, so the advice becomes possible to follow.
+ *
+ * For Edit, comparing the line counts of old_string and new_string is enough,
+ * and it holds for replace_all too: a delta that is non-positive per occurrence
+ * cannot grow the file however many occurrences are replaced.
+ *
+ * Note: getToolInput() returns null for an empty string, so a deletion arrives
+ * as old_string set and new_string null — that is a shrink, not a missing key.
+ */
+function editDoesNotGrowFile(data, currentLoc) {
+  const oldString = getToolInput(data, 'old_string');
+  if (oldString !== null) {
+    const newString = getToolInput(data, 'new_string') || '';
+    const removed = oldString.split('\n').length;
+    const added = newString ? newString.split('\n').length : 0;
+    return added <= removed;
+  }
+
+  const content = getToolInput(data, 'content');
+  if (content !== null) {
+    const newLoc = content.split('\n').length - (content.endsWith('\n') ? 1 : 0);
+    return newLoc <= currentLoc;
+  }
+
+  return false;
+}
+
 const TEST_FILE_PATTERNS = [
   /_test\./, /\.test\./, /\.spec\./,
   /\/tests?\//, /__tests__\//,
@@ -231,12 +264,20 @@ async function main() {
       const warnLoc = Math.floor(maxLoc * warnThreshold);
 
       if (loc >= maxLoc) {
+        if (editDoesNotGrowFile(data, loc)) {
+          debugLog('pre-edit', 'allow', { reason: 'loc_limit_shrinking_edit', file: relPath, loc, maxLoc });
+          timer.end('allow');
+          allowTool();
+          return;
+        }
         debugLog('pre-edit', 'deny', { reason: 'loc_limit', file: relPath, loc, maxLoc });
         timer.end('deny');
         denyTool(
           `File exceeds LOC limit!\n\n` +
             `${relPath}: ${loc} lines (limit: ${maxLoc})\n\n` +
-            `Split the file before editing.\n` +
+            `Edits that grow this file are blocked. Edits that shrink it are allowed,\n` +
+            `so the split itself is possible: move code into a new module, then delete\n` +
+            `it here. Deletions and same-size rewrites pass too.\n\n` +
             `See: CLAUDE.md -> File Limits`,
         );
         return;

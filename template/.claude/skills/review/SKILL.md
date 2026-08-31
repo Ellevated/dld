@@ -8,9 +8,9 @@ agent: .claude/agents/review.md
 
 Prevent tech debt BEFORE it accumulates.
 
-**Stage 2 of Two-Stage Review** — runs AFTER Spec Reviewer (Stage 1) approved.
+**Stage 2 of Two-Stage Review** — runs AFTER the inline spec-compliance check (Stage 1).
 
-**Activation:** Automatic in autopilot (after Spec Reviewer approved, before commit)
+**Activation:** Automatic in autopilot (after spec compliance checks out, before commit)
 
 ## Mission
 
@@ -18,7 +18,8 @@ Prevent tech debt BEFORE it accumulates.
 
 ## When
 
-1. **Automatic** — In autopilot cycle after documenter, BEFORE commit
+1. **Automatic** — PHASE 2 task loop, Step 5, BEFORE commit (documenter is separate:
+   it runs once per spec in PHASE 3, after all tasks are committed)
 2. **On request** — "review" before big changes
 
 ## What It Checks

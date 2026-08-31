@@ -1,7 +1,26 @@
 ---
+paths:
+  - ".claude/rules/domains/**"
 domain: {name}
 path: src/domains/{name}/
 ---
+
+<!--
+This is the placeholder every real domain rule is copied from. Its own `paths:`
+keeps it out of unrelated sessions — it is only relevant while authoring domain
+rules. When you copy it, REPLACE `paths:` with the globs of the domain's own
+code, e.g.:
+
+paths:
+  - "src/domains/{name}/**"
+  - "tests/**/{name}/**"
+
+A rules file with no `paths:` key loads into EVERY session forever, even one
+with other frontmatter keys — `domain:`/`path:` below are metadata, not
+loading conditions. Four unmarked files cost AwardyBot 37k tokens per session
+for 25 days before anyone noticed.
+-->
+
 
 # {Name} Domain
 

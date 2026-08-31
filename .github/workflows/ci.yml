@@ -51,7 +51,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install ruff
+      # Pinned deliberately: `ruff format` output is version-dependent by design, and an
+      # unpinned bump silently widened its file set (0.15 added Markdown), putting the
+      # prompt tree and frozen test fixtures under a formatter. Printing the version keeps
+      # the instrument visible in the log when local and CI disagree again.
+      - run: pip install ruff==0.16.1 && ruff --version
       - run: ruff check .
       - run: ruff format --check .
 
@@ -70,6 +74,118 @@ jobs:
         with:
           name: mutation-report
           path: reports/mutation/
+
+  prompt-integrity:
+    # Two checks over the prompt tree that no human should ever be the one to run.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install python deps
+        run: |
+          pip install pytest
+          pip install -r scripts/vps/requirements.txt
+
+      # Blocking: the Spark pre-flight linter and the production allowlist parser
+      # must extract identical paths. They drifted once already, and the drift
+      # deleted valid specs.
+      - name: Allowlist parity (linter vs parser)
+        run: pytest scripts/vps/tests/test_allowlist_parity.py -v
+
+      # Blocking: the 400/600 LOC ceiling. It lived only in rules/architecture.md and
+      # four modules grew past it anyway — callback.py to 1438, orchestrator.py to 1078,
+      # claude-runner.py to 912, db.py to 602 — each costing a spec of its own to cut
+      # back. Pre-existing debt is listed in loc-limit-baseline.txt, so this fails on
+      # new debt and on stale permission, not on history.
+      - name: LOC ceiling (scripts/vps)
+        run: |
+          bash scripts/vps/check-loc-limit.sh
+          pytest scripts/vps/tests/test_check_loc_limit.py -v
+
+      # Blocking since 2026-08-02. It shipped as reporting-only because 13 findings
+      # were open and failing a build on pre-existing debt only teaches people to
+      # ignore a red check. All 13 are closed, so the tree is clean and the next
+      # dead agent or dangling script reference should stop a merge rather than
+      # scroll past in a log. Suppress a deliberate exception in
+      # prompt-integrity-baseline.json, with a reason.
+      # The fleet guard itself needs downstream checkouts, which CI does not have — it
+      # runs from a laptop or the VPS (`python scripts/check-fleet-drift.py --root ~/projects`).
+      # What CI can protect is the guard's own behaviour: that an absent file counts as
+      # drift, that --apply-absent never overwrites local work, and that a version marker
+      # is recomputed from disk rather than believed. A marker that is trusted instead of
+      # verified is the failure this repo has hit three times.
+      - name: Fleet drift guard (self-tests)
+        run: pytest tests/unit/test_check_fleet_drift.py -v
+
+      - name: Prompt tree integrity (root)
+        run: node .claude/scripts/check-prompt-integrity.mjs --tree .claude
+
+      - name: Prompt tree integrity (template)
+        run: node .claude/scripts/check-prompt-integrity.mjs --tree template/.claude
+
+      # Tree sync. `.claude/` and `template/.claude/` drift silently — a fix lands in
+      # one tree and the other keeps the bug. `diff -r` cannot police this, because the
+      # two trees are *supposed* to differ in prose, so the check compares function
+      # bodies using spans from a code graph. First run found four real divergences,
+      # including an allowlist fix that existed only in root.
+      #
+      # The binary is pinned by version AND sha256: it is third-party code executed in
+      # CI, and "latest" would let an upstream release change what runs here.
+      - name: Cache code-graph binary
+        id: cbm-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cbm
+          key: cbm-linux-amd64-v0.10.8
+
+      - name: Fetch code-graph binary
+        if: steps.cbm-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.cbm
+          curl -sSfL -o /tmp/cbm.tar.gz             https://github.com/DeusData/codebase-memory-mcp/releases/download/v0.10.8/codebase-memory-mcp-linux-amd64.tar.gz
+          echo "e5cba4cad6ca8254a85f45041fc8a831908d7d5cb64f98fc3f8eb70a58671793  /tmp/cbm.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/cbm.tar.gz -C ~/.cbm
+
+      # --require-graph is the point of this step. Without it the script exits 0 when
+      # the binary or the index is missing, which locally is right — a missing tool is
+      # not a broken commit — and in CI would be a green check that measured nothing.
+      # This repo has already shipped one of those.
+      - name: Tree sync (.claude vs template/.claude)
+        run: |
+          export CBM_BIN="$HOME/.cbm/codebase-memory-mcp"
+          chmod +x "$CBM_BIN"
+          # A warm daemon removes the per-call start cost. It is not what fixed this
+          # step — the first two runs failed because CLI 0.10.8 prints a human table
+          # unless asked for --json, and the script was reading 248 rows of formatted
+          # text as "no result". Kept because it is free and the hint recommends it.
+          "$CBM_BIN" daemon start || true
+          echo "{\"repo_path\":\"$PWD\",\"mode\":\"full\"}" | "$CBM_BIN" cli index_repository
+          python scripts/check-tree-sync.py --require-graph
+
+  harness-test:
+    # The node test suites under test/scripts/ — the skill harness itself
+    # (test-wrapper, autopilot-state, spark-state). 31 assertions that ran
+    # nowhere until 2026-08-02: not in CI, and the wrapper suite aborted on any
+    # Windows checkout because its fixtures were `.sh` + `chmod`. A test that
+    # runs on no machine is indistinguishable from one that does not exist.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Harness suites
+        run: |
+          for f in test/scripts/*.test.mjs; do
+            echo "--- $f"
+            node "$f"
+          done
 
   python-test:
     runs-on: ubuntu-latest

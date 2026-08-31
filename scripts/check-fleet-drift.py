@@ -1,0 +1,523 @@
+#!/usr/bin/env python3
+"""Measure how far each downstream project has drifted from `template/`.
+
+**Why this exists.** DLD ships a prompt tree; projects receive a copy by hand, because
+the auto-apply script (`upgrade.mjs`) was deleted 2026-05-25 for overwriting protected
+files. Three months of hand-copying later, nobody could answer "is project X current?"
+without diffing 150 files by eye — so on 2026-08-31 an audit did exactly that and found
+~100 diverged files per project, plus two gate scripts (`validate-allowlist.mjs`,
+`check-prompt-integrity.mjs`) that no project had at all while template prompts invoked
+them as hard gates. A prompt calling a script that is not there exits 127 on every spec.
+
+That audit was manual, and it missed one of the two scripts. This is the same audit,
+run by a machine.
+
+**The marker cannot lie.** Each synced project carries `.claude/DLD_VERSION`, written by
+`--apply`, never by hand. It records the DLD commit and a digest of the file set as it
+was delivered. This script recomputes that digest from the files actually on disk: when
+they disagree the marker is reported as STALE, which is the interesting state — it means
+the project was synced once and has drifted since, or was synced only in part. A marker
+that is trusted rather than verified is the failure this repository has now hit three
+times (`index_status.head_sha`, `file.py:LINE` citations, an exit code nobody wrote).
+
+Exit: 0 = every project at or under its baseline, 1 = drift/absence/stale marker/routing
+override, 2 = usage.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+TEMPLATE = REPO_ROOT / "template"
+BASELINE = REPO_ROOT / "scripts" / "fleet-drift-baseline.txt"
+MARKER_REL = ".claude/DLD_VERSION"
+
+# Files the downstream copy must match byte for byte (after newline normalisation).
+# Directly from `skills/upgrade/SKILL.md` section 3 "cherry-pick SAFE groups" plus the
+# gate scripts, which are executable contracts named by prompts — not a matter of taste.
+SYNCED_GLOBS = (
+    ".claude/agents/**/*.md",
+    ".claude/hooks/*.mjs",
+    ".claude/scripts/**/*.mjs",
+    ".claude/skills/**/*.md",
+    ".git-hooks/pre-commit",
+    "scripts/check_domain_imports.py",
+    "scripts/check_docs_sync.py",
+    "scripts/pre-review-check.py",
+    "scripts/build-lessons-index.py",
+)
+
+# Never compared: the project owns these outright (`skills/upgrade/SKILL.md` section 5).
+# Overwriting any of them is what got the auto-apply script deleted.
+LOCAL_NAMES = frozenset(
+    {
+        ".claude/rules/architecture.md",
+        ".claude/rules/dependencies.md",
+        ".claude/rules/localization.md",
+        ".claude/rules/template-sync.md",
+        ".claude/CUSTOMIZATIONS.md",
+        ".claude/hooks/hooks.config.mjs",
+        ".claude/hooks/hooks.config.local.mjs",
+        ".claude/settings.json",
+        ".claude/settings.local.json",
+        # Root-only tooling: needs two trees to compare, so a project cannot hold it.
+        ".claude/scripts/eval-agents.mjs",
+    }
+)
+
+
+def _norm(path: Path) -> bytes:
+    """Content with newlines normalised — a CRLF checkout is not drift."""
+    return path.read_bytes().replace(b"\r\n", b"\n")
+
+
+def _digest(path: Path) -> str:
+    return hashlib.sha256(_norm(path)).hexdigest()
+
+
+def template_manifest(template: Path = TEMPLATE) -> dict[str, str]:
+    """Relative path -> digest, for every file a project is expected to carry."""
+    manifest: dict[str, str] = {}
+    for pattern in SYNCED_GLOBS:
+        for src in sorted(template.glob(pattern)):
+            if not src.is_file():
+                continue
+            rel = src.relative_to(template).as_posix()
+            if rel in LOCAL_NAMES:
+                continue
+            manifest[rel] = _digest(src)
+    return manifest
+
+
+def manifest_digest(manifest: dict[str, str]) -> str:
+    """One digest over the whole set — what the marker records."""
+    joined = "\n".join(f"{rel}:{sha}" for rel, sha in sorted(manifest.items()))
+    return hashlib.sha256(joined.encode()).hexdigest()
+
+
+@dataclass
+class Report:
+    project: str
+    identical: int = 0
+    differs: list[str] = field(default_factory=list)
+    absent: list[str] = field(default_factory=list)
+    overrides: list[str] = field(default_factory=list)
+    marker: str = "none"
+
+    @property
+    def drift(self) -> int:
+        return len(self.differs) + len(self.absent)
+
+
+def _marker_state(project: Path, delivered: dict[str, str]) -> str:
+    """`none` | `<sha7>` | `STALE:<sha7>` — verified, never trusted."""
+    marker = project / MARKER_REL
+    if not marker.is_file():
+        return "none"
+    try:
+        data = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "STALE:unreadable"
+
+    recorded = str(data.get("synced_from", "?"))[:7]
+    if data.get("manifest_sha256") != manifest_digest(delivered):
+        return f"STALE:{recorded}"
+    return recorded
+
+
+def frontmatter_override(project: Path, rel: str, template: Path) -> str | None:
+    """`"model: opus -> sonnet"` when the project changed only the routing header.
+
+    Body identical to template, frontmatter not: the file carries no framework content
+    of its own, just a different `model:`/`effort:`. That is not a project setting.
+    Which model an agent runs on is a measured framework decision (ADR-029,
+    `.claude/rules/model-capabilities.md`), and a project that quietly picks another one
+    is routing work at a price nobody agreed to — AwardyBot ran three synthesizers on
+    opus where template says sonnet, and five more headers were simply February
+    snapshots that nothing had refreshed since.
+
+    Returns the changed lines so the report is actionable, or `None`.
+    """
+    src = template / rel
+    if not src.is_file():
+        return None
+    pfm, pbody = split_frontmatter(_norm(project / rel))
+    tfm, tbody = split_frontmatter(_norm(src))
+    if pbody != tbody or pfm == tfm:
+        return None
+
+    def keyed(fm: bytes) -> dict[str, str]:
+        out = {}
+        for line in fm.decode("utf-8", "replace").splitlines():
+            key, sep, val = line.partition(":")
+            if sep and key.strip() in ("model", "effort"):
+                out[key.strip()] = val.strip()
+        return out
+
+    proj, tmpl = keyed(pfm), keyed(tfm)
+    changed = [
+        f"{k}: {proj.get(k, '(unset)')} -> {tmpl.get(k, '(unset)')}"
+        for k in ("model", "effort")
+        if proj.get(k) != tmpl.get(k)
+    ]
+    return f"{rel}  ({', '.join(changed)})" if changed else f"{rel}  (frontmatter)"
+
+
+def inspect(project: Path, manifest: dict[str, str], template: Path = TEMPLATE) -> Report:
+    rep = Report(project=project.name)
+    delivered: dict[str, str] = {}
+
+    for rel, want in manifest.items():
+        dst = project / rel
+        if not dst.is_file():
+            rep.absent.append(rel)
+            continue
+        got = _digest(dst)
+        delivered[rel] = got
+        if got == want:
+            rep.identical += 1
+        else:
+            rep.differs.append(rel)
+            override = frontmatter_override(project, rel, template)
+            if override:
+                rep.overrides.append(override)
+
+    rep.marker = _marker_state(project, delivered)
+    return rep
+
+
+def write_marker(project: Path, manifest: dict[str, str], commit: str) -> None:
+    marker = project / MARKER_REL
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        json.dumps(
+            {
+                "synced_from": commit,
+                "manifest_sha256": manifest_digest(manifest),
+                "files": len(manifest),
+                "_comment": (
+                    "Written by scripts/check-fleet-drift.py --apply. Never edit by hand: "
+                    "the digest is recomputed from the files on disk, so a hand-edited "
+                    "marker reports STALE rather than the version it claims."
+                ),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+_FRONTMATTER = re.compile(rb"\A---\n.*?\n---\n", re.S)
+
+
+def split_frontmatter(blob: bytes) -> tuple[bytes, bytes]:
+    """`(frontmatter, body)` — frontmatter is `b""` when the file has none."""
+    m = _FRONTMATTER.match(blob)
+    return (m.group(0), blob[m.end() :]) if m else (b"", blob)
+
+
+def template_body_history(rel: str, repo_root: Path = REPO_ROOT) -> set[str]:
+    """Digests of every BODY `template/<rel>` has had, frontmatter stripped.
+
+    One changed frontmatter line makes the whole file match no template version, so
+    `--apply-clean` skips it and the *prose* below silently stays months behind. Eight of
+    AwardyBot's agents were frozen exactly that way: `model: haiku -> sonnet` held back
+    bug-hunt prompts that had since gained anti-hallucination rules and a confidence
+    field. Comparing bodies separately is what unfreezes them.
+
+    **The header is framework content too**, and this used to say otherwise — that a
+    project "legitimately tunes `model:` / `effort:`, the routing bill it pays". Nobody
+    granted that autonomy. Which model an agent runs on is a measured decision
+    (ADR-029), so a header that matches some past template version is refreshed like any
+    other stale snapshot, and one that matches none is reported as an override rather
+    than blessed in silence — see `frontmatter_override`.
+    """
+    return {
+        hashlib.sha256(split_frontmatter(blob)[1]).hexdigest()
+        for blob in _template_blobs(rel, repo_root)
+    }
+
+
+def template_frontmatter_history(rel: str, repo_root: Path = REPO_ROOT) -> set[str]:
+    """Digests of every FRONTMATTER `template/<rel>` has had.
+
+    Tells a stale header from a hand-set one. Five of AwardyBot's eight were verbatim
+    template headers from February and March 2026 — nobody's decision, just a copy that
+    aged — and those are safe to refresh. The other three said `model: opus` where
+    template has never said anything but `sonnet`; a human set those, and only a human
+    takes them back.
+    """
+    return {
+        hashlib.sha256(split_frontmatter(blob)[0]).hexdigest()
+        for blob in _template_blobs(rel, repo_root)
+    }
+
+
+def _template_blobs(rel: str, repo_root: Path = REPO_ROOT) -> list[bytes]:
+    log = subprocess.run(
+        ["git", "-C", str(repo_root), "log", "--all", "--format=%H", "--", f"template/{rel}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.split()
+    blobs = []
+    for sha in log:
+        blob = subprocess.run(
+            ["git", "-C", str(repo_root), "show", f"{sha}:template/{rel}"],
+            capture_output=True,
+            check=False,
+        ).stdout
+        if blob:
+            blobs.append(blob.replace(b"\r\n", b"\n"))
+    return blobs
+
+
+def template_history(rel: str, repo_root: Path = REPO_ROOT) -> set[str]:
+    """Digests of every version `template/<rel>` has ever had in this repo's history.
+
+    This is what makes "the project has edits of its own" a checkable fact rather than a
+    guess. A downstream file whose content equals SOME past template version is a pure
+    snapshot — nobody touched it after it was copied, and replacing it destroys nothing.
+    A file matching no version has content that came from somewhere else, and only a
+    human can say whether that is the project's own work or ancient sludge.
+
+    Measured across the fleet on 2026-08-31: 720 of 805 drifted files (89%) were pure
+    snapshots, dated from January through August. The remaining 85 held real edits —
+    AwardyBot's `session-end.mjs` guard against losing an autopilot worktree ($58.80 in
+    one night), its gate scripts rewritten for its own `bots/`+`agents/` layering, and
+    Dowry's `seed-lessons` extension, which even carries a comment saying so.
+    """
+    return {hashlib.sha256(b).hexdigest() for b in _template_blobs(rel, repo_root)}
+
+
+def apply_sync(
+    project: Path,
+    manifest: dict[str, str],
+    commit: str,
+    template: Path = TEMPLATE,
+    absent_only: bool = False,
+    clean_only: bool = False,
+) -> tuple[int, int]:
+    """Copy synced files into the project. Returns (updated, created).
+
+    Three levels of nerve, and the difference between them is what the project loses if
+    the judgement is wrong:
+
+    - `absent_only` — deliver only what the project does not have. A missing file is
+      unambiguous: a prompt names a gate script, the script is not there, the run exits
+      127. Creating it destroys nothing.
+    - `clean_only` — additionally replace files whose current content matches some past
+      `template/` version (see `template_history`). Provably nobody's work.
+    - neither — replace everything that differs. This is the mode that got `upgrade.mjs`
+      deleted on 2026-05-25 and it belongs to a human with the diff in hand.
+
+    A marker is stamped only when the project is actually brought to this template
+    version — a partial sync that claimed otherwise would be the lie this design exists
+    to prevent.
+    """
+    updated = created = 0
+    for rel in manifest:
+        src, dst = template / rel, project / rel
+        if dst.is_file():
+            if absent_only or _digest(dst) == manifest[rel]:
+                continue
+            if clean_only and _digest(dst) not in template_history(rel, template.parent):
+                proj_fm, proj_body = split_frontmatter(_norm(dst))
+                body_is_clean = bool(proj_fm) and (
+                    hashlib.sha256(proj_body).hexdigest()
+                    in template_body_history(rel, template.parent)
+                )
+                if not body_is_clean:
+                    continue  # holds edits that were never in template — leave it alone
+                if hashlib.sha256(proj_fm).hexdigest() in template_frontmatter_history(
+                    rel, template.parent
+                ):
+                    pass  # header is a stale template snapshot too: take the whole file
+                else:
+                    # A hand-set `model:`/`effort:`. Refresh the stale prose under it, but
+                    # leave the line for a human — `frontmatter_override` reports it and
+                    # the gate fails until someone reverts it or template adopts it.
+                    dst.write_bytes(proj_fm + split_frontmatter(_norm(src))[1])
+                    updated += 1
+                    continue
+            updated += 1
+        else:
+            created += 1
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(_norm(src))
+        if src.stat().st_mode & 0o111:
+            dst.chmod(dst.stat().st_mode | 0o111)
+    if not (absent_only or clean_only):
+        write_marker(project, manifest, commit)
+    return updated, created
+
+
+def read_baseline(path: Path = BASELINE) -> dict[str, int]:
+    if not path.is_file():
+        return {}
+    out = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        name, _, count = line.partition("=")
+        out[name.strip()] = int(count.strip())
+    return out
+
+
+def discover(root: Path) -> list[Path]:
+    """Projects directly under `root`. Flat on purpose — see `--root` below.
+
+    Recursing looked like the obvious fix for the projects living in
+    `D:/dev/RIS/`, and it is the wrong one: one level down `D:/dev` also holds
+    `Archive/` and `Ellevated/`, so the scan starts reporting drift on repos
+    nobody manages, and a gate that shouts about junk is a gate people stop
+    reading. Membership is declared in the baseline register instead, and a
+    registered project that no root reached fails the run.
+    """
+    return sorted(
+        p
+        for p in root.iterdir()
+        if p.is_dir() and (p / ".claude").is_dir() and p.resolve() != REPO_ROOT
+    )
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("projects", nargs="*", type=Path, help="project paths")
+    ap.add_argument(
+        "--root",
+        type=Path,
+        action="append",
+        default=[],
+        help="scan this dir for repos with .claude/ (repeatable)",
+    )
+    ap.add_argument("--apply", action="store_true", help="copy synced files + write marker")
+    ap.add_argument(
+        "--apply-absent",
+        action="store_true",
+        help="deliver only files the project lacks; never overwrite, never stamp a marker",
+    )
+    ap.add_argument(
+        "--apply-clean",
+        action="store_true",
+        help="also refresh files that still match some past template version "
+        "(provably nobody's work); leaves locally edited files untouched",
+    )
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--template", type=Path, default=TEMPLATE, help="template tree to compare against"
+    )
+    ap.add_argument("--baseline", type=Path, default=BASELINE, help="drift debt register")
+    args = ap.parse_args(argv)
+
+    projects = list(args.projects)
+    for root in args.root:
+        projects += discover(root)
+    if not projects:
+        ap.error("no projects given: pass paths or --root")
+
+    manifest = template_manifest(args.template)
+    if not manifest:
+        print("FAIL: template manifest is empty — did SYNCED_GLOBS stop matching?")
+        return 2
+
+    commit = (
+        subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        or "unknown"
+    )
+
+    baseline, reports, failed = read_baseline(args.baseline), [], False
+    for project in projects:
+        if not (project / ".claude").is_dir():
+            print(f"SKIP  {project} — no .claude/", file=sys.stderr if args.json else sys.stdout)
+            continue
+        if args.apply or args.apply_absent or args.apply_clean:
+            updated, created = apply_sync(
+                project,
+                manifest,
+                commit,
+                args.template,
+                absent_only=args.apply_absent,
+                clean_only=args.apply_clean,
+            )
+            # stderr under --json: stdout must stay parseable by whoever called us.
+            print(
+                f"APPLY {project.name}: {updated} updated, {created} created",
+                file=sys.stderr if args.json else sys.stdout,
+            )
+        rep = inspect(project, manifest, args.template)
+        reports.append(rep)
+        if (
+            rep.drift > baseline.get(rep.project, 0)
+            or rep.marker.startswith("STALE")
+            or rep.overrides
+        ):
+            failed = True
+
+    # A registered project no root reached is the failure this guard was blind to for
+    # months: it covered 7 of 10 orchestrator projects and reported cleanly on the 7.
+    # Only meaningful for a fleet-wide scan — inspecting one path on purpose is not a gap.
+    unmeasured = []
+    if args.root and not args.projects:
+        unmeasured = sorted(set(baseline) - {r.project for r in reports})
+        if unmeasured:
+            failed = True
+
+    if args.json:
+        print(json.dumps([r.__dict__ | {"drift": r.drift} for r in reports], indent=2))
+        return 1 if failed else 0
+
+    print(f"\ntemplate: {len(manifest)} synced files @ {commit[:7]}\n")
+    for r in sorted(reports, key=lambda r: -r.drift):
+        allowed = baseline.get(r.project, 0)
+        ok = r.drift <= allowed and not r.marker.startswith("STALE") and not r.overrides
+        budget = f" (baseline {allowed})" if allowed else ""
+        print(
+            f"  {'ok' if ok else 'DRIFT':5} {r.project:<14} identical={r.identical:<4} "
+            f"differs={len(r.differs):<4} absent={len(r.absent):<4}{budget}  marker={r.marker}"
+        )
+        for rel in r.absent[:5]:
+            print(f"           absent: {rel}")
+        if len(r.absent) > 5:
+            print(f"           absent: ... and {len(r.absent) - 5} more")
+        for line in r.overrides:
+            print(f"           OVERRIDE: {line}")
+
+    for name in unmeasured:
+        print(f"  MISSING {name:<12} registered in the baseline, but no --root reached it")
+
+    if any(r.overrides for r in reports):
+        print(
+            "\nOVERRIDE means the project changed only an agent's `model:`/`effort:`. "
+            "Routing is a\nframework decision (ADR-029) and no baseline absorbs it: "
+            "either revert the header to\ntemplate, or change template so the whole "
+            "fleet gets the new routing."
+        )
+    print(
+        "\nFAIL: a project drifted past its baseline, holds a routing override, its marker"
+        "\nno longer matches the files on disk, or a registered project was never reached."
+        "\n  Sync it:  python scripts/check-fleet-drift.py <path> --apply"
+        if failed
+        else "\nOK: every project at or under its baseline."
+    )
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

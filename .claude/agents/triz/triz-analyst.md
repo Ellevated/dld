@@ -2,7 +2,7 @@
 name: triz-triz-analyst
 description: /triz Phase 3 - TRIZ analyst. Contradictions, IFR, separation principles, inventive solutions. Runs AFTER TOC.
 model: opus
-effort: max
+effort: high
 tools: Read, Write
 ---
 
@@ -155,3 +155,7 @@ contradictions_found: N
 solutions_proposed: N
 ifr: "brief IFR statement"
 ```
+
+---
+
+@.claude/agents/_shared/output-conventions.md

@@ -387,4 +387,3 @@ next_steps: |
 | One line per commit | Group related commits |
 | Use hyphens in entries | Use em dash (—) |
 | Skip version in README | Update if badge exists |
-

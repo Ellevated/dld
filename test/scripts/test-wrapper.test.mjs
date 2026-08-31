@@ -49,11 +49,25 @@ function testPassOutputIsCompact() {
   console.log('  PASS: testPassOutputIsCompact');
 }
 
+/**
+ * A failing "test command", written as a node script rather than a shell script.
+ *
+ * The fixtures used to be `.sh` + `chmod +x`, which cannot run on Windows — the
+ * suite aborted at the second test on any Windows checkout, and nothing in CI
+ * ran it either, so it was failing silently in both places.
+ */
+function failFixture(name, lines) {
+  const path = join(TEST_DIR, `${name}.mjs`);
+  const body = lines.map(l => `console.log(${JSON.stringify(l)});`).join('\n');
+  writeFileSync(path, `${body}\nprocess.exit(1);\n`);
+  return `node ${path}`;
+}
+
 function testFailOutputHasSummary() {
-  // Create a script that exits with code 1
-  const failScript = join(TEST_DIR, 'fail.sh');
-  writeFileSync(failScript, '#!/bin/sh\necho "FAILED tests/test_foo.py::test_bar"\necho "AssertionError: expected 1 got 2"\nexit 1\n');
-  execSync(`chmod +x ${failScript}`);
+  const failScript = failFixture('fail', [
+    'FAILED tests/test_foo.py::test_bar',
+    'AssertionError: expected 1 got 2',
+  ]);
 
   const result = runWrapper(failScript);
   assert.equal(result.exitCode, 1, 'Should exit 1 on failure');
@@ -75,9 +89,7 @@ function testJestCountExtraction() {
 }
 
 function testFullOutputSavedOnFailure() {
-  const failScript = join(TEST_DIR, 'fail2.sh');
-  writeFileSync(failScript, '#!/bin/sh\necho "test output line 1"\necho "FAILED test_bar"\nexit 1\n');
-  execSync(`chmod +x ${failScript}`);
+  const failScript = failFixture('fail2', ['test output line 1', 'FAILED test_bar']);
 
   const result = runWrapper(failScript);
   assert.equal(result.exitCode, 1);
@@ -87,13 +99,56 @@ function testFullOutputSavedOnFailure() {
   console.log('  PASS: testFullOutputSavedOnFailure');
 }
 
-function testDefaultCommand() {
-  // Without a ./test script, default command will fail — that's fine,
-  // we just verify the wrapper handles it gracefully
-  const result = runWrapper('');
-  // Will fail because ./test doesn't exist, but shouldn't crash
-  assert.ok(result.exitCode !== undefined, 'Should return an exit code');
-  console.log('  PASS: testDefaultCommand (graceful failure)');
+function testMissingCommandIsNotAFailure() {
+  // This assertion used to read `exitCode !== undefined`, which `err.status || 1`
+  // can never violate — so it passed while the wrapper reported a missing ./test
+  // as `FAIL: 0 failure(s)`, i.e. a broken suite with no failures in it.
+  //
+  // It then failed on a Russian Windows, where cmd.exe returns exit 1 and an
+  // OEM-codepage message Node decodes as mojibake: the guard was reading the
+  // shell's wording, so it only worked in English. The wrapper now stats the
+  // path instead.
+  const result = runWrapper('./definitely-not-a-real-test-command');
+  assert.equal(result.exitCode, 2, `Missing command should exit 2, got ${result.exitCode}`);
+  assert.ok(
+    result.output.includes('TEST_COMMAND_UNAVAILABLE'),
+    `Should name the missing command: got "${result.output}"`
+  );
+  assert.ok(!result.output.includes('FAIL:'), 'A missing command is not a test failure');
+  console.log('  PASS: testMissingCommandIsNotAFailure');
+}
+
+function testRealFailureStillReportsFail() {
+  // The guard above must not swallow genuine failures.
+  const failScript = failFixture('fail3', ['FAILED tests/test_x.py::test_y']);
+
+  const result = runWrapper(failScript);
+  assert.equal(result.exitCode, 1, 'A real failure keeps exit 1');
+  assert.ok(result.output.includes('FAIL:'), `Should report FAIL: got "${result.output}"`);
+  assert.ok(!result.output.includes('TEST_COMMAND_UNAVAILABLE'), 'A real failure is not a missing command');
+  console.log('  PASS: testRealFailureStillReportsFail');
+}
+
+function testExistingPathWithASpaceIsNotMissing() {
+  // The path check keys on existence, not on shape — and the path may contain a
+  // space, because `main` rebuilds the command with `args.join(' ')` and the
+  // caller's quoting does not survive that. Splitting on whitespace would stat
+  // the first fragment and call a command that exists missing.
+  //
+  // A directory is the portable way to say "this path exists and running it
+  // fails": every shell refuses it, with a message none of the not-found
+  // patterns match, on every platform. No quotes, no metacharacters — the two
+  // things this wrapper is known to mangle.
+  const spaced = join(TEST_DIR, 'dir with space');
+  mkdirSync(spaced, { recursive: true });
+
+  const result = runWrapper(spaced);
+  assert.notEqual(result.exitCode, 0, 'Running a directory does not succeed');
+  assert.ok(
+    !result.output.includes('TEST_COMMAND_UNAVAILABLE'),
+    `A path that exists is never "unavailable": got "${result.output}"`
+  );
+  console.log('  PASS: testExistingPathWithASpaceIsNotMissing');
 }
 
 // --- Runner ---
@@ -107,8 +162,10 @@ function main() {
     testPytestCountExtraction();
     testJestCountExtraction();
     testFullOutputSavedOnFailure();
-    testDefaultCommand();
-    console.log(`\n6/6 tests passed`);
+    testMissingCommandIsNotAFailure();
+    testRealFailureStillReportsFail();
+    testExistingPathWithASpaceIsNotMissing();
+    console.log(`\n8/8 tests passed`);
   } finally {
     cleanup();
   }

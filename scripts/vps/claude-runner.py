@@ -2,7 +2,7 @@
 """
 Module: claude-runner
 Role: Claude Code Agent SDK wrapper for programmatic task execution with Skills.
-Uses: claude-agent-sdk, db.py
+Uses: claude-agent-sdk, db.py, datetime (heartbeat timestamps)
 Used by: run-agent.sh (via Pueue)
 
 Key design (2026-03-11):
@@ -15,41 +15,49 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
+import runner_cli  # noqa: E402 — CLI resolution + ALLOWED_TOOLS (TECH-213)
+import runner_env  # noqa: E402 — .env loader (TECH-213)
+import runner_heartbeat  # noqa: E402 — per-turn heartbeat file (TECH-213)
+import runner_loop  # noqa: E402 — the SDK message loop (TECH-213)
+import runner_refusal  # noqa: E402 — classifier-decline detection (TECH-213)
+import runner_result  # noqa: E402 — run state, usage rollup, run log (TECH-213)
 
-def load_env() -> None:
-    """Load KEY=VALUE pairs from .env file next to this script into os.environ.
-
-    Uses setdefault so existing env vars win (e.g., systemd EnvironmentFile).
-    """
-    env_path = Path(__file__).parent / ".env"
-    if not env_path.exists():
-        return
-    for raw in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key:
-            os.environ.setdefault(key, value)
+# Re-exports. The siblings are called as module attributes so a monkeypatch on the
+# owning module takes effect; these names exist because the runner's tests reach
+# them as `runner.<name>` and predate the split (same contract as the orchestrator
+# and callback splits — TECH-215/216).
+load_env = runner_env.load_env
+_cli_version = runner_cli._cli_version
+_resolve_cli_path = runner_cli._resolve_cli_path
+_MIN_CLI_VERSION = runner_cli._MIN_CLI_VERSION
+_SYSTEM_CLI_FALLBACK = runner_cli._SYSTEM_CLI_FALLBACK
+ALLOWED_TOOLS = runner_cli.ALLOWED_TOOLS
+_write_heartbeat = runner_heartbeat._write_heartbeat
+_message_text = runner_refusal._message_text
+_refusal_from_message = runner_refusal._refusal_from_message
+_refusal_summary = runner_refusal._refusal_summary
+_REFUSAL_STOP_REASON = runner_refusal._REFUSAL_STOP_REASON
+_REFUSAL_TEXT_LIMIT = runner_refusal._REFUSAL_TEXT_LIMIT
+_REFUSAL_EVENT_LIMIT = runner_refusal._REFUSAL_EVENT_LIMIT
+_EXIT_REASONS = runner_result._EXIT_REASONS
+_extract_task_status = runner_result._extract_task_status
+_session_totals = runner_result._session_totals
+_usage_field = runner_result._usage_field
 
 
 load_env()
 
 try:
-    from claude_agent_sdk import (
-        AssistantMessage,
-        ClaudeAgentOptions,
-        ResultMessage,
-        TaskNotificationMessage,
-        query,
-    )
-    from claude_agent_sdk._errors import CLIConnectionError, ProcessError
+    # Presence check only — the message loop (runner_loop) imports the names it needs.
+    # Kept here so a missing dependency fails at the entry point with an instruction,
+    # rather than as an ImportError from a module the operator has never heard of.
+    import claude_agent_sdk  # noqa: F401
 except ImportError:
     sys.exit("claude-agent-sdk not installed. Run: pip install claude-agent-sdk")
 
@@ -59,11 +67,64 @@ try:
 except ImportError:
     _orch_db = None
 
+# Work preservation on abnormal exit. Optional import for the same reason as db:
+# the runner must still start on a box without the full VPS module set.
+try:
+    import salvage as _salvage
+except ImportError:
+    _salvage = None
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-MAX_TURNS = 120
-TIMEOUT_SECONDS = 5400  # 90 min hard limit (R1 specs with 8+ tasks need >60m)
+# Both constants were set on 2026-03-12 and never revisited. They were calibrated
+# against a run that no longer exists: until 2026-07-26 (a710cf5) pueue resolved a
+# March-frozen CLI 2.1.72 off systemd's PATH, which predates Opus 5 and silently ran
+# claude-opus-4-6 with a 200K window. Measured over 1087 joined runs:
+#
+#                        median turns   median wall-clock   s/turn   timeout rate
+#   before 2026-07-26         11             8.7 min         15.5         1%
+#   from   2026-07-26         49            47.1 min         50.3        32%
+#
+# 4.5x the turns and 3.2x the seconds per turn — real Opus 5 on a 1M window thinks
+# longer per turn and is no longer forced to converge by autocompact every ~155K.
+# Nothing about spec sizing changed; the cost of executing a spec did.
+#
+# At 5400s the p90 of runs that DID finish was 81.7 min and the slowest was 86.9 —
+# the distribution's upper decile was sitting on the wall, which is what a 32%
+# failure rate looks like from the inside. 90 min was ~10x the median run in March;
+# it was ~1.9x by August.
+#
+# 10800s restores roughly 4x headroom over the current median. It is a measured step,
+# not a final answer: re-run scripts/vps/ analysis against task_log after a few weeks
+# and move it again if the tail still crosses. Two deferred improvements were blocked
+# on this number and can now be re-evaluated — planner held at high instead of xhigh
+# (BUG-1101) and ADR-028's "xhigh-for-agentic upside deferred pending TIMEOUT_SECONDS
+# increase". A dead run is not lost work: salvage.py pushes the branch either way.
+TIMEOUT_SECONDS = 10800  # 3 h. Was 5400 (2026-03-12 → 2026-08-23); see above.
+# Backstop, not a target — the wall-clock timeout is the real limit. Only 2 of 67
+# post-cutover runs came within 5 turns of 120, but they finished in ~47 min; at
+# 10800s a legitimate run has time for ~3x that, so 120 would become the new binding
+# constraint. A run that exhausts max_turns still returns a ResultMessage and is
+# recorded as a SUCCESS, so this ceiling fails silently — keep it well clear of normal.
+MAX_TURNS = 300
+# Main autopilot loop model. Explicit (not settings-alias "opus") so the SDK is
+# pinned deterministically. Override per-task via AUTOPILOT_MODEL env. Subagents
+# resolve their own model from agent frontmatter. See rules/model-capabilities.md.
+MODEL = os.environ.get("AUTOPILOT_MODEL", "claude-opus-5")
+# Main loop effort level.  SDK enum: low|medium|high|max (the "extra-high" level
+# accepted by CLI/frontmatter is NOT part of the SDK enum and would be rejected
+# by ClaudeAgentOptions).  Subagents resolve effort from frontmatter.  ADR-028.
+# Opus 5: thinking is ON by default and CANNOT be disabled at effort xhigh/max
+# (HTTP 400).  We never pass `thinking`, so any effort here is safe — but do not
+# add a thinking-disable option without capping effort at high.  ADR-029.
+AUTOPILOT_EFFORT = os.environ.get("AUTOPILOT_EFFORT", "high")
+_VALID_EFFORT = {"low", "medium", "high", "max"}
+if AUTOPILOT_EFFORT not in _VALID_EFFORT:
+    AUTOPILOT_EFFORT = "high"  # fail-safe: unknown value → default
+
+
+CLI_PATH, CLI_VERSION = _resolve_cli_path()
 
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -74,256 +135,150 @@ logging.basicConfig(
 )
 logger = logging.getLogger("claude-runner")
 
-# All tools that DLD skills may need
-ALLOWED_TOOLS = [
-    "Skill",
-    "Agent",
-    "Read",
-    "Write",
-    "Edit",
-    "Bash",
-    "Glob",
-    "Grep",
-    "WebFetch",
-    "WebSearch",
-    "NotebookEdit",
-]
+
+def _salvage_if_needed(project_path, exit_code: int) -> dict | None:
+    """Push what the run managed to build, if it died before it could.
+
+    Autopilot pushes once, at the end of PHASE 3. Any abnormal exit therefore
+    strands finished task commits on a local worktree branch that nothing else
+    will ever look at. Runs only on failure, so the one-push-per-spec rule that
+    keeps CI cheap (TECH-085) is unaffected.
+    """
+    if exit_code == 0 or _salvage is None:
+        return None
+    spec_id = _salvage.spec_id_from_path(os.environ.get("CLAUDE_CURRENT_SPEC_PATH", ""))
+    if not spec_id:
+        # Without a spec ID there is no way to tell which worktree belongs to
+        # this run, and guessing would push another slot's branch.
+        return {"attempted": False, "error": "no_spec_id"}
+    try:
+        return _salvage.salvage_run(
+            str(project_path), spec_id, _EXIT_REASONS.get(exit_code, f"exit {exit_code}")
+        )
+    except Exception as e:  # ADR-004: never turn a failed run into a crashed runner
+        logger.warning("salvage failed: %s", e)
+        return {"attempted": True, "error": str(e)[:300], "pushed": False}
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 async def run_task(project_dir: str, task: str, skill: str) -> dict:
-    """Run a Claude Code task with Skills via Agent SDK.
-
-    Returns dict with exit_code, project, skill, task, cost_usd, turns.
-    """
+    """Run a Claude Code task with Skills via Agent SDK. Returns the run-log dict."""
     project_path = Path(project_dir).resolve()
     project_name = project_path.name
-    log_file = LOG_DIR / f"{project_name}-{time.strftime('%Y%m%d-%H%M%S')}.log"
+    ts_label = time.strftime("%Y%m%d-%H%M%S")
+    log_file = LOG_DIR / f"{project_name}-{ts_label}.log"
+    started_at_iso = datetime.now(tz=timezone.utc).isoformat()
+    started_mono = time.monotonic()
 
-    # Build prompt with skill prefix
-    if task.startswith("/"):
-        prompt = task
-    else:
-        prompt = f"/{skill} {task}"
+    prompt = task if task.startswith("/") else f"/{skill} {task}"
 
     logger.info(
-        "project=%s skill=%s prompt=%s cwd=%s",
+        "project=%s skill=%s prompt=%s cwd=%s cli=%s v=%s model=%s effort=%s",
         project_name,
         skill,
         prompt,
         project_path,
+        CLI_PATH,
+        ".".join(map(str, CLI_VERSION)) if CLI_VERSION else "unknown",
+        MODEL,
+        AUTOPILOT_EFFORT,
     )
+    runner_cli.warn_if_stale(CLI_PATH, CLI_VERSION, MODEL)
 
-    # Layer 2: capture subprocess CLI stderr via SDK callback (BUG-188)
-    stderr_lines: list[str] = []
-
-    def _stderr_collector(line: str) -> None:
-        # Cap at 200 lines / ~50KB to bound memory on misbehaving CLI
-        if len(stderr_lines) < 200:
-            stderr_lines.append(line)
-
-    # Agent SDK options
-    options = ClaudeAgentOptions(
-        cwd=str(project_path),
-        setting_sources=["user", "project"],  # Loads CLAUDE.md + .claude/skills/
-        allowed_tools=ALLOWED_TOOLS,
-        permission_mode="bypassPermissions",
+    stderr_lines, stderr_collector = runner_loop.make_stderr_collector()
+    options = runner_loop.build_options(
+        project_path,
+        stderr_collector,
+        model=MODEL,
+        effort=AUTOPILOT_EFFORT,
+        cli_path=CLI_PATH,
         max_turns=MAX_TURNS,
-        env={
-            "PROJECT_DIR": str(project_path),
-            "CLAUDE_PROJECT_DIR": str(project_path),
-            "CLAUDE_CURRENT_SPEC_PATH": os.environ.get("CLAUDE_CURRENT_SPEC_PATH", ""),
-            "ENABLE_PROMPT_CACHING_1H": os.environ.get("ENABLE_PROMPT_CACHING_1H", "1"),
-            # TECH-178: bypass cosmetic pre-commit fixers that auto-fix + exit 1
-            # (trailing-whitespace, end-of-file-fixer, mixed-line-ending) so that
-            # research-md commits don't trigger autopilot retry-loops. Lint-only
-            # hooks (ruff/mypy/etc.) remain active. Operators can override per-task
-            # by exporting SKIP="" before pueue add.
-            "SKIP": os.environ.get(
-                "SKIP",
-                "trailing-whitespace,end-of-file-fixer,mixed-line-ending",
-            ),
-        },
-        stderr=_stderr_collector,
     )
 
-    result_text = ""
-    last_assistant_text = ""
-    turns = 0
-    cost_usd = 0.0
-    exit_code = 0
-    usage_metrics = {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "cache_read_input_tokens": 0,
-        "cache_creation_1h_input_tokens": 0,
-        "cache_creation_5m_input_tokens": 0,
-    }
-    model_usage: dict = {}
-    result_received = False
-    result_is_error = False
-
+    state = runner_result.new_run_state()
     try:
-        async for message in query(prompt=prompt, options=options):
-            # Log all messages
-            msg_line = str(message)
-            if len(msg_line) > 500:
-                msg_line = msg_line[:500] + "..."
-            logger.debug(msg_line)
+        await runner_loop.consume(
+            state,
+            prompt,
+            options,
+            log_dir=LOG_DIR,
+            project_name=project_name,
+            ts_label=ts_label,
+            started_mono=started_mono,
+            started_at_iso=started_at_iso,
+            model=MODEL,
+            timeout_seconds=TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        # asyncio.timeout() (Python 3.11+) — partial metrics are already in `state`
+        elapsed = int(time.monotonic() - started_mono)
+        logger.error(
+            "Timeout after %ds (partial: %d turns, $%.4f)",
+            elapsed,
+            state["turn_count"],
+            state["cost_usd"],
+        )
+        state["exit_code"] = 124  # Unix timeout convention
+        state["result_text"] = (
+            f"Timeout after {elapsed}s (partial: {state['turn_count']} turns, "
+            f"${state['cost_usd']:.4f}, last_tool={state['last_tool_name']!r})"
+        )
+    except Exception as e:  # noqa: BLE001 — mapped to an exit code, never swallowed
+        runner_loop.handle_sdk_exception(e, state, stderr_lines, task, project_name, _orch_db)
 
-            # Capture assistant text (last response before ResultMessage)
-            if isinstance(message, AssistantMessage):
-                text_parts = []
-                for block in getattr(message, "content", []):
-                    if hasattr(block, "text"):
-                        text_parts.append(block.text)
-                if text_parts:
-                    last_assistant_text = "\n".join(text_parts)
+    # A run that dies before ResultMessage reports turns=0 and cost=0.0, because
+    # both come from that message. That is how a 575-turn, 90-minute timeout came
+    # to be logged as "$0.00, 0 turns" — the most expensive runs were the ones
+    # reporting nothing. The cost genuinely isn't available, but the turn count is.
+    if not state["turns"]:
+        state["turns"] = state["turn_count"]
 
-            # Capture task completion summary (autopilot uses Agent tool → Tasks)
-            if isinstance(message, TaskNotificationMessage):
-                summary = getattr(message, "summary", "")
-                if summary:
-                    result_text = summary
+    refusal = runner_refusal._refusal_summary(state["refusal_events"])
+    if refusal["detected"]:
+        logger.warning(
+            "CLASSIFIER REFUSAL: %d decline(s), %d served by a fallback model, "
+            "categories=%s. A decline is an HTTP 200 with empty content, so it "
+            "arrives looking like a finished answer — from council-security or "
+            "bughunt-security-auditor an empty report reads as a clean one. "
+            "Anthropic's note on the `cyber` category: benign cybersecurity "
+            "work can also trigger it.",
+            refusal["declines"],
+            refusal["fallbacks_served"],
+            ", ".join(refusal["categories"]) or "unknown",
+        )
+    if refusal["unrecovered"] and state["exit_code"] == 0:
+        # ADR-024 governs SDK exceptions raised AFTER a successful ResultMessage;
+        # this is an in-stream observation and that branch is left untouched. Only
+        # upgrade from 0, so a timeout or a process error keeps its own code.
+        state["exit_code"] = 4
 
-            # Track final result
-            if isinstance(message, ResultMessage):
-                result_received = True
-                result_is_error = bool(getattr(message, "is_error", False))
-                result_text = getattr(message, "result", "") or result_text
-                turns = getattr(message, "num_turns", 0)
-                cost_usd = getattr(message, "total_cost_usd", 0.0) or 0.0
-                if result_is_error:
-                    exit_code = 1
-                usage = getattr(message, "usage", None) or {}
-                if not isinstance(usage, dict):
-                    usage = getattr(usage, "__dict__", {}) or {}
-                # Flat keys (Anthropic API contract: input_tokens, output_tokens,
-                # cache_read_input_tokens). cache_creation is nested — see below.
-                for key in ("input_tokens", "output_tokens", "cache_read_input_tokens"):
-                    usage_metrics[key] = int(usage.get(key, 0) or 0)
-                # cache_creation moved to nested dict in 2026 API revision:
-                # usage.cache_creation.ephemeral_{1h,5m}_input_tokens
-                cc = usage.get("cache_creation", {}) if isinstance(usage, dict) else {}
-                if isinstance(cc, dict):
-                    h1 = int(cc.get("ephemeral_1h_input_tokens", 0) or 0)
-                    m5 = int(cc.get("ephemeral_5m_input_tokens", 0) or 0)
-                    usage_metrics["cache_creation_1h_input_tokens"] = h1
-                    usage_metrics["cache_creation_5m_input_tokens"] = m5
-                    usage_metrics["cache_creation_input_tokens"] = h1 + m5
-                # Per-model breakdown (Opus vs Sonnet vs Haiku in one run)
-                mu = getattr(message, "model_usage", None)
-                if isinstance(mu, dict):
-                    model_usage = mu
+    salvage_info = _salvage_if_needed(project_path, state["exit_code"])
 
-        # Fallback: use last assistant message if no result_text
-        if not result_text and last_assistant_text:
-            result_text = last_assistant_text
-
-    except asyncio.TimeoutError:
-        logger.error("Timeout after %ds", TIMEOUT_SECONDS)
-        exit_code = 124  # timeout exit code
-        result_text = f"Timeout after {TIMEOUT_SECONDS}s"
-    except CLIConnectionError as e:
-        logger.error("CLI connection failed: %s", e)
-        exit_code = 2
-        result_text = f"CLI connection error: {e}"
-    except ProcessError as e:
-        logger.error("CLI process error: %s", e)
-        exit_code = 3
-        stderr = getattr(e, "stderr", None)
-        if stderr:
-            result_text = f"Process error: {e}\nSTDERR:\n{stderr}"
-        elif stderr_lines:
-            captured = "\n".join(stderr_lines[-100:])
-            result_text = f"Process error: {e}\nSTDERR (captured):\n{captured}"
-        else:
-            result_text = f"Process error: {e}"
-    except Exception as e:
-        # Catch SDK init timeouts ("Control request timeout: initialize")
-        err_str = str(e)
-        stderr_from_exc = getattr(e, "stderr", None)
-        if stderr_from_exc:
-            err_str = f"{err_str}\nSTDERR:\n{stderr_from_exc}"
-        elif stderr_lines:
-            # Layer 2: fall back to lines captured via SDK stderr callback
-            captured = "\n".join(stderr_lines[-100:])  # last 100 lines
-            err_str = f"{err_str}\nSTDERR (captured):\n{captured}"
-
-        if result_received and not result_is_error:
-            # BUG-188: SDK threw AFTER successful ResultMessage. Work is done
-            # (turns/cost/result_text already captured). Do NOT override
-            # exit_code to 1 — that would re-block an already-done spec
-            # and burn another $5+/run on retry.
-            logger.warning(
-                "SDK post-ResultMessage exception (work completed): %s",
-                err_str[:500],
-            )
-            # exit_code stays 0; result_text already populated from ResultMessage
-            # BUG-188 Layer 4: telemetry for SDK post-ResultMessage drift.
-            if _orch_db is not None:
-                try:
-                    captured_stderr = "\n".join(stderr_lines[-100:]) if stderr_lines else None
-                    _orch_db.log_sdk_post_result_error(
-                        project_id=project_name,
-                        task=task,
-                        turns=turns,
-                        cost_usd=cost_usd,
-                        error_msg=str(e)[:2000],
-                        stderr=captured_stderr,
-                    )
-                except Exception as log_exc:
-                    # Telemetry must never break the runner (ADR-004 fail-safe).
-                    logger.warning("Failed to log sdk_post_result_error: %s", log_exc)
-        elif "timeout" in err_str.lower():
-            logger.error("SDK init timeout: %s", e)
-            exit_code = 124
-            result_text = err_str
-        else:
-            logger.error("SDK error: %s", e, exc_info=True)
-            exit_code = 1
-            result_text = err_str
-
-    # Cache hit rate: fraction of total input that came from cache read.
-    # Denominator = direct input + cache creation + cache read (total paid input-ish).
-    cache_read = usage_metrics["cache_read_input_tokens"]
-    cache_total = (
-        cache_read + usage_metrics["cache_creation_input_tokens"] + usage_metrics["input_tokens"]
+    log_data = runner_result.build_log_data(
+        state,
+        project_name=project_name,
+        skill=skill,
+        task=task,
+        prompt=prompt,
+        cli_path=CLI_PATH,
+        cli_version=".".join(map(str, CLI_VERSION)) if CLI_VERSION else "",
+        model=MODEL,
+        effort=AUTOPILOT_EFFORT,
+        salvage_info=salvage_info,
+        refusal=refusal,
     )
-    cache_hit_rate = round(cache_read / cache_total, 4) if cache_total > 0 else 0.0
-    log_data = {
-        "exit_code": exit_code,
-        "project": project_name,
-        "skill": skill,
-        "task": task,
-        "prompt": prompt,
-        "turns": turns,
-        "cost_usd": round(cost_usd, 4),
-        "input_tokens": usage_metrics["input_tokens"],
-        "output_tokens": usage_metrics["output_tokens"],
-        "cache_creation_input_tokens": usage_metrics["cache_creation_input_tokens"],
-        "cache_creation_1h_input_tokens": usage_metrics["cache_creation_1h_input_tokens"],
-        "cache_creation_5m_input_tokens": usage_metrics["cache_creation_5m_input_tokens"],
-        "cache_read_input_tokens": usage_metrics["cache_read_input_tokens"],
-        "cache_hit_rate": cache_hit_rate,
-        "model_usage": model_usage,
-        "result_preview": result_text[:1000] if result_text else "",
-    }
-    log_file.write_text(json.dumps(log_data, ensure_ascii=False, indent=2))
-    logger.info(
-        "done project=%s exit=%d turns=%d cost=$%.4f in=%d out=%d cache_read=%d cache_hit=%.2f",
-        project_name,
-        exit_code,
-        turns,
-        cost_usd,
-        usage_metrics["input_tokens"],
-        usage_metrics["output_tokens"],
-        usage_metrics["cache_read_input_tokens"],
-        cache_hit_rate,
+    runner_result.log_refusal_telemetry(
+        refusal,
+        db=_orch_db,
+        task=task,
+        skill=skill,
+        project_name=project_name,
+        model=MODEL,
+        exit_code=state["exit_code"],
     )
+    runner_result.write_run_log(log_file, log_data)
 
     return log_data
 
@@ -344,12 +299,26 @@ def main():
     for var in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"):
         os.environ.pop(var, None)
 
-    result = asyncio.run(
-        asyncio.wait_for(
-            run_task(project_dir, task, skill),
-            timeout=TIMEOUT_SECONDS,
-        )
-    )
+    # `pueue kill` (heartbeat_reaper.py reaping a wedged session) arrives as
+    # SIGTERM, which would otherwise end the process with the worktree's work
+    # still unpushed — the same loss as a timeout, by a different route.
+    # Salvage shells out to git from the handler: not async-signal-safe in
+    # principle, but the process is ending either way and the alternative is
+    # losing the run's output entirely.
+    if hasattr(signal, "SIGTERM"):
+
+        def _on_sigterm(_signum, _frame):
+            logger.error("SIGTERM received — salvaging worktree before exit")
+            try:
+                logger.info("salvage: %s", _salvage_if_needed(Path(project_dir), 143))
+            except Exception as e:
+                logger.warning("salvage on SIGTERM failed: %s", e)
+            os._exit(143)
+
+        signal.signal(signal.SIGTERM, _on_sigterm)
+
+    # Timeout is inside run_task (asyncio.timeout context). No wait_for here.
+    result = asyncio.run(run_task(project_dir, task, skill))
 
     # Output structured JSON (same contract as bash version)
     print(json.dumps(result, ensure_ascii=False))

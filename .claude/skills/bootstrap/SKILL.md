@@ -44,9 +44,6 @@ Six files in `ai/idea/`:
 | `terms.md` | Domain vocabulary with boundaries | Joint effort |
 | `open-questions.md` | Contradictions, red flags, what needs research | LLM identifies |
 
-**Removed from v1:** `architecture.md` — architecture decisions belong to Architect level.
-**Removed from v1:** `product-brief.md` — business decisions belong to Board level.
-
 ---
 
 ## Clarification Triggers
@@ -175,7 +172,7 @@ Dig into the pain:
 
 **Test:** "If the problem hurts so much — why hasn't Vasya solved it yet?"
 
-### Phase 4: Past Behavior & Timeline (NEW, 10 min)
+### Phase 4: Past Behavior & Timeline (10 min)
 
 **Source:** Mom Test (Fitzpatrick) + JTBD (Christensen/Moesta)
 
@@ -221,7 +218,7 @@ Record what founder KNOWS/BELIEVES about market:
 
 **Record beliefs vs facts separately.** Board will validate.
 
-### Phase 7: Why Now + Kill Question (NEW, 10 min)
+### Phase 7: Why Now + Kill Question (10 min)
 
 **Source:** YC interviews + M&A due diligence
 
@@ -232,7 +229,7 @@ Record what founder KNOWS/BELIEVES about market:
 "Why won't a big company copy this in a month?"
 ```
 
-### Phase 8: Appetite (NEW, 5 min)
+### Phase 8: Appetite (5 min)
 
 **Source:** Shape Up (Singer)
 

@@ -207,3 +207,7 @@ Write to: `ai/audit/report-archaeologist.md`
 3. **Quote before claim** — every pattern needs at least 3 file:line examples
 4. **Don't judge style** — your job is to find inconsistencies, not impose preferences
 5. **Think in layers** — patterns exist at file, module, and project levels
+
+---
+
+@.claude/agents/_shared/output-conventions.md

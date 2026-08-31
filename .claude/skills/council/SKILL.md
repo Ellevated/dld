@@ -146,6 +146,11 @@ Each expert — separate background subagent with isolated context.
 
 ### Phase 1: PARALLEL ANALYSIS
 
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
+
 ```yaml
 # Before launching: read .claude/rules/dependencies.md and .claude/rules/architecture.md
 # Compute SESSION_DIR = ai/.council/{YYYYMMDD}-{spec_id}/
@@ -222,6 +227,11 @@ Each expert knows which label is theirs (to exclude from review)
 ### Phase 2: CROSS-CRITIQUE (Peer Review)
 
 Each expert reads **anonymous** peer files via Read tool (NOT passed in prompt):
+
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
 
 ```yaml
 # Launch cross-critique (ALL background, ALL parallel)
@@ -357,7 +367,9 @@ Task:
 
 ### When decision = needs_human
 
-Council MUST notify user and halt execution:
+Behavior depends on the entry point:
+
+**Autopilot escalation mode (spec exists, in_progress):**
 
 1. Set spec status to `blocked`
 2. Add `## ACTION REQUIRED` section to spec with:
@@ -365,6 +377,12 @@ Council MUST notify user and halt execution:
    - Specific questions or decisions required
 3. Output to user: "COUNCIL BLOCKED — Human decision required. See ACTION REQUIRED section in spec."
 4. Exit autopilot (do not continue to next task)
+
+**Spark Phase 4 mode (spec does NOT exist yet):**
+
+- Interactive Spark: the user is in-session — ask them directly, no status writes
+- Headless Spark: Spark exits WITHOUT creating the spec (`spec_status: not_created`)
+- ⛔ Do NOT touch spec/backlog/lifecycle status — there is nothing to block yet
 
 ## Output Format
 
@@ -396,6 +414,32 @@ confidence: high | medium | low
 next_step: autopilot | spark | human
 ```
 
+## Spark Phase 4 Mode (pre-spec decision)
+
+When invoked from Spark Phase 4 DECIDE (R0/COUNCIL routing), the spec does NOT
+exist yet — council decides WHICH approach the spec will encode.
+
+**Input:**
+```yaml
+entry_point: spark_phase4
+approaches: [2-3 candidate approaches from Spark Phase 3 synthesis]
+research_files: [ai/features/research-*.md]
+context: "Why the routing matrix escalated (e.g. P1×R0)"
+```
+
+**Process:** Phase 1-2-3 as usual — experts analyze the approaches + research,
+not a spec file.
+
+**Output differences:**
+- Verdict selects/adjusts an approach; the result feeds directly back into the
+  running Spark session, which then writes the spec (status `queued`)
+- Do NOT set any spec/backlog/lifecycle status — there is no spec yet
+- `needs_human` → see "When decision = needs_human", Spark Phase 4 branch
+
+⛔ Council NEVER gates an already-written spec before implementation. A queued
+spec means decisions were already made. The only valid entry points are Spark
+Phase 4 (pre-spec) and Autopilot escalation (mid-execution).
+
 ## Escalation Mode (from Autopilot)
 
 When Spark created BUG spec and needs review:
@@ -420,6 +464,47 @@ context: "Why Council is needed"
 | needs_changes | Update spec → autopilot (or council again) |
 | rejected | → spark with new approach |
 | needs_human | ⚠️ Blocker — wait for human input |
+
+## Inbox Output (Orchestrator Integration)
+
+After synthesis is complete, create an inbox file for each actionable decision:
+
+```markdown
+# Council decision — {one line}
+
+**Status:** draft
+**Source:** council
+**Route:** spark
+**Context:** {SESSION_DIR}/synthesis.md
+
+---
+Council decision: {brief description of decision and recommended actions}
+Votes: {summary of votes}. Confidence: {high/medium/low}.
+Changes required: {list of changes if any}
+```
+
+**Rules:**
+- `Status: draft` — never `queued`. Hermes is the only writer of `queued` (ADR-022);
+  an item written straight to `queued` bypasses the business gate and dispatches Spark
+  on an unreviewed brief. `scan_inbox` ignores every status but `queued`, so a draft
+  waits for Hermes rather than firing on its own.
+- Create inbox file ONLY if decision = approved or needs_changes
+- Do NOT create inbox file for rejected decisions
+- Do NOT create inbox file in Spark Phase 4 mode — the result feeds back into the running Spark session inline
+- One inbox file per council session (not per expert)
+- Context field links to full synthesis.md
+- Commit + push after creating inbox file — Hermes reads the repo, not your working tree
+
+```bash
+git add ai/.council/ ai/inbox/ 2>/dev/null
+git diff --cached --quiet || git commit -m "docs: council synthesis + inbox"
+git push origin develop || echo "push failed — the inbox item is committed locally only; Hermes will not see it until it is pushed"
+```
+
+> Never `git add ai/lifecycle/` (ADR-025) — the pre-commit guard blocks it and the
+> callback is the only writer of spec status.
+
+See `ai/inbox/README.md` for the full intake lifecycle.
 
 ## Limits
 

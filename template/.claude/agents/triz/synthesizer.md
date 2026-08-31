@@ -1,8 +1,8 @@
 ---
 name: triz-synthesizer
 description: /triz Phase 4 - Synthesizes TOC constraint + TRIZ solutions into prioritized system health report.
-model: opus
-effort: high
+model: sonnet
+effort: medium
 tools: Read, Write
 ---
 
@@ -161,3 +161,7 @@ recommendations: N
 top_recommendation: "brief description"
 core_constraint: "brief description"
 ```
+
+---
+
+@.claude/agents/_shared/output-conventions.md

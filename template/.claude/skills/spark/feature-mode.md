@@ -52,7 +52,7 @@ Write tool → {SESSION_DIR}/state.json
 Before launching Phase 2 (Research), inform user (non-blocking):
 
 ```
-"Feature spec: {title} — 4 scouts (parallel) + synthesis, est. ~$1-3. Running..."
+"Feature spec: {title} — 3 scouts (parallel) + synthesis, est. ~$1-3. Running..."
 ```
 
 ---
@@ -71,7 +71,7 @@ Before launching Phase 2 (Research), inform user (non-blocking):
 ✅ Orchestrator reads scout files for synthesis (4 files × ~5K = ~20K acceptable)
 ```
 
-Note: Phase 3 synthesis reads scout output files directly (~20K total). This is an acceptable exception to ADR-010 zero-read — small, bounded output from 4 scouts.
+Note: Phase 3 synthesis reads scout output files directly (~15K total). This is an acceptable exception to ADR-010 zero-read — small, bounded output from 3 scouts.
 
 ---
 
@@ -81,13 +81,16 @@ If scout phases fail partially, continue with available data:
 
 | Failed Phase | Action | Impact |
 |-------------|--------|--------|
-| Phase 2: 1 scout fails | Continue with 3 of 4 scouts | Note missing perspective in synthesis |
-| Phase 2: 2+ scouts fail | Continue with available (min 2 required) | Reduced analysis quality, note gaps |
+| Phase 2: 1 scout fails | Continue with 2 of 3 scouts | Note missing perspective in synthesis |
+| Phase 2: 2 scouts fail | Continue with the survivor | Reduced analysis quality, note gaps |
 | Phase 2: All scouts fail | Skip research, proceed with user input only | Spec based on dialogue only, note "No external research" |
 | Phase 3: Synthesis fails | Read scout files directly, present raw findings | User manually picks approach |
 | Phase 6: Validation fails | Retry once, then skip validation gate | Note "Spec not validated" |
 
-Minimum viable spec: user dialogue (Phase 1) + 2 scout reports.
+Minimum viable spec: user dialogue (Phase 1) + the codebase scout. Losing `spark-codebase`
+is the one failure that degrades the spec structurally — Gate 7 (Historical Risks) and
+Gate 8 (Verified References) both read its output, and both auto-pass without it, so the
+spec ships with unverified references. Note it explicitly when it happens.
 
 ---
 
@@ -134,39 +137,56 @@ User started the feature — ask 5-7 deep questions. ONE at a time!
 Architect/Board assigned this task — read from blueprint, do NOT ask user.
 
 1. Read task description from `ai/blueprint/system-blueprint/`
-2. If clarifications needed → dispatch `architect-facilitator` as subagent
-   - Architect answers with full system-blueprint context
-   - Spark gets clarifications WITHOUT bothering the user
+2. If clarifications are needed → read the blueprint yourself. `domain-map.md`,
+   `data-architecture.md`, `cross-cutting.md` and `api-contracts.md` are the same
+   sources any responder would consult, and you already have Read.
+   - Still unresolved after reading, and the answer would change the design →
+     escalate to `/architect` in Phase 4, which is the route that already exists
 3. Human = 0% involvement (per design doc)
 
 **Output for both modes:** Problem statement captured, ready for scouts.
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 2 until:
 - [ ] state.json initialized with initState()
 - [ ] state.json updated: collect = done
 - [ ] Problem statement clearly captured
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "the feature is obvious, no need for questions"
-</HARD-GATE>
+</GATE>
 
 ---
 
-## Phase 2: RESEARCH (4 Parallel Scouts)
+## Phase 2: RESEARCH (3 Parallel Scouts)
 
-Dispatch 4 isolated scouts in parallel. Each scout gets a frozen snapshot — they do NOT see each other's work.
+Dispatch 3 isolated scouts in parallel. Each scout gets a frozen snapshot — they do NOT see each other's work.
+
+Three, because each one holds something this session does not:
+
+| Scout | What it brings that you cannot get otherwise |
+|---|---|
+| `spark-research` | Everything outside the repo — web, docs, library versions. A separate context absorbs the search volume instead of flooding this one |
+| `spark-codebase` | Grep evidence across the whole tree, the Impact Tree, and `## Verified References` / `## Historical Risks`, which Gates 7 and 8 read directly |
+| `spark-devil` | Independence of judgment. The author of a proposal cannot see its holes — this is the same reason autopilot keeps a separate `review` |
+
+Research and alternatives used to be two scouts running the same Exa queries and returning
+two recommendations that then had to be reconciled. They are one search, so they are one
+scout.
+
+> **Emit all Task calls in a SINGLE assistant message** (multiple tool calls in
+> one turn). They run concurrently only when emitted together — calls in
+> separate turns serialize. Do not launch-then-wait per agent. The harness caps
+> concurrent agents and queues the rest, so emitting many at once is safe.
 
 ```yaml
-# Scout 1: External (best practices, libraries)
+# Scout 1: Research (practices, libraries, alternative approaches)
 Task tool:
   description: "Spark scout: external research"
-  subagent_type: spark-external       # → agents/spark/external.md
+  subagent_type: spark-research       # → agents/spark/research.md
   run_in_background: true
   prompt: |
     FEATURE: {feature description}
     BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
     SOCRATIC INSIGHTS: {key insights from Phase 1}
-    Output: research-external.md
+    Output: research-web.md
 
 # Scout 2: Codebase (existing code, dependencies)
 Task tool:
@@ -179,18 +199,7 @@ Task tool:
     SOCRATIC INSIGHTS: {key insights from Phase 1}
     Output: research-codebase.md
 
-# Scout 3: Patterns (alternatives, trade-offs)
-Task tool:
-  description: "Spark scout: alternative patterns"
-  subagent_type: spark-patterns       # → agents/spark/patterns.md
-  run_in_background: true
-  prompt: |
-    FEATURE: {feature description}
-    BLUEPRINT: [contents of ai/blueprint/system-blueprint/ if exists]
-    SOCRATIC INSIGHTS: {key insights from Phase 1}
-    Output: research-patterns.md
-
-# Scout 4: Devil's Advocate
+# Scout 3: Devil's Advocate
 Task tool:
   description: "Spark scout: devil's advocate"
   subagent_type: spark-devil          # → agents/spark/devil.md
@@ -202,25 +211,23 @@ Task tool:
     Output: research-devil.md
 ```
 
-**All 4 scouts run in PARALLEL, ALL background, and do NOT see each other's work.**
+**All 3 scouts run in PARALLEL, ALL background, and do NOT see each other's work.**
 
 If `ai/blueprint/system-blueprint/` exists, ALL scouts receive it as CONSTRAINT.
 
-**⏳ FILE GATE:** Wait for ALL 4 completion notifications, then verify:
+**⏳ FILE GATE:** Wait for ALL 3 completion notifications, then verify:
 ```
-Glob("{SESSION_DIR}/research-*.md") → must find 4 files
-If < 4: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
+Glob("{SESSION_DIR}/research-*.md") → must find 3 files
+If < 3: launch extractor subagent for missing files (caller-writes fallback, ADR-007)
 ```
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 3 until:
-- [ ] ALL 4 scout completion notifications received
-- [ ] Glob confirms 4 research files exist in SESSION_DIR
+- [ ] ALL 3 scout completion notifications received
+- [ ] Glob confirms 3 research files exist in SESSION_DIR
 - [ ] `research-codebase.md` contains a `## Verified References` section (grep `^## Verified References$` → ≥1 hit). Codebase scout in degraded mode is an acceptable exception — note "no codebase research" in state.json.
 - [ ] state.json updated: research = done, files = [list of 4 files]
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "this is simple enough to skip research"
-</HARD-GATE>
+</GATE>
 
 ---
 
@@ -228,7 +235,7 @@ Common rationalization to REJECT: "this is simple enough to skip research"
 
 Read all inputs:
 - Problem statement from Phase 1
-- 4 research files from Phase 2
+- 3 research files from Phase 2
 - `ai/blueprint/system-blueprint/` (as constraint)
 
 ### Build 2-3 Approaches WITHIN Blueprint
@@ -237,10 +244,10 @@ For each approach:
 
 | Field | Source |
 |-------|--------|
-| Summary | Pattern scout + External scout recommendations |
+| Summary | Research scout `## Approaches` + `## Recommendation` |
 | Affected files | Codebase scout Impact Tree |
 | Risks | Devil scout edge cases |
-| Test strategy | Devil scout + External scout |
+| Test strategy | Devil scout assertions + Research scout |
 | Blueprint compliance | ✓ or ⚠️ with explanation |
 
 ### Rules
@@ -252,19 +259,18 @@ For each approach:
 
 **Output:** 2-3 approaches ready for Phase 4 decision.
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 4 until:
 - [ ] 2-3 approaches documented with pros/cons
 - [ ] Every claim cites a scout research file
 - [ ] state.json updated: synthesize = done
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "there's only one obvious approach"
-</HARD-GATE>
+</GATE>
 
 ---
 
 ## Phase 4: DECIDE
 
+<!-- This matrix applies ONLY in Spark Phase 4. Autopilot/callback MUST NOT apply this matrix. -->
 ### Impact x Risk Routing Matrix
 
 Assign Priority (P0/P1/P2) and Risk (R0/R1/R2) from research, then route:
@@ -294,29 +300,124 @@ R2 = Contained: 1-2 files, single domain, internal, trivially rollbackable
 - Scope unclear after dialogue
 → Present 2-3 approaches, user chooses
 
-### COUNCIL (escalate)
+### COUNCIL (convene NOW, inside this Spark session)
 - Matrix says COUNCIL
 - Cross-domain impact (affects 3+ domains)
 - Major architectural decision
-→ `/council` (5 experts + cross-critique)
+
+Council is a Phase 4 decision instrument — it runs BEFORE the spec is written,
+never after. Protocol:
+
+1. **Interactive mode:** present the R0/impact assessment to the user first.
+   User chooses: (a) convene `/council` now, (b) decide together without
+   council (route downgrades to HUMAN), or (c) drop the feature (no spec).
+2. **Headless mode:** convene `/council` inline immediately (user unavailable).
+3. Input to council: the 2-3 approaches from Phase 3 + scout research files.
+4. Incorporate the synthesis:
+   - `approved` / `needs_changes` → select/adjust approach, proceed to Phase 5
+   - `rejected` → return to Phase 3 with council feedback (or exit without spec)
+   - `needs_human` in headless → EXIT WITHOUT creating the spec file
+     (`status: blocked, spec_status: not_created` — same shape as a linter
+     failure); orchestrator surfaces it to the user.
+
+⛔ **NEVER write the spec first and defer council.** A spec with status
+`blocked`, "council_required", or any other pre-implementation gate MUST NOT
+exist. By the time Phase 5 starts, all decisions are made — every created
+spec exits Spark as `queued` (see completion.md).
 
 ### ARCHITECT (escalate)
 - Blueprint gap (domain missing, rule missing)
 - Blueprint contradiction (research conflicts with blueprint)
 → Architect updates blueprint → retry from Phase 3
 
-<HARD-GATE>
+### Session Budget (size the spec before writing it)
+
+One spec = one autopilot session, and that session is hard-capped:
+`MAX_TURNS = 300`, `TIMEOUT_SECONDS = 10800` (3 hours) in
+`scripts/vps/claude-runner.py`. A spec that doesn't fit the budget is a scoping
+problem — but note the budget is not fixed forever, and the old "the timeout is
+deliberately NOT raised" absolute was wrong: it was raised on 2026-08-23 because
+the run it had been calibrated against stopped existing. Until 2026-07-26 the
+orchestrator silently ran Opus 4.6 on a 200K window; on real Opus 5 the median
+run went from 8.7 to 47.1 minutes and the timeout rate from 1% to 32%. Sizing
+guidance below is unchanged — the ceilings were never the thing that broke.
+
+A session that overruns still produces nothing mergeable. It is killed mid-work,
+callback marks it `blocked`, and only what `salvage.py` pushed survives on the
+branch. FTR-0081 (2026-07-26) spent a full 90 minutes and merged zero lines.
+
+Decide the shape here, while the spec is still an outline:
+
+| Fits one session | Split into epic + children |
+|---|---|
+| ≤ 5 implementation tasks | > 8 tasks |
+| ≤ 10 entries in Allowed Files | > 15 files |
+| One domain (plus its tests) | Touches 3+ domains |
+| Feature only | Migration AND the feature that consumes it |
+
+Between the columns (6–8 tasks, 11–15 files): a single spec is allowed, but state
+in one line why it is indivisible.
+
+**Splitting is not deferral.** Claim one `ARCH-*` id for the epic and one id per
+child — each through `lifecycle.create_initial`, same as any spec — write every
+child spec in this session, and have the epic list them. Each child must be
+independently shippable: if child 2 is useless without child 1, that is one spec,
+not two.
+
+Judge by tasks and files, not by prose length. A 400-line spec with 3 tasks is
+fine; a 60-line spec that quietly rewrites nine files is not.
+
+<GATE>
 DO NOT proceed to Phase 5 until:
 - [ ] Decision route selected (AUTO/HUMAN/COUNCIL/ARCHITECT)
 - [ ] If HUMAN: user has explicitly chosen an approach
+- [ ] If COUNCIL: council has ALREADY run and its decision is incorporated — "council later" is not a state
+- [ ] Session Budget applied: single spec, or the epic + child split decided and ids claimed
 - [ ] state.json updated: decide = done, approach = N
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "I already know what the user wants"
-</HARD-GATE>
+</GATE>
 
 ---
 
 ## Phase 5: WRITE (Feature Spec Template)
+
+### Spec-First ID Generation (Kafka pattern via lifecycle CAS)
+
+Instead of "scan backlog → pick max+1 → write spec", use atomic CAS:
+
+1. **Compute candidate ID:**
+   ```bash
+   # Get max existing ID (returns empty if ai/lifecycle/ doesn't exist yet → start from 001)
+   MAX=$(git ls-tree HEAD:ai/lifecycle/ 2>/dev/null | grep -oE '(TECH|FTR|BUG|ARCH|GROWTH)-[0-9]+' | sort -t- -k2 -n | tail -1)
+   # If empty (new project), use 001; otherwise increment
+   CANDIDATE="${TYPE}-$(printf '%03d' $((${MAX##*-} + 1)))"
+   ```
+   Keep same prefix as your spec type (`TECH`/`FTR`/`BUG`/`ARCH`).
+
+2. **Attempt atomic claim:**
+   ```bash
+   python3 -c "
+   from scripts.vps.lifecycle import create_initial, LifecycleWriteRaceError
+   try:
+       create_initial('<REPO_DIR>', '<CANDIDATE_ID>', priority='<P0|P1|P2>', kind='<TECH|FTR|BUG|ARCH>', by='spark', status='queued', depends_on=[<'AFTER' ids from the spec header, or empty>])
+       print('claimed')
+   except LifecycleWriteRaceError:
+       print('race')
+   "
+   ```
+   `depends_on` — плоский список spec_id из `**AFTER <ID>**` в шапке спеки. Проверить каждый
+   через `git cat-file -e HEAD:ai/lifecycle/<ID>.yaml` до claim'а; несуществующий ID не класть.
+
+3. **On `LifecycleWriteRaceError`** → re-read HEAD, increment candidate, retry (max 3 attempts — `MAX_CAS_RETRIES`).
+
+4. **On success** → ID is yours. Write `ai/features/<ID>-<date>-<title>.md`. Nothing else —
+   `ai/backlog.md` is rendered from the lifecycle records.
+5. **If `git cat-file -e HEAD:ai/lifecycle/<ID>.yaml` fails** after the attempt, the claim
+   did not land — write the spec **and** a backlog row for it. An orchestrator bootstraps a
+   missing lifecycle record only for specs the backlog already names, so without the row the
+   spec is never dispatched. See `completion.md`, "The backlog is a render — with exactly
+   one exception".
+
+6. **On exhausted retries** → surface error to user; do NOT write spec with an unclaimed ID.
 
 Write spec using selected approach from Phase 4:
 
@@ -324,7 +425,7 @@ Write spec using selected approach from Phase 4:
 # Feature: [FTR-XXX] Title
 **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
 
-> **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml` (ARCH-186).
+> **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml`.
 > Callback is the single writer; status/blocked_reason/transitions live there.
 > Do not add a `Status:` field to the spec body — it's no longer authoritative.
 
@@ -342,10 +443,12 @@ Write spec using selected approach from Phase 4:
 
 ---
 
-## Impact Tree Analysis (ARCH-392)
+## Impact Tree Analysis
 
 ### Step 1: UP — who uses?
-- [ ] `grep -r "from.*{module}" . --include="*.py"` → ___ results
+_Source: code graph or grep — state which._
+- [ ] `trace_path(project, function_name="{name}", direction="inbound", depth=2)` → ___ callers
+      (no graph: `grep -r "from.*{module}" . --include="*.py"` → ___ results)
 - [ ] All callers identified: [list files]
 
 ### Step 2: DOWN — what depends on?
@@ -354,6 +457,13 @@ Write spec using selected approach from Phase 4:
 
 ### Step 3: BY TERM — grep entire project
 - [ ] `grep -rn "{old_term}" . --include="*.py" --include="*.sql"` → ___ results
+- [ ] **Signature change or method removal — grep `tests/` separately.** When a function's
+      arguments change (added, removed, renamed) or a method/module is deleted, run
+      `grep -rn "{symbol}" tests/` on its own and put **every** caller test in Allowed Files.
+      Not the obvious unit test — all of them. Precedent (AwardyBot TECH-1325): the spec
+      named 2 test files, 5 actually broke, and autopilot widened its own scope mid-run to
+      reach them — seven retries. A caller test outside the allowlist is a run that cannot
+      finish honestly.
 
 | File | Line | Status | Action |
 |------|------|--------|--------|
@@ -374,7 +484,7 @@ Write spec using selected approach from Phase 4:
 
 <!-- callback-allowlist v1: backticked paths only, one per row.
      DO NOT EDIT THIS BLOCK manually after autopilot starts.
-     Format is parsed by scripts/vps/callback.py — see TECH-167/175/ARCH-186. -->
+     Format is parsed by the orchestrator callback. -->
 
 ONLY the files listed below may be modified during implementation.
 
@@ -451,6 +561,15 @@ _Write "none" explicitly if spark-codebase found no historical lessons for this 
 ---
 
 ## Design
+
+> **Every claim about how the system behaves today carries a `file:line` or a command that
+> shows it.** Not the design you are proposing — the *existing* behaviour you are designing
+> against: how a merge happens, what a diff range covers, which gate runs first, what a
+> function returns. Those sentences are the ones that get written from memory of the prompt
+> tree rather than from the code, and a wrong one produces a spec that looks implemented and
+> is not. TECH-220 specified a diff range that is empty under `--ff-only` — the only merge
+> the pipeline performs — and its own EC would have passed while the gate never fired; the
+> planner caught it against the code, spec review had not. Cite it or drop it.
 
 ### User Flow
 [Step-by-step user journey]
@@ -625,85 +744,71 @@ DEPLOY_URL={URL or "local-only"}
 [Auto-populated by autopilot during execution]
 ```
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 6 until:
 - [ ] Full spec written to ai/features/{TASK_ID}-*.md
 - [ ] All template sections filled (no {placeholders} remain)
 - [ ] state.json updated: write = done
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "I'll fill the remaining sections later"
-</HARD-GATE>
+</GATE>
 ---
 
 ## Phase 5.5: ALLOWLIST LINTER (Pre-Validate Hard Gate)
 
-After Write, before Validate. Deterministic check against the spec's
-`## Allowed Files` section. ANY failure here → DELETE spec file, escalate
-to Telegram with the exact error code, do NOT advance to Phase 6.
+After Write, before Validate. Autopilot may write only what this section lists —
+so a section that parses differently than you meant is a run that writes the wrong
+files, or nothing at all.
 
-### Linter rules (regex SSOT — must match callback.py v2)
-
-```
-HEADING_RE   = ^##[ \t]+Allowed Files[ \t]*$            (case-sensitive, exact)
-MARKER_RE    = <!--\s*callback-allowlist\s+v1\b[^>]*-->
-BULLET_RE    = ^-[ \t]+`([^\s`\n]+\.[A-Za-z][\w-]*)`(?:[ \t]+.*)?$
-SECTION_END  = ^##[ \t]+\S          (next H2 heading)
+```bash
+node .claude/scripts/validate-allowlist.mjs ai/features/{TASK_ID}-*.md
 ```
 
-> ARCH-186 removed the legacy callback marker envelopes. The allowlist is now
-> identified solely by `HEADING_RE` + the inner `MARKER_RE`. No outer marker block.
+Exit 0 = pass. Exit 1 = fix required. Exit 2 = the file is missing or unreadable.
+The script prints one JSON object: `paths`, `implementation_paths`, `errors`,
+`warnings`.
 
-### Algorithm
+The rules live in the script, not here. This used to be four regexes transcribed
+into this file for the model to apply by hand — two copies of one format spec, which
+drifted apart and started rejecting specs the rest of the pipeline accepted. If your
+project also parses `## Allowed Files` in a CI gate or commit hook, keep that parser
+and this script in lockstep and put a test on the pair.
 
-1. Read the just-written spec file.
-2. Find the FIRST line matching `HEADING_RE`. If absent → fail
-   `ALLOWLIST_E001_NO_HEADING`.
-3. Forbid duplicates: if more than one line matches `HEADING_RE` → fail
-   `ALLOWLIST_E002_DUPLICATE_HEADING`.
-4. Slice section = lines after heading until first `SECTION_END` (or EOF).
-5. Search section for `MARKER_RE`. Absent → fail `ALLOWLIST_E003_NO_MARKER`.
-6. Iterate non-blank, non-comment lines in section. For each line:
-   - If line starts with `- ` (bullet) and does NOT match `BULLET_RE` → fail
-     `ALLOWLIST_E004_BAD_BULLET` with offending line.
-   - Lines that are not bullets and not the marker comment and not free
-     prose paragraphs (heuristic: contain a backtick) → fail
-     `ALLOWLIST_E005_PATH_OUTSIDE_BULLET` (catches "paths in fenced code
-     blocks" anti-pattern).
-7. Collect all paths captured by `BULLET_RE`. If count == 0 → fail
-   `ALLOWLIST_E006_EMPTY_LIST`.
+### On failure — fix the section, do not delete the spec
 
-### On failure
+The ID was already claimed in Phase 5, so deleting the spec file burns the ID and
+can strand whatever lifecycle record was written alongside it. The allowlist is a
+section of markdown — repair it.
 
-1. `Bash`: `rm -f ai/features/{TASK_ID}-*.md` (delete the bad spec).
-2. Roll back the backlog edit if it was already added (Edit tool to remove
-   the row).
-3. Set `state.json: write = failed, error = <code>`.
-4. Return JSON to caller:
+1. Read the `errors` array. Each names the line and what the parser will do with it.
+2. Edit the `## Allowed Files` section in place. Canonical entry shapes, one path
+   per line, nothing else parses:
+   ```
+   - `path/to/file.py` — reason (modify)
+   1. `path/to/file.py` — reason (modify)
+   ```
+   Tables, fenced blocks and two paths on one line are not read.
+3. Re-run the script. Repeat at most twice.
+4. Still failing after two repairs → this is a spec problem, not a formatting one
+   (`ALLOWLIST_E007_BOOKKEEPING_ONLY` means the spec lists no file that implements
+   anything). Return to Phase 3, keep the ID, rewrite the section from the Impact Tree.
 
-```yaml
-status: blocked
-error_code: ALLOWLIST_E00X
-error_message: "Spark allowlist linter rejected spec: <human description>"
-remediation: "Re-run /spark and follow the canonical Allowed Files format
-              documented in feature-mode.md Phase 5.5."
-```
-
-5. Telegram notification (via `result_preview`):
-   `Spark linter blocked spec — <error_code>. Manual fix needed.`
+Escalate only if the third attempt fails: set `state.json: lint = failed, error = <code>`
+and return `status: blocked` with the linter's `error_message` and the spec path —
+the spec stays on disk for a human to look at.
 
 ### On success
 
-- state.json: `lint = done, allowlist_paths = [<list>]`.
+- state.json: `lint = done, allowlist_paths = [<paths from the script>]`.
+- Read the `warnings` array before moving on. Warnings do not block, but
+  `ALLOWLIST_W002_EXTRA_PATH_IN_REASON` means a second path on an entry line was
+  not extracted — if that was meant to be an entry, give it its own line now.
 - Proceed to Phase 6.
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 6 until:
-- [ ] Phase 5.5 linter run on freshly-written spec file
-- [ ] Linter exit = success (no E001..E006)
+- [ ] `validate-allowlist.mjs` run on the freshly-written spec, exit 0
+- [ ] `warnings` read and any lost entry given its own line
 - [ ] state.json updated: lint = done, allowlist_paths = [<paths>]
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "the section looks fine to me"
-</HARD-GATE>
+</GATE>
 
 ---
 ## Phase 6: VALIDATE
@@ -719,28 +824,29 @@ Before marking spec `queued`, run 8 structural validation gates.
 □ DoD is measurable?
 ```
 
-### Gate 1b: Spec Size (SOFT — warning only, never blocks)
+### Gate 1b: Spec Size (hard ceiling, soft band beneath it)
 ```
-□ Implementation Plan has ≤ 5 tasks?     (warn if >5)
-□ Allowed Files list ≤ 10 entries?       (warn if >10)
-□ Estimated effort ≤ 1 autopilot session (~$15, ~50 turns)? (warn if more)
+□ ≤ 5 tasks AND ≤ 10 Allowed Files      → pass
+□ 6-8 tasks OR 11-15 Allowed Files      → pass, with a written justification
+□ > 8 tasks OR > 15 Allowed Files       → BLOCK: split (Phase 4 Session Budget)
 ```
 
-**Why it matters:** Autopilot runs with `max_turns=60`. Oversized specs burn
-$20+ per run with high failure rate (BUG-327 post-mortem: 117 turns, $50, FAIL).
-Smaller specs = higher success rate and cheaper.
+**Why this one blocks.** Autopilot is capped at `MAX_TURNS = 300` /
+`TIMEOUT_SECONDS = 10800` (3 h). The cap is generous, not infinite, and an
+oversized spec doesn't degrade gracefully — it is killed mid-run, marked
+`blocked`, and merges nothing. BUG-327: 117 turns, $50, FAIL. FTR-0081: 90
+minutes, blocked, zero lines merged. This gate used to end with "proceed
+anyway", which is precisely why oversized specs kept shipping.
 
-**If any check fails:**
-- Add a ⚠️ WARNING section at the top of the spec:
-  ```
-  ⚠️ **Size warning:** {N} tasks / {M} allowed files / est. ${X}.
-  Consider splitting into: {concrete suggestion — e.g., "ARCH-XXX epic + 3 child specs"}.
-  ```
-- Proceed to `queued` anyway — user may know the spec is indivisible.
-- Prefer splitting when possible: parent epic (ARCH-*) + 2-3 child specs
-  (FTR/TECH), each independently shippable, epic tracks child completion.
+**On BLOCK, do not exit without specs.** Return to Phase 4 Session Budget and
+split: one `ARCH-*` epic plus 2-4 independently shippable children, all written
+in this session, all `queued`. Splitting yields more specs, never fewer — an
+empty exit here is a worse outcome than an oversized spec.
 
-**Do NOT block the spec** — warning is informational. The user decides.
+**In the 6-8 / 11-15 band**, add one line under the spec title:
+`**Size:** N tasks / M files — indivisible because {reason}.`
+A justification that could be pasted onto any spec ("the tasks are related")
+means it is divisible; split instead.
 
 ### Gate 2: Eval Criteria Gate
 ```
@@ -807,24 +913,21 @@ research-codebase.md missing or empty) → Gate 8 auto-pass с пометкой
 **Why this gate exists:** Spark писал в спеку конкретные пути/endpoint'ы/
 state-ключи без grep-верификации; расхождение ловилось только в runtime
 автопилота (planner) или code-quality reviewer'ом — уже после того как
-спека ушла как готовая (см. TECH-183, BUG-988/FTR-997/FTR-999).
+спека ушла как готовая.
 Gate 8 закрывает петлю: untraced reference → reject → возврат в Phase 3.
 
 **Note:** Gate 8 is LLM-проверка трассируемости (reference ↔ Verified
-References row). AST-based file-resolver — отдельный follow-up TECH (out
-of scope для TECH-183).
+References row). AST-based file-resolver — отдельный follow-up (out of scope).
 
 **GATE RESULT:** pass / reject with reasons
 
 **If any gate fails →** spec stays in current state, return to Phase 3 (re-synthesize with feedback).
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 7 until:
 - [ ] All 8 validation gates pass
 - [ ] state.json updated: validate = done
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "gates are just a formality, spec looks good"
-</HARD-GATE>
+</GATE>
 
 ---
 
@@ -873,13 +976,11 @@ Append to ai/reflect/upstream-signals.md:
 {What Architect/Board should do}
 ```
 
-<HARD-GATE>
+<GATE>
 DO NOT proceed to Phase 8 until:
 - [ ] Reflect signals written (if any issues found)
 - [ ] state.json updated: reflect = done
-Skipping this gate = VIOLATION. No rationalization accepted.
-Common rationalization to REJECT: "nothing to reflect on"
-</HARD-GATE>
+</GATE>
 
 ---
 
@@ -887,26 +988,8 @@ Common rationalization to REJECT: "nothing to reflect on"
 
 After spec is created and validated → read `completion.md` for:
 - ID determination protocol (sequential across ALL types)
-- Backlog entry format
+- Why `ai/backlog.md` is never edited by hand
 - Auto-commit rules
 - Handoff to autopilot
 
 After completion: state.json updated: completion = done
-
----
-
-## Rationalization Pre-emption Table
-
-When you feel tempted to skip a phase, consult this table:
-
-| LLM thinks | Correct action |
-|---|---|
-| "This is too simple for research" | Research can be short, but must happen. Update state.json. |
-| "I already know how to do this" | Knowledge ≠ research. Scout may find a better pattern. |
-| "Tests can be written later" | TDD: test BEFORE code. No test = no commit. |
-| "This file isn't in Allowed Files, but it's needed" | Add it to the spec. Hook will block otherwise. |
-| "There's only one obvious approach" | Document it anyway. Devil's advocate may disagree. |
-| "The user said 'just do it'" | Ask 2-3 minimum clarifying questions anyway. |
-| "Validation gates are a formality" | Gates catch real issues. Run them honestly. |
-| "Nothing to reflect on" | There's always a process signal. Did auto-decide work? |
-| "No need for Historical Risks — this is a new feature" | ai/lessons/ exists? Run Gate 7. If it passes with 'none', you did the right thing. If you skip, the next kopecks-chain starts here. |

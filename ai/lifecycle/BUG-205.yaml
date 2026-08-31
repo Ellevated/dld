@@ -1,0 +1,18 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: '2026-06-19T16:26:51Z'
+kind: BUG
+priority: p1
+pueue_id: 627
+spec_id: BUG-205
+started_at: null
+status: done
+transitions:
+- at: '2026-06-19T16:26:51Z'
+  by: callback
+  from: queued
+  pueue_id: 627
+  to: done
+updated_at: '2026-06-19T16:26:51Z'
+updated_by: callback
+version: 2

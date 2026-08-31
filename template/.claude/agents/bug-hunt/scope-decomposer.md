@@ -1,8 +1,7 @@
 ---
 name: bughunt-scope-decomposer
 description: Bug Hunt Step 0 - Decomposes target into 2-4 focused zones for parallel deep analysis.
-model: sonnet
-effort: medium
+model: haiku
 tools: Read, Glob, Write
 ---
 
@@ -82,3 +81,7 @@ zones_written:
 ```
 
 Both the file AND the response summary are required. The file is the primary artifact; the summary helps the orchestrator route the next step.
+
+---
+
+@.claude/agents/_shared/output-conventions.md

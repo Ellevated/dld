@@ -1,0 +1,23 @@
+allowed_files_hash: null
+blocked_reason: null
+finished_at: '2026-08-30T13:04:50Z'
+kind: TECH
+priority: p0
+pueue_id: 1259
+spec_id: TECH-220
+started_at: '2026-08-30T11:09:37Z'
+status: done
+transitions:
+- at: '2026-08-30T11:09:37Z'
+  by: orchestrator
+  from: queued
+  pueue_id: 1259
+  to: in_progress
+- at: '2026-08-30T13:04:50Z'
+  by: callback
+  from: in_progress
+  pueue_id: 1259
+  to: done
+updated_at: '2026-08-30T13:04:50Z'
+updated_by: callback
+version: 3

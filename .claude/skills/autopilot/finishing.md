@@ -9,15 +9,21 @@ Final verification, status update, merge, and cleanup.
 ## Flow
 
 ```
-1. Final test: ./test fast
-   └─ must pass!
+1. Final test: ./test ci
+   └─ must pass! (CI-parity gate, TECH-206)
+   └─ no `./test ci`? → CI_PARITY_UNAVAILABLE fallback (see autopilot-git.md §5.6)
 
 2. Exa Verification (see below)
    └─ warnings only, never block
 
-3. REFLECT (v2, NEW — see below)
+3. REFLECT (see below)
    └─ Write upstream signals if issues found
    └─ Informational only, never blocks
+
+3.5. DOCUMENTER (subagent — see below)
+   └─ Brings docs back in line with the code, once per spec
+   └─ Commits its own edits to the feature branch
+   └─ Never blocks: a documenter failure is a warning, not a stop
 
 4. Pre-Done Checklist (see below)
    └─ ALL items must be checked
@@ -46,8 +52,20 @@ Final verification, status update, merge, and cleanup.
    git stash push -m "autopilot-temp" (if uncommitted)
    git pull --rebase origin develop
    git merge --ff-only {type}/{ID}
+
+   CI-parity merge gate (TECH-206) — BEFORE push:
+   ./test ci on merged tree. Red → git reset --hard origin/develop
+   (abort merge), emit needs_review, do NOT push.
+   No `./test ci`? → CI_PARITY_UNAVAILABLE fallback (autopilot-git.md §5.6).
+
    git push origin develop
    git stash pop (if stashed)
+
+   ⛔ TECH-197 PUSH GUARD: If `git push origin develop` fails (even
+   after retry), emit `"task_status": "needs_review"` instead of
+   `"complete"` in the final JSON. Work is merged locally but not
+   on origin — callback push-local will attempt recovery, but the
+   signal must reflect the uncertainty.
 
 8.5. Preserve telemetry (before worktree cleanup):
    ```bash
@@ -73,18 +91,26 @@ Final verification, status update, merge, and cleanup.
    git worktree prune
 
 10. Loop Mode Exit Check:
+
+    ⛔ MANDATORY — check this BEFORE doing anything else after cleanup.
+
     If SPEC_ID was provided (loop mode):
+    - STOP HERE. Session is COMPLETE.
     - Do NOT continue to next spec
     - Do NOT call /compact
+    - Do NOT read backlog for more work
+    - Do NOT start any unrelated work
     - EXIT cleanly — external orchestrator handles next
     - Fresh context will be provided for next spec
+    - ANY further work is a governance violation (BUG-199)
 
     If interactive mode (no SPEC_ID):
     - Continue to next queued spec
+    - If queue empty → STOP
     - Context already managed by orchestrator
 ```
 
-## Reflect (v2, NEW)
+## Reflect
 
 After tests pass, before Pre-Done Checklist:
 
@@ -122,7 +148,7 @@ If no issues → write nothing (no empty signals!).
 
 ## Exa Verification
 
-After `./test fast` passes, verify the approach against known pitfalls:
+After `./test ci` passes (step 1), verify the approach against known pitfalls:
 
 **Step 1:** Extract key patterns from spec
 - Read spec's `## Design` and `## Approaches` sections
@@ -151,12 +177,50 @@ mcp__exa__web_search_exa:
 
 ---
 
+## Documenter (Step 3.5)
+
+Runs once per spec, here — not per task, and not after the merge.
+
+Every task is committed and the branch is not yet merged, so the agent sees the whole
+change at once and its edits ride into `develop` on the same merge as the code they
+describe. Per task it would rewrite the same files from partial views; after the merge,
+docs and code would sit diverged in `develop` until someone noticed. Documentation drift
+is not free — stale docs cost the next session the same debugging time that a stale spec
+costs autopilot.
+
+```yaml
+Task tool:
+  subagent_type: "documenter"
+  prompt: |
+    spec_id: "{SPEC_ID}"
+    spec_summary: "{one-line statement of what the spec set out to do}"
+    feature_type: "{FTR | BUG | TECH | ARCH}"
+    files_changed: [{union of files_changed across ALL tasks}]
+```
+
+```
+├─ status: completed → note docs_updated in the Autopilot Log → Step 4
+├─ status: skipped   → note the reason in the Autopilot Log → Step 4
+└─ error / no return → WARN in the Autopilot Log, continue to Step 4
+```
+
+**Never blocks.** A spec whose code is correct does not become un-shippable because a
+changelog entry failed to write. But a skip must be *recorded* — an unexplained silence
+here is how the changelog fell 1.5 days behind before.
+
+**Why the agent can edit files the spec never listed:** documentation paths
+(`.env.example`, `ai/architecture/**`, `ai/changelog/**`, `ai/decisions/**`,
+`ai/glossary/**`, `README.md`, `docs/**`) are in `alwaysAllowedPatterns` in
+`.claude/hooks/hooks.config.mjs`. A spec's Allowed Files lists the code being changed,
+never the docs describing it — before that exemption existed, this dispatch would have
+been denied by the pre-edit hook on its own first edit.
+
 ## Pre-Done Checklist
 
 ⛔ **Before setting status=done, verify ALL items:**
 
 ### Code Quality
-- [ ] `./test fast` passes (run it!)
+- [ ] `./test ci` passes (CI-parity gate, TECH-206)
 - [ ] No `# TODO` or `# FIXME` in changed files
 - [ ] All tasks from Implementation Plan completed
 
@@ -165,14 +229,15 @@ mcp__exa__web_search_exa:
 - [ ] E2E user journey works (for UI features)
 
 ### Documentation
-- [ ] If BREAKING/FEATURE change → changelog entry added
-- [ ] Related docs updated
+- [ ] Documenter (Step 3.5) ran, and its result is in the Autopilot Log
+- [ ] If it returned `completed` → its `docs_updated` list is recorded and committed
+- [ ] If it returned `skipped` → the reason is recorded, not just the status
 
 ### Autopilot Log Completeness
 For EACH task, verify:
 - [ ] Coder entry present
 - [ ] Tester entry present
-- [ ] Spec Reviewer entry with status
+- [ ] Spec compliance entry with result
 - [ ] Code Quality entry with status
 - [ ] Commit hash present
 
@@ -204,8 +269,8 @@ Add to feature file:
 - Tester: passed | failed → debug loop | skipped (no tests for .md)
 - Deploy: applied | skipped (no migrations)
 - Documenter: completed | skipped (no docs needed)
-- Spec Reviewer: approved | needs_implementation | needs_removal
-- Code Quality Reviewer: approved | needs_refactor
+- Spec compliance: matches | missing something | extra beyond scope
+- Code Quality Reviewer: approved | needs_refactor ({N} blocking, {M} advisory)
 - Exa Verify: no issues | WARNING: {description}
 - Local Verify: pass | warn: {details} | skip (no AV)
 - Post-Deploy Verify: pass | warn: {details} | skip (no URL)

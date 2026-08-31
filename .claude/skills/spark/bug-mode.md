@@ -80,7 +80,11 @@ Only after root cause is found → create BUG-XXX spec:
 ```markdown
 # Bug Fix: [BUG-XXX] Title
 
-**Status:** queued | **Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
+**Priority:** P0/P1/P2 | **Date:** YYYY-MM-DD
+
+> **Lifecycle state** is tracked in `ai/lifecycle/{spec_id}.yaml` (ARCH-186).
+> Callback is the single writer; status/blocked_reason/transitions live there.
+> Do not add a `Status:` field to the spec body — it's no longer authoritative.
 
 ## Symptom
 [What user sees / test failure]
@@ -99,6 +103,7 @@ Only after root cause is found → create BUG-XXX spec:
 ## Impact Tree Analysis
 
 ### Step 1: UP — who uses?
+_Source: code graph (`trace_path` inbound) or grep — state which._
 - [ ] All callers identified: [list files]
 
 ### Step 2: DOWN — what depends on?
@@ -111,13 +116,70 @@ Only after root cause is found → create BUG-XXX spec:
 
 ### Verification
 - [ ] All found files added to Allowed Files
+- [ ] **Signature change or method removal:** a separate `grep -rn "{symbol}" tests/`, and
+      **every** caller test goes in Allowed Files — not just the obvious one. Precedent
+      (AwardyBot TECH-1325): 2 listed, 5 broke.
 
 ## Research Sources
 - [Pattern](https://example.com) — description from Scout
 
 ## Allowed Files
-1. `path/to/file.py` — fix location
-2. `path/to/test.py` — add regression test
+
+<!-- callback-allowlist v1 -->
+
+- `path/to/file.py` — fix location
+- `path/to/test.py` — add regression test
+
+## Historical Risks
+
+<!-- lessons-binding v1 -->
+
+| ID | Class | Rule | Sources |
+|----|-------|------|---------|
+| L-NNN | root_cause_class | prevention rule | TASK-IDs |
+
+Write "none" explicitly when the lessons bank holds nothing for this area, or when
+`ai/lessons/` does not exist here. A placeholder left in place reads as researched.
+
+## Implementation Plan
+
+### Task 1: [Name]
+**Type:** code | test | migrate
+**Files:**
+  - modify: `path/to/file.py`
+**Acceptance:** [how to verify this task is done]
+
+### Task 2: Regression test
+**Type:** test
+**Files:**
+  - create: `tests/test_name.py`
+**Acceptance:** fails on the commit before the fix, passes after
+
+### Execution Order
+1 → 2
+
+## Eval Criteria
+
+| ID | Scenario | Input | Expected | Type | Priority |
+|----|----------|-------|----------|------|----------|
+| EC-1 | reproduces the reported failure | the exact input from Reproduction Steps | fails before the fix, passes after | deterministic | P0 |
+| EC-2 | the boundary the root cause turns on | | | deterministic | P0 |
+| EC-3 | nearest untouched neighbour still works | | | deterministic | P1 |
+
+### Coverage Summary
+
+Deterministic: N | Integration: N | Total: N (minimum 3)
+
+## Acceptance Verification
+
+| ID | Check | Command | Expected |
+|----|-------|---------|----------|
+| AV-S1 | the thing still starts | exact command | exit 0 |
+| AV-F1 | the reported symptom is gone | exact command | exact expected output |
+
+Runnable commands, not placeholders. If the bug genuinely cannot be verified from
+outside the test suite, write `N/A: {reason}` — that is a claim a reader can argue
+with, which an empty section is not.
 
 ## Definition of Done
 - [ ] Root cause fixed
@@ -126,17 +188,13 @@ Only after root cause is found → create BUG-XXX spec:
 - [ ] No new failures
 ```
 
+**Size.** The same ceiling as a feature spec, because the same autopilot session runs
+it: up to 5 tasks and 10 entries in Allowed Files is fine; 6–8 tasks or 11–15 entries
+needs one line saying why it is indivisible; beyond that, split into an epic plus
+independently shippable children and write them all now. A bug report of a few kopecks
+answered with 22 files is three bugs wearing one id — file the other two.
+
 → Then go to `completion.md` for ID protocol, commit + push.
-
----
-
-# Bug Hunt Mode (MOVED)
-
-Bug Hunt is now a standalone skill: `/bughunt`
-
-**Do NOT run Bug Hunt from Spark.** Use `/bughunt <target>` directly.
-
-Quick Bug Mode remains in Spark for simple bugs (<5 files).
 
 ---
 
@@ -191,12 +249,19 @@ Task tool:
 2. [ ] Reproduction steps exact
 3. [ ] Scout research done
 4. [ ] Impact Tree Analysis complete
-5. [ ] Allowed Files exact (no placeholders)
-6. [ ] Regression test in DoD
-7. [ ] ID determined by protocol (completion.md)
-8. [ ] Spec file created (status: queued)
-9. [ ] Backlog entry added (status: queued)
-10. [ ] Auto-commit + push done
+5. [ ] Allowed Files exact (no placeholders), and inside the size ceiling above
+6. [ ] Implementation Plan: ≥1 `### Task N` with Type / Files / Acceptance — a one-line
+   fix is still one task, and `requirePlanBeforeCode` denies the commit without it
+7. [ ] Eval Criteria: ≥3 EC rows and a Coverage Summary — the pre-commit hook blocks without them
+8. [ ] Acceptance Verification: ≥1 AV-S and ≥1 AV-F, or `N/A: {reason}`
+9. [ ] Historical Risks filled from the lessons bank, or "none" written explicitly
+10. [ ] Regression test in DoD
+11. [ ] ID determined by protocol (completion.md)
+12. [ ] Spec file created
+13. [ ] `git cat-file -e HEAD:ai/lifecycle/{ID}.yaml` succeeds and the record says
+    `status: queued` — or it does not, and the spec ships with a backlog row instead
+    (`completion.md`, "The backlog is a render — with exactly one exception")
+14. [ ] Auto-commit + push done
 
 ---
 

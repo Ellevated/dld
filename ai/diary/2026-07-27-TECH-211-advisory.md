@@ -1,0 +1,9 @@
+# TECH-211 — advisory findings
+
+| File:line | Finding | Suggested action |
+|-----------|---------|------------------|
+| `.claude/rules/dependencies.md:641` | Карта зависимостей описывает `lifecycle_audit.py` как единый модуль; `audit_probe`/`audit_categories`/`reaper_pueue`/`reaper_liveness` отсутствуют. `audit_categories.py:21` — прямой потребитель `lifecycle.LIFECYCLE_DIR`, но reverse-pointer на `lifecycle.py:286,296` называет только `lifecycle_audit.py`. Impact Tree по `LIFECYCLE_DIR` укажет на неверный файл. | Файл ВНЕ `## Allowed Files` TECH-211 — правка была бы scope-violation. Отдать в ARCH-209 (раскол остальных vps-модулей) или отдельной спекой. |
+| `reaper_liveness.py:51,80,93` | `except Exception:` без re-raise. Предсуществующий код (`heartbeat_reaper.py:225,254,267` в HEAD~1), перенесён дословно. Fail-open by design: `is_process_idle` -> `None` означает «не убивать». `pre-review-check.py` метит как новый долг, потому что файл новый. | Не чинить в рамках TECH-211 — нарушило бы byte-identical контракт и изменило поведение на kill-пути. Если чинить, то сужением до `OSError`/`SubprocessError`, не re-raise. |
+| `lifecycle_audit.py:61-65` | Алиасы `CATEGORIES`/`_parse_backlog_columns` держатся только комментарием; ничто не проверяет, что их не удалят. Поломка всплывёт в out-of-scope `test_orchestrator_bootstrap.py`. | Добавить проверку в `test_lifecycle_audit.py` при следующей правке этого файла (сейчас нельзя — это byte-untouched артефакт Task 1). |
+| `heartbeat_reaper.py:5,24` | Docstring `Uses:` переоценивает (`pueue status`/`/proc` уехали); `timedelta` импортирован и не используется — предсуществующее. | Косметика, отдельной спекой. |
+| `test_orchestrator_bootstrap.py:509-691` | 12 тестов аудитора теперь перекрыты более строгими эквивалентами в `test_lifecycle_audit.py` (те проверяют членство, эти — точный кортеж). | Консолидировать; файл вне Allowed Files. |

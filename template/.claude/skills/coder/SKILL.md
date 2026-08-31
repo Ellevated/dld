@@ -39,15 +39,15 @@ files_changed:
 status: completed | blocked
 ```
 
-## Module Headers Workflow (MANDATORY)
+## Module Headers
 
-When working with a file:
+Follow the convention **where the surrounding files already use it**. If the directory you
+are editing carries module headers, a file you add or substantially change gets one, and
+one you touch keeps its `Uses` / `Used by` accurate. If it does not, adding one imports a
+convention the file does not use.
 
-1. OPENED → read module header
-2. Header empty? → create before changes
-3. MADE changes
-4. RE-READ header → update if needed (Uses, Used by, Role)
-5. SAVED
+Never fill in a header on a file you were not otherwise changing — that is documenting code
+you did not touch, which `@_shared/minimal-code.md` rules out.
 
 ### Module Header Format
 
@@ -64,10 +64,10 @@ Used by:
   - {module}: {for what purpose}
 
 Why here: {context if non-obvious}
-
-Glossary: ai/glossary/{domain}.md
 """
 ```
+
+Add a `Glossary:` line only in a project that has `ai/glossary/`.
 
 ## Post-Change Verification (MANDATORY)
 
@@ -85,8 +85,8 @@ After modifying a file:
    ```
    All calls updated?
 
-3. If added new term:
-   → Add to corresponding ai/glossary/{domain}.md
+3. If added new term, and the project keeps a glossary:
+   → Add it to `ai/glossary/{domain}.md`. No glossary, nothing to update.
 
 ## Notes
 

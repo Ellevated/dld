@@ -1,0 +1,98 @@
+{
+  "spec_id": "TECH-222",
+  "spec_path": "ai/features/TECH-222-2026-08-30-depends-on-in-lifecycle.md",
+  "started": "2026-08-30T15:15:32.773Z",
+  "plan_exists": true,
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Task 1",
+      "status": "pending",
+      "coder": "pending",
+      "tester": "pending",
+      "reviewer": "pending",
+      "commit": null,
+      "verify": "pending"
+    },
+    {
+      "id": 2,
+      "name": "Task 2",
+      "status": "pending",
+      "coder": "pending",
+      "tester": "pending",
+      "reviewer": "pending",
+      "commit": null,
+      "verify": "pending"
+    },
+    {
+      "id": 3,
+      "name": "Task 3",
+      "status": "pending",
+      "coder": "pending",
+      "tester": "pending",
+      "reviewer": "pending",
+      "commit": null,
+      "verify": "pending"
+    },
+    {
+      "id": 4,
+      "name": "Task 4",
+      "status": "pending",
+      "coder": "pending",
+      "tester": "pending",
+      "reviewer": "pending",
+      "commit": null,
+      "verify": "pending"
+    },
+    {
+      "id": 5,
+      "name": "Task 5",
+      "status": "pending",
+      "coder": "pending",
+      "tester": "pending",
+      "reviewer": "pending",
+      "commit": null,
+      "verify": "pending"
+    },
+    {
+      "id": 6,
+      "name": "Task 6",
+      "status": "pending",
+      "coder": "pending",
+      "tester": "pending",
+      "reviewer": "pending",
+      "commit": null,
+      "verify": "pending"
+    },
+    {
+      "id": 7,
+      "name": "Task 7",
+      "status": "pending",
+      "coder": "pending",
+      "tester": "pending",
+      "reviewer": "pending",
+      "commit": null,
+      "verify": "pending"
+    },
+    {
+      "id": 8,
+      "name": "Task 8",
+      "status": "pending",
+      "coder": "pending",
+      "tester": "pending",
+      "reviewer": "pending",
+      "commit": null,
+      "verify": "pending"
+    },
+    {
+      "id": 9,
+      "name": "Task 9",
+      "status": "pending",
+      "coder": "pending",
+      "tester": "pending",
+      "reviewer": "pending",
+      "commit": null,
+      "verify": "pending"
+    }
+  ]
+}

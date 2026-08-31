@@ -14,9 +14,9 @@
       "Task",
       "TodoWrite",
       "NotebookEdit",
-      "mcp__*",
-      "Edit(.claude/**)",
-      "Write(.claude/**)"
+      "mcp__exa__*",
+      "mcp__plugin_context7_context7__*",
+      "mcp__nexus__*"
     ]
   },
   "hooks": {

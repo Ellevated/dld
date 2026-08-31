@@ -16,7 +16,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+SCRIPT_DIR = str(Path(__file__).resolve().parent)
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+import console_safe  # noqa: E402
 
 
 def read_text(path: Path) -> str:
@@ -75,6 +82,9 @@ def summarize_md(path: Path, max_lines: int = 10) -> str:
 
 
 def main() -> int:
+    # Output is `json.dumps(..., ensure_ascii=False)` — non-ASCII reaches the console
+    # verbatim, so this is not merely defensive here.
+    console_safe.enable()
     ap = argparse.ArgumentParser()
     ap.add_argument("--project-dir", required=True)
     ap.add_argument("--mark-processed", action="store_true")

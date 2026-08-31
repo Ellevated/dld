@@ -177,7 +177,7 @@ CHECK:
 □ Indexes — large tables have indexes?
 □ Foreign keys — constraints in place?
 □ Default values — NOT NULL without DEFAULT?
-□ One statement — one statement per file? (TECH-073)
+□ One statement — one statement per file?
 
 PATTERNS:
 - `DROP`, `DELETE`, `TRUNCATE` — destructive

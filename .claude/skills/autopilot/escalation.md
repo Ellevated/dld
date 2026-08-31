@@ -8,9 +8,11 @@ When to escalate and how to handle failures.
 |-----------|-------|-------------|
 | Debug retry (code bug) | 3 | → Spark (BUG spec) |
 | Debug retry (architecture) | 3 | → Council |
-| ./test fast fail | 5 | → STOP (ask human) |
+| ./test fast fail (per-task gate) | 5 | → STOP (ask human) |
+| ./test ci fail (finishing gate, TECH-206) | 3 | → STOP (ask human) |
 | ./test llm fail | 2 | → STOP (ask human) |
 | Reviewer refactor | 2 | → Council |
+| Pre-check fix (`precheck_loop`) | 2 | → STOP (ask human) |
 | Heavy drift (planner) | 0 | → Council (immediate) |
 | Out-of-scope failures | ∞ | skip |
 
@@ -158,11 +160,16 @@ TESTER fails:
 ```
 CODE QUALITY REVIEWER returns needs_refactor:
 ├── refactor_count < 2?
-│   └── YES → CODER fix → TESTER → REVIEWER
+│   └── YES → CODER fix (blocking findings only) → TESTER → REVIEWER
 │
 └── refactor_count >= 2?
     └── → Council escalation
 ```
+
+`needs_refactor` is defined by at least one `severity: blocking` finding.
+Advisory findings never open this loop and are never carried into it — they go
+to the diary (task-loop Step 6.5). Escalating to Council over advisories is how
+a naming nit turns itself into a spec.
 
 ## Diary Recording (Inline — ADR-007)
 
@@ -185,9 +192,12 @@ Escalation events get an additional index row:
 When to set status=blocked:
 
 - Deploy validation failed
-- Spec Reviewer loop > 2 iterations
+- Spec compliance loop > 2 iterations
 - Unclear requirements
 - Human decision needed
 - Git conflicts
 
-**Always update BOTH spec AND backlog!**
+**Emit `task_status: blocked` in the final JSON output.**
+Do NOT edit `**Status:**` markdown in spec or backlog — callback writes
+lifecycle yaml via atomic plumbing (ADR-023, single-writer). Any direct
+markdown edit will be overwritten by the next render_backlog pass.

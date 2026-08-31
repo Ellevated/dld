@@ -22,7 +22,12 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import callback  # noqa: E402
+import callback_circuit  # noqa: E402
+import callback_logs  # noqa: E402
+import callback_scope  # noqa: E402
+import callback_sync  # noqa: E402
 import db  # noqa: E402
+import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
 
 
@@ -56,7 +61,7 @@ def _isolated_db(tmp_path):
     """Fresh SQLite DB per test — prevents circuit breaker state from accumulating."""
     db_path = str(tmp_path / "orchestrator.db")
     conn = sqlite3.connect(db_path)
-    schema = (Path(VPS_DIR) / "schema.sql").read_text()
+    schema = (Path(VPS_DIR) / "schema.sql").read_text(encoding="utf-8")
     conn.executescript(schema)
     conn.close()
     db._MIGRATIONS_APPLIED = False
@@ -72,10 +77,54 @@ def git_repo(tmp_path):
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
     # Initial commit so HEAD exists
-    (repo / "README.md").write_text("init\n")
+    (repo / "README.md").write_text("init\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
+
+
+# ---------------------------------------------------------------------------
+# EC-5 (devil DA-4): monkeypatch on gate_logic module attribute must intercept
+# the call callback.verify_status_sync makes. This is the guard on the whole
+# TECH-210 approach — if `from gate_logic import find_implementation_commit`
+# is ever reintroduced in callback.py, this test fails because the name is
+# bound at import time and monkeypatching gate_logic.find_implementation_commit
+# no longer reaches the bound reference callback.py would be using.
+# ---------------------------------------------------------------------------
+
+
+class TestGateLogicModuleAttributePatchIntercepted:
+    def test_find_implementation_commit_patch_is_used_not_real_function(
+        self, git_repo, monkeypatch
+    ):
+        """Real git_repo has NO implementation commit — the real
+        `gate_logic.find_implementation_commit` would return None here, giving
+        `blocked`. If callback.py called it via `from gate_logic import
+        find_implementation_commit` (a name bound at import time), this
+        monkeypatch of the gate_logic module attribute would NOT be seen and
+        the real function would run, giving `blocked` — this assertion would
+        fail. Seeing `done` proves the module-attribute call form is in effect.
+        """
+        lifecycle.write_lifecycle(str(git_repo), "TECH-EC5", "in_progress")
+        (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
+        (git_repo / "ai" / "features" / "TECH-EC5-spec.md").write_text(
+            "# TECH-EC5\n\n## Allowed Files\n\n- `scripts/vps/callback.py`\n"
+        )
+
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a, **kw: "deadbee")
+
+        callback.verify_status_sync(str(git_repo), "TECH-EC5", target="done", pueue_id=5)
+
+        data = lifecycle.read_lifecycle(str(git_repo), "TECH-EC5")
+        assert data is not None
+        assert data["status"] == "done", (
+            "monkeypatch.setattr(gate_logic, 'find_implementation_commit', fake) "
+            "must be what verify_status_sync sees — status did not reflect the fake, "
+            "the real function ran instead (DA-4 trap: a `from gate_logic import ...` "
+            "in callback.py would bind the name at import time and this patch would "
+            "silently miss it)"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -171,9 +220,9 @@ class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
         lifecycle.write_lifecycle(str(git_repo), "TECH-X", "in_progress")
 
         # Gate stubs
-        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: True)
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (10, 0, 1))
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: "deadbee")
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (10, 0, 1))
 
         # Need spec file with ## Allowed Files so gate branch is entered
         (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
@@ -211,9 +260,9 @@ class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
         """Rule 1 gate returns False → lifecycle demoted to blocked."""
         lifecycle.write_lifecycle(str(git_repo), "TECH-Y", "in_progress")
 
-        monkeypatch.setattr(callback, "_fetch_develop", lambda *a: None)
-        monkeypatch.setattr(callback, "_is_done_on_develop", lambda *a: False)
-        monkeypatch.setattr(callback, "_commit_stats", lambda *a: (0, 0, 0))
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (0, 0, 0))
 
         (git_repo / "ai" / "features").mkdir(parents=True, exist_ok=True)
         (git_repo / "ai" / "features" / "TECH-Y-spec.md").write_text(
@@ -222,6 +271,8 @@ class TestCallbackCallsLifecycleWriteOncePerTerminalStatus:
         mock_db = MagicMock()
         mock_db.count_demotes_since.return_value = 0
         monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
 
         callback.verify_status_sync(str(git_repo), "TECH-Y", target="done", pueue_id=99)
         data = lifecycle.read_lifecycle(str(git_repo), "TECH-Y")
@@ -312,26 +363,26 @@ class TestFindLogFileFiltersStale:
         log_dir.mkdir()
         # Stale log (mtime in the past)
         old = log_dir / "proj-old.log"
-        old.write_text("{}")
+        old.write_text("{}", encoding="utf-8")
         import os
 
         os.utime(old, (1000, 1000))
         # Patch SCRIPT_DIR
-        monkeypatch.setattr(callback, "SCRIPT_DIR", tmp_path)
+        monkeypatch.setattr(callback_logs, "SCRIPT_DIR", tmp_path)
         # Task started after mtime — old log must be skipped
-        result = callback._find_log_file("proj", after_ts=2000.0)
+        result = callback_logs._find_log_file("proj", after_ts=2000.0)
         assert result is None
 
     def test_returns_log_newer_than_after_ts(self, tmp_path, monkeypatch):
         log_dir = tmp_path / "logs"
         log_dir.mkdir()
         new = log_dir / "proj-new.log"
-        new.write_text("{}")
+        new.write_text("{}", encoding="utf-8")
         import os
 
         os.utime(new, (5000, 5000))
-        monkeypatch.setattr(callback, "SCRIPT_DIR", tmp_path)
-        result = callback._find_log_file("proj", after_ts=2000.0)
+        monkeypatch.setattr(callback_logs, "SCRIPT_DIR", tmp_path)
+        result = callback_logs._find_log_file("proj", after_ts=2000.0)
         assert result == new
 
     def test_default_after_ts_zero_returns_any_log(self, tmp_path, monkeypatch):
@@ -339,137 +390,424 @@ class TestFindLogFileFiltersStale:
         log_dir = tmp_path / "logs"
         log_dir.mkdir()
         f = log_dir / "proj-x.log"
-        f.write_text("{}")
-        monkeypatch.setattr(callback, "SCRIPT_DIR", tmp_path)
-        result = callback._find_log_file("proj")
+        f.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(callback_logs, "SCRIPT_DIR", tmp_path)
+        result = callback_logs._find_log_file("proj")
         assert result == f
 
 
-# --- TECH-177: Subject-only matcher for _spec_has_merged_implementation ------
+# ---------------------------------------------------------------------------
+# TECH-197: Push-local + grace-retry + demote-once tests
+# ---------------------------------------------------------------------------
 
 
-class TestSubjectImplements:
-    """Unit tests for the pure subject-line classifier."""
+def _make_origin_repo(tmp_path):
+    """Create a bare 'origin' repo and a working repo cloned from it."""
 
-    def test_conventional_scope_match(self):
-        assert callback._subject_implements("feat(FTR-925): impl", "FTR-925")
+    origin = tmp_path / "origin.git"
+    origin.mkdir()
+    _git(origin, "init", "--bare", "-q", "-b", "develop")
 
-    def test_conventional_scope_with_bang(self):
-        assert callback._subject_implements("fix(FTR-925)!: breaking", "FTR-925")
-
-    def test_conventional_multi_scope_match(self):
-        assert callback._subject_implements("feat(FTR-925,FTR-926): both", "FTR-925")
-        assert callback._subject_implements("feat(FTR-925, FTR-926): both", "FTR-926")
-
-    def test_legacy_bare_match(self):
-        assert callback._subject_implements("FTR-925: impl Y", "FTR-925")
-
-    def test_merge_match(self):
-        assert callback._subject_implements("merge FTR-925", "FTR-925")
-        assert callback._subject_implements("merge FTR-925: impl", "FTR-925")
-        assert callback._subject_implements("Merge FTR-925", "FTR-925")
-
-    def test_body_mention_does_not_match(self):
-        # subject is just the first line; body never reaches this function.
-        # But verify subjects that LOOK like body-style mentions are rejected.
-        assert not callback._subject_implements(
-            "feat(FTR-923): impl X (see also FTR-925)", "FTR-925"
-        )
-
-    def test_id_after_colon_does_not_match(self):
-        assert not callback._subject_implements("feat: FTR-925 something", "FTR-925")
-
-    def test_wrong_scope_does_not_match(self):
-        assert not callback._subject_implements("feat(FTR-923): impl", "FTR-925")
-
-    def test_empty_inputs(self):
-        assert not callback._subject_implements("", "FTR-925")
-        assert not callback._subject_implements("feat(FTR-925): x", "")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "develop")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    _git(repo, "remote", "add", "origin", str(origin))
+    (repo / "README.md").write_text("init\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-q", "-m", "init")
+    _git(repo, "push", "-u", "origin", "develop")
+    return origin, repo
 
 
-class TestSubjectImplementsRealWorld:
-    """Real-world subjects from awardybot 2026-05-24/25 night — should all match.
-    BUG-192 regression cases.
+class TestPushLocalBeforeGate:
+    """EC-6: impl merged to local develop, NOT pushed — callback pushes + gate→done.
+    EC-7: impl on feature branch only — stays blocked.
+    EC-9: push fails (no remote) → blocked, fail-closed, exactly 1 demote.
     """
 
-    def test_lowercase_scope(self):
-        assert callback._subject_implements(
-            "feat(ftr-1076): add WB API key Pydantic schemas", "FTR-1076"
+    def test_ec6_push_local_recovers_timeout_interrupted_merge(self, tmp_path, monkeypatch):
+        """BUG-1117 class: impl merged to local develop but not pushed to origin."""
+        origin, repo = _make_origin_repo(tmp_path)
+
+        # Create spec + lifecycle
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-T6-spec.md").write_text(
+            "# TECH-T6\n\n## Allowed Files\n\n- `src/main.py`\n"
         )
-        assert callback._subject_implements(
-            "chore(ftr-1076): mark done in spec + backlog", "FTR-1076"
+        lifecycle.write_lifecycle(str(repo), "TECH-T6", "in_progress")
+
+        # Simulate: impl commit on local develop (not pushed)
+        (repo / "src").mkdir(exist_ok=True)
+        (repo / "src" / "main.py").write_text("# impl\n", encoding="utf-8")
+        _git(repo, "add", "src/main.py")
+        _git(repo, "commit", "-m", "feat(TECH-T6): implement feature")
+
+        # Stub _commit_stats — no pueue_id so started_at=None anyway
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (10, 0, 1))
+        # Do NOT stub gate_logic.fetch_develop or find_implementation_commit — let them run real
+
+        # autopilot_signaled=False, target=blocked → push-local should flush
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-T6",
+            target="blocked",
+            autopilot_signaled=False,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-T6")
+        assert data["status"] == "done", (
+            f"push-local should flush impl to origin, gate→done; got {data['status']}"
         )
 
-    def test_mixed_case_scope(self):
-        assert callback._subject_implements("feat(Ftr-1076): something", "FTR-1076")
+    def test_ec7_feature_branch_only_stays_blocked(self, tmp_path, monkeypatch):
+        """BUG-1118 class: impl on feature branch only, not merged to develop."""
+        origin, repo = _make_origin_repo(tmp_path)
 
-    def test_merge_with_branch_prefix(self):
-        assert callback._subject_implements(
-            "Merge feature/FTR-1076: SRID — MC admin endpoint", "FTR-1076"
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-T7-spec.md").write_text(
+            "# TECH-T7\n\n## Allowed Files\n\n- `src/app.py`\n"
         )
-        assert callback._subject_implements("Merge autopilot/BUG-1065 into develop", "BUG-1065")
-        assert callback._subject_implements("Merge fix/BUG-439 — restore constraint", "BUG-439")
+        lifecycle.write_lifecycle(str(repo), "TECH-T7", "in_progress")
 
-    def test_case_insensitive_multi_scope(self):
-        assert callback._subject_implements("feat(area, ftr-1076, FTR-1077): both", "FTR-1077")
-        assert callback._subject_implements("feat(area, ftr-1076, FTR-1077): both", "FTR-1076")
+        # Create feature branch with impl — NOT merged to develop
+        _git(repo, "checkout", "-b", "feature/TECH-T7")
+        (repo / "src").mkdir(exist_ok=True)
+        (repo / "src" / "app.py").write_text("# feature\n", encoding="utf-8")
+        _git(repo, "add", "src/app.py")
+        _git(repo, "commit", "-m", "feat(TECH-T7): feature impl")
+        _git(repo, "checkout", "develop")
 
+        # Stub _commit_stats
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (0, 0, 0))
+        # Speed up grace-retry sleep
+        monkeypatch.setattr(callback_sync.time, "sleep", lambda s: None)
+        # Mock db for circuit-breaker accounting
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
 
-class TestSubjectImplementsAntiFalsePositive:
-    """TECH-177 invariant: body/trailer mentions DO NOT count.
-    MUST stay False after BUG-192 fix.
-    """
-
-    def test_trailing_only_rejected(self):
-        assert not callback._subject_implements(
-            "feat(billing): SRID pre-withdrawal gate (FTR-1077 Task 3)", "FTR-1077"
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-T7",
+            target="blocked",
+            autopilot_signaled=False,
         )
-        assert not callback._subject_implements("fix(db): restore constraint (BUG-439)", "BUG-439")
+        data = lifecycle.read_lifecycle(str(repo), "TECH-T7")
+        assert data["status"] == "blocked", "feature-branch-only must stay blocked (fail-closed)"
 
-    def test_see_also_rejected(self):
-        assert not callback._subject_implements("feat(other): see also FTR-925", "FTR-925")
+    def test_ec9_push_fails_stays_blocked_one_demote(self, tmp_path, monkeypatch):
+        """Push origin fails (no remote) → blocked, exactly 1 demote."""
+        # Repo WITHOUT origin remote
+        repo = tmp_path / "no_origin"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "develop")
+        _git(repo, "config", "user.email", "t@t")
+        _git(repo, "config", "user.name", "t")
+        (repo / "README.md").write_text("init\n", encoding="utf-8")
+        _git(repo, "add", "README.md")
+        _git(repo, "commit", "-q", "-m", "init")
 
-    def test_refs_footer_rejected(self):
-        assert not callback._subject_implements("Refs: FTR-925", "FTR-925")
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-T9-spec.md").write_text(
+            "# TECH-T9\n\n## Allowed Files\n\n- `src/x.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-T9", "in_progress")
 
-    def test_no_scope_id_in_message_rejected(self):
-        assert not callback._subject_implements("feat: FTR-1076 implementation", "FTR-1076")
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (0, 0, 0))
+        monkeypatch.setattr(callback_sync.time, "sleep", lambda s: None)
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
 
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-T9",
+            target="blocked",
+            autopilot_signaled=False,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-T9")
+        assert data["status"] == "blocked", "no remote → blocked (fail-closed)"
 
-class TestMatchSubjectParityWithCallback:
-    """gate_logic.match_subject MUST accept identical sets after BUG-192 fix.
-    Without parity, gate-daemon (shadow) and callback drift apart.
-    """
-
-    def test_parity_real_world_accepts(self):
-        from gate_logic import match_subject
-
-        positives = [
-            ("feat(ftr-1076): impl", "FTR-1076"),
-            ("Merge feature/FTR-1076: foo", "FTR-1076"),
-            ("Merge autopilot/BUG-1065 into develop", "BUG-1065"),
-            ("feat(area, ftr-1076): both", "FTR-1076"),
+        # Verify exactly 1 demote recorded
+        demote_calls = [
+            c
+            for c in mock_db.record_decision.call_args_list
+            if (c.kwargs.get("demoted") is True) or (len(c.args) > 4 and c.args[4] is True)
         ]
-        for subject, spec_id in positives:
-            assert callback._subject_implements(subject, spec_id), (
-                f"callback rejected positive: {subject!r} {spec_id}"
-            )
-            assert match_subject(subject, spec_id), (
-                f"gate_logic rejected positive: {subject!r} {spec_id}"
-            )
+        assert len(demote_calls) == 1, f"expected exactly 1 demote, got {len(demote_calls)}"
 
-    def test_parity_tech177_rejects(self):
-        from gate_logic import match_subject
 
-        negatives = [
-            ("feat(other): see FTR-925", "FTR-925"),
-            ("Refs: FTR-925", "FTR-925"),
-            ("fix(db): restore (BUG-439)", "BUG-439"),
+class TestDemoteOnce:
+    """EC-4: gate False × 3 retries → exactly 1 record_decision(demoted=True)."""
+
+    def test_ec4_single_demote_across_retries(self, tmp_path, monkeypatch):
+        origin, repo = _make_origin_repo(tmp_path)
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-D4-spec.md").write_text(
+            "# TECH-D4\n\n## Allowed Files\n\n- `src/d.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-D4", "in_progress")
+
+        # Gate always returns False (nothing implemented on origin/develop)
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (0, 0, 0))
+        # Speed up: reduce sleep to 0
+        monkeypatch.setattr(callback_sync.time, "sleep", lambda s: None)
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
+
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-D4",
+            target="blocked",
+            autopilot_signaled=False,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-D4")
+        assert data["status"] == "blocked"
+
+        # Exactly 1 demote, not 3+
+        demote_calls = [
+            c
+            for c in mock_db.record_decision.call_args_list
+            if (c.kwargs.get("demoted") is True) or (len(c.args) > 4 and c.args[4] is True)
         ]
-        for subject, spec_id in negatives:
-            assert not callback._subject_implements(subject, spec_id), (
-                f"callback wrongly accepted: {subject!r} {spec_id}"
-            )
-            assert not match_subject(subject, spec_id), (
-                f"gate_logic wrongly accepted: {subject!r} {spec_id}"
-            )
+        assert len(demote_calls) == 1, (
+            f"expected 1 demote across retries, got {len(demote_calls)}: {demote_calls}"
+        )
+
+
+class TestGraceRetry:
+    """EC-8: impl pushed to origin 1 fetch-cycle late → grace-retry resolves."""
+
+    def test_ec8_resolves_on_second_fetch(self, tmp_path, monkeypatch):
+        origin, repo = _make_origin_repo(tmp_path)
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-G8-spec.md").write_text(
+            "# TECH-G8\n\n## Allowed Files\n\n- `src/g.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-G8", "in_progress")
+
+        # Simulate: push impl to origin on the "second" fetch check
+        call_count = {"n": 0}
+        original_is_done = gate_logic.find_implementation_commit
+
+        def _delayed_is_done(pp, sid, af):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return None  # first check: not visible yet
+            # Push impl BEFORE second check (simulates network lag)
+            (repo / "src").mkdir(exist_ok=True)
+            (repo / "src" / "g.py").write_text("# impl\n", encoding="utf-8")
+            _git(repo, "add", "src/g.py")
+            _git(repo, "commit", "-m", "feat(TECH-G8): implement")
+            _git(repo, "push", "origin", "develop")
+            return original_is_done(pp, sid, af)
+
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", _delayed_is_done)
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (10, 0, 1))
+        monkeypatch.setattr(callback_sync.time, "sleep", lambda s: None)
+
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-G8",
+            target="blocked",
+            autopilot_signaled=False,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-G8")
+        assert data["status"] == "done", (
+            f"grace-retry should resolve on 2nd attempt; got {data['status']}"
+        )
+
+
+class TestAutopilotSignaledOverride:
+    """TECH-197 critical: autopilot_signaled=True blocks gate=done override."""
+
+    def test_signaled_blocked_overrides_gate_done(self, tmp_path, monkeypatch):
+        """When autopilot explicitly signals blocked, gate=done is overridden."""
+        origin, repo = _make_origin_repo(tmp_path)
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-AS-spec.md").write_text(
+            "# TECH-AS\n\n## Allowed Files\n\n- `src/as.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-AS", "in_progress")
+
+        # Impl is on origin (gate would return True)
+        (repo / "src").mkdir(exist_ok=True)
+        (repo / "src" / "as.py").write_text("# impl\n", encoding="utf-8")
+        _git(repo, "add", "src/as.py")
+        _git(repo, "commit", "-m", "feat(TECH-AS): implement")
+        _git(repo, "push", "origin", "develop")
+
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (10, 0, 1))
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
+
+        # autopilot_signaled=True + target=blocked → must stay blocked
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-AS",
+            target="blocked",
+            autopilot_signaled=True,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-AS")
+        assert data["status"] == "blocked", "autopilot_signaled=True must override gate=done"
+
+    def test_not_signaled_lets_gate_decide(self, tmp_path, monkeypatch):
+        """When autopilot did NOT signal (timeout), gate=done is honored."""
+        origin, repo = _make_origin_repo(tmp_path)
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "TECH-NS-spec.md").write_text(
+            "# TECH-NS\n\n## Allowed Files\n\n- `src/ns.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "TECH-NS", "in_progress")
+
+        # Impl on origin
+        (repo / "src").mkdir(exist_ok=True)
+        (repo / "src" / "ns.py").write_text("# impl\n", encoding="utf-8")
+        _git(repo, "add", "src/ns.py")
+        _git(repo, "commit", "-m", "feat(TECH-NS): implement")
+        _git(repo, "push", "origin", "develop")
+
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (10, 0, 1))
+
+        # autopilot_signaled=False + target=blocked → gate decides (done)
+        callback.verify_status_sync(
+            str(repo),
+            "TECH-NS",
+            target="blocked",
+            autopilot_signaled=False,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "TECH-NS")
+        assert data["status"] == "done", "not-signaled + impl on origin → gate should decide done"
+
+    def test_signaled_blocked_no_impl_reason_is_autopilot_not_no_merged(
+        self, tmp_path, monkeypatch
+    ):
+        """Regression (ARCH-1246 / FTR-1245, 2026-06-20): a deliberate self-block
+        on an unmet dependency makes 0 commits. The blocked_reason must reflect
+        the autopilot's explicit signal — NOT the misleading
+        no_merged_implementation hint that tells the operator to force-done."""
+        origin, repo = _make_origin_repo(tmp_path)
+
+        (repo / "ai" / "features").mkdir(parents=True)
+        (repo / "ai" / "features" / "ARCH-DEP-spec.md").write_text(
+            "# ARCH-DEP\n\n## Allowed Files\n\n- `src/dep.py`\n"
+        )
+        lifecycle.write_lifecycle(str(repo), "ARCH-DEP", "in_progress")
+
+        # Gate is FALSE (no impl on origin) + autopilot explicitly blocked.
+        monkeypatch.setattr(gate_logic, "fetch_develop", lambda *a, **kw: True)
+        monkeypatch.setattr(gate_logic, "find_implementation_commit", lambda *a: None)
+        monkeypatch.setattr(callback_scope, "_commit_stats", lambda *a: (0, 0, 0))
+        mock_db = MagicMock()
+        mock_db.count_demotes_since.return_value = 0
+        monkeypatch.setattr(callback, "db", mock_db)
+        monkeypatch.setattr(callback_circuit, "db", mock_db)
+        monkeypatch.setattr(callback_scope, "db", mock_db)
+
+        callback.verify_status_sync(
+            str(repo),
+            "ARCH-DEP",
+            target="blocked",
+            pueue_id=631,
+            autopilot_signaled=True,
+        )
+        data = lifecycle.read_lifecycle(str(repo), "ARCH-DEP")
+        assert data["status"] == "blocked"
+        assert data.get("blocked_reason") == "autopilot_signaled_blocked"
+        assert "no_merged_implementation" not in (data.get("blocked_reason") or "")
+
+
+class TestParseLogTaskStatus:
+    """_parse_log_file must recover task_status even when the agent wraps it in a
+    markdown ```json fence instead of a bare-JSON final message.
+
+    Regression (ARCH-1246 / FTR-1245, 2026-06-20): Opus 4.x emitted a markdown
+    block report with task_status inside a fence; the old whole-preview json.loads
+    failed, the blocked signal was lost, and the spec was mislabeled
+    no_merged_implementation instead of being honored as a deliberate block.
+    """
+
+    def _write_log(self, tmp_path, payload):
+        p = tmp_path / "proj-20260620-000000.log"
+        p.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        return p
+
+    def test_top_level_field_preferred(self, tmp_path):
+        log = self._write_log(
+            tmp_path,
+            {"skill": "autopilot", "task_status": "blocked", "result_preview": "prose"},
+        )
+        _skill, _preview, task_status = callback._parse_log_file(log)
+        assert task_status == "blocked"
+
+    def test_markdown_fenced_json_extracted(self, tmp_path):
+        preview = (
+            "**ARCH-1246 заблокирован — зависимость TECH-1244 не выполнена.**\n\n"
+            "Рекомендация: сначала запустить TECH-1244.\n\n"
+            '```json\n{\n  "task_status": "blocked",\n'
+            '  "result_preview": "dep not done"\n}\n```'
+        )
+        log = self._write_log(tmp_path, {"skill": "autopilot", "result_preview": preview})
+        _skill, _preview, task_status = callback._parse_log_file(log)
+        assert task_status == "blocked"
+
+    def test_not_lost_to_500_char_truncation(self, tmp_path):
+        # task_status sits beyond the 500-char display preview but within full text.
+        preview = ("x" * 600) + '\n```json\n{"task_status": "needs_review"}\n```'
+        log = self._write_log(tmp_path, {"skill": "autopilot", "result_preview": preview})
+        _skill, _preview, task_status = callback._parse_log_file(log)
+        assert task_status == "needs_review"
+
+    def test_bare_json_legacy_preview_still_works(self, tmp_path):
+        preview = '{"task_status": "complete", "result_preview": "done"}'
+        log = self._write_log(tmp_path, {"skill": "autopilot", "result_preview": preview})
+        _skill, _preview, task_status = callback._parse_log_file(log)
+        assert task_status == "complete"
+
+    def test_no_signal_returns_empty(self, tmp_path):
+        log = self._write_log(tmp_path, {"skill": "autopilot", "result_preview": "no signal here"})
+        _skill, _preview, task_status = callback._parse_log_file(log)
+        assert task_status == ""
+
+
+class TestRunnerExitCode:
+    """2026-08-30 audit: pueued never restarted after {{ exit_code }} landed in
+    pueue.yml, so TIMEOUT kills (124) were recorded as exit 1 for two months."""
+
+    def _setup(self, tmp_path, monkeypatch, payload):
+        (tmp_path / "logs").mkdir()
+        p = tmp_path / "logs" / "proj-20260830-000000.log"
+        p.write_text(json.dumps(payload), encoding="utf-8")
+        monkeypatch.setattr(callback_logs, "SCRIPT_DIR", tmp_path)
+        monkeypatch.setattr(callback_logs.db, "get_project_state", lambda pid: {"path": "/x/proj"})
+        monkeypatch.setattr(
+            callback_logs, "_skill_from_pueue_command", lambda pid: ("autopilot", 0.0)
+        )
+
+    def test_reads_timeout_code_from_runner_log(self, tmp_path, monkeypatch):
+        self._setup(tmp_path, monkeypatch, {"skill": "autopilot", "exit_code": 124})
+        assert callback_logs.runner_exit_code("7", "proj") == 124
+
+    def test_none_without_log(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(callback_logs, "SCRIPT_DIR", tmp_path)
+        monkeypatch.setattr(callback_logs.db, "get_project_state", lambda pid: {"path": "/x/proj"})
+        monkeypatch.setattr(callback_logs, "_skill_from_pueue_command", lambda pid: ("", 0.0))
+        assert callback_logs.runner_exit_code("7", "proj") is None
+
+    def test_map_result_uses_real_code(self):
+        assert callback.map_result("Failed", "124") == ("failed", 124)

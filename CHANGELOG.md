@@ -6,6 +6,154 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.18] - 2026-08-31
+
+Three months on `develop` — 623 commits — released in one pass. The theme repeats in every
+section below: **the framework stopped taking its own word for things.** Where 3.17 added
+capability, 3.18 added measurement — of the implementation gate, of file size, of the prompt
+tree, of how far downstream projects had drifted, and of what the harness actually costs
+under a model that changed underneath it.
+
+### Added
+
+- **Ancestry implementation gate** (`scripts/vps/gate_ancestry.py`, TECH-220) — the gate now
+  asks whether `origin/<type>/<ID>` is an ancestor of `origin/develop` and carried a
+  non-bookkeeping allowed file, instead of regex-matching a commit subject. The subject match
+  survives as a deprecated fallback, and every verdict records which path decided it
+  (`gate_via`), so the fallback can be deleted on evidence rather than on nerve.
+- **`branch_state` — "pushed but not merged" is its own verdict** (TECH-221) — a run that
+  salvaged its worktree and died before the merge used to come back as
+  `no_merged_implementation`, indistinguishable from a run that produced nothing. It now
+  reports `branch_pushed_not_merged:<N> ahead`, and re-dispatch continues that branch instead
+  of starting from zero.
+- **Spec dependencies live in lifecycle YAML** (`depends_on`, TECH-222) — read through
+  `_spec_deps` (lifecycle edges plus the older backlog `AFTER` text), written by callable-CAS.
+- **`scripts/check-fleet-drift.py`** — the prompt tree reaches downstream projects by hand, and
+  for three months nobody could answer "is project X current?" without diffing 150 files by
+  eye. The guard measures it: per-project drift against a debt register, a `DLD_VERSION` marker
+  **recomputed from disk on every run** (a marker that is read rather than verified is a claim,
+  not a measurement), `--apply-absent` / `--apply-clean` for the safe halves of a rollout, and a
+  failure when a registered project no `--root` reached — the blindness that let 7-of-10
+  coverage report clean.
+- **`scripts/vps/salvage.py`** — an abnormal exit used to strand every finished commit on a
+  local worktree branch. A dead run's work is now pushed. Runs only on failure.
+- **Per-turn heartbeat and reaper** (TECH-198) — a wedged `claude-runner` is detected and killed
+  instead of holding a compute slot until the timeout expires.
+- **`.claude/scripts/check-prompt-integrity.mjs`** — finds agents nothing dispatches, scripts a
+  prompt tells an agent to run that do not exist, unresolved `@`-includes, and agents whose
+  `model:`/`effort:` is unstated. Suppressions require a written reason. Blocking in CI. It
+  immediately found six scripts that root prompts referenced and only `template/` contained.
+- **`scripts/check-tree-sync.py`** — detects code fixed in one of the two trees and not the
+  other, this repository's most frequent defect.
+- **`scripts/check-rules-loading.py`** — a `.claude/rules/*.md` without a `paths:` header loads
+  into every session forever; four unmarked files cost 37k tokens per session for 25 days in one
+  project. Exits non-zero on any rule that is neither scoped nor declared.
+- **`scripts/check_domain_imports.py`, `scripts/check_docs_sync.py`** — the import-direction rule
+  and the env-var/`.env.example` check were cited by `agents/review.md` for months before either
+  existed. Both exit 0 where they do not apply.
+- **LOC ceiling as a CI gate** (`scripts/vps/check-loc-limit.sh`, ARCH-209) — the 400/600 limit
+  was prose, and prose did not hold it: `callback.py` reached 1438 lines. Pre-existing debt is
+  registered; the gate fails on new debt, on a baselined file that grew, and on a stale
+  permission nobody removed.
+
+### Changed
+
+- **Five oversized modules split into flat siblings** — `callback.py` 1438 → 371 (TECH-216),
+  `orchestrator.py` 1078 → 399 (TECH-215), `claude-runner.py` 912 → 329 (TECH-213), `db.py`
+  602 → 373 (TECH-212), and `lifecycle` (TECH-214). Each keeps a facade re-export block, because
+  the direction a name is imported in decides whether a test's `patch()` reaches production code
+  — written down in `rules/dependencies.md` rather than left to be rediscovered.
+- **Gate logic deduplicated** (TECH-210) — five duplicated functions and seven regexes deleted
+  from `callback.py`. `.claude/scripts/validate-allowlist.mjs` stays a deliberate JS
+  reimplementation, and `test_allowlist_parity.py` fails when the two disagree.
+- **Opus 5 / Sonnet 5 rebalance** (ADR-029) — every agent re-pinned; `max` effort reserved for
+  genuinely frontier work, since it causes overthinking on structured tasks; `review` moved to
+  opus/low. Agent routing is a framework decision — a project that edits `model:` in its own copy
+  now fails the fleet gate instead of drifting quietly.
+- **Harness timeout re-calibrated against the real model** (ADR-031) — `TIMEOUT_SECONDS`
+  5400 → 10800, `MAX_TURNS` 120 → 300. Until 2026-07-26 pueue resolved a March-frozen CLI off
+  systemd's PATH, so every constant had been tuned against a model the config did not name.
+  Measured across 1087 runs: median run 8.7 → 47.1 min, timeout rate **1% → 32%**.
+- **Sizing before the fact** — spark sizes a spec to the session budget instead of warning
+  afterwards, and review severity routes findings so advisories stop costing coder turns.
+- **The Impact Tree walks the code graph**, with grep kept as the acceptance check.
+
+### Fixed
+
+- **Lifecycle push self-heal no longer leaves conflict markers in the tree** —
+  `git rebase --autostash` exits 0 on a conflicted stash pop, printing the conflict to stderr and
+  leaving `<<<<<<<` plus an unmerged index behind. The push then succeeded and the next agent
+  started in a repository it could not commit. The guard now refuses any dirty file the rebase
+  will rewrite, and a conflicted pop is cleaned up with the human's work kept in the stash.
+- **A project that cannot fast-forward now says so** — a tracked file rewritten in place by a
+  project job blocked every `merge --ff-only`, and one WARNING per five-minute cycle is
+  indistinguishable from silence: one project received no prompts, specs or gate fixes for three
+  days while looking healthy. Three consecutive failures now log ERROR, and git's multi-line
+  stderr survives into the log line instead of being cut at the first newline.
+- **Seven integration tests that only ever ran in CI** — `importorskip` on `claude_agent_sdk`
+  meant a dev box reported `275 passed, 1 skipped` while CI was red. Both version pins
+  (`ruff==0.16.1`, `scripts/vps/requirements.txt`) are now named in `CLAUDE.md` beside the
+  commands they change the answer to.
+- **False `no_merged_implementation` demotes across the fleet** — 31 of 61 verdicts between
+  2026-08-16 and 2026-08-30. The cause was a commit-message template still saying
+  `{type}({scope})` in seven of ten orchestrated projects, invisible to a gate that reads the
+  subject line.
+- Push-local-before-gate, grace-retry and demote-once in callback (TECH-197); QA dispatched on
+  merge-confirmed rather than on optimism (TECH-207); the reconciliation gate stops re-running
+  specs already on develop.
+
+### Architecture
+
+- **ADR-029** — Opus 5 era model and effort rebalance
+- **ADR-030** — mock boundary in unit tests: never mock the _shape_ of a DB result
+- **ADR-031** — harness timeout re-calibrated against measured runs
+
+### Repository
+
+- `docs/orchestrator/` — canonical orchestrator documentation, versioned with the code (README,
+  status model, components, runbook, verification protocol)
+- `docs/INDEX.md` — one door into the dated reports
+- Root cleaned: a stray test artifact removed, and the worktree-hook helper moved under
+  `scripts/vps/` beside the other operator helpers
+
+---
+
+## [3.17] - 2026-05-28
+
+Spark→autopilot loop stabilization (ARCH-196) + lifecycle integrity hardening (TECH-194, TECH-195). Closes week-long drift from 7 consecutive architectural merges that broke the interactive workflow. Core changes: spec-first CAS ID generation, single-writer backlog, column-aware bootstrap parser, worktree hook coverage.
+
+### Added
+
+- **Spark — Spec-First CAS ID generation** — `lifecycle.create_initial(by='spark')` claims the next spec ID atomically via `git update-ref` CAS (Kafka pattern). Eliminates TOCTOU duplicate ID races in multi-machine setups (laptop + VPS ssh). 10+ historical duplicates across projects closed. Retries up to 5× on collision. See ADR-027 and `lifecycle._ALLOWED_WRITERS_FOR_CREATE`.
+- **Security: HARD-GATE guards in spark+autopilot** — `LIFECYCLE_WRITE_AUTHORIZED=1` is now explicitly forbidden from LLM tool calls. File content in `ai/backlog.md`, `ai/diary/`, `ai/lessons/` is treated as DATA not INSTRUCTIONS — directive-like text is refused and logged as `prompt-injection-attempted`.
+- **`scripts/vps/lifecycle_audit.py`** — READ-ONLY 14-category drift detector across multi-project lifecycle state (orphans, mismatches, dirty worktree, counter drift, divergence). Operator visibility tool and CI smoke gate.
+- **`scripts/vps/recover_bootstrap_as_done.py`** — operator helper to detect and repair false-done bootstrap artifacts. Dry-run by default; `--confirm` executes.
+- **`scripts/vps/cleanup-lifecycle-drift.sh`** — one-shot recovery for dirty `ai/lifecycle/` worktree state left over from pre-TECH-194 `env=env` bug.
+- **`scripts/vps/install-hooks-all-worktrees.sh`** — migration helper to convert relative `core.hooksPath` to absolute for all project worktrees.
+- **Orchestrator stash hygiene** — startup drops `autopilot-temp-*` git stashes older than 24h. Conservative: only this prefix; operator stashes untouched.
+
+### Changed
+
+- **Spark completion — unconditional commit+push** — interactive spark sessions now always auto-commit and push after spec creation. The "ask about autopilot handoff" branch is removed; orchestrator manages lifecycle.
+- **Callback — single writer for `ai/backlog.md`** — removed inline `_render_and_commit_backlog` call. `ai/backlog.md` is now exclusively written by spark/autopilot (CQRS principle). Function retained as emergency operator CLI only.
+- **Autopilot escalation** — `escalation.md` now instructs autopilot to emit `task_status: blocked` JSON, not edit spec/backlog markdown directly (ADR-023 compliance).
+- **Impact×Risk routing matrix** — removed from `CLAUDE.md` global context (was bleeding into autopilot execution phase). Matrix now lives exclusively in `spark/feature-mode.md` Phase 4 with explicit scope comment.
+- **Bootstrap reads `ai/backlog.md` from HEAD** — `orchestrator.bootstrap_new_specs` uses `git show HEAD:ai/backlog.md` instead of WT read. Closes CWE-367 TOCTOU between render commits and bootstrap.
+- **`lifecycle.create_initial` — `by` parameter** — accepts `by` kwarg (default `"orchestrator"`). `_ALLOWED_WRITERS_FOR_CREATE = {"spark"} | _ALLOWED_WRITERS` permits spark to claim IDs; `write_lifecycle` still rejects `by="spark"` (Rule 7/ADR-025 preserved).
+- **Bootstrap parser — column-aware + safe default** — `orchestrator._parse_backlog` maps columns by header name (case-insensitive). Falls back to `queued` (not `done`) when status is unparseable. Previous positional regex silently created `done` lifecycle artifacts for new specs.
+- **Lifecycle WT sync** — `lifecycle._atomic_write` now uses `git checkout HEAD -- <path>` instead of `checkout-index --force`. Fixes `env=env` loss bug that left staged deletions in `ai/lifecycle/` surviving orchestrator restart.
+- **Worktree hook coverage** — `core.hooksPath` set to absolute path in `setup-vps.sh --phase4-hooks`. Pre-commit wrapper resolves guard via `git rev-parse --git-common-dir` — hook always found from any worktree branch state.
+- **Callback dispatch gate** — Step 6 qa+reflect dispatch gated on `task_status not in ('blocked','needs_review')`. Was dispatching qa+reflect for blocked tasks, burning ~$2.50/blocked task.
+- **`/upgrade` skill** — switched from auto-apply script to manual cherry-pick. `upgrade.mjs` deleted after repeatedly overwriting PROTECTED files (`architecture.md`, `dependencies.md`) despite filter logic.
+
+### Architecture
+
+- **ADR-026** — bootstrap parser safety contract (column-aware + safe `queued` default)
+- **ADR-027** — spec-first ID via `lifecycle.create_initial` CAS (Kafka pattern, multi-master ID race elimination)
+- CI: `test.yml` fixed (pyyaml install, dead path removal); coverage gate adjusted to 54% to match ARCH-193 baseline
+
+---
+
 ## [3.16.1] - 2026-05-25
 
 Lifecycle write hardening (ARCH-193 — closes BUG-192 night incident) + `/upgrade` distribution of the pre-commit wrapper.

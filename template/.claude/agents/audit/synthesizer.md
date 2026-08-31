@@ -1,8 +1,8 @@
 ---
 name: audit-synthesizer
 description: Deep Audit Synthesizer — reads 6 persona reports + inventory, produces consolidated deep-audit-report.md.
-model: opus
-effort: max
+model: sonnet
+effort: high
 tools: Read, Write
 ---
 
@@ -247,3 +247,7 @@ Write to: `ai/audit/deep-audit-report.md`
 4. **Prioritize by business impact** — money, auth, data mutations first
 5. **Include evidence** — file:line references from persona reports
 6. **Note gaps** — if a persona had low coverage, flag it
+
+---
+
+@.claude/agents/_shared/output-conventions.md

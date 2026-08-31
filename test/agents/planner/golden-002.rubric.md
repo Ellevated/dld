@@ -30,3 +30,11 @@
 - No modifications to files outside Allowed Files
 - No database changes proposed
 - Rate store uses Redis TTL (no manual cleanup needed)
+
+## Altitude (weight: high)
+- Implementation is anchored, not authored: path + insertion point (`file.py:120-135`) +
+  signature + invariants. No pasted function bodies, no reproduced existing code
+- Tests are stated as contract, not as files: test name + the assertion that makes it red,
+  one line per EC-ID. No imports, no fixtures, no boilerplate
+- Existing code referenced as `file:line`, never quoted in full
+- Plan is shorter than the spec it plans — a longer plan means code was written twice

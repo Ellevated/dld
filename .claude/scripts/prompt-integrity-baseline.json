@@ -1,0 +1,53 @@
+{
+  "note": "Findings that are decisions, not rot. Everything here must carry a reason a stranger can check. A finding suppressed without one is how a real defect hides in a green run — prefer fixing over adding a row.",
+  "allow": [
+    {
+      "kind": "dangling_reference",
+      "file": ".claude/skills/autopilot/autopilot-git.md",
+      "match": "ci-status.sh",
+      "reason": "Per-project artifact by design: some repos ship one, DLD does not. Both autopilot prompts define the missing case explicitly (log CI_STATUS_UNAVAILABLE, continue, never treat as a deploy failure). Recorded in rules/template-sync.md under 'Files Only in Template'."
+    },
+    {
+      "kind": "dangling_reference",
+      "file": ".claude/skills/autopilot/worktree-setup.md",
+      "match": "ci-status.sh",
+      "reason": "Same decision as autopilot-git.md above."
+    },
+    {
+      "kind": "dangling_reference",
+      "file": "template/.claude/skills/autopilot/autopilot-git.md",
+      "match": "ci-status.sh",
+      "reason": "Template ships the stub; a downstream project is expected to write its own. The missing case is defined in the prompt."
+    },
+    {
+      "kind": "dangling_reference",
+      "file": "template/.claude/skills/autopilot/worktree-setup.md",
+      "match": "ci-status.sh",
+      "reason": "Same as above."
+    },
+    {
+      "kind": "unreachable_agent",
+      "file": ".claude/agents/diary-recorder.md",
+      "match": "diary-recorder",
+      "reason": "Deliberately retired — diary entries are written inline by autopilot now. The file states this in its own description and is kept as a format reference. Delete it and the diary format loses its only written spec."
+    },
+    {
+      "kind": "unreachable_agent",
+      "file": "template/.claude/agents/diary-recorder.md",
+      "match": "diary-recorder",
+      "reason": "Same as above."
+    },
+    {
+      "kind": "unreachable_agent",
+      "file": ".claude/agents/review.md",
+      "match": "review",
+      "reason": "Not dead — read, not dispatched by autopilot. The loop applies it inline on every task (skills/autopilot/task-loop.md Step 5 names the path and orders the checks run), skills/review/SKILL.md declares it in `agent:` frontmatter, and test/agents/review/config.json still dispatches it as subagent_type for /eval. The check reads only `subagent_type:` inside the prompt tree, and test/ is outside it. Verify: grep -rn 'agents/review.md' .claude/skills/ test/agents/review/config.json"
+    },
+    {
+      "kind": "unreachable_agent",
+      "file": "template/.claude/agents/review.md",
+      "match": "review",
+      "reason": "Same as above, mirrored per rules/template-sync.md."
+    }
+  ]
+}

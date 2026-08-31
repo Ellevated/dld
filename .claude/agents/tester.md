@@ -24,8 +24,20 @@ For LLM-optimized output, use the test-wrapper:
 node .claude/scripts/test-wrapper.mjs ./test fast
 ```
 
-- **Pass:** Single summary line (e.g., `PASS: 15 tests passed (2.3s)`)
-- **Fail:** Compact failure summary + path to full output file
+| Exit | Output | Meaning |
+|---|---|---|
+| 0 | `PASS: 15 tests passed (2.3s)` | Tests ran and passed |
+| 1 | `FAIL: N failure(s)` + path to full output | Tests ran and failed |
+| 2 | `TEST_COMMAND_UNAVAILABLE: <command>` | **Nothing ran.** The project ships no such test command |
+
+**Exit 2 is not a test failure.** `./test` is a per-project artifact — some repos ship
+one, this one may not — so its absence is an expected state. Fall back to the project's
+real command (`pytest`, `npm test`, `cargo test`) and report what that returns. Never
+report exit 2 as a failing suite, and never treat it as a green one.
+
+Until 2026-08-02 a missing command was reported as `FAIL: 0 failure(s)` — a failing suite
+with no failures in it — which sends the reader hunting for failures that never ran.
+
 - Reduces context noise significantly vs raw test output
 
 **When to use:** Always prefer test-wrapper in autopilot task loop. Use raw commands only for debugging.
@@ -42,13 +54,17 @@ node .claude/scripts/test-wrapper.mjs ./test fast
 
 ### Domain Tests
 
+Selection is positional — run the tests that live with the code you changed:
+
 | Changed file | Tests to run |
 |--------------|--------------|
-| `src/domains/billing/*` | `pytest src/domains/billing/ -v -n auto` |
-| `src/domains/campaigns/*` | `pytest src/domains/campaigns/ -v -n auto` |
-| `src/domains/seller/*` (not prompts/) | `pytest src/domains/seller/ -v -n auto --ignore=src/domains/seller/prompts` |
-| `src/domains/buyer/*` | `pytest src/domains/buyer/ -v -n auto` |
-| `src/domains/outreach/*` | `pytest src/domains/outreach/ -v -n auto` |
+| `src/domains/{domain}/*` | `pytest src/domains/{domain}/ -v -n auto` |
+| A domain that keeps non-code assets (prompts, fixtures) | same, with `--ignore=` on that subdirectory — it holds no tests |
+
+**Read the repository for its domain names.** This table used to enumerate `billing`,
+`campaigns`, `seller`, `buyer` and `outreach` — one product's domains. In any other project
+those paths do not exist, and `pytest` against a missing path exits non-zero for a reason
+that has nothing to do with the code under test.
 
 ### Infrastructure Tests
 
@@ -64,9 +80,9 @@ node .claude/scripts/test-wrapper.mjs ./test fast
 
 | Changed file | Tests to run |
 |--------------|--------------|
-| `src/domains/seller/prompts/*` | `./test llm -- -k "seller"` |
-| `src/domains/seller/tools/*` | `./test llm -- -k "seller"` |
-| `src/config/prompts/*` | `./test llm` |
+| `src/domains/{domain}/prompts/*` | LLM suite, filtered to that domain (`-k "{domain}"`) |
+| `src/domains/{domain}/tools/*` | LLM suite, filtered to that domain |
+| `src/config/prompts/*` | Full LLM suite |
 
 ### E2E Tests
 
@@ -160,6 +176,49 @@ Before reporting test failure:
    - Is immutable? (yes/no)
    - Recommendation: fix code / ask user
 
+## Mock Fidelity Audit (ADR-030)
+
+Extends ADR-013 (mock ban in `tests/integration/`, hook-enforced) to unit tests:
+mocking a DB result shape hides schema drift wherever it happens, not only inside
+the integration folder.
+
+**BEFORE reporting tests as passed**, run this check on any test file that uses mocks:
+
+### Step 1: Detect mock usage
+```bash
+grep -rn "Mock\|patch\|mock\.\|MagicMock\|AsyncMock" {test_file}
+```
+
+### Step 2: For each mock found, classify it
+
+| Mock target | Verdict | Action |
+|-------------|---------|--------|
+| DB query result / row dict / ORM model | ⛔ BANNED | Report as `mock_fidelity_violation`. This MUST be an integration test with real DB. |
+| Repository method return value (dict/row shape) | ⛔ BANNED | Same — mocking row shapes hides schema drift. |
+| External HTTP API response | ✅ ALLOWED | Boundary mock, acceptable. |
+| Time / datetime.now / random | ✅ ALLOWED | Determinism mock, acceptable. |
+| File system / env vars | ✅ ALLOWED | Environment mock, acceptable. |
+| Service-layer dependency (injected interface) | ✅ ALLOWED | But return value must match real type signature. |
+
+### Step 3: Check mock return shapes
+
+For any ALLOWED mock that returns data:
+1. Find the real function/method being mocked
+2. Compare mock return value keys/types with actual return type
+3. If mock invents keys that don't exist in real code → `mock_shape_mismatch`
+
+### Output extension
+```yaml
+mock_fidelity:
+  violations: []        # or list of {file, line, mock_target, verdict}
+  shape_mismatches: []  # {file, line, mock_key, real_keys}
+```
+
+**If any `mock_fidelity_violation` found → report as `failed_in_scope`.**
+**If any `mock_shape_mismatch` found → report as warning, recommend fix.**
+
+---
+
 ## Eval Criteria Testing (LLM-as-Judge)
 
 When spec has `## Eval Criteria` with `llm-judge` type entries:
@@ -208,3 +267,7 @@ If any llm-judge criterion fails → report as `failed_in_scope`.
 ## Limits
 - `./test fast`: max 5 fails
 - `./test llm`: max 2 fails
+
+---
+
+@.claude/agents/_shared/output-conventions.md

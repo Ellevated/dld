@@ -2,32 +2,90 @@
 """
 Module: db
 Role: SQLite WAL helpers for orchestrator state management.
-Uses: sqlite3 (stdlib)
-Used by: orchestrator.py (get_all_projects, seed_projects_from_json, try_acquire_slot, log_task,
-             update_project_phase, get_available_slots, get_occupied_slots),
-         callback.py (release_slot, finish_task, update_project_phase),
-         night-reviewer.sh (via CLI: python3 db.py save-finding / get-new-findings / update-phase),
-         claude-runner.py (log_sdk_post_result_error — BUG-188),
-         gate-daemon.py (log_gate_cycle, get_gate_health — ARCH-190)
+Uses: sqlite3 (stdlib), db_decisions, db_findings, db_cli
+Used by: orchestrator.py, callback.py, gate-daemon.py, claude-runner.py (lazy),
+         orchestrator_monitor.py (`from db import get_db`),
+         night-reviewer.sh (CLI: save-finding / get-new-findings / update-phase)
+
+TECH-212: decisions+telemetry live in db_decisions.py, night findings in db_findings.py,
+the argv dispatcher in db_cli.py. Those three are pure leaves — they never import db.
+This module keeps the public names as delegates so no consumer changed.
 """
 
+import functools
 import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
+import db_decisions
+import db_findings
+
 DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent / "orchestrator.db"))
 _UNSET = object()
 _MIGRATIONS_APPLIED = False
 
 
+# Idempotent DDL, applied in this order on the first connection of a process.
+# Each tuple is ONE migration step and shares ONE try/except: a step lands whole
+# or is skipped whole, which is exactly how the hand-written blocks behaved.
+# Keep the mirror in schema.sql in step — that file initialises a fresh DB,
+# this list catches up databases that already exist.
+_MIGRATIONS: tuple[tuple[str, ...], ...] = (
+    # TECH-169: circuit-breaker decisions
+    (
+        "CREATE TABLE IF NOT EXISTS callback_decisions ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+        "project_id TEXT NOT NULL, spec_id TEXT, verdict TEXT NOT NULL,"
+        "reason TEXT, demoted INTEGER NOT NULL DEFAULT 0)",
+        "CREATE INDEX IF NOT EXISTS idx_callback_decisions_ts ON callback_decisions(ts)",
+        "CREATE INDEX IF NOT EXISTS idx_callback_decisions_demoted_ts"
+        " ON callback_decisions(demoted, ts)",
+    ),
+    # BUG-188: SDK post-ResultMessage exception diagnostics
+    (
+        "CREATE TABLE IF NOT EXISTS sdk_post_result_errors ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+        "project_id TEXT NOT NULL, task TEXT NOT NULL, turns INTEGER,"
+        "cost_usd REAL, error_msg TEXT, stderr TEXT)",
+        "CREATE INDEX IF NOT EXISTS idx_sdk_post_result_errors_ts ON sdk_post_result_errors(ts)",
+    ),
+    # ARCH-190: gate-daemon per-cycle metrics
+    (
+        "CREATE TABLE IF NOT EXISTS gate_health ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+        "cycle_count INTEGER NOT NULL, last_poll_at TEXT NOT NULL,"
+        "in_progress_specs INTEGER NOT NULL DEFAULT 0,"
+        "decisions_this_cycle INTEGER NOT NULL DEFAULT 0, error_msg TEXT)",
+        "CREATE INDEX IF NOT EXISTS idx_gate_health_ts ON gate_health(ts)",
+    ),
+    # Opus 5 safety declines arrive as HTTP 200, so they appear in no error
+    # metric and need a counter of their own.
+    (
+        "CREATE TABLE IF NOT EXISTS classifier_refusals ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+        "project_id TEXT NOT NULL, task TEXT NOT NULL, skill TEXT, model TEXT,"
+        "category TEXT, declines INTEGER NOT NULL DEFAULT 0,"
+        "fallbacks_served INTEGER NOT NULL DEFAULT 0,"
+        "unrecovered INTEGER NOT NULL DEFAULT 0, exit_code INTEGER, detail TEXT)",
+        "CREATE INDEX IF NOT EXISTS idx_classifier_refusals_ts ON classifier_refusals(ts)",
+    ),
+)
+
+
 def _ensure_migrations(conn: sqlite3.Connection) -> None:
     """Idempotent runtime migrations. Process-cached after first success.
 
+    The ALTER stays hand-written: SQLite has no `ADD COLUMN IF NOT EXISTS`, so
+    it needs the PRAGMA probe that the `CREATE ... IF NOT EXISTS` steps do not.
+    Everything else is data in `_MIGRATIONS` — adding a table is one entry.
+
     TECH-170: add task_log.branch column for feature-branch awareness.
-    TECH-169: add callback_decisions table + indexes.
-    BUG-188: add sdk_post_result_errors table + index.
     """
     global _MIGRATIONS_APPLIED
     if _MIGRATIONS_APPLIED:
@@ -39,63 +97,12 @@ def _ensure_migrations(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             # Race: another process added it between PRAGMA and ALTER.
             pass
-    # TECH-169: callback_decisions table — idempotent CREATE
-    try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS callback_decisions ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
-            "project_id TEXT NOT NULL,"
-            "spec_id TEXT,"
-            "verdict TEXT NOT NULL,"
-            "reason TEXT,"
-            "demoted INTEGER NOT NULL DEFAULT 0"
-            ")"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_callback_decisions_ts ON callback_decisions(ts)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_callback_decisions_demoted_ts "
-            "ON callback_decisions(demoted, ts)"
-        )
-    except sqlite3.OperationalError:
-        pass
-    # BUG-188: sdk_post_result_errors table for SDK post-ResultMessage diagnostics
-    try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS sdk_post_result_errors ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
-            "project_id TEXT NOT NULL,"
-            "task TEXT NOT NULL,"
-            "turns INTEGER,"
-            "cost_usd REAL,"
-            "error_msg TEXT,"
-            "stderr TEXT"
-            ")"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sdk_post_result_errors_ts ON sdk_post_result_errors(ts)"
-        )
-    except sqlite3.OperationalError:
-        pass
-    # ARCH-190: gate_health table for gate-daemon per-cycle metrics
-    try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS gate_health ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
-            "cycle_count INTEGER NOT NULL,"
-            "last_poll_at TEXT NOT NULL,"
-            "in_progress_specs INTEGER NOT NULL DEFAULT 0,"
-            "decisions_this_cycle INTEGER NOT NULL DEFAULT 0,"
-            "error_msg TEXT"
-            ")"
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_gate_health_ts ON gate_health(ts)")
-    except sqlite3.OperationalError:
-        pass
+    for step in _MIGRATIONS:
+        try:
+            for statement in step:
+                conn.execute(statement)
+        except sqlite3.OperationalError:
+            pass
     _MIGRATIONS_APPLIED = True
 
 
@@ -262,6 +269,22 @@ def get_available_slots(provider: str) -> int:
         return row["cnt"]
 
 
+def get_provider_capacity(provider: str) -> int:
+    """Total slots configured for a provider, occupied or not.
+
+    Distinguishes "this provider is busy right now" from "this provider does not
+    exist here" — get_available_slots() returns 0 for both, which is how a spec
+    naming a provider that was never configured could block its own dispatch
+    forever under a log line that said "no slots".
+    """
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM compute_slots WHERE provider = ?",
+            (provider,),
+        ).fetchone()
+        return row["cnt"]
+
+
 def get_occupied_slots() -> list[dict]:
     """Return all compute_slots with non-NULL pueue_id.
 
@@ -287,121 +310,6 @@ def get_task_by_pueue_id(pueue_id: int) -> Optional[dict]:
         return dict(row) if row else None
 
 
-def record_decision(
-    project_id: str,
-    spec_id: Optional[str],
-    verdict: str,
-    reason: Optional[str],
-    demoted: bool,
-) -> int:
-    """Insert one callback decision row. Returns row id.
-
-    TECH-169: Used by callback.verify_status_sync to feed the circuit-breaker.
-    `verdict` is one of: 'demote', 'sync', 'noop', 'circuit_open'.
-    """
-    with get_db() as conn:
-        cursor = conn.execute(
-            "INSERT INTO callback_decisions "
-            "(project_id, spec_id, verdict, reason, demoted) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (project_id, spec_id, verdict, reason, 1 if demoted else 0),
-        )
-        return cursor.lastrowid
-
-
-def count_demotes_since(min_ago: int) -> int:
-    """Count callback_decisions rows with demoted=1 in the last `min_ago` minutes.
-
-    TECH-169: Window query for circuit-breaker threshold check.
-    """
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM callback_decisions "
-            "WHERE demoted = 1 "
-            "AND ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)",
-            (f"-{int(min_ago)} minutes",),
-        ).fetchone()
-        return int(row["cnt"]) if row else 0
-
-
-def clear_decisions(min_ago: int) -> int:
-    """Delete callback_decisions rows newer than `min_ago` minutes. Returns deleted count.
-
-    TECH-169: Used by --reset-circuit to flush the recent window.
-    """
-    with get_db(immediate=True) as conn:
-        cursor = conn.execute(
-            "DELETE FROM callback_decisions WHERE ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)",
-            (f"-{int(min_ago)} minutes",),
-        )
-        return cursor.rowcount or 0
-
-
-def log_sdk_post_result_error(
-    project_id: str,
-    task: str,
-    turns: int,
-    cost_usd: float,
-    error_msg: str,
-    stderr: Optional[str],
-) -> int:
-    """Record a post-ResultMessage SDK exception (BUG-188).
-
-    Called by claude-runner.py when the `result_received and not result_is_error`
-    branch fires (SDK threw AFTER successful ResultMessage). The runner does not
-    fail the task, but we still want telemetry so operators can spot drift.
-
-    Threshold-based alerting (>5/day) is a downstream concern.
-    """
-    with get_db() as conn:
-        cursor = conn.execute(
-            "INSERT INTO sdk_post_result_errors "
-            "(project_id, task, turns, cost_usd, error_msg, stderr) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (project_id, task, turns, float(cost_usd or 0.0), error_msg, stderr),
-        )
-        return cursor.lastrowid or 0
-
-
-def log_gate_cycle(
-    cycle_count: int,
-    last_poll_at: str,
-    in_progress_specs: int,
-    decisions_this_cycle: int,
-    error_msg: Optional[str] = None,
-) -> int:
-    """Record gate-daemon per-cycle health metrics (ARCH-190).
-
-    Called by gate-daemon.py at the end of each polling cycle.
-    Returns the new row id.
-
-    Args:
-        cycle_count: Monotonically increasing cycle counter.
-        last_poll_at: ISO timestamp of when the poll was initiated.
-        in_progress_specs: Total in_progress specs evaluated across all projects.
-        decisions_this_cycle: Number of shadow verdicts written this cycle.
-        error_msg: Non-fatal error summary if any project fetch failed; None otherwise.
-    """
-    with get_db() as conn:
-        cursor = conn.execute(
-            "INSERT INTO gate_health "
-            "(cycle_count, last_poll_at, in_progress_specs, decisions_this_cycle, error_msg) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (cycle_count, last_poll_at, in_progress_specs, decisions_this_cycle, error_msg),
-        )
-        return cursor.lastrowid or 0
-
-
-def get_gate_health() -> Optional[dict]:
-    """Return the latest gate_health row as dict, or None if table is empty (ARCH-190).
-
-    Used by operators and future vps-orch CLI (MP-014) to inspect daemon liveness.
-    """
-    with get_db() as conn:
-        row = conn.execute("SELECT * FROM gate_health ORDER BY id DESC LIMIT 1").fetchone()
-        return dict(row) if row else None
-
-
 def seed_projects_from_json(projects: list[dict]) -> None:
     """Upsert projects from projects.json into project_state table."""
     with get_db() as conn:
@@ -424,163 +332,45 @@ def seed_projects_from_json(projects: list[dict]) -> None:
             )
 
 
-def save_finding(
-    project_id: str,
-    fingerprint: str,
-    severity: str,
-    confidence: str,
-    file_path: Optional[str],
-    line_range: Optional[str],
-    summary: str,
-    suggestion: Optional[str],
-) -> Optional[int]:
-    """Insert finding; returns new row id or None if fingerprint already exists."""
-    with get_db(immediate=True) as conn:
-        cursor = conn.execute(
-            "INSERT OR IGNORE INTO night_findings "
-            "(project_id, fingerprint, severity, confidence, file_path, line_range, summary, suggestion) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                project_id,
-                fingerprint,
-                severity,
-                confidence,
-                file_path,
-                line_range,
-                summary,
-                suggestion,
-            ),
-        )
-        return cursor.lastrowid if cursor.rowcount else None
+def _delegate(fn, immediate: bool = False):
+    """Bind a leaf-module function (conn first) to this module's connection.
+
+    Keeps `db.<name>` as the public seam — callback/orchestrator/gate-daemon/
+    claude-runner import `db` and nothing else — while the bodies live in pure
+    leaves. `immediate` mirrors the BEGIN IMMEDIATE the original function used.
+    """
+
+    @functools.wraps(fn)
+    def _call(*args, **kwargs):
+        with get_db(immediate=immediate) as conn:
+            return fn(conn, *args, **kwargs)
+
+    return _call
 
 
-def get_new_findings(project_id: str) -> list[dict]:
-    """Return findings with status='new' for a project."""
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM night_findings WHERE project_id = ? AND status = 'new' ORDER BY id",
-            (project_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+# --- decisions + telemetry -> db_decisions.py (TECH-212) ---
+record_decision = _delegate(db_decisions.record_decision)
+count_demotes_since = _delegate(db_decisions.count_demotes_since)
+clear_decisions = _delegate(db_decisions.clear_decisions, immediate=True)
+log_sdk_post_result_error = _delegate(db_decisions.log_sdk_post_result_error)
+log_gate_cycle = _delegate(db_decisions.log_gate_cycle)
+get_gate_health = _delegate(db_decisions.get_gate_health)
+log_classifier_refusal = _delegate(db_decisions.log_classifier_refusal)
 
-
-def update_finding_status(finding_id: int, status: str) -> None:
-    """Update finding status and set reviewed_at timestamp."""
-    with get_db(immediate=True) as conn:
-        conn.execute(
-            "UPDATE night_findings SET status = ?, "
-            "reviewed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
-            "WHERE id = ?",
-            (status, finding_id),
-        )
-
-
-def get_finding_by_id(finding_id: int) -> Optional[dict]:
-    """Return a single finding by id, or None if not found."""
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT * FROM night_findings WHERE id = ?",
-            (finding_id,),
-        ).fetchone()
-        return dict(row) if row else None
-
-
-def get_all_findings(project_id: str, status: Optional[str] = None) -> list[dict]:
-    """Return all findings for project, optionally filtered by status."""
-    with get_db() as conn:
-        if status is not None:
-            rows = conn.execute(
-                "SELECT * FROM night_findings WHERE project_id = ? AND status = ? ORDER BY id",
-                (project_id, status),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM night_findings WHERE project_id = ? ORDER BY id",
-                (project_id,),
-            ).fetchall()
-        return [dict(r) for r in rows]
-
-
-def get_projects_for_night_scan(project_ids: list[str]) -> list[dict]:
-    """Return enabled projects whose project_id is in the given list."""
-    if not project_ids:
-        return []
-    placeholders = ",".join("?" * len(project_ids))
-    with get_db() as conn:
-        rows = conn.execute(
-            f"SELECT * FROM project_state WHERE enabled = 1 AND project_id IN ({placeholders}) ORDER BY project_id",
-            project_ids,
-        ).fetchall()
-        return [dict(r) for r in rows]
+# --- night findings -> db_findings.py (TECH-212) ---
+save_finding = _delegate(db_findings.save_finding, immediate=True)
+get_new_findings = _delegate(db_findings.get_new_findings)
+update_finding_status = _delegate(db_findings.update_finding_status, immediate=True)
+get_finding_by_id = _delegate(db_findings.get_finding_by_id)
+get_all_findings = _delegate(db_findings.get_all_findings)
+get_projects_for_night_scan = _delegate(db_findings.get_projects_for_night_scan)
 
 
 if __name__ == "__main__":
     import sys
 
-    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    import db_cli
 
-    if cmd == "seed":
-        import json
-
-        if len(sys.argv) != 3:
-            print("Usage: python3 db.py seed <path/to/projects.json>", file=sys.stderr)
-            sys.exit(1)
-        path = sys.argv[2]
-        with open(path) as f:
-            projects = json.load(f)
-        seed_projects_from_json(projects)
-        print(f"seeded {len(projects)} projects")
-
-    elif cmd == "save-finding":
-        # Args: project_id fingerprint severity confidence file_path line_range summary suggestion
-        if len(sys.argv) != 10:
-            print(
-                "Usage: python3 db.py save-finding <project_id> <fingerprint> <severity>"
-                " <confidence> <file_path> <line_range> <summary> <suggestion>",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        fid = save_finding(
-            sys.argv[2],
-            sys.argv[3],
-            sys.argv[4],
-            sys.argv[5],
-            sys.argv[6],
-            sys.argv[7],
-            sys.argv[8],
-            sys.argv[9],
-        )
-        print(fid if fid is not None else "duplicate")
-
-    elif cmd == "get-new-findings":
-        import json
-
-        if len(sys.argv) != 3:
-            print("Usage: python3 db.py get-new-findings <project_id>", file=sys.stderr)
-            sys.exit(1)
-        print(json.dumps(get_new_findings(sys.argv[2])))
-
-    elif cmd == "update-finding-status":
-        if len(sys.argv) != 4:
-            print(
-                "Usage: python3 db.py update-finding-status <finding_id> <status>",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        update_finding_status(int(sys.argv[2]), sys.argv[3])
-        print(f"updated finding {sys.argv[2]} -> {sys.argv[3]}")
-
-    elif cmd == "update-phase":
-        if len(sys.argv) != 4:
-            print("Usage: python3 db.py update-phase <project_id> <phase>", file=sys.stderr)
-            sys.exit(1)
-        update_project_phase(sys.argv[2], sys.argv[3])
-        print(f"phase: {sys.argv[2]} -> {sys.argv[3]}")
-
-    else:
-        print(
-            "Usage: python3 db.py <seed|save-finding|get-new-findings"
-            "|update-finding-status|update-phase> [args...]",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    # sys.modules[__name__] is this module under its __main__ identity — passing it
+    # keeps db_cli a leaf and guarantees one module object, one DB_PATH.
+    sys.exit(db_cli.main(sys.argv, sys.modules[__name__]))
