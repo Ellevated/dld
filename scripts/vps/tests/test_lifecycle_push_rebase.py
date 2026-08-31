@@ -253,3 +253,65 @@ def test_local_ahead_classification(repos):
     # Add a code commit on top → mixed → False
     _commit_file(local, "src.py", "x = 2\n", "fix: code on top")
     assert lifecycle_push._local_ahead_is_lifecycle_only(str(local), "main") is False
+
+
+# ---------------------------------------------------------------------------
+# Test 7: guard — an unrelated dirty file must NOT disarm the rebase
+# ---------------------------------------------------------------------------
+
+
+def test_unrelated_dirty_file_still_rebases(repos):
+    """The 2026-08-24 freeze: a human's edit outside the rebase path is survivable.
+
+    Widening the guard to "any file the rebase rewrites" must not walk that fix
+    back — origin never touched notes.md, so it stays out of the way.
+    """
+    origin, local, other = repos
+
+    _git(other, "pull", "--ff-only", "origin", "main")
+    _commit_file(other, "src.py", "x = 5\n", "fix: code")
+    _git(other, "push", "origin", "main")
+
+    _commit_file(local, "ai/lifecycle/BUG-7.yaml", "status: done\n", "lifecycle(BUG-7): done")
+    (local / "notes.md").write_text("человеческий черновик\n", encoding="utf-8")
+
+    assert lifecycle_push._rebase_onto_origin(str(local), "main") is True
+    assert (local / "notes.md").read_text(encoding="utf-8") == "человеческий черновик\n"
+    assert "<<<<<<<" not in (local / "src.py").read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Test 8: a conflicted autostash pop leaves no markers behind
+# ---------------------------------------------------------------------------
+
+
+def test_conflicted_autostash_pop_is_cleared(repos):
+    """`git rebase --autostash` exits 0 on a conflicted pop — the net must clean it.
+
+    Reachable only as a race (origin moving between fetch and rebase), so the
+    rebase is driven by hand here to produce exactly that state.
+    """
+    origin, local, other = repos
+
+    _git(other, "pull", "--ff-only", "origin", "main")
+    _commit_file(other, "src.py", "x = 5\n", "fix: code")
+    _git(other, "push", "origin", "main")
+
+    _commit_file(local, "ai/lifecycle/BUG-8.yaml", "status: done\n", "lifecycle(BUG-8): done")
+    (local / "src.py").write_text("x = DIRTY\n", encoding="utf-8")
+
+    _git(local, "fetch", "origin", "main")
+    subprocess.run(
+        ["git", "-C", str(local), "rebase", "--autostash", "origin/main"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    # Precondition: git called this a success and still left the mess.
+    assert "<<<<<<<" in (local / "src.py").read_text(encoding="utf-8")
+
+    lifecycle_push._clear_autostash_conflict(str(local))
+
+    assert (local / "src.py").read_text(encoding="utf-8") == "x = 5\n"
+    assert _git(local, "diff", "--name-only", "--diff-filter=U") == ""
+    assert "autostash" in _git(local, "stash", "list"), "работа человека обязана остаться в стеше"

@@ -143,9 +143,9 @@ def _rebase_onto_origin(repo_dir: str, branch: str) -> bool:
     # success and abort — so uncommitted work is still never disturbed.
     # What we do refuse is a dirty file the rebase itself will rewrite: there
     # the autostash pop would land in a conflict and leave a mess behind.
-    if _dirty_overlaps_lifecycle(repo_dir):
+    if _dirty_overlaps_rebase(repo_dir, branch):
         log.warning(
-            "lifecycle rebase: uncommitted changes in lifecycle/backlog paths — "
+            "lifecycle rebase: uncommitted changes in a path the rebase rewrites — "
             "refusing auto-rebase (manual heal) branch=%s",
             branch,
         )
@@ -176,6 +176,7 @@ def _rebase_onto_origin(repo_dir: str, branch: str) -> bool:
         # table. Two writers, one file, guaranteed conflict.
         if _resolve_backlog_only_conflict(repo_dir) and _rebase_continue(repo_dir):
             log.info("lifecycle rebase: backlog.md conflict merged row-wise branch=%s", branch)
+            _clear_autostash_conflict(repo_dir)
             return True
         log.warning(
             "lifecycle rebase: conflict/failure, aborting branch=%s stderr=%s",
@@ -184,11 +185,58 @@ def _rebase_onto_origin(repo_dir: str, branch: str) -> bool:
         )
         lifecycle_git._run(["git", "rebase", "--abort"], cwd=repo_dir)
         return False
+    _clear_autostash_conflict(repo_dir)
     return True
 
 
-def _dirty_overlaps_lifecycle(repo_dir: str) -> bool:
-    """True iff uncommitted changes touch the paths the rebase will rewrite."""
+def _clear_autostash_conflict(repo_dir: str) -> None:
+    """Undo a conflicted autostash pop, which `git rebase` reports as success.
+
+    `git rebase --autostash` exits 0 even when re-applying the stash conflicts:
+    it prints "Applying autostash resulted in conflicts. Your changes are safe
+    in the stash." and leaves conflict markers plus an unmerged index behind.
+    The guard above makes that unreachable for the overlap we can see in
+    advance; this is the net for the race where origin moves between the fetch
+    and the rebase. Conflicted paths go back to the rebased HEAD — the human's
+    work is not lost, git kept the stash entry, and the alternative is handing
+    the next agent a worktree with `<<<<<<<` in it.
+    """
+    unmerged = lifecycle_git._run(["git", "diff", "--name-only", "--diff-filter=U"], cwd=repo_dir)
+    if unmerged.returncode != 0:
+        return
+    paths = [line.strip() for line in unmerged.stdout.splitlines() if line.strip()]
+    if not paths:
+        return
+    lifecycle_git._run(["git", "checkout", "--force", "HEAD", "--", *paths], cwd=repo_dir)
+    log.error(
+        "lifecycle rebase: autostash pop conflicted on %s — worktree restored from HEAD, "
+        "uncommitted work kept in the stash (git stash list)",
+        ", ".join(paths),
+    )
+
+
+def _dirty_overlaps_rebase(repo_dir: str, branch: str) -> bool:
+    """True iff uncommitted changes touch a path the rebase will rewrite.
+
+    Two sets of paths get rewritten, and the second one is what the previous
+    version of this guard missed:
+
+    * ``ai/lifecycle/**`` and ``ai/backlog.md`` — what the replayed commits write;
+    * every file that differs between HEAD and ``origin/<branch>`` — what the
+      checkout onto origin writes before the replay even starts.
+
+    Narrowing the guard to lifecycle paths only (2026-08-24) was right about the
+    freeze it fixed and wrong about the blast radius: a human editing ``src.py``
+    while origin also moved ``src.py`` made ``git rebase --autostash`` exit 0 and
+    still leave ``<<<<<<<`` markers plus an unmerged index behind — the autostash
+    pop conflicted, git reported it on stderr and returned success anyway. The
+    push then went through and the next agent started in a repo it could not
+    commit. Unrelated dirty files (the nine ``_Dowry/`` edits from that incident)
+    are in neither set, so they still do not disarm the self-heal.
+    """
+    incoming = _files_changed_by_rebase(repo_dir, branch)
+    if incoming is None:
+        return True  # cannot tell → treat as unsafe
     status = lifecycle_git._run(["git", "status", "--porcelain"], cwd=repo_dir)
     if status.returncode != 0:
         return True  # cannot tell → treat as unsafe
@@ -198,7 +246,19 @@ def _dirty_overlaps_lifecycle(repo_dir: str) -> bool:
             path = path.split(" -> ", 1)[1]
         if path.startswith(LIFECYCLE_DIR) or path == "ai/backlog.md":
             return True
+        if path in incoming:
+            return True
     return False
+
+
+def _files_changed_by_rebase(repo_dir: str, branch: str) -> set[str] | None:
+    """Files the checkout onto origin/<branch> will rewrite, or None if unknown."""
+    diff = lifecycle_git._run(
+        ["git", "diff", "--name-only", "HEAD", f"origin/{branch}"], cwd=repo_dir
+    )
+    if diff.returncode != 0:
+        return None
+    return {line.strip() for line in diff.stdout.splitlines() if line.strip()}
 
 
 _BACKLOG_ROW = re.compile(r"^\|\s*((?:TECH|FTR|BUG|ARCH|GROWTH)-\d+[a-z]*)\s*\|")
