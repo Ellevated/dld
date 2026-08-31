@@ -10,13 +10,23 @@ DLD.** Instructions written for a downstream project do not apply here.
 
 **Commands** (there is no `./test` here — see below):
 ```bash
+pip install ruff==0.16.1                           # CI's pin; other versions format differently
 ruff check . && ruff format --check .              # lint
+pip install -r scripts/vps/requirements.txt        # else 7 integration tests silently skip
 pytest tests/ -v                                   # unit + integration + regression
 pytest scripts/vps/tests/ -v                       # orchestrator
 for f in test/scripts/*.test.mjs; do node "$f"; done   # skill harness
 node .claude/scripts/check-prompt-integrity.mjs --tree .claude
 python scripts/check-tree-sync.py                  # .claude/ vs template/.claude/ drift
 ```
+
+> **Run the gates with CI's own versions, or they lie.** `ruff format` output is
+> version-dependent by design and the pin lives in `.github/workflows/ci.yml`; a local
+> 0.14.x reports a different file set than the 0.16.1 CI runs, in both directions.
+> `tests/integration/test_claude_runner_post_result_exception.py` `importorskip`s
+> `claude_agent_sdk`, so without `scripts/vps/requirements.txt` its seven tests do not
+> run locally at all — that is how they stayed red in CI for two days while a local
+> `pytest tests/` was green.
 
 > **`./test` does not exist in this repo, by decision.** It is a per-project artifact
 > (`rules/template-sync.md`, "Files Only in Template"). Prompts still name it because

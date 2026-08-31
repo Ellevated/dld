@@ -228,7 +228,9 @@ def versioned_template(tmp_path: Path) -> Path:
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "v1")
 
-    (template / ".claude/agents/coder.md").write_text("# coder v2\n", encoding="utf-8", newline="\n")
+    (template / ".claude/agents/coder.md").write_text(
+        "# coder v2\n", encoding="utf-8", newline="\n"
+    )
     (template / ".claude/skills/spark/SKILL.md").write_text(
         "# spark v2\n", encoding="utf-8", newline="\n"
     )
@@ -237,9 +239,7 @@ def versioned_template(tmp_path: Path) -> Path:
     return template
 
 
-def test_apply_clean_refreshes_stale_snapshots_but_spares_local_work(
-    versioned_template, tmp_path
-):
+def test_apply_clean_refreshes_stale_snapshots_but_spares_local_work(versioned_template, tmp_path):
     """The distinction the whole fleet rollout turns on.
 
     `coder.md` still holds template v1 — a snapshot nobody touched, so replacing it
@@ -253,10 +253,17 @@ def test_apply_clean_refreshes_stale_snapshots_but_spares_local_work(
 
     res = subprocess.run(
         [
-            sys.executable, str(SCRIPT), str(project),
-            "--template", str(versioned_template), "--json", "--apply-clean",
+            sys.executable,
+            str(SCRIPT),
+            str(project),
+            "--template",
+            str(versioned_template),
+            "--json",
+            "--apply-clean",
         ],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
     coder = (project / ".claude/agents/coder.md").read_text(encoding="utf-8")
@@ -274,10 +281,17 @@ def test_apply_clean_does_not_stamp_a_marker(versioned_template, tmp_path):
 
     subprocess.run(
         [
-            sys.executable, str(SCRIPT), str(project),
-            "--template", str(versioned_template), "--json", "--apply-clean",
+            sys.executable,
+            str(SCRIPT),
+            str(project),
+            "--template",
+            str(versioned_template),
+            "--json",
+            "--apply-clean",
         ],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert not (project / ".claude/DLD_VERSION").exists()
 
@@ -315,10 +329,17 @@ def fm_template(tmp_path: Path) -> Path:
 def _run_clean(project: Path, template: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         [
-            sys.executable, str(SCRIPT), str(project),
-            "--template", str(template), "--json", "--apply-clean",
+            sys.executable,
+            str(SCRIPT),
+            str(project),
+            "--template",
+            str(template),
+            "--json",
+            "--apply-clean",
         ],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -338,7 +359,8 @@ def test_a_hand_set_header_keeps_its_line_but_the_body_is_refreshed(fm_template,
     (project / ".claude/agents").mkdir(parents=True)
     (project / FM_FILE).write_text(  # v1 body, a model template never shipped
         "---\nmodel: sonnet\neffort: medium\n---\n\n# agent\n\nold guidance\n",
-        encoding="utf-8", newline="\n",
+        encoding="utf-8",
+        newline="\n",
     )
 
     _run_clean(project, fm_template)
@@ -393,10 +415,17 @@ def test_a_routing_override_fails_the_gate_whatever_the_baseline_says(fm_templat
 
     res = subprocess.run(
         [
-            sys.executable, str(SCRIPT), str(project),
-            "--template", str(fm_template), "--baseline", str(baseline),
+            sys.executable,
+            str(SCRIPT),
+            str(project),
+            "--template",
+            str(fm_template),
+            "--baseline",
+            str(baseline),
         ],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
     assert res.returncode == 1, "a generous baseline swallowed a routing override"

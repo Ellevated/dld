@@ -97,7 +97,10 @@ def test_ec2_feature_branch_only_is_false(repo_with_remote):
     # Ensure origin/develop is at the initial commit (no TECH-170 work)
     _git(repo_with_remote, "checkout", "-q", "develop")
 
-    assert gate_logic.find_implementation_commit(str(repo_with_remote), "TECH-170", ["src/x.py"]) is None
+    assert (
+        gate_logic.find_implementation_commit(str(repo_with_remote), "TECH-170", ["src/x.py"])
+        is None
+    )
 
 
 # --- EC-3: spec_id in subject but file not in allowed list → False -----------
@@ -109,7 +112,10 @@ def test_ec3_allowed_file_filter(repo_with_remote):
     _git(repo_with_remote, "push", "-q", "origin", "develop")
     _git(repo_with_remote, "fetch", "-q", "origin", "develop")
 
-    assert gate_logic.find_implementation_commit(str(repo_with_remote), "TECH-170", ["src/x.py"]) is None
+    assert (
+        gate_logic.find_implementation_commit(str(repo_with_remote), "TECH-170", ["src/x.py"])
+        is None
+    )
 
 
 # --- EC-4: wrong spec_id in commit subject → False --------------------------
@@ -121,7 +127,10 @@ def test_ec4_wrong_spec_id(repo_with_remote):
     _git(repo_with_remote, "push", "-q", "origin", "develop")
     _git(repo_with_remote, "fetch", "-q", "origin", "develop")
 
-    assert gate_logic.find_implementation_commit(str(repo_with_remote), "TECH-170", ["src/x.py"]) is None
+    assert (
+        gate_logic.find_implementation_commit(str(repo_with_remote), "TECH-170", ["src/x.py"])
+        is None
+    )
 
 
 # --- EC-5: no origin/develop → graceful False --------------------------------

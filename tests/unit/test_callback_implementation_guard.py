@@ -118,8 +118,7 @@ def test_ec4_done_on_develop_true(dev_repo):
     _git(dev_repo, "fetch", "-q", "origin", "develop")
 
     assert (
-        gate_logic.find_implementation_commit(str(dev_repo), "TECH-XXX", ["src/foo.py"])
-        is not None
+        gate_logic.find_implementation_commit(str(dev_repo), "TECH-XXX", ["src/foo.py"]) is not None
     )
 
 
@@ -153,8 +152,7 @@ def test_ec7_trailing_parens_subject(dev_repo):
     _git(dev_repo, "fetch", "-q", "origin", "develop")
 
     assert (
-        gate_logic.find_implementation_commit(str(dev_repo), "BUG-339", ["src/foo.py"])
-        is not None
+        gate_logic.find_implementation_commit(str(dev_repo), "BUG-339", ["src/foo.py"]) is not None
     )
 
 
@@ -183,8 +181,7 @@ def test_ec9_merge_commit_found_via_first_parent(dev_repo):
     _git(dev_repo, "fetch", "-q", "origin", "develop")
 
     assert (
-        gate_logic.find_implementation_commit(str(dev_repo), "BUG-338", ["src/text.py"])
-        is not None
+        gate_logic.find_implementation_commit(str(dev_repo), "BUG-338", ["src/text.py"]) is not None
     )
 
 

@@ -90,9 +90,15 @@ def _make_assistant(text: str = "ok") -> AssistantMessage:
 # Helper to run a task with a fake query function
 # ---------------------------------------------------------------------------
 def _run(fake_query, project_dir: str, monkeypatch, tmp_path) -> dict:
-    """Patch claude_runner.query with fake_query and run run_task."""
+    """Patch the SDK entry point with fake_query and run run_task.
+
+    `query` lives in runner_loop since TECH-213 split the stream loop out of
+    claude-runner.py. Patching `claude_runner.query` kept working on a dev box
+    (the module is importorskip-ped there) and failed only in CI, where the SDK
+    is installed — seven tests red for two days behind a green local run.
+    """
     monkeypatch.setattr(claude_runner, "LOG_DIR", tmp_path)
-    monkeypatch.setattr(claude_runner, "query", fake_query)
+    monkeypatch.setattr(claude_runner.runner_loop, "query", fake_query)
     return asyncio.run(claude_runner.run_task(str(project_dir), "TEST-001", "autopilot"))
 
 
@@ -187,7 +193,7 @@ def test_stderr_callback_captures_lines(monkeypatch, tmp_path):
             captured_cb_holder.append(cb)
         return ClaudeAgentOptions(*args, **kwargs)
 
-    monkeypatch.setattr(claude_runner, "ClaudeAgentOptions", wrap_options)
+    monkeypatch.setattr(claude_runner.runner_loop, "ClaudeAgentOptions", wrap_options)
     monkeypatch.setattr(claude_runner, "LOG_DIR", tmp_path)
 
     async def fake_query(prompt, options):
@@ -198,7 +204,7 @@ def test_stderr_callback_captures_lines(monkeypatch, tmp_path):
         raise Exception("Command failed with exit code 1")
         yield  # make this an async generator
 
-    monkeypatch.setattr(claude_runner, "query", fake_query)
+    monkeypatch.setattr(claude_runner.runner_loop, "query", fake_query)
     log_data = asyncio.run(claude_runner.run_task(str(tmp_path), "/autopilot demo", "autopilot"))
 
     # No ResultMessage was received → genuine failure
@@ -229,7 +235,7 @@ def test_process_error_stderr_takes_precedence(monkeypatch, tmp_path):
             captured_cb_holder.append(cb)
         return ClaudeAgentOptions(*args, **kwargs)
 
-    monkeypatch.setattr(claude_runner, "ClaudeAgentOptions", wrap_options)
+    monkeypatch.setattr(claude_runner.runner_loop, "ClaudeAgentOptions", wrap_options)
     monkeypatch.setattr(claude_runner, "LOG_DIR", tmp_path)
 
     async def fake_query(prompt, options):
@@ -241,7 +247,7 @@ def test_process_error_stderr_takes_precedence(monkeypatch, tmp_path):
         raise err
         yield  # make this an async generator
 
-    monkeypatch.setattr(claude_runner, "query", fake_query)
+    monkeypatch.setattr(claude_runner.runner_loop, "query", fake_query)
     log_data = asyncio.run(claude_runner.run_task(str(tmp_path), "/autopilot demo", "autopilot"))
 
     assert log_data["exit_code"] == 3, (
@@ -281,7 +287,7 @@ def test_post_result_exception_logs_telemetry_row(monkeypatch, tmp_path):
         yield _make_result(is_error=False, turns=43, cost=6.32, result="DONE")
         raise Exception("post-cleanup error")
 
-    monkeypatch.setattr(claude_runner, "query", fake_query)
+    monkeypatch.setattr(claude_runner.runner_loop, "query", fake_query)
     log_data = asyncio.run(
         claude_runner.run_task(str(tmp_path), "/autopilot demo-task", "autopilot")
     )

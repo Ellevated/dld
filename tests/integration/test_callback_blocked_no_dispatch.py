@@ -176,7 +176,7 @@ def _run_main(
     monkeypatch.setattr(
         gate_logic,
         "find_implementation_commit",
-        lambda *a, **kw: ("deadbee" if merged_on_develop else None),
+        lambda *a, **kw: "deadbee" if merged_on_develop else None,
     )
 
     with patch("sys.argv", ["callback.py", str(pueue_id), "claude-runner", "Success"]):
