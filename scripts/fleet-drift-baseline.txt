@@ -48,10 +48,25 @@
 # an agent runs on is a measured framework decision (ADR-029): change template and the
 # fleet moves together, or the project's copy goes back to template.
 
-AwardyBot   = 27
-Dowry       = 10
-Dowry-mc    = 11
-PLPilot     = 5
-wb          = 4
-gipotenuza  = 6
-MishkinLyap = 0
+# **Membership is declared here, and the run fails on a project this file names that no
+# `--root` reached.** Until 2026-08-31 the guard scanned `D:/dev` flat and reported
+# cleanly on 7 projects while the orchestrator dispatched 10: `nexus` and `MeMyselfAndI`
+# live in `D:/dev/RIS/` and had never been measured at all. That is where the broken
+# commit template — the top cause of failed specs — survived a fleet-wide fix. Recursing
+# into subdirectories was the wrong answer (`D:/dev/Archive/`, `D:/dev/Ellevated/` are
+# full of repos nobody manages); naming the fleet and failing on a gap is the right one.
+#
+# Canonical invocation on Oleg's Windows box:
+#
+#     python scripts/check-fleet-drift.py --root D:/dev --root D:/dev/RIS
+#
+
+AwardyBot    = 27
+Dowry        = 10
+Dowry-mc     = 11
+PLPilot      = 5
+wb           = 4
+gipotenuza   = 6
+MishkinLyap  = 0
+nexus        = 0
+MeMyselfAndI = 0

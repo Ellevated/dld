@@ -443,3 +443,74 @@ def test_a_project_edited_body_is_still_left_alone(fm_template, tmp_path):
     _run_clean(project, fm_template)
 
     assert (project / FM_FILE).read_text(encoding="utf-8") == own, "local body overwritten"
+
+
+# ---------------------------------------------------------------------------
+# 6. Membership: a registered project no root reached must fail the run
+# ---------------------------------------------------------------------------
+
+
+def _run_roots(template: Path, baseline: Path, *roots: Path) -> subprocess.CompletedProcess:
+    argv = [sys.executable, str(SCRIPT), "--template", str(template), "--baseline", str(baseline)]
+    for r in roots:
+        argv += ["--root", str(r)]
+    return subprocess.run(argv, capture_output=True, text=True, check=False)
+
+
+@pytest.fixture
+def two_roots(tmp_path: Path):
+    """`dev/alpha` and `dev/RIS/beta` — the shape that hid two projects for months."""
+    dev = tmp_path / "dev"
+    _tree(dev / "alpha", FILES)
+    _tree(dev / "RIS" / "beta", FILES)
+    template = _tree(tmp_path / "template", FILES)
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text("alpha = 0\nbeta  = 0\n", encoding="utf-8")
+    return dev, template, baseline
+
+
+def test_a_registered_project_no_root_reached_fails_the_run(two_roots):
+    """The blindness itself: 7 of 10 orchestrator projects measured, reported clean."""
+    dev, template, baseline = two_roots
+    res = _run_roots(template, baseline, dev)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert "MISSING beta" in res.stdout
+    assert "alpha" in res.stdout, "the projects that WERE reached still get reported"
+
+
+def test_repeating_root_reaches_the_nested_project(two_roots):
+    """`--root` is repeatable, which is how the nested container is covered."""
+    dev, template, baseline = two_roots
+    res = _run_roots(template, baseline, dev, dev / "RIS")
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "MISSING" not in res.stdout
+
+
+def test_discover_does_not_descend_into_container_dirs(two_roots):
+    """Recursion would drag in D:/dev/Archive — junk drift nobody manages."""
+    dev, template, baseline = two_roots
+    _tree(dev / "Archive" / "abandoned", FILES)
+    baseline.write_text("alpha = 0\n", encoding="utf-8")
+    res = _run_roots(template, baseline, dev)
+    assert "abandoned" not in res.stdout, "a flat scan must not reach one level down"
+
+
+def test_naming_one_project_explicitly_is_not_a_membership_gap(two_roots):
+    """Inspecting a single path on purpose must not fail on the ones not asked for."""
+    dev, template, baseline = two_roots
+    res = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            str(dev / "alpha"),
+            "--template",
+            str(template),
+            "--baseline",
+            str(baseline),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "MISSING" not in res.stdout

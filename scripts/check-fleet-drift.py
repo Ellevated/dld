@@ -376,6 +376,15 @@ def read_baseline(path: Path = BASELINE) -> dict[str, int]:
 
 
 def discover(root: Path) -> list[Path]:
+    """Projects directly under `root`. Flat on purpose — see `--root` below.
+
+    Recursing looked like the obvious fix for the projects living in
+    `D:/dev/RIS/`, and it is the wrong one: one level down `D:/dev` also holds
+    `Archive/` and `Ellevated/`, so the scan starts reporting drift on repos
+    nobody manages, and a gate that shouts about junk is a gate people stop
+    reading. Membership is declared in the baseline register instead, and a
+    registered project that no root reached fails the run.
+    """
     return sorted(
         p
         for p in root.iterdir()
@@ -386,7 +395,13 @@ def discover(root: Path) -> list[Path]:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("projects", nargs="*", type=Path, help="project paths")
-    ap.add_argument("--root", type=Path, help="scan this dir for repos with .claude/")
+    ap.add_argument(
+        "--root",
+        type=Path,
+        action="append",
+        default=[],
+        help="scan this dir for repos with .claude/ (repeatable)",
+    )
     ap.add_argument("--apply", action="store_true", help="copy synced files + write marker")
     ap.add_argument(
         "--apply-absent",
@@ -407,8 +422,8 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
 
     projects = list(args.projects)
-    if args.root:
-        projects += discover(args.root)
+    for root in args.root:
+        projects += discover(root)
     if not projects:
         ap.error("no projects given: pass paths or --root")
 
@@ -455,6 +470,15 @@ def main(argv: list[str]) -> int:
         ):
             failed = True
 
+    # A registered project no root reached is the failure this guard was blind to for
+    # months: it covered 7 of 10 orchestrator projects and reported cleanly on the 7.
+    # Only meaningful for a fleet-wide scan — inspecting one path on purpose is not a gap.
+    unmeasured = []
+    if args.root and not args.projects:
+        unmeasured = sorted(set(baseline) - {r.project for r in reports})
+        if unmeasured:
+            failed = True
+
     if args.json:
         print(json.dumps([r.__dict__ | {"drift": r.drift} for r in reports], indent=2))
         return 1 if failed else 0
@@ -475,6 +499,9 @@ def main(argv: list[str]) -> int:
         for line in r.overrides:
             print(f"           OVERRIDE: {line}")
 
+    for name in unmeasured:
+        print(f"  MISSING {name:<12} registered in the baseline, but no --root reached it")
+
     if any(r.overrides for r in reports):
         print(
             "\nOVERRIDE means the project changed only an agent's `model:`/`effort:`. "
@@ -483,8 +510,8 @@ def main(argv: list[str]) -> int:
             "fleet gets the new routing."
         )
     print(
-        "\nFAIL: a project drifted past its baseline, holds a routing override, or its "
-        "marker no\nlonger matches the files on disk."
+        "\nFAIL: a project drifted past its baseline, holds a routing override, its marker"
+        "\nno longer matches the files on disk, or a registered project was never reached."
         "\n  Sync it:  python scripts/check-fleet-drift.py <path> --apply"
         if failed
         else "\nOK: every project at or under its baseline."
