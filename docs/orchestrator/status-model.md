@@ -73,8 +73,11 @@ _ALLOWED_WRITERS_FOR_CREATE  = {spark} | _ALLOWED_WRITERS                       
   origin/develop → `done`, `reason=already_implemented_on_develop:<sha>`, без сессии), и **диспатч**
   в `scan_queued` — после успешного `pueue add` пишет `in_progress` с `pueue_id` (BUG-218). Отказ этой
   записи логируется и НЕ отменяет диспатч: задача уже в очереди pueue. Это единственная запись
-  `in_progress` во всей системе — она включает `started_at` (`lifecycle.py::write_lifecycle`) и делает
-  `reconcile_orphans` работоспособным. Все три — легитимны, `orchestrator ∈ _ALLOWED_WRITERS`.
+  `in_progress` во всей системе — она включает `started_at` (`lifecycle_git.py::_build_yaml_content`)
+  и делает `reconcile_orphans` работоспособным. `started_at` ставится на ЛЮБОМ входе в `in_progress`
+  и больше не перезаписывается; при закрытии в `done` пустой `started_at` досыпается временем первого
+  перехода в `in_progress` из истории — это наблюдение, а не выдуманная отметка. Нет такого перехода —
+  поле остаётся пустым. Все три — легитимны, `orchestrator ∈ _ALLOWED_WRITERS`.
   Reconciliation использует ту же `gate_logic`-проверку, что guard.
 - `spark` может **только `create_initial`** (claim ID через CAS), не `write_lifecycle` —
   Rule 7 (§4) всё равно держит.

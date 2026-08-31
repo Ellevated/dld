@@ -112,6 +112,13 @@ def _build_yaml_content(
             "priority": priority or "p1",
             "kind": kind or "tech",
             "blocked_reason": None,
+            # Обе отметки пустые НАМЕРЕННО и здесь остаются. Единственный
+            # вызов с status="done" — bootstrap архивной секции backlog'а:
+            # такая спека закончилась когда-то давно, а не «сейчас», и её
+            # сигнатура (done ∧ transitions=[] ∧ pueue_id=None ∧
+            # finished_at=None) — то, по чему lifecycle_recovery отличает
+            # bootstrap-артефакт от настоящей работы. Проставить finished_at
+            # здесь значит и соврать про время, и закрыть путь восстановления.
             "started_at": None,
             "finished_at": None,
             "allowed_files_hash": allowed_files_hash,
@@ -144,15 +151,27 @@ def _build_yaml_content(
         data["depends_on"] = [str(d) for d in depends_on]
     else:
         data.setdefault("depends_on", [])
-    if (
-        old_status in ("queued", "resumed")
-        and status == "in_progress"
-        and not data.get("started_at")
-    ):
+    # ЛЮБОЙ вход в in_progress — начало работы. Прежний список
+    # `("queued", "resumed")` терял реальные случаи: спека, поднятая из
+    # `blocked` прямо в `in_progress`, уходила в done со `started_at: null`
+    # (замер по флоту 31.08.2026: 75 done-спек из 183 за две недели без
+    # started_at). Длительность прогона нельзя измерить по состоянию, из
+    # которого в него вошли.
+    if status == "in_progress" and not data.get("started_at"):
         data["started_at"] = now
-    if status == "done" and not data.get("finished_at"):
-        data["finished_at"] = now
     transitions = list(data.get("transitions") or [])
+    if status == "done":
+        if not data.get("started_at"):
+            # Досыпать из истории, а не из воздуха: время первого перехода в
+            # in_progress — настоящее наблюдение. Нет такого перехода — поле
+            # остаётся пустым, это честнее выдуманной отметки.
+            first_run = next(
+                (t.get("at") for t in transitions if t.get("to") == "in_progress"), None
+            )
+            if first_run:
+                data["started_at"] = first_run
+        if not data.get("finished_at"):
+            data["finished_at"] = now
     transitions.append(
         {"from": old_status, "to": status, "at": now, "by": by, "pueue_id": pueue_id}
     )

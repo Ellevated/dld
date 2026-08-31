@@ -134,7 +134,7 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 | Переход | Триггер |
 |---------|---------|
 | `→ queued` | spark `create_initial` / orchestrator bootstrap (safe default) |
-| `queued/resumed → in_progress` | orchestrator `scan_queued` после успешного `pueue add`: `write_lifecycle(..., "in_progress", by="orchestrator", pueue_id=<id>)`; этим же переходом ставится `started_at` |
+| `* → in_progress` | orchestrator `scan_queued` после успешного `pueue add`: `write_lifecycle(..., "in_progress", by="orchestrator", pueue_id=<id>)`. `started_at` ставится на ЛЮБОМ входе в `in_progress`, а не только из `queued`/`resumed` — спека, поднятая из `blocked`, иначе теряла начало навсегда (замер 31.08.2026: 75 done-спек из 183 за две недели без `started_at`) |
 | `in_progress → done` | guard видит реализующий коммит на origin/develop |
 | `in_progress → blocked` | guard не нашёл реализацию ИЛИ autopilot сигналит blocked/needs_review |
 | `blocked → resumed` | оператор (`spec_operator demote --blocked`/правка backlog → resumed) |
