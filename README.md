@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-blue.svg)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/version-3.17-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.18-green.svg)](CHANGELOG.md)
 [![npm version](https://img.shields.io/npm/v/create-dld.svg)](https://www.npmjs.com/package/create-dld)
 
 ---
@@ -166,15 +166,16 @@ Before any code is written:
 ```
 my-project/
 ├── .claude/
-│   ├── skills/          # 13 skills (spark, autopilot, council, upgrade, ...)
-│   ├── agents/          # 16 agent prompts (planner, coder, council/*, ...)
+│   ├── skills/          # 23 skills (spark, autopilot, council, qa, triz, ...)
+│   ├── agents/          # 57 agent prompts (planner, coder, council/*, board/*, ...)
 │   ├── rules/           # Architecture constraints
 │   └── contexts/        # Domain-specific context
 ├── ai/
 │   ├── idea/            # From /bootstrap
 │   ├── features/        # Task specs
+│   ├── lifecycle/       # {SPEC-ID}.yaml — spec status, source of truth
 │   ├── diary/           # Session learnings
-│   └── backlog.md       # Task queue
+│   └── backlog.md       # Rendered view of lifecycle, not the source
 ├── src/
 │   ├── shared/          # Common types, Result pattern
 │   ├── infra/           # DB, LLM, external APIs
@@ -204,6 +205,10 @@ my-project/
 | `/retrofit` | Reassess existing projects (brownfield lifecycle) |
 | `/release` | Update CHANGELOG, README, docs automatically |
 | `/upgrade` | Upgrade DLD framework to latest version from GitHub |
+| `/qa` | Manual QA — drive the product like a user, not like a test |
+| `/triz` | System diagnostics — where the constraint actually is |
+| `/seed-lessons` | Populate the lessons bank from existing history |
+| `/skill-creator` | Create, eval and iterate on a skill of your own |
 
 ---
 
