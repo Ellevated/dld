@@ -15,6 +15,7 @@ import asyncio
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -37,17 +38,48 @@ from runner_cli import ALLOWED_TOOLS
 logger = logging.getLogger("claude-runner")
 
 
-def make_stderr_collector():
+def _now_iso() -> str:
+    return datetime.now(tz=timezone.utc).isoformat()
+
+
+def make_stderr_collector(stderr_path: Path | None = None):
     """BUG-188 Layer 2: capture subprocess CLI stderr via SDK callback.
 
-    Returns (stderr_lines, collector); capped at 200 lines to bound memory on a
-    misbehaving CLI.
+    Returns (stderr_lines, collector); the in-memory tail stays capped at 200
+    lines to bound memory on a misbehaving CLI.
+
+    Аудит 30.08.2026, причина 3: четыре прогона умерли с
+    `Command failed with exit code 1 … Check stderr output for details`, а
+    собранный этим коллектором stderr в логах был ПУСТ — то есть единственная
+    улика существовала только в памяти процесса, который к тому моменту уже
+    сворачивался. Поэтому каждая строка теперь пишется на диск НЕМЕДЛЕННО, а не
+    доживает до сборки run-лога.
+
+    Файл создаётся сразу, с шапкой. Пустой файл с одной шапкой — это тоже
+    показание: он отличает «CLI ничего не сказал» от «мы забыли подписаться».
+    Раньше эти два случая выглядели одинаково — никак.
     """
     stderr_lines: list[str] = []
+    handle = None
+    if stderr_path is not None:
+        try:
+            stderr_path.parent.mkdir(parents=True, exist_ok=True)
+            handle = stderr_path.open("a", encoding="utf-8", buffering=1)
+            handle.write(f"# claude-runner stderr — opened {_now_iso()}\n")
+            handle.flush()
+        except OSError as exc:
+            # Диагностика не имеет права ронять прогон.
+            logger.warning("stderr log unavailable (%s): %s", stderr_path, exc)
+            handle = None
 
     def _collector(line: str) -> None:
         if len(stderr_lines) < 200:
             stderr_lines.append(line)
+        if handle is not None:
+            try:
+                handle.write(line + "\n")
+            except (OSError, ValueError):
+                pass
 
     return stderr_lines, _collector
 
@@ -150,7 +182,13 @@ async def consume(
 
 
 def handle_sdk_exception(
-    exc: Exception, state: dict, stderr_lines: list, task: str, project_name: str, db
+    exc: Exception,
+    state: dict,
+    stderr_lines: list,
+    task: str,
+    project_name: str,
+    db,
+    stderr_path: Path | None = None,
 ) -> None:
     """Map an SDK exception onto exit_code / result_text, honouring ADR-024.
 
@@ -177,7 +215,11 @@ def handle_sdk_exception(
             captured = "\n".join(stderr_lines[-100:])
             state["result_text"] = f"Process error: {exc}\nSTDERR (captured):\n{captured}"
         else:
-            state["result_text"] = f"Process error: {exc}"
+            # Аудит 30.08.2026, причина 3: именно сюда приходили четыре прогона,
+            # и «Check stderr output for details» отсылало ровно никуда. Теперь
+            # отсылает к файлу — пустому или нет, но существующему.
+            where = f" (stderr log: {stderr_path})" if stderr_path else ""
+            state["result_text"] = f"Process error: {exc}{where}"
         return
 
     err_str = str(exc)

@@ -169,6 +169,12 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     project_name = project_path.name
     ts_label = time.strftime("%Y%m%d-%H%M%S")
     log_file = LOG_DIR / f"{project_name}-{ts_label}.log"
+    # Аудит 30.08.2026, причина 3: stderr CLI ложится на диск рядом с логом
+    # прогона, а не только в память процесса, который в этот момент умирает.
+    # Расширение НЕ .log намеренно: callback_logs._find_log_file берёт свежайший
+    # `{project}-*.log` по mtime, а stderr пишется во время прогона — он оказался
+    # бы новее run-лога, и callback стал бы разбирать его как JSON.
+    stderr_file = LOG_DIR / f"{project_name}-{ts_label}.stderr.txt"
     started_at_iso = datetime.now(tz=timezone.utc).isoformat()
     started_mono = time.monotonic()
 
@@ -187,7 +193,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     )
     runner_cli.warn_if_stale(CLI_PATH, CLI_VERSION, MODEL)
 
-    stderr_lines, stderr_collector = runner_loop.make_stderr_collector()
+    stderr_lines, stderr_collector = runner_loop.make_stderr_collector(stderr_file)
     options = runner_loop.build_options(
         project_path,
         stderr_collector,
@@ -226,7 +232,9 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
             f"${state['cost_usd']:.4f}, last_tool={state['last_tool_name']!r})"
         )
     except Exception as e:  # noqa: BLE001 — mapped to an exit code, never swallowed
-        runner_loop.handle_sdk_exception(e, state, stderr_lines, task, project_name, _orch_db)
+        runner_loop.handle_sdk_exception(
+            e, state, stderr_lines, task, project_name, _orch_db, stderr_file
+        )
 
     # A run that dies before ResultMessage reports turns=0 and cost=0.0, because
     # both come from that message. That is how a 575-turn, 90-minute timeout came
@@ -268,6 +276,8 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         effort=AUTOPILOT_EFFORT,
         salvage_info=salvage_info,
         refusal=refusal,
+        stderr_log=str(stderr_file),
+        stderr_line_count=len(stderr_lines),
     )
     runner_result.log_refusal_telemetry(
         refusal,

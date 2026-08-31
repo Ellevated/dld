@@ -231,6 +231,8 @@ def build_log_data(
     effort: str,
     salvage_info: dict | None,
     refusal: dict | None = None,
+    stderr_log: str | None = None,
+    stderr_line_count: int = 0,
 ) -> dict:
     """Assemble the run-log dict written to logs/<project>-<ts>.log.
 
@@ -274,6 +276,11 @@ def build_log_data(
         # Always present, even when nothing was declined: an absent key cannot
         # be told apart from a runner that predates the check.
         "refusal": refusal if refusal is not None else {"detected": False},
+        # Аудит 30.08.2026, причина 3: где искать stderr CLI и сколько строк он
+        # отдал. Ноль при ненулевом exit_code — это не «нет улик», а конкретное
+        # показание: SDK не доставил ни строки (его reader отменяется в close()).
+        "stderr_log": stderr_log,
+        "stderr_lines": stderr_line_count,
     }
     # `turns` and the counters above are MAIN-LOOP scope; cost_usd is session
     # scope. Publish the session scope explicitly rather than leaving the two

@@ -96,6 +96,14 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 - **Heartbeat (TECH-198):** на КАЖДОМ SDK-сообщении (не только Assistant) пишет
   `logs/{project}-{ts}.heartbeat.json` (поля: `turn`, `elapsed_s`, `last_tool`, `started_at`, `model`,
   `updated_at`). Этот файл читает reaper. — `runner_heartbeat.py::_write_heartbeat`
+- **stderr CLI на диске (аудит 30.08.2026, причина 3):** каждая строка stderr subprocess'а пишется
+  в `logs/{project}-{ts}.stderr.txt` НЕМЕДЛЕННО, а не доживает до сборки run-лога — четыре прогона
+  25–26.08 умерли с `Command failed with exit code 1 … Check stderr output for details`, и собранный
+  в памяти stderr был пуст (SDK отменяет свой stderr-reader в `close()`). Файл создаётся с шапкой
+  сразу: пустой файл отличает «CLI ничего не сказал» от «мы не подписались». Путь и число строк —
+  в run-логе (`stderr_log`, `stderr_lines`). Расширение НЕ `.log` намеренно: `callback_logs`
+  берёт свежайший `{project}-*.log` по mtime и разобрал бы его как JSON.
+  — `runner_loop.py::make_stderr_collector`
 - **exit_code contract (ADR-024, BUG-188):** после `ResultMessage(is_error=False)` ран —
   успешен; последующее SDK-исключение → **WARNING** (не ERROR) + телеметрия в `sdk_post_result_errors`,
   `exit_code=0` не оверрайдится. Нарушение = ре-блок готовой спеки + ретрай (+$5).
