@@ -115,6 +115,33 @@ All hook commands use the runner: `node .claude/hooks/run-hook.mjs <hook-name>`
 
 ---
 
+### commit-msg-spec-id.mjs
+
+**Trigger:** git `commit-msg` hook, wired by `.git-hooks/commit-msg`
+(needs `git config core.hooksPath .git-hooks`)
+
+**Purpose:** While `CLAUDE_CURRENT_SPEC_PATH` is non-empty, reject a commit
+subject that does not declare that spec's id in a form the implementation gate
+can read.
+
+Failure audit of 2026-08-30, cause 1: autopilot did the work, committed a
+subject with no spec id, the gate found no matching commit on `origin/develop`
+and marked the spec `blocked` — in 9 downstream projects out of 15. Prompt
+rules fix this until the first agent that does not read them; the hook fixes it
+structurally.
+
+`matchSubject()` is a port of `scripts/vps/gate_logic.py:match_subject`. The two
+are kept honest by one shared table of subjects,
+`test/fixtures/commit-subject-corpus.json`, run through the JS side in
+`test/scripts/commit-msg-spec-id.test.mjs` and through the Python side in
+`tests/unit/test_commit_subject_corpus.py`.
+
+Silent when: no `CLAUDE_CURRENT_SPEC_PATH` (a human committing by hand), the
+path carries no spec id (inbox dispatch), or the subject is `fixup!`/`squash!`.
+Bypass: `DLD_SPEC_SUBJECT_UNCHECKED=1`.
+
+---
+
 ### run-hook.mjs
 
 **Purpose:** Cross-platform hook runner with git worktree support

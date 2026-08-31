@@ -1,0 +1,32 @@
+{
+  "_why": "Одна таблица субъектов для ДВУХ реализаций правила: scripts/vps/gate_logic.py:match_subject (гейт, Python) и .claude/hooks/commit-msg-spec-id.mjs (хук, JS). Хук отвергает то, чего гейт не увидит; разъехавшись, они начнут врать в разные стороны — хук пропустит коммит, который гейт не прочитает, и спека уйдёт в blocked при сделанной работе. Расхождение обязано падать тестом: tests/unit/test_commit_subject_corpus.py и test/scripts/commit-msg-spec-id.test.mjs гоняют этот файл каждый свою сторону.",
+  "spec_id": "TECH-189",
+  "accepted": [
+    "feat(TECH-189): добавить гейт",
+    "feat(tech-189): регистр скоупа не важен (BUG-192)",
+    "fix(TECH-189)!: ломающая правка",
+    "feat(TECH-189,FTR-926): мультиспековый скоуп",
+    "chore(area, TECH-189): пробелы в скоупе терпимы",
+    "merge TECH-189",
+    "merge TECH-189: слить ветку",
+    "Merge feature/TECH-189: форма с префиксом ветки",
+    "merge: feature/TECH-189 — двоеточие после merge",
+    "Merge branch 'fix/TECH-189-slug'",
+    "fix(security): отозвать гранты (TECH-189)",
+    "fix: аккуратно обрезать (TECH-189)",
+    "feat: x (TECH-189, FTR-926)",
+    "TECH-189: легаси-префикс",
+    "lifecycle(TECH-189): done"
+  ],
+  "rejected": [
+    "feat: добавить гейт",
+    "feat(other): что-то ещё, см. TECH-189",
+    "feat: TECH-189 внутри текста без скоупа",
+    "fix: x (см. TECH-189)",
+    "chore: уборка",
+    "feat(TECH-1890): другой id, начинается так же",
+    "feat(FTR-189): другой префикс",
+    "",
+    "Merge branch 'develop'"
+  ]
+}

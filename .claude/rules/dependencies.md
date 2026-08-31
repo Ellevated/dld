@@ -713,7 +713,13 @@ One-shot operator helper to recover from dirty `ai/lifecycle/` state in a projec
 
 **Path:** `scripts/vps/install-lifecycle-guard.sh`
 
-**The only hook installer.** Supersedes `install-hooks-all-worktrees.sh` (deleted
+**The only hook installer.** Installs BOTH shared hooks — `pre-commit`
+(ADR-025 lifecycle write guard) and `commit-msg` (spec-id subject guard, failure
+audit 2026-08-30 cause 1). A hook checked into a project's `.git-hooks/` alone
+never runs on the fleet: `core.hooksPath` points at the shared directory this
+script writes, so anything not installed here is dead code.
+
+Supersedes `install-hooks-all-worktrees.sh` (deleted
 2026-07-27), which only rewrote `core.hooksPath` and skipped any repo without a
 checked-in `.git-hooks/` — six of the ten orchestrated repos. `setup-vps.sh
 --phase4-hooks` now delegates here, so a full setup run cannot undo the install.
@@ -731,6 +737,7 @@ Idempotent. `--dry-run` shows the plan; `--verify` reports effective state only.
 | git CLI | PATH | `config core.hooksPath`, `config dld.previousHooksPath` (rollback breadcrumb) |
 | jq | PATH | parse projects.json `.[].path` |
 | .claude/hooks/pre-commit-lifecycle-guard.mjs | DLD repo | central guard, baked into the wrapper as an absolute path |
+| .claude/hooks/commit-msg-spec-id.mjs | DLD repo | central subject guard, baked into the commit-msg wrapper as an absolute path |
 
 ### Used by (←)
 
@@ -742,6 +749,8 @@ Idempotent. `--dry-run` shows the plan; `--verify` reports effective state only.
 ### When changing API, check
 
 - [ ] `.claude/hooks/pre-commit-lifecycle-guard.mjs` (moving it invalidates the baked path — re-run the installer)
+- [ ] `.claude/hooks/commit-msg-spec-id.mjs` (same baked path; its JS `matchSubject` is a port of `gate_logic.match_subject` — the shared corpus `test/fixtures/commit-subject-corpus.json` is what keeps them from drifting)
+- [ ] tests/integration/test_commit_msg_spec_id_hook.py (asserts git actually invokes the hook, including from a worktree)
 - [ ] setup-vps.sh --phase4-hooks (delegates here; keep it a delegation, not a copy)
 - [ ] tests/integration/test_worktree_hook_blocks.py (C4 asserts the guard blocks, not that a config value looks right)
 - [ ] salvage.py (its plumbing snapshot bypasses this guard by construction — the `ai/lifecycle` exclusion lives there)

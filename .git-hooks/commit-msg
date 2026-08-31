@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# .git-hooks/commit-msg — гейт spec-id в subject (аудит 30.08.2026, причина 1).
+#
+# Activate via: git config core.hooksPath .git-hooks
+#
+# Почему commit-msg, а не pre-commit: pre-commit сообщения ещё не видит, а
+# проверять надо именно subject. Хук молчит, пока в окружении нет непустого
+# CLAUDE_CURRENT_SPEC_PATH, — ручные коммиты человека он не трогает.
+set -uo pipefail
+
+# TECH-194 C2: resolve the guard via GIT_COMMON_DIR to handle worktrees.
+_COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")
+if [[ "${_COMMON_DIR}" == ".git" ]]; then
+    _REPO_ROOT="$(pwd)"
+else
+    _REPO_ROOT="$(dirname "${_COMMON_DIR}")"
+fi
+_GUARD="${_REPO_ROOT}/.claude/hooks/commit-msg-spec-id.mjs"
+if [[ -f "${_GUARD}" ]] && command -v node >/dev/null 2>&1; then
+    if ! node "${_GUARD}" "$1"; then
+        exit 1
+    fi
+fi
+
+exit 0

@@ -48,6 +48,7 @@ SYNCED_GLOBS = (
     ".claude/hooks/*.mjs",
     ".claude/scripts/**/*.mjs",
     ".claude/skills/**/*.md",
+    ".git-hooks/commit-msg",
     ".git-hooks/pre-commit",
     "scripts/check_domain_imports.py",
     "scripts/check_docs_sync.py",
