@@ -95,11 +95,12 @@ def _write_pid() -> None:
 def git_pull(project_id: str, project_dir: str) -> None:
     """Advance develop via fetch + ff-only merge. Skip cycle if not fast-forward.
 
-    Post-ARCH-186: no autostash, no stash pop, no marker restore. The
-    no-dirty-WT invariant (assert_clean_lifecycle_tree at startup +
-    structural impossibility from lifecycle.py atomic plumbing) means
-    the WT is always clean when this runs. If the merge fails (e.g. divergence),
-    skip the cycle and log — operator will resolve.
+    Post-ARCH-186: no autostash, no stash pop, no marker restore. The startup
+    assert guarantees a clean **ai/lifecycle/** tree, not a clean worktree — a
+    tracked file a project job rewrites in place blocks every ff-only merge
+    (dowry, `.claude/rules/generated/schema.md`, a regenerated timestamp). One
+    WARNING per cycle reads exactly like silence, so `_note_git_advance_failure`
+    escalates to ERROR once the project is demonstrably stuck.
 
     Uses `fetch` + `merge --ff-only origin/develop` rather than
     `pull --ff-only origin develop`: the latter merges from the shared,
@@ -130,7 +131,7 @@ def git_pull(project_id: str, project_dir: str) -> None:
             log.warning(
                 "git fetch failed for %s: %s — skip cycle",
                 project_dir,
-                (fetch.stderr or "")[:200],
+                _one_line(fetch.stderr),
             )
             return
         merge = subprocess.run(
@@ -140,11 +141,9 @@ def git_pull(project_id: str, project_dir: str) -> None:
             timeout=120,
         )
         if merge.returncode != 0:
-            log.warning(
-                "git merge --ff-only origin/develop failed for %s: %s — skip cycle",
-                project_dir,
-                (merge.stderr or "")[:200],
-            )
+            _note_git_advance_failure(project_id, project_dir, _one_line(merge.stderr))
+        else:
+            _GIT_ADVANCE_FAILURES.pop(project_id, None)
     except subprocess.TimeoutExpired as exc:
         log.warning("git_pull timeout for %s: %s", project_dir, exc)
 
@@ -392,6 +391,8 @@ from orchestrator_queue import (  # noqa: F401,E402
     _unmet_dependencies,
     dispatch_night_review,
 )
+from orchestrator_git import _GIT_ADVANCE_FAILURES  # noqa: F401,E402
+from orchestrator_git import _note_git_advance_failure, _one_line  # noqa: F401,E402
 
 
 if __name__ == "__main__":
