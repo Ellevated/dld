@@ -6,11 +6,12 @@ current?" without diffing 150 files by eye, so for three months nobody asked —
 answer, when an audit finally looked on 2026-08-31, was ~100 diverged files per project
 and two gate scripts absent from all seven while template prompts invoked them.
 
-Four behaviours carry that guarantee, and each has a way of quietly not working:
+Five behaviours carry that guarantee, and each has a way of quietly not working:
   1. an ABSENT file counts as drift — this is the exit-127 case, the loud one
   2. a MODIFIED file counts as drift — the quiet one
   3. the baseline grants a debt budget, exactly like `check-loc-limit.sh`
   4. a marker whose digest no longer matches the files on disk reports STALE
+  5. a file differing only by `model:`/`effort:` is an OVERRIDE, which no budget covers
 
 (4) is the point of the whole design. A marker that is read rather than verified is the
 failure this repository has hit three times — `index_status.head_sha` reporting fresh
@@ -281,7 +282,7 @@ def test_apply_clean_does_not_stamp_a_marker(versioned_template, tmp_path):
     assert not (project / ".claude/DLD_VERSION").exists()
 
 
-# --- frontmatter tuning must not freeze the body ------------------------------------
+# --- the routing header: refreshed when stale, reported when hand-set ---------------
 
 FM_FILE = ".claude/agents/tuned.md"
 
@@ -302,7 +303,7 @@ def fm_template(tmp_path: Path) -> Path:
     _git(repo, "commit", "-qm", "v1")
 
     (template / FM_FILE).write_text(
-        "---\nmodel: haiku\n---\n\n# agent\n\nnew guidance, anti-hallucination rule\n",
+        "---\nmodel: opus\n---\n\n# agent\n\nnew guidance, anti-hallucination rule\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -321,17 +322,21 @@ def _run_clean(project: Path, template: Path) -> subprocess.CompletedProcess:
     )
 
 
-def test_project_model_tuning_survives_while_body_is_refreshed(fm_template, tmp_path):
+def test_a_hand_set_header_keeps_its_line_but_the_body_is_refreshed(fm_template, tmp_path):
     """A changed `model:` must not hold the prose below it months behind.
 
     This froze eight of AwardyBot's agents: `model: haiku -> sonnet` made the file match
     no template version, so --apply-clean skipped it, and bug-hunt prompts stayed on a
-    revision predating their anti-hallucination rules. The routing choice is the
-    project's; the guidance under it is not.
+    revision predating their anti-hallucination rules.
+
+    The header itself is a human's to take back, not this script's: `--apply-clean`
+    promises to touch only what is provably nobody's work, and a value template never
+    shipped is somebody's. So the line stays and the gate names it (see the override test
+    below); what gets fixed here is the guidance underneath it.
     """
     project = tmp_path / "proj2"
     (project / ".claude/agents").mkdir(parents=True)
-    (project / FM_FILE).write_text(  # v1 body, project's own model
+    (project / FM_FILE).write_text(  # v1 body, a model template never shipped
         "---\nmodel: sonnet\neffort: medium\n---\n\n# agent\n\nold guidance\n",
         encoding="utf-8", newline="\n",
     )
@@ -339,9 +344,64 @@ def test_project_model_tuning_survives_while_body_is_refreshed(fm_template, tmp_
     _run_clean(project, fm_template)
 
     got = (project / FM_FILE).read_text(encoding="utf-8")
-    assert "model: sonnet" in got and "effort: medium" in got, "project tuning was overwritten"
+    assert "model: sonnet" in got and "effort: medium" in got, "hand-set header overwritten"
     assert "anti-hallucination" in got, "stale body was not refreshed"
     assert "old guidance" not in got
+
+
+def test_a_stale_template_header_is_refreshed_like_any_other_snapshot(fm_template, tmp_path):
+    """Five of AwardyBot's eight header diffs were February template, not decisions.
+
+    The old contract called every changed header "the routing bill the project pays" and
+    kept it verbatim, so a header template had itself moved on from stayed frozen forever
+    — and read, to anyone looking, as a deliberate local choice. Matching it against the
+    header history tells the two apart.
+    """
+    project = tmp_path / "proj4"
+    (project / ".claude/agents").mkdir(parents=True)
+    (project / FM_FILE).write_text(  # v1 header AND v1 body: a pure snapshot
+        "---\nmodel: haiku\n---\n\n# agent\n\nold guidance\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    res = _run_clean(project, fm_template)
+
+    got = (project / FM_FILE).read_text(encoding="utf-8")
+    assert "model: opus" in got, "template's newer header was not delivered"
+    assert "anti-hallucination" in got, "stale body was not refreshed"
+    assert json.loads(res.stdout)[0]["differs"] == [], "file should now match template"
+
+
+def test_a_routing_override_fails_the_gate_whatever_the_baseline_says(fm_template, tmp_path):
+    """Baselines buy time for real local work. Routing is not local work.
+
+    AwardyBot ran three synthesizers on opus where template says sonnet, and the number
+    35 in its baseline absorbed that in silence — the cost of a header is invisible in a
+    count of paths. An override is named with both values and no budget covers it: revert
+    the header, or move template so the whole fleet moves with it.
+    """
+    project = tmp_path / "proj5"
+    (project / ".claude/agents").mkdir(parents=True)
+    (project / FM_FILE).write_text(  # current body, a model of its own
+        "---\nmodel: fable\n---\n\n# agent\n\nnew guidance, anti-hallucination rule\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(f"{project.name} = 99\n", encoding="utf-8")
+
+    res = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), str(project),
+            "--template", str(fm_template), "--baseline", str(baseline),
+        ],
+        capture_output=True, text=True, check=False,
+    )
+
+    assert res.returncode == 1, "a generous baseline swallowed a routing override"
+    assert "OVERRIDE" in res.stdout
+    assert "model: fable -> opus" in res.stdout, "the report must name both values"
 
 
 def test_a_project_edited_body_is_still_left_alone(fm_template, tmp_path):

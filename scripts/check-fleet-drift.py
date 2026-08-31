@@ -20,7 +20,8 @@ the project was synced once and has drifted since, or was synced only in part. A
 that is trusted rather than verified is the failure this repository has now hit three
 times (`index_status.head_sha`, `file.py:LINE` citations, an exit code nobody wrote).
 
-Exit: 0 = every project at or under its baseline, 1 = drift/absence/stale marker, 2 = usage.
+Exit: 0 = every project at or under its baseline, 1 = drift/absence/stale marker/routing
+override, 2 = usage.
 """
 
 from __future__ import annotations
@@ -108,6 +109,7 @@ class Report:
     identical: int = 0
     differs: list[str] = field(default_factory=list)
     absent: list[str] = field(default_factory=list)
+    overrides: list[str] = field(default_factory=list)
     marker: str = "none"
 
     @property
@@ -131,7 +133,45 @@ def _marker_state(project: Path, delivered: dict[str, str]) -> str:
     return recorded
 
 
-def inspect(project: Path, manifest: dict[str, str]) -> Report:
+def frontmatter_override(project: Path, rel: str, template: Path) -> str | None:
+    """`"model: opus -> sonnet"` when the project changed only the routing header.
+
+    Body identical to template, frontmatter not: the file carries no framework content
+    of its own, just a different `model:`/`effort:`. That is not a project setting.
+    Which model an agent runs on is a measured framework decision (ADR-029,
+    `.claude/rules/model-capabilities.md`), and a project that quietly picks another one
+    is routing work at a price nobody agreed to — AwardyBot ran three synthesizers on
+    opus where template says sonnet, and five more headers were simply February
+    snapshots that nothing had refreshed since.
+
+    Returns the changed lines so the report is actionable, or `None`.
+    """
+    src = template / rel
+    if not src.is_file():
+        return None
+    pfm, pbody = split_frontmatter(_norm(project / rel))
+    tfm, tbody = split_frontmatter(_norm(src))
+    if pbody != tbody or pfm == tfm:
+        return None
+
+    def keyed(fm: bytes) -> dict[str, str]:
+        out = {}
+        for line in fm.decode("utf-8", "replace").splitlines():
+            key, sep, val = line.partition(":")
+            if sep and key.strip() in ("model", "effort"):
+                out[key.strip()] = val.strip()
+        return out
+
+    proj, tmpl = keyed(pfm), keyed(tfm)
+    changed = [
+        f"{k}: {proj.get(k, '(unset)')} -> {tmpl.get(k, '(unset)')}"
+        for k in ("model", "effort")
+        if proj.get(k) != tmpl.get(k)
+    ]
+    return f"{rel}  ({', '.join(changed)})" if changed else f"{rel}  (frontmatter)"
+
+
+def inspect(project: Path, manifest: dict[str, str], template: Path = TEMPLATE) -> Report:
     rep = Report(project=project.name)
     delivered: dict[str, str] = {}
 
@@ -146,6 +186,9 @@ def inspect(project: Path, manifest: dict[str, str]) -> Report:
             rep.identical += 1
         else:
             rep.differs.append(rel)
+            override = frontmatter_override(project, rel, template)
+            if override:
+                rep.overrides.append(override)
 
     rep.marker = _marker_state(project, delivered)
     return rep
@@ -186,18 +229,36 @@ def split_frontmatter(blob: bytes) -> tuple[bytes, bytes]:
 def template_body_history(rel: str, repo_root: Path = REPO_ROOT) -> set[str]:
     """Digests of every BODY `template/<rel>` has had, frontmatter stripped.
 
-    A project legitimately tunes an agent's `model:` / `effort:` — that is the routing
-    bill it pays, not framework content. But one changed frontmatter line makes the whole
-    file match no template version, so `--apply-clean` skips it and the *prose* below
-    silently stays months behind. Eight of AwardyBot's agents were frozen exactly that
-    way: `model: haiku -> sonnet` held back bug-hunt prompts that had since gained
-    anti-hallucination rules and a confidence field.
+    One changed frontmatter line makes the whole file match no template version, so
+    `--apply-clean` skips it and the *prose* below silently stays months behind. Eight of
+    AwardyBot's agents were frozen exactly that way: `model: haiku -> sonnet` held back
+    bug-hunt prompts that had since gained anti-hallucination rules and a confidence
+    field. Comparing bodies separately is what unfreezes them.
 
-    Comparing bodies separates the two: the body is framework content and gets refreshed,
-    the frontmatter is the project's and is kept verbatim.
+    **The header is framework content too**, and this used to say otherwise — that a
+    project "legitimately tunes `model:` / `effort:`, the routing bill it pays". Nobody
+    granted that autonomy. Which model an agent runs on is a measured decision
+    (ADR-029), so a header that matches some past template version is refreshed like any
+    other stale snapshot, and one that matches none is reported as an override rather
+    than blessed in silence — see `frontmatter_override`.
     """
     return {
         hashlib.sha256(split_frontmatter(blob)[1]).hexdigest()
+        for blob in _template_blobs(rel, repo_root)
+    }
+
+
+def template_frontmatter_history(rel: str, repo_root: Path = REPO_ROOT) -> set[str]:
+    """Digests of every FRONTMATTER `template/<rel>` has had.
+
+    Tells a stale header from a hand-set one. Five of AwardyBot's eight were verbatim
+    template headers from February and March 2026 — nobody's decision, just a copy that
+    aged — and those are safe to refresh. The other three said `model: opus` where
+    template has never said anything but `sonnet`; a human set those, and only a human
+    takes them back.
+    """
+    return {
+        hashlib.sha256(split_frontmatter(blob)[0]).hexdigest()
         for blob in _template_blobs(rel, repo_root)
     }
 
@@ -278,10 +339,17 @@ def apply_sync(
                 )
                 if not body_is_clean:
                     continue  # holds edits that were never in template — leave it alone
-                # Body is stale framework content; frontmatter is the project's tuning.
-                dst.write_bytes(proj_fm + split_frontmatter(_norm(src))[1])
-                updated += 1
-                continue
+                if hashlib.sha256(proj_fm).hexdigest() in template_frontmatter_history(
+                    rel, template.parent
+                ):
+                    pass  # header is a stale template snapshot too: take the whole file
+                else:
+                    # A hand-set `model:`/`effort:`. Refresh the stale prose under it, but
+                    # leave the line for a human — `frontmatter_override` reports it and
+                    # the gate fails until someone reverts it or template adopts it.
+                    dst.write_bytes(proj_fm + split_frontmatter(_norm(src))[1])
+                    updated += 1
+                    continue
             updated += 1
         else:
             created += 1
@@ -378,9 +446,13 @@ def main(argv: list[str]) -> int:
                 f"APPLY {project.name}: {updated} updated, {created} created",
                 file=sys.stderr if args.json else sys.stdout,
             )
-        rep = inspect(project, manifest)
+        rep = inspect(project, manifest, args.template)
         reports.append(rep)
-        if rep.drift > baseline.get(rep.project, 0) or rep.marker.startswith("STALE"):
+        if (
+            rep.drift > baseline.get(rep.project, 0)
+            or rep.marker.startswith("STALE")
+            or rep.overrides
+        ):
             failed = True
 
     if args.json:
@@ -390,7 +462,7 @@ def main(argv: list[str]) -> int:
     print(f"\ntemplate: {len(manifest)} synced files @ {commit[:7]}\n")
     for r in sorted(reports, key=lambda r: -r.drift):
         allowed = baseline.get(r.project, 0)
-        ok = r.drift <= allowed and not r.marker.startswith("STALE")
+        ok = r.drift <= allowed and not r.marker.startswith("STALE") and not r.overrides
         budget = f" (baseline {allowed})" if allowed else ""
         print(
             f"  {'ok' if ok else 'DRIFT':5} {r.project:<14} identical={r.identical:<4} "
@@ -400,10 +472,20 @@ def main(argv: list[str]) -> int:
             print(f"           absent: {rel}")
         if len(r.absent) > 5:
             print(f"           absent: ... and {len(r.absent) - 5} more")
+        for line in r.overrides:
+            print(f"           OVERRIDE: {line}")
 
+    if any(r.overrides for r in reports):
+        print(
+            "\nOVERRIDE means the project changed only an agent's `model:`/`effort:`. "
+            "Routing is a\nframework decision (ADR-029) and no baseline absorbs it: "
+            "either revert the header to\ntemplate, or change template so the whole "
+            "fleet gets the new routing."
+        )
     print(
-        "\nFAIL: a project drifted past its baseline, or its marker no longer matches "
-        "the files on disk.\n  Sync it:  python scripts/check-fleet-drift.py <path> --apply"
+        "\nFAIL: a project drifted past its baseline, holds a routing override, or its "
+        "marker no\nlonger matches the files on disk."
+        "\n  Sync it:  python scripts/check-fleet-drift.py <path> --apply"
         if failed
         else "\nOK: every project at or under its baseline."
     )

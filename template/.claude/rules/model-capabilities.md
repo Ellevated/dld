@@ -92,6 +92,14 @@ because of it.
 > **Frontmatter is the SSOT, this table is documentation.** When you change an agent's
 > `model:` or `effort:`, change its row here in the same commit, or the next reader routes
 > work from a stale table. Where the two disagree, the frontmatter is what runs.
+>
+> **Do not hand-tune a delivered agent's header in your own copy.** Which model an agent
+> runs on is a measured decision that arrives with the framework, and a local edit to that
+> line costs more than it looks: the file then matches no shipped version, so the *prose*
+> under the header stops being refreshed and quietly ages — one project lost months of
+> bug-hunt prompt improvements that way, including its anti-hallucination rules. If an
+> agent genuinely needs a different model here, raise it upstream so every project moves
+> together.
 
 | Agent Role | Model | Effort | Rationale |
 |------------|-------|--------|-----------|

@@ -109,6 +109,13 @@ Their level table names `low` as the level for **subagents** specifically.
 > 2026-07-27 the table was wrong, not the agents — both disagreements are corrected
 > below. When you change an agent's `model:` or `effort:`, change this row in the same
 > commit, or the next reader routes work from a stale table.
+>
+> **The frontmatter that counts is `template/`'s, for every project.** A downstream copy
+> does not get its own routing: `scripts/check-fleet-drift.py` reports a file that
+> differs only by `model:`/`effort:` as an `OVERRIDE` and fails the gate on it, past any
+> baseline. Found 2026-08-31 — AwardyBot had three synthesizers on opus against this
+> table's sonnet, and five more headers frozen at February template, all invisible
+> inside a count of 35 drifted paths. Route the whole fleet by changing template.
 
 | Agent Role | Model | Effort | Rationale |
 |------------|-------|--------|-----------|

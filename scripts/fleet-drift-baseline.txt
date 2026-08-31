@@ -39,8 +39,16 @@
 #
 # `--apply` (overwrite everything) stays a per-file human decision. It is the mode
 # that got `upgrade.mjs` deleted on 2026-05-25.
+#
+# **A routing override is not drift debt and no number here covers it.** Eight of
+# AwardyBot's 35 differed from template by nothing but `model:`/`effort:` — three
+# synthesizers running on opus where template says sonnet, five headers that were just
+# February template nobody had refreshed. Both shapes hid inside a count of paths, so the
+# gate now names them (`OVERRIDE:`) and fails on them whatever this file says. Which model
+# an agent runs on is a measured framework decision (ADR-029): change template and the
+# fleet moves together, or the project's copy goes back to template.
 
-AwardyBot   = 35
+AwardyBot   = 27
 Dowry       = 10
 Dowry-mc    = 11
 PLPilot     = 5
