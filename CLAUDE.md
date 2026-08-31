@@ -28,6 +28,8 @@ python scripts/check-tree-sync.py                  # .claude/ vs template/.claud
 > run locally at all — that is how they stayed red in CI for two days while a local
 > `pytest tests/` was green.
 
+<!-- markdownlint-disable-next-line MD028 -->
+
 > **`./test` does not exist in this repo, by decision.** It is a per-project artifact
 > (`rules/template-sync.md`, "Files Only in Template"). Prompts still name it because
 > downstream projects have one. `test-wrapper.mjs` reports its absence as
