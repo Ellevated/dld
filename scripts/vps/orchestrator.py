@@ -39,6 +39,7 @@ import db  # noqa: E402
 import gate_logic  # noqa: E402,F401
 import lifecycle  # noqa: E402
 import orchestrator_queue  # noqa: E402
+import orchestrator_ci_gate  # noqa: E402
 
 log = logging.getLogger("orchestrator")
 _stop = Event()
@@ -214,7 +215,7 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
     file's source, and none of them are editable under this spec's Allowed
     Files. Steps with no such coupling live in orchestrator_queue.
     """
-    queued_list = lifecycle.list_by_status(project_dir, {"queued", "resumed"})
+    queued_list = orchestrator_ci_gate.queued_after_ci_gate(project_id, project_dir)
     if not queued_list:
         return False
 
