@@ -9,9 +9,10 @@ Final verification, status update, merge, and cleanup.
 ## Flow
 
 ```
-1. Final test: ./test ci
+1. Final test: ./test ci — the ONE full-suite run of this spec
    └─ must pass! (CI-parity gate)
    └─ no `./test ci`? → CI_PARITY_UNAVAILABLE fallback (see autopilot-git.md §5.6)
+   └─ record TESTED_TREE=$(git rev-parse 'HEAD^{tree}') — step 8 reuses this run
 
 2. Exa Verification (see below)
    └─ warnings only, never block
@@ -54,7 +55,9 @@ Final verification, status update, merge, and cleanup.
    git merge --ff-only {type}/{ID}
 
    CI-parity merge gate — BEFORE push:
-   ./test ci on merged tree. Red → git reset --hard origin/develop
+   Same tree as step 1 (`git rev-parse 'HEAD^{tree}'` == TESTED_TREE)?
+   → log CI_PARITY_REUSED, skip the run: identical tree, identical result.
+   Otherwise ./test ci on merged tree. Red → git reset --hard origin/develop
    (abort merge), emit needs_review, do NOT push.
    No `./test ci`? → CI_PARITY_UNAVAILABLE fallback (autopilot-git.md §5.6).
 

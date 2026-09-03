@@ -21,7 +21,7 @@ If you see `git push origin main` in your plan — STOP. This is a bug.
 
 ```
 PHASE 0: Setup
-  worktree add → copy .env → baseline test
+  worktree add → copy .env   (no baseline suite — CI on origin/develop is the baseline)
 
 PHASE 2: Per Task
   code → test → review → COMMIT (no push!)
@@ -182,12 +182,13 @@ cp "${MAIN_REPO}/.env" .env 2>/dev/null || true
 # cp -r "${MAIN_REPO}/.local-db" .local-db 2>/dev/null || true
 ```
 
-### 2.6 Baseline Test
+### 2.6 Baseline Test — REMOVED
 
-```bash
-./test fast
-# FAIL → STOP. Quick smoke only — CI-parity gate is `./test ci` (§5.1, TECH-206).
-```
+No suite runs in PHASE 0. `origin/develop` CI status (§1) is the baseline: green means
+any failure PHASE 2 finds is ours; red is handled by §1 before work starts. The full
+suite runs exactly once per spec, at §5.1, and §5.4 reuses that run when the merged
+tree is identical. Measured 2026-09-02: this step cost 5–30 min per spec, and the same
+suite then ran 3–5 more times downstream.
 
 ### Skip Worktree (rare)
 
@@ -257,6 +258,7 @@ End of spec: Push feature → Merge develop → Push develop
 ./test ci
 # FAIL → STOP, fix first. Mirrors project's GitHub CI exactly (TECH-206).
 # No `./test ci` case? → see §5.6 CI_PARITY_UNAVAILABLE fallback.
+TESTED_TREE="$(git rev-parse 'HEAD^{tree}')"   # §5.4 reuses this run when the merged tree is identical
 ```
 
 ### 5.2 Update Status — REMOVED (ARCH-187 / ADR-024 / ADR-025)
@@ -335,8 +337,13 @@ git pull --rebase origin develop
 git merge --ff-only ${BRANCH_PREFIX}/${TASK_ID}
 
 # CI-parity merge gate (TECH-206): red → abort, no push, needs_review.
-# REGRESSION-ONLY mode: only NEW failures vs PHASE-0 baseline count.
-if ! ./test ci; then
+# REGRESSION-ONLY mode: only NEW failures vs the §1 CI_BASELINE_RED set count.
+# Runs only when the merged tree differs from the one §5.1 tested: after --ff-only
+# with no new develop commits the trees are byte-identical, and a second run
+# buys nothing but 5–25 minutes of the same suite.
+if [ "$(git rev-parse 'HEAD^{tree}')" = "$TESTED_TREE" ]; then
+  echo "CI_PARITY_REUSED: merged tree == tree tested in §5.1"
+elif ! ./test ci; then
   git reset --hard origin/develop   # abort: develop stays at origin state
   echo "BLOCKED: ./test ci red on merged develop — emitting needs_review"
   # Set task_status="needs_review" in final JSON. Do NOT push.

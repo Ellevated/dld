@@ -67,8 +67,9 @@ feature_spec: "ai/features/FTR-XXX.md"
 **Check that Coder updated context:**
 
 ```bash
-# Read dependencies map
-cat .claude/rules/dependencies.md
+# Look up the changed modules in the dependencies map — grep, not cat: the file
+# runs to thousands of words and this check happens on every task
+grep -n "{changed_module_names}" .claude/rules/dependencies.md
 ```
 
 **Red flags:**

@@ -54,7 +54,7 @@ This enables `autopilot-loop.sh` to run overnight with fresh context per spec.
 
 ```
 PHASE 0: Worktree Setup        → worktree-setup.md
-  └─ CI check → worktree → env copy → baseline
+  └─ CI check → worktree → env copy (no baseline suite — CI on origin/develop is the baseline)
 
 PHASE 1: Plan (ALWAYS)         → subagent-dispatch.md
   └─ [Plan Agent] opus → re-reads codebase → tasks in spec

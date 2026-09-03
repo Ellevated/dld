@@ -21,8 +21,11 @@ task_scope: "FTR-XXX: description"
 For LLM-optimized output, use the test-wrapper:
 
 ```bash
-node .claude/scripts/test-wrapper.mjs ./test fast
+node .claude/scripts/test-wrapper.mjs pytest {selected files} -q -n auto
 ```
+
+The wrapper takes any command; hand it the targeted selection from "Test Budget"
+below, never `./test fast` — that is PHASE 3's one full run.
 
 | Exit | Output | Meaning |
 |---|---|---|
@@ -42,11 +45,29 @@ failures in it — which sends the reader hunting for failures that never ran.
 
 **When to use:** Always prefer test-wrapper in autopilot task loop. Use raw commands only for debugging.
 
+## Test Budget — one targeted run per task
+
+You are dispatched once per task, and the suite is the most expensive thing in the
+run: `tests/architecture/` alone is 5–9 minutes on any machine, `./test fast` up to 25.
+Measured 2026-09-02 across 11 autopilot runs, testers spent 20–75 minutes per spec in
+pytest, most of it re-running sets that had already passed.
+
+- **One selection, run once.** Build the set from the tables below, run it, report.
+  A green set is not re-run "to be sure".
+- **After a fix, re-run only what failed** — the failing test ids, not the set.
+- **Never run here:** `./test fast`, `./test ci`, bare `./test`, `tests/architecture/`,
+  `tests/` or `src/` as a whole. Those are PHASE 3, once per spec. If a selection rule
+  would expand to one of them, narrow it to the changed files' own test files.
+- **No table match and no test file next to the changed code → `tests_run: 0`,
+  `status: passed`, `note: no_tests_selected`.** The full suite is not a fallback.
+- **Budget: 10 minutes of pytest wall-clock per dispatch.** Over it → narrow (`-k`,
+  single files), report what was left out, and let PHASE 3 cover it.
+
 ## Smart Testing
 
 **Two approaches:**
-- `./test fast` — full lint + unit cycle (use for final verification)
-- `pytest ... -n auto` — targeted tests for specific domains (use for Smart Testing)
+- `./test fast` — full lint + unit cycle. PHASE 3 only, never from a task.
+- `pytest ... -n auto` — targeted tests for specific domains (this is what you run)
 
 > **Note:** `./test` is a project-specific script created during setup. If it doesn't exist, use your project's test command directly (e.g., `pytest`, `npm test`, `cargo test`).
 
@@ -73,7 +94,7 @@ against a missing path exits non-zero for a reason unrelated to the code under t
 | `src/infra/llm/*` | `pytest src/infra/llm/ -v -n auto` |
 | `src/infra/external/*` | `pytest src/infra/external/ -v -n auto` |
 | `src/shared/*` | `pytest src/shared/ -v -n auto` |
-| `db/migrations/*` | `./test fast` (validates schema) |
+| `db/migrations/*` | the project's migration check — `squawk`, `tests/contracts/` — never the full suite |
 
 ### LLM Agent Tests
 
@@ -131,9 +152,10 @@ The pre-edit hook HARD-BLOCKS mock patterns in `tests/integration/`.
 2. If multiple matches → run all matched commands
 3. If `tests/contracts/` or `tests/regression/` → add ⛔ warning
 4. If file touches DB/infra → also run integration tests
-5. If no match → `./test fast` (fallback)
+5. If no match → the changed file's own test file (`foo_test.py` / `test_foo.py`);
+   none exists → `no_tests_selected` (see Test Budget)
 
-**Fallback:** File not in table → `./test fast`
+**Fallback:** none. The full suite is PHASE 3's, once per spec.
 
 ## Scope Protection
 

@@ -24,6 +24,26 @@ a regression test, and the coder again wherever a check below sends work back.
 | 5. Code quality | you — checklist in `.claude/agents/review.md` |
 | 6. Commit / 6.5 Diary / 7 Local verify | you |
 
+## What the loop never runs
+
+The loop does not run pytest, `./test *`, `tests/architecture/`, or any project gate
+that wraps them. Tests are Step 2's job (tester, one targeted set per task) and PHASE
+3's (full suite, once per spec). Steps 3 and 5 are `grep`/`wc`/the named scripts —
+seconds each — and they run **once per task**: when a check sends work back to the
+coder, re-run that one check on return, not the set. Measured 2026-09-02 across 11
+runs: the loop spent 14–60 min per spec in its own Bash calls, most of them test
+sweeps and "all gates" re-runs after every coder return.
+
+## What the loop never runs
+
+The loop does not run pytest, `./test *`, `tests/architecture/`, or any project gate
+that wraps them. Tests are Step 2's job (tester, one targeted set per task) and PHASE
+3's (full suite, once per spec). Steps 3 and 5 are `grep`/`wc`/the named scripts —
+seconds each — and they run **once per task**: when a check sends work back to the
+coder, re-run that one check on return, not the set. Measured 2026-09-02 across 11
+runs: the loop spent 14–60 min per spec in its own Bash calls, most of them test
+sweeps and "all gates" re-runs after every coder return.
+
 ## Why those two, and not the others
 
 A subagent starts cold. Before it can act it rebuilds the task context you are
@@ -101,7 +121,9 @@ Task tool:
   prompt: |
     files_changed: [{list}]
     task_scope: "{TASK_ID}: {description}"
-    test_command: "node .claude/scripts/test-wrapper.mjs ./test fast"
+    test_command: "node .claude/scripts/test-wrapper.mjs pytest {Test: files of this task} -q"
+    # the task's own test files from the plan; the tester adds positional
+    # selections from agents/tester.md and never widens to ./test fast
 ```
 
 ```
@@ -188,7 +210,10 @@ Read `.claude/agents/review.md` and apply it to `files_changed`. That file is th
 SSOT for what a code-quality review is here, whether a subagent or this loop
 performs it — do not restate it, follow it. Run every bash check it names against
 the real files; answering them from what you remember the coder doing is the
-failure mode this step exists to catch.
+failure mode this step exists to catch. Those checks are `grep`/`wc`/the named
+scripts — do not add pytest, architecture suites or project gates to the list, and
+run the list once: a coder fix re-triggers only the check that failed (see "What the
+loop never runs").
 
 Emit its `## Output` YAML in your reply before routing, `checks_performed`
 included. That list is the only thing separating a review from a nod, and inline
