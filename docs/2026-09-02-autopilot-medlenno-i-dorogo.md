@@ -274,7 +274,12 @@ FTR-1487 тестер гонял `tests/architecture/` дважды на зад�
 MishkinLyap принимает все 8 файлов как есть; у AwardyBot, Dowry, Dowry-mc, PLPilot, wb и
 gipotenuza 6 файлов из 8 патчатся один-в-один, а `autopilot-git.md` и `finishing.md` держат
 редакцию до 21.06 (финальный тест там до сих пор `./test fast`, CI-parity гейт TECH-206 до
-флота не доехал) — эти два файла мержить руками, по одному снипету.
+флота не доехал) — для них снипеты подобраны под старый текст.
+
+**Раскатано 03.09** свежими клонами на VPS, `fleet_apply.py`, prompt-integrity до/после
+без новых findings: AwardyBot `cb3b953`, Dowry `d6bd00a`, Dowry-mc `2f160b7`, plpilot `1706efe`,
+wb `0801dec`, gipotenuza `98bc5bd`, MishkinLyap `82a4c91` — все в `develop`. Оркестратор
+подтягивает `origin/develop` на каждом цикле; следующие диспатчи идут по новым промптам.
 
 ## Что проверить нельзя
 
