@@ -240,6 +240,21 @@ FTR-1487 тестер гонял `tests/architecture/` дважды на зад�
 4. Замер после: тот же `claude -p` с одним Read — ожидаем +7…+15K вместо +67K; по прогонам —
    падение cache write на Sonnet в разы.
 
+**Сделано 03.09 (продолжение):**
+- AwardyBot `649260a` — диета: ADR-таблица → `docs/adr-index.md`, Change History пяти
+  доменов и payments → `docs/rules-history-*.md`, ранбуки серверных кронов →
+  `docs/runbook-crons-servers.md`, в правилах указатели; `architectural-integrity.md`
+  переведён на `ai/features/**` + промпты агентов, у `dependencies.md` снят `tests/**`.
+  Масса 57 420 → 43 580 слов. Тот же Read на пустом клоне VPS: **+67K → +38K токенов**.
+  Половина остатка — `dependencies.md` (3 410 слов на любое касание `src/domains/**`) и
+  `notifications.md` (2 212 на `src/**`); следующий шаг — вынести карту зависимостей из
+  `.claude/rules/` в файл, который читают grep'ом (правка во фреймворке: `context-loader`,
+  `review.md`, обе копии).
+- dld `4b62cab` — `check-rules-loading.py` (оба дерева) считает массу scoped-правил, печатает
+  топ-5 и краснеет выше `--max-words` (25 000). Флот на 03.09: AwardyBot 57K (до диеты) —
+  красный, Dowry 23,8K — на грани плюс **`generated/schema.md` без `paths:` = 10,7K слов в
+  каждую сессию**, plpilot 16,6K, Dowry-mc 9,8K, wb 9,2K, gipotenuza 3,5K, MishkinLyap 2,1K.
+
 ## Что сделано 03.09 — рычаги 1 и 2
 
 Правки промптов, оба дерева (`.claude/` и `template/.claude/`), код оркестратора не тронут.
