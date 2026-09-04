@@ -255,6 +255,16 @@ FTR-1487 тестер гонял `tests/architecture/` дважды на зад�
   красный, Dowry 23,8K — на грани плюс **`generated/schema.md` без `paths:` = 10,7K слов в
   каждую сессию**, plpilot 16,6K, Dowry-mc 9,8K, wb 9,2K, gipotenuza 3,5K, MishkinLyap 2,1K.
 
+**Урок диеты, 04.09: правила читают не только агенты, но и фитнес-тесты.** Через час после
+`649260a` CI awardybot покраснел: `test_clobber_guard::test_adr043_exists_in_architecture`
+искал ADR-043 в `.claude/rules/architecture.md`, а `test_money_crons_outside_msk_rollover`
+парсил таблицу серверных кронов из `.claude/rules/crons.md` — оба файла диета выпотрошила.
+Починено в тестах (AwardyBot `2e8e8621f`: ADR-индекс читается из `docs/adr-index.md`,
+расписания — из обоих файлов SSOT одним текстом). Перед следующим выносом из `.claude/rules/`
+в любом проекте: `grep -rn "rules/<файл>" tests/` — в awardybot таких читателей 18 файлов,
+большинство лишь ссылаются в докстрингах, но `test_campaign_fsm_invariants`,
+`test_money_crons_*`, `test_clobber_guard` открывают файл и ищут в нём строки.
+
 ## Что сделано 03.09 — рычаги 1 и 2
 
 Правки промптов, оба дерева (`.claude/` и `template/.claude/`), код оркестратора не тронут.
