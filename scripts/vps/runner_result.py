@@ -18,6 +18,8 @@ import logging
 import os
 import re
 
+import runner_cost
+
 logger = logging.getLogger("claude-runner")
 
 # Maps a run's exit_code to the salvage reason string (TECH-213: moved from
@@ -156,6 +158,10 @@ def new_run_state() -> dict:
             "cache_creation_5m_input_tokens": 0,
         },
         "model_usage": {},
+        # Per-model usage folded from every AssistantMessage as it streams. This is
+        # what prices a run that never reaches a ResultMessage — see runner_cost.
+        "stream_usage": {},
+        "cost_source": "unavailable",
         "result_received": False,
         "result_is_error": False,
         # Classifier declines seen in-stream. Collected here rather than in
@@ -167,6 +173,7 @@ def new_run_state() -> dict:
 def apply_assistant_message(state: dict, message) -> dict:
     """Fold one AssistantMessage into state. Caller does the isinstance check."""
     state["turn_count"] += 1
+    runner_cost.accumulate(state, message)
     text_parts = []
     for block in getattr(message, "content", []):
         if hasattr(block, "text"):
@@ -255,6 +262,10 @@ def build_log_data(
         "prompt": prompt,
         "turns": state["turns"],
         "cost_usd": round(state["cost_usd"], 4),
+        # "result_message" = billed by the CLI. "estimated_from_stream" = priced from
+        # per-turn usage because the run died before ResultMessage (a floor, not a
+        # bill — do not add it to a billed figure). "unavailable" = neither.
+        "cost_source": state.get("cost_source", "unavailable"),
         # Drift telemetry: which binary actually ran, and what we asked it for.
         # A run whose model_usage disagrees with `model` means the CLI ignored
         # the pin (see runner_cli._resolve_cli_path).

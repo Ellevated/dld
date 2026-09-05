@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import runner_cli  # noqa: E402 — CLI resolution + ALLOWED_TOOLS (TECH-213)
+import runner_cost  # noqa: E402 — prices a run the timeout killed before ResultMessage
 import runner_env  # noqa: E402 — .env loader (TECH-213)
 import runner_heartbeat  # noqa: E402 — per-turn heartbeat file (TECH-213)
 import runner_loop  # noqa: E402 — the SDK message loop (TECH-213)
@@ -220,11 +221,15 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     except TimeoutError:
         # asyncio.timeout() (Python 3.11+) — partial metrics are already in `state`
         elapsed = int(time.monotonic() - started_mono)
+        # Price the streamed usage BEFORE reporting: without this the line below
+        # reads "$0.0000" on the single most expensive class of run there is.
+        runner_cost.apply_to_state(state)
         logger.error(
-            "Timeout after %ds (partial: %d turns, $%.4f)",
+            "Timeout after %ds (partial: %d turns, $%.4f %s)",
             elapsed,
             state["turn_count"],
             state["cost_usd"],
+            state.get("cost_source", "unavailable"),
         )
         state["exit_code"] = 124  # Unix timeout convention
         state["result_text"] = (
@@ -239,9 +244,16 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     # A run that dies before ResultMessage reports turns=0 and cost=0.0, because
     # both come from that message. That is how a 575-turn, 90-minute timeout came
     # to be logged as "$0.00, 0 turns" — the most expensive runs were the ones
-    # reporting nothing. The cost genuinely isn't available, but the turn count is.
+    # reporting nothing. Both are recoverable: the turn count here, the cost from
+    # per-turn `AssistantMessage.usage` below. (This comment said the cost "genuinely
+    # isn't available" until 2026-09-05, and that claim is what kept a third of the
+    # spend off the books for months — the field was on the SDK dataclass the whole time.)
     if not state["turns"]:
         state["turns"] = state["turn_count"]
+    # Cost is recoverable too, and for the same reason: usage streams per turn even
+    # when the final message never arrives. A billed figure always wins over the
+    # estimate; this call only labels `cost_source` when one exists.
+    runner_cost.apply_to_state(state)
 
     refusal = runner_refusal._refusal_summary(state["refusal_events"])
     if refusal["detected"]:
