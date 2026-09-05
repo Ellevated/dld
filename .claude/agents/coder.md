@@ -3,7 +3,7 @@ name: coder
 description: Write/modify code for autopilot tasks
 model: sonnet
 effort: high
-tools: Read, Glob, Grep, Edit, Write, Bash, mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
+tools: Read, Glob, Grep, Edit, Write, Bash, mcp__codebase-memory__list_projects, mcp__codebase-memory__trace_path, mcp__codebase-memory__search_code, mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
 ---
 
 # Coder Agent
@@ -100,8 +100,15 @@ BEFORE modifying ANY file:
 | `mcp__exa__web_fetch_exa` | Read a specific page in full (docs, GitHub file, SO answer) |
 | `mcp__plugin_context7_context7__resolve-library-id` | Find library ID (required first!) |
 | `mcp__plugin_context7_context7__query-docs` | **Official docs** for your framework, pydantic, requests, etc. |
+| `mcp__codebase-memory__trace_path` | **Who calls the function you are about to change** — call it BEFORE editing any signature, `direction="inbound"`, `depth=2`. Two-hop callers are exactly what a single grep misses and what breaks after your commit |
+| `mcp__codebase-memory__search_code` | Finding a concept across the codebase when you do not know the exact string. Exact string → `Grep` |
 
 **Rule:** When implementing with a library — ALWAYS check Context7 for current API. Don't guess — verify!
+
+**Rule:** Changing a signature, renaming an exported symbol, or moving a module → `trace_path`
+inbound first, update every caller it names, in this same task. The index is a snapshot of the
+default branch, so it can miss code added since: the final check stays `grep` over the working
+tree, 0 hits. Graph unavailable or project not listed → continue with `Grep`, do not rebuild it.
 
 ## Code Style
 ```python

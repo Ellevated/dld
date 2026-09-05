@@ -3,7 +3,7 @@ name: planner
 description: Detailed implementation planning — validates spec against current codebase
 model: opus
 effort: high
-tools: Read, Glob, Grep, Edit, mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
+tools: Read, Glob, Grep, Edit, mcp__codebase-memory__list_projects, mcp__codebase-memory__trace_path, mcp__codebase-memory__search_code, mcp__codebase-memory__search_graph, mcp__exa__web_search_exa, mcp__exa__web_fetch_exa, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, WebFetch, WebSearch
 ---
 
 
@@ -67,6 +67,27 @@ A plan longer than the spec it plans is the signal that you are writing code, no
 them. Verify the proposed approach is still current only where that is genuinely in doubt
 — a library API you would not stake shipped code on, a pattern that may have moved. Cap
 it at 6 tool calls and cite what you used.
+
+**Impact Tree: ask the code graph before grepping the tree.** Blast radius — who calls the
+function you are about to change, what it depends on — is what the graph answers in one call
+and `Grep` answers only for one-hop, exact-string matches.
+
+1. `mcp__codebase-memory__list_projects` → pick the project whose path is this repository's
+   root. In a worktree that is the **parent** repo: the index is built from its default
+   branch, not from your branch.
+2. **UP** — `trace_path(project=…, function_name="<function you change>", direction="inbound",
+   depth=2)`: every caller, including two-hop ones a single grep never sees.
+3. **DOWN** — same call with `direction="outbound"`: what it depends on.
+4. `search_code` when you are looking for a concept rather than an exact string; keep `Grep`
+   for the exact string.
+
+Name the callers the graph returned in the task that changes the signature — that list is
+what makes "update all call sites" executable instead of aspirational.
+
+**Limits, stated so you do not trip on them.** The index is a snapshot taken when it was
+built, so it can miss code written since; the acceptance check for a rename stays
+`grep "{old_term}" .` = 0 hits against the working tree. If the tool errors or the project
+is not in the list, continue with `Grep` — do not rebuild the index, do not spend a turn on it.
 
 ## What you write into the spec
 
