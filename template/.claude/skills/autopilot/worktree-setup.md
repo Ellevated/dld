@@ -181,7 +181,7 @@ Git worktree isolation for safe parallel development.
 9. Baseline: NONE — do not run `./test fast` or any suite here.
    └─ The worktree is branched from origin/develop, whose state step 1 already
       checked through CI. Green CI is the baseline; red goes through the Deploy
-      Error Protocol or REGRESSION-ONLY mode (autopilot-git.md §1) before work.
+      Error Protocol or REGRESSION-ONLY mode (autopilot-git.md §1 — human reference) before work.
    └─ Measured 2026-09-02: this step cost 5–30 min per spec on a suite that the
       PHASE 2 testers and PHASE 3 then ran again 3–5 times. Tests run once per
       task (tester, targeted set) and once per spec (PHASE 3, full) — not before

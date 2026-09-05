@@ -1,6 +1,13 @@
 # Autopilot: Git Workflow
 
-SSOT for all Git operations in Autopilot.
+> **Human reference, not an executable contract.** This file is not in SKILL.md's module map
+> and nothing routes an agent to it. Measured over 198 autopilot transcripts: it was opened
+> **0 times**, while the mapped modules were opened in 20–42% of runs — so the CI-parity gate
+> written into §5.1/§5.4/§5.6 had never once executed, and no run ever emitted
+> `CI_PARITY_REUSED`, `CI_PARITY_UNAVAILABLE` or set `TESTED_TREE`.
+>
+> **Anything an agent must execute belongs in `SKILL.md`** (always in context) — see its
+> `PHASE-3-FINAL-TEST` gate. Put detail here only when a human is the reader.
 
 ---
 

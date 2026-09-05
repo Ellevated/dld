@@ -1,6 +1,15 @@
 # Autopilot: Git Workflow
 
-SSOT for all Git operations in Autopilot.
+> **Human reference, not an executable contract.** Measured 2026-09-05 across 198 autopilot
+> transcripts (awardybot, 07.08–05.09): this file was opened **0 times**, while
+> `worktree-setup.md` was opened 83×, `task-loop.md` 45×, `subagent-dispatch.md` 40× and
+> `finishing.md` 39×. It is not in SKILL.md's module map and nothing routes an agent here,
+> so the CI-parity gate written into §5.1/§5.4/§5.6 (TECH-206, 2026-06-21) had never once
+> executed — no run ever emitted `CI_PARITY_REUSED`, `CI_PARITY_UNAVAILABLE` or set
+> `TESTED_TREE`.
+>
+> **Anything an agent must execute belongs in `SKILL.md`** (always in context) — see its
+> `PHASE-3-FINAL-TEST` gate. Put detail here only when a human is the reader.
 
 ---
 

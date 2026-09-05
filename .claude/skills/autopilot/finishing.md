@@ -11,7 +11,7 @@ Final verification, status update, merge, and cleanup.
 ```
 1. Final test: ./test ci — the ONE full-suite run of this spec
    └─ must pass! (CI-parity gate, TECH-206)
-   └─ no `./test ci`? → CI_PARITY_UNAVAILABLE fallback (see autopilot-git.md §5.6)
+   └─ no `./test ci`? → CI_PARITY_UNAVAILABLE fallback (SKILL.md gate PHASE-3-FINAL-TEST)
    └─ record TESTED_TREE=$(git rev-parse 'HEAD^{tree}') — step 8 reuses this run
 
 2. Exa Verification (see below)
@@ -59,7 +59,7 @@ Final verification, status update, merge, and cleanup.
    → log CI_PARITY_REUSED, skip the run: identical tree, identical result.
    Otherwise ./test ci on merged tree. Red → git reset --hard origin/develop
    (abort merge), emit needs_review, do NOT push.
-   No `./test ci`? → CI_PARITY_UNAVAILABLE fallback (autopilot-git.md §5.6).
+   No `./test ci`? → CI_PARITY_UNAVAILABLE fallback (SKILL.md gate PHASE-3-FINAL-TEST).
 
    git push origin develop
    git stash pop (if stashed)

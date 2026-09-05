@@ -76,6 +76,34 @@ PHASE 3: Finish                → finishing.md
 **Limits & Escalation:** See `escalation.md`
 **Safety Rules:** See `safety-rules.md`
 
+<GATE id="PHASE-3-FINAL-TEST">
+**The full suite runs ONCE per spec, as ONE command. This rule lives here, in the
+always-loaded prompt, and not in a module file — module files are read in a minority of
+runs, and a contract nobody reads is not a contract.** Measured 2026-09-05 over 198
+awardybot transcripts: `autopilot-git.md` was opened in **0** of them, and the strings
+`CI_PARITY_REUSED` / `CI_PARITY_UNAVAILABLE` / `TESTED_TREE` appear **nowhere** — the
+TECH-206 gate has never once executed since it was written.
+
+1. `./test ci` — the single full run (CI-parity, TECH-206). Record what it tested:
+   `TESTED_TREE=$(git rev-parse 'HEAD^{tree}')`
+2. Before pushing to develop: if `git rev-parse 'HEAD^{tree}'` equals `TESTED_TREE` →
+   `echo CI_PARITY_REUSED` and skip the second run. Same tree, same result.
+3. No `./test ci` (exit 127)? → `echo CI_PARITY_UNAVAILABLE`, run `./test` once, emit
+   `needs_review` on red. Neither script exists (12 of 16 repos on this machine as of
+   2026-09-05, dld among them)? → `echo CI_PARITY_UNAVAILABLE`, run the suite command this
+   project's CLAUDE.md names, once. Still nothing? Say so in `result_preview` and continue —
+   a project with no test entry point is a gap to report, not a spec to block. Never
+   improvise a replacement command, and never chain several.
+4. **FORBIDDEN in this phase:** splitting the suite into chunks or groups, re-running it
+   "without the wrapper cap" / "with N workers" / "on a clean baseline", or any second full
+   run whose only justification is that the first one timed out. Measured 2026-09-05: this
+   improvisation ran the same suite 2–7 times per spec and cost 60–150 minutes of the run
+   (BUG-1494 2nd pass: seven full runs, 149 minutes of main-loop Bash).
+5. If the suite does not fit inside its own command — the wrapper kills it, the runner times
+   out — that is a **project defect, not your problem to route around**. Say so in
+   `result_preview`, emit `needs_review`, stop. Do not re-run it another way.
+</GATE>
+
 ---
 
 ## Modules
@@ -88,6 +116,7 @@ PHASE 3: Finish                → finishing.md
 | `finishing.md` | Pre-done checklist, status sync, merge flow |
 | `escalation.md` | Limits, debug/refactor loops, Spark/Council |
 | `safety-rules.md` | Forbidden actions, file/test/git safety |
+| `autopilot-git.md` | **Human reference only** — git operations in detail. Not a source of instructions for this session; anything you must execute is here in SKILL.md |
 
 ---
 
