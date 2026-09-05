@@ -280,6 +280,34 @@ For Impact × Risk routing matrix, see `.claude/skills/spark/feature-mode.md` Ph
 
 ---
 
+## Changes carry their own verdict
+
+**Changing how the fleet runs — a prompt, agent frontmatter, runner config, orchestrator
+policy — means writing `ai/experiments/YYYY-MM-DD-slug.md` in the same commit.** It states
+the baseline number, the threshold that would make it a win, and when to look.
+`scripts/check-experiments.py` (blocking in CI) fails when that date passes with no verdict.
+
+```bash
+python3 scripts/metrics/run_metrics.py --split 2026-09-05 --project awardybot   # before/after
+python3 scripts/check-experiments.py                                            # anything due?
+```
+
+Format and the four worked examples of what this costs: `ai/experiments/README.md`.
+
+**Why it is a rule and not a habit.** Every expensive finding here arrived months late and
+by accident: pueue ran a March-frozen CLI, so the fleet was on Opus 4.6 while the config
+said Opus 5 (4 months, ADR-031); `codebase-memory` was loaded into every run and called
+**0 times in 143 runs**; the CI-parity gate (TECH-206) lived in `autopilot-git.md`, a file
+opened **0 times in 198 runs**; rules without `paths:` cost 37k tokens/session for 25 days
+across nine projects. None were hard to measure. Nobody was asked to.
+
+Corollary, learned 2026-09-05: **before writing a rule into a prompt file, check that the
+file is read.** Measured per-file open rates in the autopilot skill ranged from 42% down to
+zero. An instruction in an unread file is not a weak rule, it is no rule — put anything that
+must execute in `SKILL.md`, which is always in context.
+
+---
+
 ## Task Statuses
 
 | Status | Owner | Description |

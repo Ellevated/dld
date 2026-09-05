@@ -123,6 +123,20 @@ jobs:
       - name: Fleet drift guard (self-tests)
         run: pytest tests/unit/test_check_fleet_drift.py -v
 
+      # Blocking: every shipped change to how the fleet runs states what should move and
+      # when to look, and this fails when that date passes with nothing written back.
+      # It cannot judge a hypothesis — only that somebody was made to look. The four most
+      # expensive findings in this repo (a March-frozen CLI running Opus 4.6 for four
+      # months, a code graph called 0 times in 143 runs, a CI-parity gate in a file opened
+      # 0 times in 198 runs, unscoped rules at 37k tokens/session) were all found by
+      # accident, and every one of them was cheap to measure.
+      # CI has no orchestrator logs, so the run-count threshold cannot be evaluated here —
+      # the date backstop is what carries it. `check_after_date` is therefore mandatory.
+      - name: Experiments have a due verdict
+        run: |
+          python scripts/check-experiments.py
+          pytest tests/unit/test_check_experiments.py -v
+
       - name: Prompt tree integrity (root)
         run: node .claude/scripts/check-prompt-integrity.mjs --tree .claude
 
