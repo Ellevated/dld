@@ -16,6 +16,12 @@
 # that GREW still fails, and one that came back under the limit fails too, because a stale
 # entry would silently cover the next regression.
 #
+# Third-party code is skipped: `venv/`, `.venv/`, `site-packages/`, `node_modules/`
+# and `__pycache__/`. The limit is about modules WE have to read; a virtualenv checked
+# out next to the sources made the gate report 425 violations locally (anyio, attrs,
+# cffi…) while CI — which has no venv — stayed green. A gate that only fails on the
+# developer's machine is a gate people learn to ignore.
+#
 # Usage:  bash scripts/vps/check-loc-limit.sh [--json] [dir ...]
 # Env:    LOC_LIMIT_CODE (default 400), LOC_LIMIT_TESTS (default 600),
 #         LOC_LIMIT_BASELINE (default scripts/vps/loc-limit-baseline.txt)
@@ -34,7 +40,10 @@ for arg in "$@"; do
     case "$arg" in
         --json) json=1 ;;
         -h|--help)
-            sed -n '2,16p' "${BASH_SOURCE[0]}"
+            # Everything from the header down to the first line of code. A fixed line
+            # range goes stale the moment the header grows — it printed half a sentence
+            # and no Usage block until 2026-09-06.
+            sed -n '2,/^set -euo pipefail$/p' "${BASH_SOURCE[0]}" | sed '$d'
             exit 0
             ;;
         -*)
@@ -101,7 +110,10 @@ while IFS= read -r -d '' file; do
     elif [[ -n "${based}" ]]; then
         stale+=("${rel}|${lines}|${limit}")
     fi
-done < <(find "${dirs[@]}" -type f -name '*.py' -not -path '*/__pycache__/*' -print0 | sort -z)
+done < <(find "${dirs[@]}" \
+    \( -name '__pycache__' -o -name 'venv' -o -name '.venv' -o -name 'site-packages' \
+       -o -name 'node_modules' \) -prune \
+    -o -type f -name '*.py' -print0 | sort -z)
 
 if [[ "$json" -eq 1 ]]; then
     printf '{"checked":%d,"violations":[' "$checked"

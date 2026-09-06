@@ -113,6 +113,30 @@ def test_tests_get_the_larger_ceiling(tmp_path):
     assert "test_big.py" not in result.stdout
 
 
+def test_third_party_trees_are_not_scanned(tmp_path):
+    """A virtualenv next to the sources must not produce findings.
+
+    `scripts/vps/venv/` exists on every machine that ran `pip install -r requirements.txt`
+    and is absent in CI, so before 2026-09-06 the gate printed 425 violations locally
+    (anyio, attrs, cffi, pydantic…) while CI was green on the same commit. A check whose
+    output you have to learn to skim is one nobody reads the day it finds something real.
+    """
+    write_lines(tmp_path / "venv" / "lib" / "python3.12" / "site-packages" / "fat.py", 900)
+    write_lines(tmp_path / ".venv" / "lib" / "site-packages" / "also_fat.py", 900)
+    write_lines(tmp_path / "node_modules" / "vendored.py", 900)
+    write_lines(tmp_path / "small.py", 10)
+    empty_baseline = tmp_path / "baseline.txt"
+    empty_baseline.write_text("", encoding="utf-8")
+
+    result = run(tmp_path, empty_baseline)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "fat.py" not in result.stdout
+    assert "vendored.py" not in result.stdout
+    # One file left to check — the venv did not merely fail to fail, it was skipped.
+    assert "1 file(s) checked" in result.stdout
+
+
 def test_baselined_file_is_allowed_to_stay_over(tmp_path):
     fat = tmp_path / "legacy.py"
     write_lines(fat, 700)

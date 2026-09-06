@@ -13,9 +13,19 @@
 # claude-runner.py under 400); splitting the suites is separate work, because a
 # test file's size is dominated by fixtures and scenario tables rather than by
 # logic, and cutting one badly loses coverage rather than gaining clarity.
+#
+# Raising a number here is a decision, never bookkeeping — the gate is supposed to make
+# the growth visible, and editing this file is how you say "seen it, took it anyway".
+# Log every raise below, or the register stops meaning anything.
+#
+# 2026-09-06  test_db.py 761 → 780, test_orchestrator.py 1703 → 1706 (19d27f1e, third
+#             claude slot). Both grew by covering the new slot count — the +19 lines in
+#             test_db are the CLAUDE_SLOTS/CLAUDE_SLOT_NUMBERS constants plus the
+#             schema.sql cross-check that stops the next capacity change from being a
+#             hunt for red asserts. CI had been red on this since the push.
 
 scripts/vps/tests/test_callback.py 813
-scripts/vps/tests/test_db.py 761
+scripts/vps/tests/test_db.py 780
 scripts/vps/tests/test_lifecycle.py 827
-scripts/vps/tests/test_orchestrator.py 1703
+scripts/vps/tests/test_orchestrator.py 1706
 scripts/vps/tests/test_orchestrator_bootstrap.py 692
