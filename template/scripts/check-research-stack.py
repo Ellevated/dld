@@ -14,13 +14,20 @@ they just search worse. Two real failures this guards against, both found on
 So this checks reachability AND drift: whether the tool names the prompts ask for
 are the tool names the server serves.
 
+Ask the server the agents actually talk to. Until 2026-09-06 this only probed the
+hosted https://mcp.exa.ai/mcp endpoint, which answers 403 on a machine that runs Exa
+over stdio — the drift check then printed SKIP, and nine fleet projects sat on retired
+tool names for weeks with nobody being told.
+
 Exit codes: 0 all good, 1 something is broken, 2 could not check (network etc).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -187,9 +194,93 @@ def _payload(body: str) -> dict | None:
     return None
 
 
-def probe_exa() -> set[str] | None:
-    """Ask the live Exa server which tools it actually serves."""
+def _exa_stdio_command(cli: str) -> tuple[list[str], dict[str, str]] | None:
+    """How THIS machine is configured to start Exa, per `claude mcp get exa`.
+
+    Returns (argv, extra env) for a stdio server, or None when Exa is absent or
+    configured over HTTP.
+    """
+    rc, out = run([cli, "mcp", "get", "exa"], timeout=60)
+    if rc != 0 or "exa" not in out.lower():
+        return None
+    if not re.search(r"^\s*Type:\s*stdio\s*$", out, re.MULTILINE):
+        return None
+    m_cmd = re.search(r"^\s*Command:\s*(.+)$", out, re.MULTILINE)
+    if not m_cmd:
+        return None
+    m_args = re.search(r"^\s*Args:\s*(.*)$", out, re.MULTILINE)
+    argv = [m_cmd.group(1).strip()] + shlex.split(m_args.group(1).strip() if m_args else "")
+    env = {}
+    for line in out.splitlines():
+        m = re.match(r"^\s{4,}([A-Z][A-Z0-9_]*)=(.*)$", line)
+        if m:
+            env[m.group(1)] = m.group(2).strip()
+    return argv, env
+
+
+def _probe_stdio(argv: list[str], extra_env: dict[str, str]) -> set[str] | None:
+    """Speak MCP over the server's stdin/stdout and read back its tool list."""
+    messages = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "dld-stack-check", "version": "1"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+    ]
+    payload = "".join(json.dumps(m) + "\n" for m in messages)
+    try:
+        p = subprocess.run(
+            argv,
+            input=payload,
+            capture_output=True,
+            timeout=240,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+            env={**os.environ, **extra_env},
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+    for line in (p.stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if data.get("id") != 2:
+            continue
+        return {t.get("name", "") for t in data.get("result", {}).get("tools", []) if t.get("name")}
+    return None
+
+
+def probe_exa(cli: str) -> set[str] | None:
+    """Ask the live Exa server which tools it actually serves.
+
+    The locally configured server is asked FIRST, and the hosted endpoint is only a
+    fallback. Both matter, and they are not the same server: on 2026-09-06 this
+    machine ran Exa as stdio (`npx exa-mcp-server`, connected and in use by every
+    agent) while https://mcp.exa.ai/mcp answered 403 — so the drift check, the whole
+    reason this script exists, reported SKIP and nine projects kept nine retired tool
+    names in their agent frontmatter. Probing the thing the agents actually call is
+    the only probe that can catch that.
+    """
     print("\nExa (web search / fetch)")
+    stdio = _exa_stdio_command(cli)
+    if stdio:
+        names = _probe_stdio(*stdio)
+        if names:
+            ok(f"stdio server serves {len(names)}: {', '.join(sorted(names))}")
+            return names
+        warn("`claude mcp get exa` describes a stdio server that answered no tool list")
     try:
         body, session = _post(
             EXA_MCP_URL,
@@ -219,7 +310,7 @@ def probe_exa() -> set[str] | None:
     if not names:
         bad(f"{EXA_MCP_URL} served no tools")
         return None
-    ok(f"serves {len(names)}: {', '.join(sorted(names))}")
+    ok(f"hosted endpoint serves {len(names)}: {', '.join(sorted(names))}")
     return names
 
 
@@ -292,7 +383,7 @@ def main() -> int:
         return 1
 
     check_context7(cli)
-    live = probe_exa()
+    live = probe_exa(cli)
     if live:
         check_drift(live)
     else:
