@@ -46,9 +46,10 @@ CREATE TABLE IF NOT EXISTS task_log (
     output_summary TEXT
 );
 
--- Seed slots: 2 for claude, 1 for codex, 1 for gemini
+-- Seed slots: 3 for claude, 1 for codex, 1 for gemini
 INSERT OR IGNORE INTO compute_slots (slot_number, provider) VALUES (1, 'claude');
 INSERT OR IGNORE INTO compute_slots (slot_number, provider) VALUES (2, 'claude');
+INSERT OR IGNORE INTO compute_slots (slot_number, provider) VALUES (5, 'claude');
 INSERT OR IGNORE INTO compute_slots (slot_number, provider) VALUES (3, 'codex');
 INSERT OR IGNORE INTO compute_slots (slot_number, provider) VALUES (4, 'gemini');
 

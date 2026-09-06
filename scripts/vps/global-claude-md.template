@@ -18,7 +18,7 @@ Copied to ~/.claude/CLAUDE.md during setup-vps.sh.
 
 ## Orchestrator Awareness
 
-- This VDS runs up to 3 concurrent autopilot sessions (2 Claude + 1 Codex).
+- This VDS runs up to 4 concurrent autopilot sessions (3 Claude + 1 Codex).
 - Night reviewer runs independently in its own pueue group — do not interfere.
 - Max session length: 30 turns.
 - QA loop runs after autopilot completes — do not skip.

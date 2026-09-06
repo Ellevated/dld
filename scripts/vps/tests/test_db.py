@@ -6,6 +6,7 @@ release_slot, get_available_slots, get_project_state, update_project_phase,
 callback CLI mode, save_finding, get_new_findings.
 """
 
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -16,6 +17,10 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import db
+
+# Mirrors schema.sql's seed. test_claude_slot_count_matches_schema keeps them honest.
+CLAUDE_SLOTS = 3
+CLAUDE_SLOT_NUMBERS = (1, 2, 5)
 
 
 # --- EC-1: seed_projects upsert idempotency ---
@@ -126,15 +131,15 @@ class TestSlotAcquisition:
         """Acquire a free claude slot returns slot_number."""
         slot = db.try_acquire_slot("testproject", "claude", pueue_id=10)
         assert slot is not None
-        assert slot in (1, 2), "Should get one of the two claude slots"
+        assert slot in CLAUDE_SLOT_NUMBERS, f"Should get one of {CLAUDE_SLOT_NUMBERS}"
 
     def test_acquire_slot_no_free_slots(self, seed_project):
         """EC-2: All slots occupied returns None, no crash."""
-        # Occupy both claude slots
-        db.try_acquire_slot("testproject", "claude", pueue_id=10)
-        db.try_acquire_slot("testproject", "claude", pueue_id=11)
+        # Occupy every claude slot
+        for i in range(CLAUDE_SLOTS):
+            db.try_acquire_slot("testproject", "claude", pueue_id=10 + i)
 
-        result = db.try_acquire_slot("testproject", "claude", pueue_id=12)
+        result = db.try_acquire_slot("testproject", "claude", pueue_id=10 + CLAUDE_SLOTS)
         assert result is None
 
     def test_acquire_slot_concurrent_one_slot(self, isolated_db):
@@ -159,7 +164,7 @@ class TestSlotAcquisition:
         project_id = db.release_slot(pueue_id=30)
         assert project_id == "testproject"
         # Slot is free again
-        assert db.get_available_slots("claude") == 2
+        assert db.get_available_slots("claude") == CLAUDE_SLOTS
 
     def test_release_nonexistent_slot(self, seed_project):
         """release_slot with unknown pueue_id returns None."""
@@ -167,12 +172,12 @@ class TestSlotAcquisition:
 
     def test_get_available_slots(self, seed_project):
         """get_available_slots counts free slots per provider."""
-        assert db.get_available_slots("claude") == 2
+        assert db.get_available_slots("claude") == CLAUDE_SLOTS
         assert db.get_available_slots("codex") == 1
         assert db.get_available_slots("gemini") == 1
 
         db.try_acquire_slot("testproject", "claude", pueue_id=40)
-        assert db.get_available_slots("claude") == 1
+        assert db.get_available_slots("claude") == CLAUDE_SLOTS - 1
 
     def test_get_provider_capacity_ignores_occupancy(self, seed_project):
         """Capacity says whether a provider EXISTS here, not whether it is free."""
@@ -183,6 +188,21 @@ class TestSlotAcquisition:
     def test_get_provider_capacity_unknown_provider(self, seed_project):
         """A provider nobody configured — the case that used to stall a spec forever."""
         assert db.get_provider_capacity("openai") == 0
+
+
+def test_claude_slot_count_matches_schema():
+    """The numbers below are not free-floating — they mirror schema.sql's seed.
+
+    They drifted once already: `pueue parallel` went 2 -> 3 on the box and schema.sql
+    followed, but these assertions still expected two, so four tests went red and stayed
+    that way in the working tree. Reading the count back from the schema turns the next
+    such change into one edit here instead of a hunt.
+    """
+    schema = (Path(__file__).resolve().parent.parent / "schema.sql").read_text(encoding="utf-8")
+    seeded = len(re.findall(r"INSERT OR IGNORE INTO compute_slots.*'claude'", schema))
+    assert seeded == CLAUDE_SLOTS, (
+        f"schema.sql seeds {seeded} claude slots, tests expect {CLAUDE_SLOTS}"
+    )
 
 
 # --- project state + phase ---
@@ -417,7 +437,6 @@ class TestNightReviewerInlineLookup:
 
 import ast
 import io
-import re
 import tokenize
 
 import pytest

@@ -359,10 +359,10 @@ fi
 pueue group add claude-runner 2>/dev/null || true
 pueue group add codex-runner  2>/dev/null || true
 pueue group add night-reviewer 2>/dev/null || true
-pueue parallel 2 --group claude-runner 2>/dev/null || true
+pueue parallel 3 --group claude-runner 2>/dev/null || true
 pueue parallel 1 --group codex-runner  2>/dev/null || true
 pueue parallel 1 --group night-reviewer 2>/dev/null || true
-ok "Pueue groups configured (claude-runner=2, codex-runner=1, night-reviewer=1)"
+ok "Pueue groups configured (claude-runner=3, codex-runner=1, night-reviewer=1)"
 
 # Configure pueue.yml callback
 PUEUE_CONFIG_DIR="${HOME}/.config/pueue"

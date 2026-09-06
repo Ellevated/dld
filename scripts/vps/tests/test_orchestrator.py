@@ -17,6 +17,9 @@ if VPS_DIR not in sys.path:
 
 import db
 import orchestrator
+
+# Slot count lives in test_db, next to the schema check that pins it.
+from test_db import CLAUDE_SLOTS
 import orchestrator_queue
 
 # Canonical v1 `## Allowed Files` block. Since 2026-08-23 orchestrator_queue
@@ -274,7 +277,7 @@ class TestReleaseOrphanSlots:
             released = orchestrator.release_orphan_slots()
         assert released == 1
         assert db.get_occupied_slots() == []
-        assert db.get_available_slots("claude") == 2
+        assert db.get_available_slots("claude") == CLAUDE_SLOTS
 
     def test_empty_pueue_releases_all_orphans(self, seed_project):
         """EC-4: pueue has no tasks, DB has occupied slot → release it."""
