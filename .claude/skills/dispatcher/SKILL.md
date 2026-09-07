@@ -46,6 +46,14 @@ Fill the free slots — up to **two starts per pass**, so a bad decision costs o
 not the whole fleet. Two autopilots in the same project are fine: each run gets its own
 worktree and its own `{type}/{ID}` branch.
 
+**A free slot is not capacity.** The briefing prints `last run ok` / `last run FAILED` /
+`unproven` per provider. Dispatch only into a provider whose last run is `ok` — normally
+that is `claude`. On the dispatcher's first live pass (2026-09-07) claude was full, the
+free codex and gemini slots looked like capacity, and both runs died in seconds: codex on
+a CLI older than its pinned model, gemini on a missing API key. Two specs burned for
+nothing. **No free `ok` slot is a complete answer** — report it and start nothing rather
+than spending a broken one.
+
 ### 3. Repair, do not refuse
 
 A spec the old gates rejected is usually a five-minute fix. You are allowed to fix these

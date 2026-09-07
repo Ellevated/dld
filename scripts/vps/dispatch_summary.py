@@ -37,6 +37,7 @@ import db  # noqa: E402
 import lifecycle  # noqa: E402
 
 ALLOWLIST_HEADING = re.compile(r"^## Allowed Files\s*$", re.MULTILINE)
+PROVIDERS = ("claude", "codex", "gemini")
 MAX_SPECS_PER_PROJECT = 12
 
 
@@ -104,6 +105,49 @@ def _pueue_active() -> list[dict]:
     return sorted(live, key=lambda x: x["pueue_id"])
 
 
+def _provider_health() -> dict:
+    """Last verdict per provider — a free slot on a broken runner is not capacity.
+
+    Measured on the dispatcher's first live pass (2026-09-07): it correctly saw
+    claude=0, spent the free codex and gemini slots, and both runs died in
+    seconds — codex on a CLI too old for its pinned model, gemini on a missing
+    API key. Neither had run in weeks, so nothing had noticed. A slot count alone
+    invites that mistake every pass; the last outcome per provider prevents it.
+    """
+    raw = _run(["pueue", "status", "--json"], timeout=20)
+    health = {p: {"last": "unproven", "note": "no finished run on record"} for p in PROVIDERS}
+    if not raw:
+        return health
+    try:
+        tasks = json.loads(raw).get("tasks", {})
+    except json.JSONDecodeError:
+        return health
+    for provider in PROVIDERS:
+        group = f"{provider}-runner"
+        done = [
+            t
+            for t in tasks.values()
+            if t.get("group") == group and not isinstance(t.get("status"), str)
+        ]
+        finished = []
+        for t in done:
+            status = t.get("status") or {}
+            key = list(status.keys())[0] if isinstance(status, dict) else str(status)
+            if key != "Done":
+                continue
+            result = (status.get("Done") or {}).get("result")
+            ok = result == "Success" if isinstance(result, str) else "Success" in (result or {})
+            finished.append((t.get("start") or "", ok, t.get("label") or ""))
+        if not finished:
+            continue
+        start, ok, label = sorted(finished)[-1]
+        health[provider] = {
+            "last": "ok" if ok else "FAILED",
+            "note": f"{label} at {start[:16]}",
+        }
+    return health
+
+
 def _recent_verdicts(limit: int = 8) -> list[dict]:
     with db.get_db() as conn:
         rows = conn.execute(
@@ -144,7 +188,8 @@ def build(project_rows: list[dict]) -> dict:
             }
         )
     return {
-        "slots_free": {p: db.get_available_slots(p) for p in ("claude", "codex", "gemini")},
+        "slots_free": {p: db.get_available_slots(p) for p in PROVIDERS},
+        "provider_health": _provider_health(),
         "pueue_active": _pueue_active(),
         "projects": projects,
         "recent": _recent_verdicts(),
@@ -155,10 +200,13 @@ def render(summary: dict) -> str:
     """Markdown for a prompt: short, and every line is a fact the model can act on."""
     out: list[str] = ["# Dispatch briefing", ""]
     free = summary["slots_free"]
-    out.append(
-        f"**Free slots:** claude={free.get('claude', 0)} "
-        f"codex={free.get('codex', 0)} gemini={free.get('gemini', 0)}"
-    )
+    health = summary.get("provider_health", {})
+    for prov in PROVIDERS:
+        h = health.get(prov, {})
+        out.append(
+            f"- **{prov}**: {free.get(prov, 0)} free slot(s) · "
+            f"last run {h.get('last', '?')} ({h.get('note', '')})"
+        )
     live = summary["pueue_active"]
     out.append(f"**Running now ({len(live)}):** " + (", ".join(t["label"] for t in live) or "—"))
     out.append("")
