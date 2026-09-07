@@ -34,16 +34,6 @@ coder, re-run that one check on return, not the set. Measured 2026-09-02 across 
 runs: the loop spent 14–60 min per spec in its own Bash calls, most of them test
 sweeps and "all gates" re-runs after every coder return.
 
-## What the loop never runs
-
-The loop does not run pytest, `./test *`, `tests/architecture/`, or any project gate
-that wraps them. Tests are Step 2's job (tester, one targeted set per task) and PHASE
-3's (full suite, once per spec). Steps 3 and 5 are `grep`/`wc`/the named scripts —
-seconds each — and they run **once per task**: when a check sends work back to the
-coder, re-run that one check on return, not the set. Measured 2026-09-02 across 11
-runs: the loop spent 14–60 min per spec in its own Bash calls, most of them test
-sweeps and "all gates" re-runs after every coder return.
-
 ## Why those two, and not the others
 
 A subagent starts cold. Before it can act it rebuilds the task context you are

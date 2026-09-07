@@ -45,11 +45,6 @@ acceptance: "what to verify"
    failed. Never `./test fast`, `./test ci`, `tests/architecture/` or a whole tree —
    the tester runs the task set once, PHASE 3 runs the suite once. Measured
    2026-09-02: coders spent 15–93 min per spec in pytest that the tester then repeated.
-   Run the task's own tests: the failing→passing command the plan names, or the
-   changed file's test file. Once after implementing; after a fix, only the ids that
-   failed. Never `./test fast`, `./test ci`, `tests/architecture/` or a whole tree —
-   the tester runs the task set once, PHASE 3 runs the suite once. Measured
-   2026-09-02: coders spent 15–93 min per spec in pytest that the tester then repeated.
 
 ### Step 7: Update Context (MANDATORY)
 
