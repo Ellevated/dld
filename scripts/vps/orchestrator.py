@@ -215,10 +215,8 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
     Returns True if dispatched. Post-ARCH-186: reads ai/lifecycle/*.yaml
     (HEAD-based), not ai/backlog.md (which is now an auto-rendered read-only view).
 
-    The body stays in this module on purpose (TECH-215): four test files reach
-    into it through `orchestrator.<name>` monkeypatches or by grepping this
-    file's source, and none of them are editable under this spec's Allowed
-    Files. Steps with no such coupling live in orchestrator_queue.
+    Body stays here on purpose (TECH-215): four test files reach into it via
+    `orchestrator.<name>` monkeypatches. Uncoupled steps live in orchestrator_queue.
     """
     queued_list = orchestrator_ci_gate.queued_after_ci_gate(project_id, project_dir)
     if not queued_list:
@@ -279,12 +277,18 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
     return False
 
 
+# `llm` (default 2026-09-07): the dispatcher skill decides, on its own timer.
+# `builtin`: the in-code gate chain below. Rollback is one env var, not a revert.
+DISPATCH_MODE = os.environ.get("DISPATCH_MODE", "llm").strip().lower()
+
+
 def process_project(project_id: str, project_dir: str) -> None:
     """Process one project: git pull, inbox, lifecycle bootstrap, queued scan, invariant check."""
     git_pull(project_id, project_dir)
     scan_inbox(project_id, project_dir)
     bootstrap_new_specs(project_dir)
-    scan_queued(project_id, project_dir)
+    if DISPATCH_MODE == "builtin":
+        scan_queued(project_id, project_dir)
     state = db.get_project_state(project_id)
     if state and state.get("phase") == "qa_pending" and not state.get("current_task"):
         log.warning("qa_pending invariant: resetting %s to idle", project_id)

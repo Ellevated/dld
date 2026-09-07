@@ -21,6 +21,10 @@ def _project(tmp_path, spec_id="TECH-1481", body="# spec\n"):
 def _state(tmp_path, monkeypatch, status=None, red_since=None, gate_off=False):
     state = tmp_path / "state"
     state.mkdir(exist_ok=True)
+    # The gate is opt-in since 2026-09-07 (founder decision: on this fleet a red
+    # develop is the normal state, so "hold everything while red" was a permanent
+    # stop). These tests cover the gate's behaviour WHEN enabled — so they enable it.
+    monkeypatch.setattr(orchestrator_ci_gate, "CI_GATE_ENABLED", True)
     monkeypatch.setattr(orchestrator_ci_gate, "CI_STATE_DIR", state)
     if status is not None:
         (state / "awardybot-ci.status").write_text(status + "\n", encoding="utf-8")

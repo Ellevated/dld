@@ -24,8 +24,20 @@
 #             schema.sql cross-check that stops the next capacity change from being a
 #             hunt for red asserts. CI had been red on this since the push.
 
+# 2026-09-07  orchestrator.py enters the register at 412 (was 400, exactly at the
+#             ceiling). Two changes, both about the queue no longer stopping: the
+#             dispatch loop that skips a defective spec instead of the whole project
+#             (dowry BUG-507 held five ready specs), and DISPATCH_MODE, which hands the
+#             decision to the dispatcher skill and keeps `builtin` as a one-env-var
+#             rollback. Splitting the loop out is not free — 13 tests monkeypatch
+#             `orchestrator.<bare name>`, which only resolves in this module's globals.
+#             Taken deliberately; the next line here should be a REDUCTION.
+#             test_orchestrator.py 1706 → 1785: two tests for the new loop (a refused
+#             spec must not stop the project) plus the per-file ceiling map.
+
+scripts/vps/orchestrator.py 412
 scripts/vps/tests/test_callback.py 813
 scripts/vps/tests/test_db.py 780
 scripts/vps/tests/test_lifecycle.py 827
-scripts/vps/tests/test_orchestrator.py 1706
+scripts/vps/tests/test_orchestrator.py 1785
 scripts/vps/tests/test_orchestrator_bootstrap.py 692
