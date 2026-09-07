@@ -61,8 +61,24 @@
 #     python scripts/check-fleet-drift.py --root D:/dev --root D:/dev/RIS
 #
 
+# **Dowry 10 -> 13 (2026-09-07).** Not new neglect: the fleet sweep of this date found
+# Dowry running an older generation of the autopilot prompts AND holding real local work
+# on top of it, in the same files. What it holds that template does not:
+#   validate-allowlist.mjs  W005_COUPLED_TEST_UNLISTED — names test files that reference an
+#                           allowlisted module (6 specs ended red mid-run without it)
+#   check_docs_sync.py      skips .worktrees; scanning them tripled every finding (166 -> 500)
+#   worktree-setup.md       sweep fenced to autopilot's own roots + in_progress lifecycle guard;
+#                           without it a BUG-494 session deleted BUG-493's live worktree (2026-09-03)
+#   bug-mode / completion   blueprint-compliance gate, AV-F mutation rules (BUG-495/497/502)
+#   seed-lessons            FTR/TECH/ARCH ingestion (2026-05-10)
+#   planner / task-loop / autopilot-git / finishing / SKILL / feature-mode / subagent-dispatch
+#                           — the pure-lag half of the same set, still to be reconciled by hand
+# Everything with no local content was refreshed on 2026-09-07 (coder.md, escalation.md,
+# council/SKILL.md). Lowering this number means merging template into the seven files above,
+# file by file — not overwriting them.
+
 AwardyBot    = 27
-Dowry        = 10
+Dowry        = 13
 Dowry-mc     = 11
 PLPilot      = 5
 wb           = 4
