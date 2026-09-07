@@ -124,10 +124,15 @@ def _provider_health() -> dict:
         return health
     for provider in PROVIDERS:
         group = f"{provider}-runner"
+        # Only real spec runs count. A green `argv-check` in the codex group said
+        # "last run ok" while every actual autopilot run on that provider was dying
+        # on an outdated CLI — a smoke task is not evidence the runner can work.
         done = [
             t
             for t in tasks.values()
-            if t.get("group") == group and not isinstance(t.get("status"), str)
+            if t.get("group") == group
+            and ":" in (t.get("label") or "")
+            and not isinstance(t.get("status"), str)
         ]
         finished = []
         for t in done:
