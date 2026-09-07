@@ -70,3 +70,6 @@ test/agents-harvested/
 
 # Бэкапы БД оркестратора на VPS
 scripts/vps/orchestrator.db.bak-*
+
+# Пересобираемые артефакты (отчёты скриптов, выгрузки)
+_build/
