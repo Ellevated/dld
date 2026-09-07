@@ -846,6 +846,46 @@ Used as operator visibility tool and CI smoke gate.
 
 ---
 
+## .claude/hooks/graph-context.mjs (EXP-004)
+
+**Path:** `.claude/hooks/graph-context.mjs` (+ identical `template/` copy)
+
+PreToolUse hook on `Edit|Write|MultiEdit`. Reads the codebase-memory index directly over
+SQLite and injects the edited file's blast radius — importers, callers, tests — into the
+model's context before the edit runs. Registered as the SECOND hook on that matcher in
+`settings.json`; `pre-edit` stays first and owns the permission decision. This hook
+returns `additionalContext` and NO `permissionDecision`, deliberately: hook results merge
+with `deny > ask > allow`, and an `allow` here would be a vote in a decision this hook has
+no business in.
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| `node:sqlite` | stdlib (Node >= 22) | `DatabaseSync(readOnly)` over `~/.cache/codebase-memory-mcp/<project>.db` |
+| `.claude/hooks/utils.mjs` | same dir | `readHookInput`, `getToolInput`, `debugLog`, `debugTiming`, `logHookError` |
+| git CLI | PATH | `worktree list --porcelain` (canonical root → index filename) + `rev-parse --show-toplevel` (worktree → relative path). Mixing the two roots returns an empty result every time |
+| codebase-memory index | `~/.cache/codebase-memory-mcp/` or `$CBM_CACHE_DIR` | tables `nodes` / `edges`; edge types CALLS, USAGE, IMPORTS, TESTS, HTTP_CALLS, DEPENDS_ON |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| Claude Code | `.claude/settings.json` → PreToolUse `Edit\|Write\|MultiEdit` | `node .claude/hooks/run-hook.mjs graph-context` |
+| Claude Code (downstream) | `template/.claude/settings.json` | same entry, shipped to every bootstrapped project |
+| test/scripts/graph-context.test.mjs | 12 assertions | imports the pure functions (`DLD_GRAPH_HOOK_IMPORT_ONLY=1` suppresses `main()`) and runs the hook end-to-end against a real index |
+| scripts/metrics/graph_injection_stats.py | EXP-004 verdict | counts injections in transcripts by the literal marker `BLAST RADIUS — ` |
+
+### When changing API, check
+
+- [ ] `template/.claude/hooks/graph-context.mjs` (byte-identical copy — `scripts/check-tree-sync.py`)
+- [ ] `scripts/metrics/graph_injection_stats.py` (`INJECTION_MARKER` and the section labels it parses are this hook's own wording — change the message, break the metric)
+- [ ] `.github/workflows/ci.yml` → `harness-test` node-version (must stay >= 22; `node:sqlite` does not exist in 20 and the hook fails open there)
+- [ ] `ai/experiments/2026-09-07-graph-injection-hook.md` (the open experiment measuring this)
+- [ ] index freshness — nothing re-indexes on a schedule; a stale index makes the injection quietly wrong, and the hook only prints its age
+
+---
+
 ## .claude/scripts/ (skill-invoked gates)
 
 **Path:** `.claude/scripts/*.mjs`

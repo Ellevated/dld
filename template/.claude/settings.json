@@ -57,6 +57,11 @@
             "type": "command",
             "command": "node .claude/hooks/run-hook.mjs pre-edit",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/run-hook.mjs graph-context",
+            "timeout": 8000
           }
         ]
       }

@@ -188,12 +188,18 @@ jobs:
     # nowhere until 2026-08-02: not in CI, and the wrapper suite aborted on any
     # Windows checkout because its fixtures were `.sh` + `chmod`. A test that
     # runs on no machine is indistinguishable from one that does not exist.
+    #
+    # Node 22, not 20, since 2026-09-07: `graph-context.mjs` reads the code-graph
+    # index through `node:sqlite`, which does not exist in 20. On 20 the hook
+    # fails open (silence) and its end-to-end tests skip themselves — a green run
+    # that measured nothing, which is the exact failure this job was created for.
+    # The fleet runs 22 and this laptop 24.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Harness suites
         run: |
           for f in test/scripts/*.test.mjs; do
