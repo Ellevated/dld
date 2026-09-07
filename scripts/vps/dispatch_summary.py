@@ -38,6 +38,9 @@ import lifecycle  # noqa: E402
 
 ALLOWLIST_HEADING = re.compile(r"^## Allowed Files\s*$", re.MULTILINE)
 PROVIDERS = ("claude", "codex", "gemini")
+# A real spec run, not a smoke task: "<project>:<PREFIX-NNN>" with an optional
+# skill prefix ("awardybot:qa-FTR-1506").
+SPEC_LABEL = re.compile(r"^[\w.-]+:(?:[a-z]+-)?(?:BUG|FTR|TECH|ARCH|GROWTH)-\d+$")
 MAX_SPECS_PER_PROJECT = 12
 
 
@@ -131,7 +134,7 @@ def _provider_health() -> dict:
             t
             for t in tasks.values()
             if t.get("group") == group
-            and ":" in (t.get("label") or "")
+            and SPEC_LABEL.match(t.get("label") or "")
             and not isinstance(t.get("status"), str)
         ]
         finished = []
