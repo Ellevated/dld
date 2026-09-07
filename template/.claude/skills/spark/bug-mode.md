@@ -120,6 +120,16 @@ _Source: code graph (`trace_path` inbound) or grep — state which._
       **every** caller test goes in Allowed Files — not just the obvious one. Precedent
       (AwardyBot TECH-1325): 2 listed, 5 broke.
 
+## Blueprint Reference
+
+<!-- Only where `ai/blueprint/system-blueprint/` exists. There it is REQUIRED:
+     validate-blueprint-compliance.mjs (task-loop Step 3b) FAILs the spec without it.
+     Domain must be one value from ai/blueprint/system-blueprint/domain-map.md
+     section "Current Domains" — one word, no markdown emphasis around the value. -->
+**Domain:** {one domain slug, e.g. marketing}
+**Cross-cutting:** {Money (int minor units)? Auth? Errors? — from cross-cutting.md, or "none"}
+**Data model:** {affected tables, or "none"}
+
 ## Research Sources
 - [Pattern](https://example.com) — description from Scout
 
@@ -129,6 +139,23 @@ _Source: code graph (`trace_path` inbound) or grep — state which._
 
 - `path/to/file.py` — fix location
 - `path/to/test.py` — add regression test
+
+**Before leaving this section, run the linter — it is the SSOT, not the prose above:**
+
+```bash
+node .claude/scripts/validate-allowlist.mjs ai/features/{TASK_ID}-*.md
+```
+
+Exit 1 = the allowlist is unusable (fix in place, re-run, do not delete the spec).
+Exit 0 with warnings still needs answers — see `feature-mode.md` Phase 5.5 for the
+code table. In particular `W005_COUPLED_TEST_UNLISTED` names test files that
+reference an allowlisted source module and are not on the list: allowlist each, or
+write one line per file saying why the fix cannot touch it. This is the 6×-repeated
+failure where the coder correctly refuses a non-allowlisted test and the task ends
+red mid-run. The couplings that break *without* naming the changed symbol — check
+them by hand: strict `==` on a return value whose shape changes, fixed-length
+`side_effect` lists that break on a call-count change, mock chains missing a method
+the fix newly calls.
 
 ## Historical Risks
 
@@ -180,6 +207,25 @@ Deterministic: N | Integration: N | Total: N (minimum 3)
 Runnable commands, not placeholders. If the bug genuinely cannot be verified from
 outside the test suite, write `N/A: {reason}` — that is a claim a reader can argue
 with, which an empty section is not.
+
+**A grep on a literal string also matches prose.** `git grep "<removed string>" -- src/`
+hits the comment or docstring that documents the removal, so the guard fails on a correct
+fix and the loop learns to wave it through. Either exclude prose in the command
+(`git grep -n "<s>" -- src/ | grep -v '^\s*#'`, or grep only the call site
+`git grep "logger.*<s>"`), or state in the Expected column that the string must not
+appear in comments or docstrings either — and say which. Precedent: BUG-495 AV-F1.
+
+**Dry-run every AV-F against the pre-fix tree while authoring it.** A guard that passes
+before the fix proves nothing (BUG-497: 3 of 4 were vacuous — one grepped a string the
+fix re-introduces, one reverted a file whose logic the plan moves elsewhere).
+
+**Never accept a guard by reading the source — accept it by killing it.** An AV that says
+"the UPDATE contains `.is_("tg_msg_id", "null")` — verified by reading the source"
+(`inspect.getsource`, `grep`) passes on code no test ever executes: in BUG-502 all five
+tests mocked the function outright, so deleting the ownership gate kept 115 tests green
+and the AV green with them. Word it as a mutation instead: **"removing <the guard> must
+red at least one named test"**, and name the test. Same fix as the pre-fix dry-run above,
+one level down: an AV must be able to fail for the reason it exists.
 
 ## Definition of Done
 - [ ] Root cause fixed

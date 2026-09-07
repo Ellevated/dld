@@ -16,8 +16,20 @@ Git worktree isolation for safe parallel development.
    for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{print $2}'); do
      # Skip main repo worktree
      [[ "$wt" == "$(git rev-parse --show-toplevel)" ]] && continue
+     # SCOPE: only ever touch worktrees the autopilot itself created. `git worktree
+     # list` also returns trees owned by other tooling — a project's CI runner keeps
+     # one (detached, clean, pushed), which matches the orphan criterion exactly and
+     # was deleted twice on 2026-09-03. Never sweep outside our own roots.
+     wt_repo_root="$(git rev-parse --show-toplevel)"
+     case "$wt" in
+       "$wt_repo_root"/.worktrees/*|"$wt_repo_root"/worktrees/*|"$wt_repo_root"/.claude/worktrees/*) ;;
+       *) echo "SWEEP SKIP: $wt is outside autopilot worktree roots (not ours)"; continue ;;
+     esac
      wt_branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
      [[ -z "$wt_branch" ]] && continue
+     # Detached HEAD is never an autopilot spec branch; `git branch -d HEAD` is
+     # meaningless and removing the tree is pure loss.
+     [[ "$wt_branch" == "HEAD" ]] && { echo "SWEEP SKIP: $wt is detached HEAD"; continue; }
      # Skip protected branches
      [[ "$wt_branch" =~ ^(main|master|develop)$ ]] && continue
      # Safety: skip if uncommitted changes
@@ -33,6 +45,17 @@ Git worktree isolation for safe parallel development.
      wt_spec="$(basename "$wt")"
      if grep -q 'branch_pushed_not_merged' "ai/lifecycle/${wt_spec}.yaml" 2>/dev/null; then
        echo "SWEEP SKIP: $wt — branch pushed, not merged (re-dispatch continues it)"
+       continue
+     fi
+     # A worktree created moments ago, before its first commit, passes EVERY test
+     # below: `git status --porcelain` is empty (no files yet) and
+     # `git log HEAD --not --remotes` is empty, so pushed=yes holds trivially.
+     # A host running parallel autopilot sessions hits this race as normal
+     # operation — on 2026-09-03 a BUG-494 session deleted BUG-493's live worktree
+     # this way. `status: in_progress` is the "someone is working here right now"
+     # signal; honour it.
+     if grep -q '^status: in_progress' "ai/lifecycle/${wt_spec}.yaml" 2>/dev/null; then
+       echo "SWEEP SKIP: $wt — lifecycle status is in_progress (live session)"
        continue
      fi
      # Remove when the work is safe, by either test:

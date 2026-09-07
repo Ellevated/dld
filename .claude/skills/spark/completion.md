@@ -102,10 +102,18 @@ even with concurrent spark sessions on multiple machines (multi-master).
 4. [ ] **Lifecycle record accounted for** — `git cat-file -e HEAD:ai/lifecycle/{TASK_ID}.yaml`
    succeeds, or it does not and you wrote the backlog row that lets bootstrap create it
 5. [ ] **Status = queued** wherever that record ends up — never a second copy elsewhere
-6. [ ] **Allowlist Linter passed** (Phase 5.5) — `grep '<!-- callback-allowlist v1' ai/features/{TASK_ID}*.md` returns ≥1 line and `## Allowed Files` heading exists exactly once
-7. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
+6. [ ] **Allowlist Linter passed** (Phase 5.5) — `node .claude/scripts/validate-allowlist.mjs ai/features/{TASK_ID}*.md` exits 0, and every warning it printed is answered in the spec (W005 coupled tests allowlisted or excluded in writing). Do not substitute a `grep` for the marker: that passes on an allowlist the pipeline parser drops paths from.
+7. [ ] **Blueprint gate green** (only where `ai/blueprint/system-blueprint/` exists) — `node .claude/scripts/validate-blueprint-compliance.mjs ai/features/{TASK_ID}*.md ai/blueprint/system-blueprint`
+   prints `PASS`. Autopilot runs this same command at task-loop Step 3b, so a red spec here is a
+   red spec on every task. Two failure modes and their one-line fixes:
+   - `Missing section: ## Blueprint Reference` → emit the section from the mode template
+     (feature-mode.md / bug-mode.md). It is REQUIRED output, not an optional block.
+   - `domain "X" not found in domain-map.md` → the value must be ONE slug from the
+     "Current Domains" table in `ai/blueprint/system-blueprint/domain-map.md`, with no
+     markdown emphasis and no trailing prose. New domain in `src/domains/` → add the row there.
+8. [ ] **Function overlap check** (ARCH-226) — grep other queued specs for same function names
    - If overlap found: merge into single spec OR mark dependency
-8. [ ] **Auto-commit + push done** — `## Auto-Commit + Push (MANDATORY)` block executed
+9. [ ] **Auto-commit + push done** — `## Auto-Commit + Push (MANDATORY)` block executed
 
 If any item not done — **STOP and do it**.
 

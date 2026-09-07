@@ -61,24 +61,28 @@
 #     python scripts/check-fleet-drift.py --root D:/dev --root D:/dev/RIS
 #
 
-# **Dowry 10 -> 13 (2026-09-07).** Not new neglect: the fleet sweep of this date found
-# Dowry running an older generation of the autopilot prompts AND holding real local work
-# on top of it, in the same files. What it holds that template does not:
-#   validate-allowlist.mjs  W005_COUPLED_TEST_UNLISTED — names test files that reference an
-#                           allowlisted module (6 specs ended red mid-run without it)
-#   check_docs_sync.py      skips .worktrees; scanning them tripled every finding (166 -> 500)
-#   worktree-setup.md       sweep fenced to autopilot's own roots + in_progress lifecycle guard;
-#                           without it a BUG-494 session deleted BUG-493's live worktree (2026-09-03)
-#   bug-mode / completion   blueprint-compliance gate, AV-F mutation rules (BUG-495/497/502)
-#   seed-lessons            FTR/TECH/ARCH ingestion (2026-05-10)
-#   planner / task-loop / autopilot-git / finishing / SKILL / feature-mode / subagent-dispatch
-#                           — the pure-lag half of the same set, still to be reconciled by hand
-# Everything with no local content was refreshed on 2026-09-07 (coder.md, escalation.md,
-# council/SKILL.md). Lowering this number means merging template into the seven files above,
-# file by file — not overwriting them.
+# **Dowry 13 -> 0 (2026-09-07, same day).** The 13 were reconciled by hand rather than
+# overwritten, and what Dowry had built on top of an older prompt generation went UPSTREAM
+# into `template/` instead of being deleted:
+#   worktree-setup.md      sweep fenced to the autopilot's own roots, detached-HEAD skip,
+#                          and an `in_progress` lifecycle guard — without them a BUG-494
+#                          session deleted BUG-493's live worktree (2026-09-03) and the CI
+#                          runner's own worktree was swept twice
+#   validate-allowlist.mjs W005_COUPLED_TEST_UNLISTED + LOC headroom (306 -> 400 lines);
+#                          6 specs ended red mid-run on exactly this
+#   feature-mode.md        the warning-code table, each warning now needs a written answer
+#   completion.md          the linter is run, not grepped for; blueprint gate as item 7
+#   bug-mode.md            Blueprint Reference block + three AV-F rules (a grep on a literal
+#                          also matches prose; dry-run every AV against the pre-fix tree;
+#                          accept a guard by killing it, not by reading it)
+#   seed-lessons/SKILL.md  FTR/TECH/ARCH ingestion, not BUG-only
+#   check_docs_sync.py     `.worktrees` skipped (166 real findings were reported as 500)
+# The remaining Dowry-only content was nothing but an older template. Whole fleet gets the
+# above on its next sync — that is the point of putting it here rather than leaving it in
+# one project.
 
 AwardyBot    = 27
-Dowry        = 13
+Dowry        = 0
 Dowry-mc     = 11
 PLPilot      = 5
 wb           = 4

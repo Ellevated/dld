@@ -72,10 +72,16 @@ AMBIENT = frozenset(
         "PROGRAMFILES",
         "SYSTEMROOT",
         "USERPROFILE",
+        # pytest exports this for the duration of a test; noise in a template diff.
+        "PYTEST_CURRENT_TEST",
     }
 )
 
-SKIP_DIRS = frozenset({"__pycache__", ".git", "node_modules", "venv", ".venv", "build", "dist"})
+# `.worktrees` holds checkouts of autopilot branches of the same repo. Scanning them
+# tripled every finding and made the report unreadable (166 real -> 500).
+SKIP_DIRS = frozenset(
+    {"__pycache__", ".git", ".worktrees", "node_modules", "venv", ".venv", "build", "dist"}
+)
 
 
 class Finding(NamedTuple):

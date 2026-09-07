@@ -492,6 +492,17 @@ ONLY the files listed below may be modified during implementation.
 - `path/to/new_file.py` — reason (NEW)
 - `tests/path/to/test_file.py` — reason (NEW)
 
+**LOC headroom check (MANDATORY before writing this list):** run `wc -l` on every EXISTING
+file you plan to append to and compare against the limit (400 for source, 600 for tests).
+Less than 100 lines of headroom → do NOT list that file; plan a sibling file in the same
+package and list the sibling as `(NEW)`. A spec that sends the coder into a file with no
+room turns into a mid-run allowlist edit — the one thing this section forbids.
+
+```bash
+# for each planned existing file
+wc -l tests/unit/path/test_target.py   # 596 of 600 → sibling file, not this one
+```
+
 **Format contract (enforced by Spark linter — see Phase 5.5):**
 - Heading is exactly `## Allowed Files` (case-sensitive H2, no suffix, no
   qualifier in parentheses).
@@ -801,15 +812,29 @@ the spec stays on disk for a human to look at.
 ### On success
 
 - state.json: `lint = done, allowlist_paths = [<paths from the script>]`.
-- Read the `warnings` array before moving on. Warnings do not block, but
-  `ALLOWLIST_W002_EXTRA_PATH_IN_REASON` means a second path on an entry line was
-  not extracted — if that was meant to be an entry, give it its own line now.
+- Read the `warnings` array before moving on. Warnings do not block the script, but
+  each one needs an answer in the spec rather than a scroll-past:
+
+  | Code | What it means | Answer that closes it |
+  |------|---------------|-----------------------|
+  | `W003_NO_HEADROOM` / `W004_OVER_LIMIT` | file is at or past 400 (code) / 600 (tests) | plan a sibling file and list it as `(NEW)` — the coder cannot grow that file |
+  | `W005_COUPLED_TEST_UNLISTED` | a test file names an allowlisted source module and is not itself allowlisted | add it to Allowed Files, **or** write one line saying why the change cannot touch it |
+  | `W001_BOOKKEEPING_PRESENT` / `W002_EXTRA_PATH_IN_REASON` | stripped path / second path in a reason line | confirm it is a reference, not a lost entry |
+
+  `W005` is the mechanical form of a failure measured 6 times (Dowry reflect
+  2026-09-03, class A): the source file is allowlisted, the fix changes a return
+  shape / call count / called method, a test asserts on it, that test is not on the
+  list, and the coder correctly refuses to touch it — the task ends red and the
+  allowlist gets amended mid-run. Three couplings break *without* naming the changed
+  symbol, so check for them by hand in every listed test: strict `==` on a return
+  value whose shape changes, fixed-length `side_effect` lists that break on a
+  call-count change, and mock chains missing a method the fix newly calls.
 - Proceed to Phase 6.
 
 <GATE>
 DO NOT proceed to Phase 6 until:
 - [ ] `validate-allowlist.mjs` run on the freshly-written spec, exit 0
-- [ ] `warnings` read and any lost entry given its own line
+- [ ] every warning answered in the spec — W005 tests either allowlisted or excluded in writing
 - [ ] state.json updated: lint = done, allowlist_paths = [<paths>]
 </GATE>
 

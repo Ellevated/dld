@@ -274,7 +274,20 @@ def agents_with_own_model(repos):
     return named
 
 
-def render(skills, commands, agents, agent_models, mcp, mcp_tools, by_project, by_day, meta, inv, days, own_model):
+def render(
+    skills,
+    commands,
+    agents,
+    agent_models,
+    mcp,
+    mcp_tools,
+    by_project,
+    by_day,
+    meta,
+    inv,
+    days,
+    own_model,
+):
     installed = inv["skill"] | inv["command"]
     via_agents = skills_reached_via_agents(agents.keys(), inv["skill"])
     used = set(skills) | set(commands) | set(via_agents)
@@ -392,8 +405,18 @@ def main() -> int:
     roots = fleet_roots(repo, fleet)
     own_model = agents_with_own_model(roots)
     render(
-        skills, commands, agents, agent_models, mcp, mcp_tools,
-        by_project, by_day, meta, inv, args.days, own_model,
+        skills,
+        commands,
+        agents,
+        agent_models,
+        mcp,
+        mcp_tools,
+        by_project,
+        by_day,
+        meta,
+        inv,
+        args.days,
+        own_model,
     )
 
     if args.json_out:
@@ -417,9 +440,7 @@ def main() -> int:
         }
         out_path = Path(args.json_out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         print()
         print(f"JSON: {args.json_out}")
 

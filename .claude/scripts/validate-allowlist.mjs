@@ -25,7 +25,7 @@
  * argued in place.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync, statSync } from 'fs';
 
 // --- Regexes: byte-for-byte the parser's, JS syntax ------------------------
 // Sources: `gate_logic.py::_parse_allowed_files_v1`,
@@ -289,6 +289,100 @@ if (over.length > 0) {
       'Allowlist entries already exceed the file-size ceiling before this spec starts. Pre-existing, so not this spec\'s fault — but it cannot grow them, and "add it here" is not an option the coder has.',
     occurrences: over
   });
+}
+
+// 8. Coupled tests. The recurring failure this catches (6 occurrences, reflect
+//    findings 2026-09-03 A): the spec allowlists the source file it fixes, the
+//    fix changes a return shape / call count / called method, and a test that
+//    asserts on that breaks — but that test file is not on the list, so the
+//    coder correctly refuses to touch it and the task ends red mid-run.
+//    "Also allowlist the tests" as an instruction kept missing because every
+//    instance had a different coupling mechanism (strict `==` on a changed
+//    shape, fixed-length `side_effect`, mock chain missing a newly-called
+//    method, LOC ceiling). So do not ask for judgment: ask which test files
+//    name this module, mechanically.
+//    Precision comes from the dotted import path (`src.domains.x.foo`), which
+//    is this repo's convention in tests — for imports and for `patch()` targets
+//    alike. Warning, never an error: a referencing test does not have to change,
+//    and blocking on that would make the common case a fight.
+const SRC_MODULE_RE = /^src\/(.+)\.py$/;
+
+function collectTestFiles(dir) {
+  const out = [];
+  let items;
+  try {
+    items = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const item of items) {
+    if (item === '__pycache__' || item === '.pytest_cache') continue;
+    const full = `${dir}/${item}`;
+    let st;
+    try {
+      st = statSync(full);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) out.push(...collectTestFiles(full));
+    else if (item.endsWith('.py')) out.push(full);
+  }
+  return out;
+}
+
+const allowlisted = new Set(paths.map((p) => p.replace(/^\.\//, '').replace(/\\/g, '/')));
+const sourceModules = [];
+for (const e of entries) {
+  const m = SRC_MODULE_RE.exec(e.path.replace(/^\.\//, '').replace(/\\/g, '/'));
+  if (!m) continue;
+  if (TEST_PATH_RE.test(e.path)) continue;
+  sourceModules.push({ path: e.path, dotted: `src.${m[1].split('/').join('.')}` });
+}
+
+if (sourceModules.length > 0) {
+  const testFiles = collectTestFiles('tests');
+  const coupled = [];
+  for (const mod of sourceModules) {
+    const referencing = [];
+    for (const tf of testFiles) {
+      if (allowlisted.has(tf)) continue;
+      let body;
+      try {
+        body = readFileSync(tf, 'utf-8');
+      } catch {
+        continue;
+      }
+      if (body.includes(mod.dotted)) referencing.push(tf);
+    }
+    if (referencing.length === 0) continue;
+    // Rank, do not dump. A widely-imported module is referenced by dozens of
+    // tests (`src.infra.telegram.pool` reaches 20+), and a warning listing all
+    // of them is a wall the author scrolls past — the same blindness that
+    // always-red gates train. The tests that actually break are the ones
+    // written *about* this module: its mirror-path test file, or one whose
+    // filename carries the module's basename. The rest are counted, not named.
+    const base = mod.dotted.split('.').pop();
+    const near = referencing.filter((tf) => {
+      const file = tf.split('/').pop();
+      return file.includes(base) || tf.includes(`/${base}/`);
+    });
+    if (near.length > 0) {
+      coupled.push({
+        source: mod.path,
+        module: mod.dotted,
+        unlisted_tests: near,
+        also_referencing_count: referencing.length - near.length
+      });
+    }
+  }
+  if (coupled.length > 0) {
+    warnings.push({
+      code: 'ALLOWLIST_W005_COUPLED_TEST_UNLISTED',
+      message:
+        'Test files reference an allowlisted source module but are not themselves allowlisted. Decide now, not mid-run: for each, either add it to the allowlist or confirm the change cannot touch it. Check specifically for strict `==` on a return value whose shape changes, fixed-length `side_effect` lists that break on a call-count change, and mock chains missing a method the fix newly calls — those three break without naming the changed symbol.',
+      occurrences: coupled
+    });
+  }
 }
 
 const ok = errors.length === 0;
