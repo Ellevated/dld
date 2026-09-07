@@ -204,6 +204,11 @@ def _select_dispatchable_spec(project_dir: str, queued_list: list) -> str | None
     return None
 
 
+# Queued specs one pass may try: a refused one is skipped, the next tried (cap keeps a
+# busy project from logging a refusal for its whole backlog every cycle).
+MAX_DISPATCH_CANDIDATES = 5
+
+
 def scan_queued(project_id: str, project_dir: str) -> bool:
     """Find first queued/resumed spec via lifecycle.yaml and dispatch autopilot.
 
@@ -219,57 +224,59 @@ def scan_queued(project_id: str, project_dir: str) -> bool:
     if not queued_list:
         return False
 
-    spec_id = _select_dispatchable_spec(project_dir, queued_list)
-    if spec_id is None:
-        return False
+    # A refusal skips the spec, not the project (dowry BUG-507 held five ready specs).
+    remaining = list(queued_list)
+    for _ in range(MAX_DISPATCH_CANDIDATES):
+        spec_id = _select_dispatchable_spec(project_dir, remaining)
+        if spec_id is None:
+            return False
+        remaining = [c for c in remaining if c.get("spec_id") != spec_id]
 
-    gate = orchestrator_queue.gate_before_pueue_add(
-        project_id, project_dir, spec_id, SCRIPT_DIR / "callback-audit.jsonl"
-    )
-    if gate is None:
-        return False
-    spec_files, provider = gate
+        gate = orchestrator_queue.gate_before_pueue_add(
+            project_id, project_dir, spec_id, SCRIPT_DIR / "callback-audit.jsonl"
+        )
+        if gate is None:
+            continue
+        spec_files, provider = gate
+        task_label = f"{project_id}:{spec_id}"
+        if pueue_has_active_label(task_label):
+            log.info("skip dispatch: %s already in pueue", task_label)
+            continue
+        if pueue_has_active_spec(spec_id):
+            log.info("skip dispatch: %s live in pueue under another project (Rule 8)", spec_id)
+            continue
+        # BUG-199: pin spec path for the pre-edit hook's Allowed Files enforcement.
+        # Without this, inferSpecFromBranch() returns null on develop after
+        # merge-back, and the hook degrades OPEN — allowing out-of-scope edits.
+        spec_path = str(spec_files[0])
+        pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": spec_path}
+        if not orchestrator_queue.status_still_dispatchable(project_dir, spec_id):
+            continue
+        if orchestrator_queue.reconcile_if_implemented(project_dir, spec_id, spec_files[0]):
+            continue
+        pueue_id = _pueue_add(
+            f"{provider}-runner",
+            task_label,
+            [
+                str(SCRIPT_DIR / "run-agent.sh"),
+                project_dir,
+                provider,
+                "autopilot",
+                f"/autopilot {spec_id}",
+            ],
+            env=pueue_env,
+        )
+        if pueue_id is None:
+            log.error("pueue submission failed: %s/%s", project_id, spec_id)
+            return False
 
-    task_label = f"{project_id}:{spec_id}"
-    if pueue_has_active_label(task_label):
-        log.info("skip dispatch: %s already in pueue", task_label)
-        return False
-    if pueue_has_active_spec(spec_id):
-        log.info("skip dispatch: %s live in pueue under another project (Rule 8)", spec_id)
-        return False
+        orchestrator_queue.record_dispatch(
+            project_id, project_dir, spec_id, provider, task_label, pueue_id
+        )
+        log.info("autopilot submitted: %s spec=%s pueue_id=%d", project_id, spec_id, pueue_id)
+        return True
 
-    # BUG-199: pin spec path for the pre-edit hook's Allowed Files enforcement.
-    # Without this, inferSpecFromBranch() returns null on develop after
-    # merge-back, and the hook degrades OPEN — allowing out-of-scope edits.
-    spec_path = str(spec_files[0])
-    pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": spec_path}
-
-    if not orchestrator_queue.status_still_dispatchable(project_dir, spec_id):
-        return False
-    if orchestrator_queue.reconcile_if_implemented(project_dir, spec_id, spec_files[0]):
-        return False
-
-    pueue_id = _pueue_add(
-        f"{provider}-runner",
-        task_label,
-        [
-            str(SCRIPT_DIR / "run-agent.sh"),
-            project_dir,
-            provider,
-            "autopilot",
-            f"/autopilot {spec_id}",
-        ],
-        env=pueue_env,
-    )
-    if pueue_id is None:
-        log.error("pueue submission failed: %s/%s", project_id, spec_id)
-        return False
-
-    orchestrator_queue.record_dispatch(
-        project_id, project_dir, spec_id, provider, task_label, pueue_id
-    )
-    log.info("autopilot submitted: %s spec=%s pueue_id=%d", project_id, spec_id, pueue_id)
-    return True
+    return False
 
 
 def process_project(project_id: str, project_dir: str) -> None:

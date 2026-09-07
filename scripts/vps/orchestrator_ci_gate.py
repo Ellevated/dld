@@ -36,6 +36,17 @@ log = logging.getLogger("orchestrator")
 CI_STATE_DIR = Path(os.environ.get("CI_STATE_DIR", str(Path.home() / "ops" / "state")))
 _CI_BYPASS_RE = re.compile(r"^\s*ci[-_]gate:\s*bypass\b", re.IGNORECASE | re.MULTILINE)
 
+# OFF by default since 2026-09-07, by founder decision. The gate assumed a green
+# develop is the normal state and red is an incident worth stopping the line for.
+# Measured reality on this fleet: with the number of gates these repos run, green
+# happens around a prod release and red is where develop lives the rest of the
+# time — so "hold every spec while CI is red" is not a safety net, it is a
+# permanent stop. It held 15 ready awardybot specs plus the whole cross-repo
+# Dowry-mc chain for four hours on 2026-09-07 while five compute slots sat idle,
+# and the monitor reported "all checks OK (running=0 queued=0)" the whole time.
+# Set CI_GATE_ENABLED=1 to bring it back where develop is actually green by default.
+CI_GATE_ENABLED = os.environ.get("CI_GATE_ENABLED", "").strip() in {"1", "true", "yes"}
+
 
 def _read(path: Path) -> str | None:
     try:
@@ -46,6 +57,8 @@ def _read(path: Path) -> str | None:
 
 def ci_red_skip_reason(project_id: str, project_dir: str, spec_id: str) -> str | None:
     """Reason to HOLD dispatch of spec_id while the project's CI is red, else None."""
+    if not CI_GATE_ENABLED:
+        return None
     status_file = CI_STATE_DIR / f"{project_id}-ci.status"
     if not status_file.is_file():
         return None
