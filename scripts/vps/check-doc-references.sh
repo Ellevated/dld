@@ -33,7 +33,7 @@ echo ""
 
 # ── ADR tokens ──────────────────────────────────────────────────────────────
 # Extract unique ADR-NNN tokens from orchestrator doc
-adr_tokens=$(grep -oE 'ADR-[0-9]{3}' "${ORCH_DOC}" | sort -u)
+adr_tokens=$(grep -oE 'ADR-[0-9]{3}' "${ORCH_DOC}" | sort -u || true)
 
 for token in ${adr_tokens}; do
     if grep -qF "${token}" "${ARCH_DOC}" 2>/dev/null; then
@@ -46,7 +46,7 @@ done
 
 # ── TECH tokens ──────────────────────────────────────────────────────────────
 # Extract unique TECH-NNN tokens from orchestrator doc (not the doc itself)
-tech_tokens=$(grep -oE 'TECH-[0-9]{3}[a-z]?' "${ORCH_DOC}" | sort -u)
+tech_tokens=$(grep -oE 'TECH-[0-9]{3}[a-z]?' "${ORCH_DOC}" | sort -u || true)
 
 for token in ${tech_tokens}; do
     # Extract numeric part only for file search (ignore sub-spec suffix)
@@ -64,7 +64,7 @@ done
 # Check that "dld-orchestrator.md§N" pointers (where N is a digit or digit+digit)
 # actually point to existing "## §N" sections in the orchestrator doc.
 pointer_refs=$(grep -ohE 'dld-orchestrator\.md§[0-9]+(\.[0-9]+)?' \
-    "${ARCH_DOC}" "${CLAUDE_MD}" 2>/dev/null | sort -u)
+    "${ARCH_DOC}" "${CLAUDE_MD}" 2>/dev/null | sort -u || true)
 
 for ref in ${pointer_refs}; do
     section="${ref#dld-orchestrator.md}"  # e.g. §5 or §5.3

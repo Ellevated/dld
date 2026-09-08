@@ -369,12 +369,16 @@ For Impact × Risk routing matrix, see `.claude/skills/spark/feature-mode.md` Ph
 
 ## DLD Orchestrator Reference
 
-VPS daemon coordinating multi-project AI execution via pueue + SQLite SoT.
-Callback enforces spec/backlog status atomically (ADR-018). Critical path:
-pueue completion → callback.py → verify_status_sync → plumbing commit.
+VPS daemon coordinating multi-project AI execution via pueue + SQLite (runtime) + git
+per-spec YAML (status SoT, ADR-023). Critical path:
+pueue completion → callback.py → guard → lifecycle.write_lifecycle (CAS) → push.
 
-Full docs: `~/.claude/projects/-root/memory/dld-orchestrator.md`
-Runbook:   `~/.claude/projects/-root/memory/orchestrator-runbook.md`
+Canonical docs (in the DLD repo, versioned with the code): `docs/orchestrator/`
+- `README.md` — what/why, architecture, task flow, the two contracts, ADR index
+- `status-model.md` — lifecycle SoT, status writes, write-once-done, guard, invariants
+- `components.md` — per-component reference + dispatch invariants
+- `runbook.md` — operations, incident recovery, drift tooling
+- `verification.md` — manual spec verification protocol
 
 ---
 
