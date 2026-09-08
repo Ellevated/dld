@@ -20,10 +20,15 @@ cd "$PROJECT_DIR"
 # Codex uses sandbox mode for safety
 # set +e: prevent set -euo pipefail from terminating on non-zero exit (timeout/codex)
 set +e
+# stdin from /dev/null: `codex exec` appends stdin to the prompt and blocks until EOF.
+# Under pueue stdin never closes, so 0.149.1 sat on "Reading additional input from stdin"
+# until the 900s timeout — measured 2026-09-08, task 1547. A manual ssh run hid this,
+# because ssh closes stdin for it.
 timeout 900 "$CODEX_BIN" exec \
     "$TASK" \
     --sandbox workspace-write \
     --json \
+    </dev/null \
     2>&1
 EXIT_CODE=$?
 set -e
