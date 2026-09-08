@@ -10,6 +10,11 @@ SKILL="${3:-autopilot}"
 
 CODEX_BIN="${CODEX_PATH:-codex}"
 
+# Record which binary actually ran. A stale global CLI shadowing the maintained one
+# is invisible in the transcript otherwise — it cost three awardybot specs on
+# 2026-09-07 (see the PATH note in run-agent.sh).
+echo "codex-runner: $(command -v "$CODEX_BIN") $("$CODEX_BIN" --version 2>&1 | head -1)" >&2
+
 cd "$PROJECT_DIR"
 
 # Codex uses sandbox mode for safety

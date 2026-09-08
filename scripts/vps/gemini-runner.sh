@@ -19,6 +19,9 @@ if ! command -v "$GEMINI_BIN" &>/dev/null && [[ ! -x "$GEMINI_BIN" ]]; then
     exit 42  # input error
 fi
 
+# Record which binary actually ran (see the PATH note in run-agent.sh).
+echo "gemini-runner: $(command -v "$GEMINI_BIN") $("$GEMINI_BIN" --version 2>&1 | head -1)" >&2
+
 # Validate API key
 if [[ -z "${GEMINI_API_KEY:-}" ]]; then
     jq -n '{"error":"gemini_api_key_missing","detail":"Set GEMINI_API_KEY in .env"}' >&2

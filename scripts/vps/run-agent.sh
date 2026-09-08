@@ -25,6 +25,17 @@ fi
 # Source environment if available
 [[ -f "${SCRIPT_DIR}/.env" ]] && set -a && source "${SCRIPT_DIR}/.env" && set +a
 
+# ADR-031 class: pueue runs with a login-less PATH, so a bare `codex`/`gemini`
+# resolves to whatever root installed globally once (/usr/bin -> /usr/lib/node_modules)
+# and never updated. Measured 2026-09-08: /usr/bin/codex was 0.114.0 from 11.03 while
+# ~/.npm-global held 0.149.1 — every codex dispatch died in ~22s with
+# "The 'gpt-5.6-terra' model requires a newer version of Codex", and the callback
+# recorded the spec as blocked. Prepend the user-owned npm prefix so the runner uses
+# the CLI we actually maintain.
+if [[ -d "${HOME}/.npm-global/bin" ]]; then
+    export PATH="${HOME}/.npm-global/bin:${PATH}"
+fi
+
 # RAM floor gate: require 3GB free before launching an LLM agent
 check_ram() {
     if [[ -f /proc/meminfo ]]; then
