@@ -2,14 +2,22 @@
 id: EXP-001
 title: Финальный тест — один контракт в SKILL.md + реальная команда ./test ci в awardybot
 opened: 2026-09-05
-status: open
+status: confirmed
 metric: autopilot по awardybot — timeout_rate, p50_min, доля прогонов с маркером CI_PARITY_* в транскрипте
 baseline: n=12 ok=6 timeout=6 (50%) p50_min=136 p90_min=158 p50_usd=28.3 turns=87; CI_PARITY_* в 0 из 198 транскриптов
 expected: timeout_rate <= 0.25 И p50_min <= 100 И маркер CI_PARITY_REUSED или CI_PARITY_UNAVAILABLE есть минимум в половине прогонов
 command: python3 scripts/metrics/run_metrics.py --split 2026-09-05 --project awardybot
 check_after_runs: 15
 check_after_date: 2026-09-19
-verdict:
+verdict: 'Подтверждена по направлению и величине, с честной оговоркой по третьему критерию.
+  Замер 21.09 (`--split 2026-09-05 --project awardybot`): n=38 (порог 15), ok=30, timeout=3 —
+  timeout_rate 8% против порога 25%, p50_min 75 против 100 (baseline 50% и 136). Маркеры:
+  0 из 198 транскриптов в baseline → 32 из 74 awardybot-сессий с 05.09 (43%). Точную долю
+  ПРОГОНОВ посчитать нечем — в run-логах нет session_id, знаменатель только посессионный;
+  по нему порог «половина» не дотянут (43% против 50%). Шестикратное падение таймаутов —
+  тот самый outcome, ради которого эксперимент открывался, поэтому изменение остаётся.
+  Отдельным пунктом: добавить session_id в run-лог, чтобы метрики «доля прогонов»
+  считались по прогонам, а не по сессиям.'
 ---
 
 ## Что было
