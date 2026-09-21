@@ -445,9 +445,9 @@ Write spec using selected approach from Phase 4:
 ## Impact Tree Analysis (ARCH-392)
 
 ### Step 1: UP — who uses?
-_Source: code graph or grep — state which._
-- [ ] `trace_path(project, function_name="{name}", direction="inbound", depth=2)` → ___ callers
-      (no graph: `grep -r "from.*{module}" . --include="*.py"` → ___ results)
+_Source: grep — state the command._
+- [ ] `grep -r "from.*{module}" . --include="*.py"` → ___ callers
+      plus `grep -rn "{name}" .` for call sites the import line does not cover
 - [ ] All callers identified: [list files]
 
 ### Step 2: DOWN — what depends on?

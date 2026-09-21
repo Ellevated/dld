@@ -125,45 +125,26 @@ Knowledge that prevents breakage during refactoring. In **this** repo it is two 
 
 ### Impact Tree Algorithm (5 steps)
 
-On any change. Steps 1-2 run on the **code graph** if it is fresh, on `grep` if it is not.
+On any change. Steps run on `grep` — and `ast-grep` when the question is about code *shape*
+rather than a string — so the answer is as current as the working tree. There is no index to
+keep fresh and no rebuild to remember.
 
-**The graph here** is the `codebase-memory` MCP (external OSS, `DeusData/codebase-memory-mcp`),
-project `D-dev-dld`. **Rebuild it, don't check it:** re-indexing dld from scratch costs
-**17 s** on 0.10.8 — cheaper than working out whether you need to. Node count is a poor
-predictor of that cost: a full rebuild of every project on this machine (2026-08-28, CLI
-0.10.8, cold — the 0.9.0→0.10.8 upgrade wipes all indexes) took 14 s for 130k nodes
-(AwardyBot) but 65 s for 68k (Dowry), 47 s for 92k (wb), 13-17 s for everything else.
-File mix dominates, not size. The older numbers here (687 ms, 235 s) were 0.9.0
-*incremental* runs and no longer apply.
-
-Both plausible freshness signals lie, verified 2026-08-27: `index_status.head_sha` is read live
-from git, so it equals `HEAD` whether the graph was built a second ago or a month ago, and
-`detect_changes` returns a git diff against `main` (812 files here), not index drift. `mode`
-matters too — `fast` drops `scripts/`, `docs/` and `tests/integration` from the graph entirely.
-
-1. **UP** — who uses the changed code? →
-   `trace_path(project="D-dev-dld", function_name="write_lifecycle", direction="inbound", depth=2)`
-   returns 10 callers (0.10.8; 0.9.0 found 9) across `callback.py`,
-   `orchestrator_queue.py`, `spec_operator.py` and `orchestrator.py`,
-   including 2-hop ones a single grep never sees ·
-   fallback `grep -r "from.*{module}" .`
-2. **DOWN** — what does it depend on? → the same call with `direction="outbound"` · fallback:
-   imports in the file
-3. **BY TERM** — `grep -rn "{old_term}" .` — **always grep here**, graph or no graph
+1. **UP** — who uses the changed code? → `grep -rn "<name>" .` plus the module's import line
+   (`grep -rn "from.*{module}" .`) — the import line is what finds two-hop callers a single
+   name-grep misses. `ast-grep run -p '<pattern>' --lang <lang>` when the call shape matters,
+   not the name.
+2. **DOWN** — what does it depend on? → imports and calls in the body of the file/function.
+3. **BY TERM** — `grep -rn "{old_term}" .` — a rename survives in configs, migrations, docs
+   and prompts, not only in code.
 4. **CHECKLIST** — mandatory folders (`tests/`, `scripts/vps/tests/`, `template/`)
 5. **DUAL SYSTEM** — if changing data source, who reads from old/new?
 
-**Rule:** After changes `grep "{old_term}" .` = 0 results! Grep stays the acceptance check even
-when the graph found the call sites.
-
-**What the graph does not cover here** (verified 2026-08-27): the indexer skips hidden
-directories, so `.claude/**` and `template/.claude/**` — the whole prompt tree, which is this
-repo's actual product — have **zero** nodes. It covers `scripts/`, `tests/`, `packages/`,
-`docs/`, `ai/` and root-level `*.md`.
+**Rule:** After changes `grep "{old_term}" .` = 0 results!
 
 **In this repo, step 4 always includes `template/`.** A rename finished in one tree and not
-the other is the defect this framework produces most often — and it is exactly the case the
-graph cannot catch, because neither tree's `.claude/` is indexed.
+the other is the defect this framework produces most often. `scripts/check-tree-sync.py`
+compares the executable twins' function bodies in CI — code only: prose, module-level
+statements and constants are on you.
 
 ---
 

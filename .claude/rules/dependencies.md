@@ -846,46 +846,6 @@ Used as operator visibility tool and CI smoke gate.
 
 ---
 
-## .claude/hooks/graph-context.mjs (EXP-004)
-
-**Path:** `.claude/hooks/graph-context.mjs` (+ identical `template/` copy)
-
-PreToolUse hook on `Edit|Write|MultiEdit`. Reads the codebase-memory index directly over
-SQLite and injects the edited file's blast radius — importers, callers, tests — into the
-model's context before the edit runs. Registered as the SECOND hook on that matcher in
-`settings.json`; `pre-edit` stays first and owns the permission decision. This hook
-returns `additionalContext` and NO `permissionDecision`, deliberately: hook results merge
-with `deny > ask > allow`, and an `allow` here would be a vote in a decision this hook has
-no business in.
-
-### Uses (→)
-
-| What | Where | Function |
-|------|-------|----------|
-| `node:sqlite` | stdlib (Node >= 22) | `DatabaseSync(readOnly)` over `~/.cache/codebase-memory-mcp/<project>.db` |
-| `.claude/hooks/utils.mjs` | same dir | `readHookInput`, `getToolInput`, `debugLog`, `debugTiming`, `logHookError` |
-| git CLI | PATH | `worktree list --porcelain` (canonical root → index filename) + `rev-parse --show-toplevel` (worktree → relative path). Mixing the two roots returns an empty result every time |
-| codebase-memory index | `~/.cache/codebase-memory-mcp/` or `$CBM_CACHE_DIR` | tables `nodes` / `edges`; edge types CALLS, USAGE, IMPORTS, TESTS, HTTP_CALLS, DEPENDS_ON |
-
-### Used by (←)
-
-| Who | File:line | Function |
-|-----|-----------|----------|
-| Claude Code | `.claude/settings.json` → PreToolUse `Edit\|Write\|MultiEdit` | `node .claude/hooks/run-hook.mjs graph-context` |
-| Claude Code (downstream) | `template/.claude/settings.json` | same entry, shipped to every bootstrapped project |
-| test/scripts/graph-context.test.mjs | 12 assertions | imports the pure functions (`DLD_GRAPH_HOOK_IMPORT_ONLY=1` suppresses `main()`) and runs the hook end-to-end against a real index |
-| scripts/metrics/graph_injection_stats.py | EXP-004 verdict | counts injections in transcripts by the literal marker `BLAST RADIUS — ` |
-
-### When changing API, check
-
-- [ ] `template/.claude/hooks/graph-context.mjs` (byte-identical copy — `scripts/check-tree-sync.py`)
-- [ ] `scripts/metrics/graph_injection_stats.py` (`INJECTION_MARKER` and the section labels it parses are this hook's own wording — change the message, break the metric)
-- [ ] `.github/workflows/ci.yml` → `harness-test` node-version (must stay >= 22; `node:sqlite` does not exist in 20 and the hook fails open there)
-- [ ] `ai/experiments/2026-09-07-graph-injection-hook.md` (the open experiment measuring this)
-- [ ] index freshness — nothing re-indexes on a schedule; a stale index makes the injection quietly wrong, and the hook only prints its age
-
----
-
 ## .claude/scripts/ (skill-invoked gates)
 
 **Path:** `.claude/scripts/*.mjs`
@@ -931,7 +891,7 @@ calls it.** Each ships in `template/scripts/` too.
 | `check_domain_imports.py` | `agents/review.md` §6, `agents/architect/evolutionary.md`, `agents/architect/synthesizer.md` | argv: files, or whole `src/`. `--src`, `--json`. 0 = pass **or no source root**, 1 = violations, 2 = usage. Enforces `shared → infra → domains → api` + no cross-domain imports, via ast |
 | `check_docs_sync.py` | `agents/review.md` §5 | argv: files, or whole tree. `--env`, `--all`, `--json`. 0 = pass **or no env template**, 1 = env vars read by code but absent from `.env.example` |
 | `check-loc-limit.sh` | CI (`.github/workflows/ci.yml` → "LOC ceiling"), manual | argv: `[--json] [dir ...]`, default `scripts/vps`. 0 = every file within its limit or unchanged at its baseline, 1 = new violation / baselined file grew / stale entry, 2 = usage. Debt register: `scripts/vps/loc-limit-baseline.txt`. Tests: `scripts/vps/tests/test_check_loc_limit.py` (ARCH-209) |
-| `check-tree-sync.py` | manual; `rules/template-sync.md` | no argv. 0 = clean **or unavailable**, 1 = drift, 2 = graph unreadable. Reads function spans from the `codebase-memory` graph and compares the bodies across `.claude/` and `template/.claude/`. Root-only — needs two trees. Depends on `.cbmignore` un-skipping them; without it the check reports UNAVAILABLE rather than a false clean |
+| `check-tree-sync.py` | CI (`.github/workflows/ci.yml` → "Tree sync"), manual; `rules/template-sync.md` | argv: `[--require-tool]`. 0 = clean **or unavailable**, 1 = drift, 2 = extractor failed. `ast-grep` extracts top-level functions and arrow consts from `.claude/` and `template/.claude/`, compares bodies with the same `(file, name)` key. Root-only — needs two trees. Reads the same tree-sitter syntax the removed graph did, on demand: nothing to index, no staleness window. `--require-tool` makes a missing ast-grep exit 2 instead of a green skip (CI passes it) |
 
 Both new checks exit 0 when they do not apply — DLD itself has no `src/` and no
 `.env.example`. A gate that fails where it is inapplicable gets switched off everywhere,

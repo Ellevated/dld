@@ -157,30 +157,21 @@ ai/glossary/
 
 ### Impact Tree Algorithm (5 steps)
 
-On any change. Steps 1-2 run on the **code graph** if one is indexed, on `grep` if not.
+On any change. Steps run on `grep` — and `ast-grep` when the question is about code *shape*
+rather than a string — so the answer is as current as the working tree. There is no index to
+keep fresh and no rebuild to remember.
 
-**Graph** = a code-graph MCP (`codebase-memory` or equivalent: `list_projects`, `search_graph`,
-`trace_path`, `index_repository`). **Rebuild before you trust it** — an incremental rebuild after
-a few edits is sub-second, which is cheaper than reasoning about whether the index is current.
-A *first* index is not: it scales with the repo, from ~1 s at 5k graph nodes to ~4 min at 130k
-(measured across eight repos, 2026-08-28). Pay that once per session, not once per question.
-
-Do not hunt for a staleness field. In `codebase-memory` neither `head_sha` (read live from git,
-so always equal to `HEAD`) nor `detect_changes` (a git diff against the base branch) reports
-index drift. Rebuilding is the check.
-
-1. **UP** — who uses the changed code? → `trace_path(function_name, direction="inbound", depth=2)`
-   gives transitive callers, not just direct imports · fallback `grep -r "from.*{module}" .`
-2. **DOWN** — what does it depend on? → the same call with `direction="outbound"` · fallback:
-   imports in the file
-3. **BY TERM** — `grep -rn "{old_term}" .` — **always grep here.** The graph indexes definitions;
-   a rename survives in configs, migrations, docs and prompts, which it does not index
+1. **UP** — who uses the changed code? → `grep -rn "<name>" .` plus the module's import line
+   (`grep -rn "from.*{module}" .`) — the import line finds two-hop callers a single name-grep
+   misses.
+2. **DOWN** — what does it depend on? → imports and calls in the body.
+3. **BY TERM** — `grep -rn "{old_term}" .` — **always grep here.** A rename survives in
+   configs, migrations, docs and prompts, not only in code.
 4. **CHECKLIST** — mandatory folders (tests/, migrations/, edge functions/)
 5. **DUAL SYSTEM** — if changing data source, who reads from old/new?
 
-**Rule:** After changes `grep "{old_term}" .` = 0 results! Grep stays the acceptance check even
-when the graph found the call sites — it narrows the search, it does not close it. It misses
-dynamic dispatch, string-keyed lookups, and (in most indexers) hidden directories.
+**Rule:** After changes `grep "{old_term}" .` = 0 results! Grep is the acceptance check. It
+misses dynamic dispatch, string-keyed lookups and hidden directories — those are on you.
 
 ### Module Headers
 

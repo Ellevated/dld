@@ -103,7 +103,7 @@ Only after root cause is found → create BUG-XXX spec:
 ## Impact Tree Analysis
 
 ### Step 1: UP — who uses?
-_Source: code graph (`trace_path` inbound) or grep — state which._
+_Source: grep (`grep -r "from.*{module}" .`) — state the command._
 - [ ] All callers identified: [list files]
 
 ### Step 2: DOWN — what depends on?
