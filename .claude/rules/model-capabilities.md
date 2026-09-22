@@ -8,10 +8,11 @@ paths:
   - "scripts/vps/run-agent.sh"
 ---
 
-# Model Capabilities (Claude Opus 5 / Sonnet 5)
+# Model Capabilities (Claude Opus 5 / 5.5, Sonnet 5)
 
 Reference for agents about current model capabilities.
-Last updated: 2026-07-30 — verified against platform.claude.com, not from memory.
+Last updated: 2026-09-23 — Opus 5.5 facts from Anthropic's migration guide (bundled
+`claude-api` skill, CLI 2.1.280); the rest verified against platform.claude.com.
 
 ---
 
@@ -20,17 +21,31 @@ Last updated: 2026-07-30 — verified against platform.claude.com, not from memo
 | Role | Model ID | Pricing (in/out per Mtok) |
 |------|----------|---------------------------|
 | Main loop, deep reasoning, review | `claude-opus-5` | $5 / $25 |
-| Implementation, research, orchestration | `claude-sonnet-5` | **$2 / $10 through 2026-08-31**, then $3 / $15 |
+| **Not routed yet** — see below | `claude-opus-5-5` | $4 / $20 |
+| Implementation, research, orchestration | `claude-sonnet-5` | $3 / $15 (introductory $2 / $10 ended 2026-08-31) |
 | Formatting, collection, listing | `claude-haiku-4-5-20251001` | $1 / $5 |
 | **Not routed** — see below | `claude-fable-5` | $10 / $50 |
+| **Not routed** | `claude-fable-5-1` | $10 / $50 |
 
 **Claude Opus 5** — released 2026-07-24. Step-change over Opus 4.8, not incremental:
 frontier intelligence at half the cost of Fable 5, same price as Opus 4.8. (Both halves
 verified 2026-07-27 against the pricing page.)
 
-**Claude Sonnet 5 is on introductory pricing until 2026-08-31** — $2/$10 rather than
-$3/$15. Every sonnet-vs-opus cost comparison made before September is working from a
-number 33% too high. The date is the point: this row expires.
+**Claude Opus 5.5** — released 2026-09-22, successor to Opus 5 at a lower price. Cache
+reads cost $0.20 per Mtok (0.05× input, against Opus 5's 0.1×). Anthropic reports that at
+its default `medium` effort it matches or beats Opus 5 at `high` on agentic coding and
+code review, in fewer steps and with about half the tokens. Knowledge cutoff June 2026.
+Breaking changes are listed under "Opus 5 → Opus 5.5" below.
+
+**CLI 2.1.280 resolves the `opus` alias to `claude-opus-5-5`.** A run whose main loop is
+pinned to `claude-opus-5` therefore sends every `model: opus` subagent to the next
+generation unless the aliases are pinned too. `claude-runner.py` pins them since
+2026-09-23 (`runner_models.alias_pins`); the main-loop switch to 5.5 is a separate,
+measured step.
+
+**Claude Fable 5.1** — successor to Fable 5 at the same price. Cache reads cost $0.25 per
+Mtok (0.025×). Forced `tool_choice` (`any` / `tool`) is rejected with a 400. Not routed,
+for the same reasons as Fable 5.
 
 **Previous:** Opus 4.8 (`claude-opus-4-8`) — superseded, still available for rollback.
 
@@ -69,17 +84,18 @@ token price can still be cheaper per completed spec. Raise the timeout first.
 
 ## Key Capabilities
 
-| Feature | Opus 5 | Sonnet 5 |
-|---------|--------|----------|
-| Context window | **1M (default AND maximum)** — no smaller variant | **1M** |
-| Max output tokens | 128K | **128K** |
-| Thinking | **On by default** (adaptive) | **On by default** (adaptive) |
-| Effort levels | low / medium / high / **xhigh** / max | low / medium / high / **xhigh** / max |
-| Default effort | `high` | `high` |
-| Reliable knowledge cutoff | **May 2026** | **Jan 2026** |
-| Safety classifiers (`stop_reason: "refusal"`) | **Yes** | No |
-| Prompt cache minimum | **512 tokens** (was 1024) | 1024 tokens |
-| Fast mode | Yes, API only — $10/$50 per Mtok (research preview) | — |
+| Feature | Opus 5 | Opus 5.5 | Sonnet 5 |
+|---------|--------|----------|----------|
+| Context window | **1M (default AND maximum)** — no smaller variant | **1M** | **1M** |
+| Max output tokens | 128K | 128K | **128K** |
+| Thinking | **On by default** (adaptive) | **Always on** — `disabled` returns 400 | **On by default** (adaptive) |
+| Effort levels | low / medium / high / **xhigh** / max | low / medium / high / **xhigh** / max | low / medium / high / **xhigh** / max |
+| Default effort | `high` | **`medium`** | `high` |
+| Reliable knowledge cutoff | **May 2026** | **June 2026** | **Jan 2026** |
+| Safety classifiers (`stop_reason: "refusal"`) | **Yes** (cyber) | **Yes** (cyber, bio, reasoning_extraction) | No |
+| Cache read, × input price | 0.1× | **0.05×** | 0.1× |
+| Prompt cache minimum | **512 tokens** (was 1024) | 512 tokens | 1024 tokens |
+| Fast mode | Yes, API only — $10/$50 per Mtok (research preview) | Yes, API only — $8/$40 | — |
 
 **Long context:** Opus 5 keeps instruction following, tool calling and reasoning
 consistent across the whole 1M window. No "front-load the important stuff" tricks needed.
@@ -119,7 +135,7 @@ Their level table names `low` as the level for **subagents** specifically.
 
 | Agent Role | Model | Effort | Rationale |
 |------------|-------|--------|-----------|
-| autopilot main loop (claude-runner) | opus | **high** | Long-horizon agentic coding. **Not xhigh:** `xhigh` is not in the SDK enum (`_VALID_EFFORT` in `claude-runner.py`, ADR-028), so setting it silently falls back to `high`. This row said xhigh and described a config that could not exist |
+| autopilot main loop (claude-runner) | opus | **medium** on the VPS | The code default is `high`, but `scripts/vps/.env` sets `AUTOPILOT_EFFORT=medium`, and every Opus 5 autopilot run on the VPS (251 run logs, July–September) ran at `medium`. This row said `high` until 2026-09-23. **Not xhigh:** `xhigh` is not in the SDK enum (`_VALID_EFFORT` in `claude-runner.py`, ADR-028), so setting it silently falls back to `high` |
 | planner | opus | high | Deep analysis. Was held at high (not xhigh) for the 90-min TIMEOUT_SECONDS budget (BUG-1101) — a harness constraint, not a quality finding. **That constraint lifted on 2026-08-23** (timeout 5400 → 10800). Still `high`: raising it is now a measurable experiment rather than a blocked one, and it should be run as one — the same change that unblocked it also tripled the wall-clock cost of getting it wrong |
 | review (Code Quality Gate) | **opus** | **low** | Opus 5 finds real bugs at high rate per pass with few false positives, **and accuracy holds at lower effort**. Direct Anthropic recommendation — replaces sonnet/xhigh (ADR-029) |
 | debugger | opus | high | Root cause analysis. Down from max — max causes overthinking on structured tasks |
@@ -286,6 +302,18 @@ for category or fallback model.
 - **A refused request is not billed** when it arrives before any output, so cost telemetry
   will not show it either. The `classifier_refusals` row is the only counter.
 
+### Opus 5 → Opus 5.5
+
+| What | Impact | Action |
+|------|--------|--------|
+| Thinking **always on**: `{"type":"disabled"}` and `budget_tokens` return 400 at every effort | Breaking for code that disables thinking | Omit `thinking`; lower `effort` instead. Never add "do not think" rules |
+| **Default effort is `medium`**, and at the same level 5.5 thinks more than Opus 5 | A route that omits `effort` runs one level lower; a route that keeps Opus 5's level gets longer turns | Set `effort` explicitly and sweep it; lower effort before prompting for brevity |
+| Forced `tool_choice` (`any` / `tool`) returns 400 | Breaking for direct API callers | `auto` + `strict: true` + the tool named in the prompt, or structured outputs |
+| Thinking blocks bound to the model and the conversation | A harness that edits earlier turns gets a 400 on accounts created on or after 2026-08-31 | Claude Code and the Agent SDK keep the prefix intact — only hand-built `messages` are affected |
+| Computer use only through `computer_toolset_20260801` | `computer_20251124` returns 400 | Move to the toolset |
+| Text between tool calls comes back as `thinking` blocks (empty by default) | A client that renders only `text` blocks goes quiet during long turns | `thinking.display: "updates"` if the notes are needed |
+| Classifiers add `bio` and `reasoning_extraction` to `cyber` | `reasoning_extraction` declines are **not** retried on a fallback. Per the launch announcement, flagged cyber work is completed by Opus 4.8 and bio by Opus 5 | Never ask a model to reproduce its reasoning in the reply. Expect a fallback model in `model_usage` |
+
 ### Opus 4.8 → Opus 5
 
 | What | Impact | Action |
@@ -317,7 +345,7 @@ Sonnet 5 @ high ≈ Sonnet 4.6 @ max. Benchmark by observed thinking length, not
 4. **Self-verification is built in** — do not add verification steps
 5. **Code review is a strength** — high recall per pass, holds at low effort
 6. **Prompt caching automatic**; 512-token minimum on Opus 5. `ENABLE_PROMPT_CACHING_1H=1` extends TTL to 1h
-7. **Knowledge cutoff differs by model** — Opus 5 is May 2026, **Sonnet 5 is Jan 2026**.
+7. **Knowledge cutoff differs by model** — Opus 5.5 is June 2026, Opus 5 is May 2026, **Sonnet 5 is Jan 2026**.
    Search for events after your own cutoff, exact versions/prices, or genuine uncertainty.
    Sonnet agents that assume the May date under-search four months
 8. **A refusal is not an answer** — on opus, `stop_reason: "refusal"` comes back as a
@@ -333,3 +361,8 @@ Sonnet 5 @ high ≈ Sonnet 4.6 @ max. Benchmark by observed thinking length, not
 **Rule:** model is defined ONCE in agent frontmatter `model:`.
 Never hardcode a model in skill dispatch — use `subagent_type` only.
 Frontmatter aliases (`opus`/`sonnet`/`haiku`) resolve to the latest build the CLI supports.
+To hold them to a generation, set `ANTHROPIC_DEFAULT_OPUS_MODEL`,
+`ANTHROPIC_DEFAULT_SONNET_MODEL` and `ANTHROPIC_DEFAULT_HAIKU_MODEL` in the environment that
+launches the run. Verified on CLI 2.1.280: a `model: opus` subagent went to
+`claude-opus-5-5` without the variable and to `claude-opus-5` with it. `claude-runner.py`
+sets all three from `runner_models.alias_pins`.
