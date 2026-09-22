@@ -232,15 +232,22 @@ def bootstrap_new_specs(project_dir: str) -> None:
 def _parse_priority_kind(spec_md: Path) -> tuple:
     """Extract Priority and Kind from spec markdown header (best-effort).
 
-    Returns ("p1", "tech") defaults if not found. Spec format:
+    Returns ("p1", <kind>) if not found. Spec format:
         **Priority:** P0|P1|P2
         **Kind:** tech|ftr|bug|arch
+    Without a **Kind:** header the kind comes from the file's ID prefix
+    (FTR-... -> ftr): awardybot/dowry specs never carry the header, and the old
+    flat "tech" default labelled every FTR/BUG/ARCH as tech in backlog.md.
     """
     text = spec_md.read_text(errors="replace")[:2000]
     p_m = re.search(r"\*\*Priority:\*\*\s*([pP][012])", text)
     k_m = re.search(r"\*\*Kind:\*\*\s*(tech|ftr|bug|arch)", text, re.IGNORECASE)
     priority = p_m.group(1).lower() if p_m else "p1"
-    kind = k_m.group(1).lower() if k_m else "tech"
+    if k_m:
+        kind = k_m.group(1).lower()
+    else:
+        prefix = spec_md.name.split("-", 1)[0].upper()
+        kind = {"FTR": "ftr", "BUG": "bug", "ARCH": "arch"}.get(prefix, "tech")
     return priority, kind
 
 
