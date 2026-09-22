@@ -26,6 +26,7 @@ import runner_cost  # noqa: E402 — prices a run the timeout killed before Resu
 import runner_env  # noqa: E402 — .env loader (TECH-213)
 import runner_heartbeat  # noqa: E402 — per-turn heartbeat file (TECH-213)
 import runner_loop  # noqa: E402 — the SDK message loop (TECH-213)
+import runner_models  # noqa: E402 — main-loop default, alias pins, expected models
 import runner_refusal  # noqa: E402 — classifier-decline detection (TECH-213)
 import runner_result  # noqa: E402 — run state, usage rollup, run log (TECH-213)
 
@@ -111,8 +112,17 @@ TIMEOUT_SECONDS = 10800  # 3 h. Was 5400 (2026-03-12 → 2026-08-23); see above.
 MAX_TURNS = 300
 # Main autopilot loop model. Explicit (not settings-alias "opus") so the SDK is
 # pinned deterministically. Override per-task via AUTOPILOT_MODEL env. Subagents
-# resolve their own model from agent frontmatter. See rules/model-capabilities.md.
-MODEL = os.environ.get("AUTOPILOT_MODEL", "claude-opus-5")
+# resolve their model from agent frontmatter aliases, and ALIAS_PINS fixes what those
+# aliases mean for this run — without it a CLI update moves every `model: opus` agent
+# to a new generation while this pin stays put. See rules/model-capabilities.md.
+MODEL = os.environ.get("AUTOPILOT_MODEL", runner_models.DEFAULT_MAIN_MODEL)
+ALIAS_PINS = runner_models.alias_pins(MODEL)
+# Main loop system prompt, EXP-009: `claude_code` = the CLI's own prompt, which
+# Anthropic re-tunes per model generation; `empty` = what every run got until
+# 2026-09-23, because the SDK turns an unset system_prompt into `--system-prompt ""`.
+AUTOPILOT_SYSTEM_PROMPT = os.environ.get("AUTOPILOT_SYSTEM_PROMPT", "claude_code")
+if AUTOPILOT_SYSTEM_PROMPT not in {"claude_code", "empty"}:
+    AUTOPILOT_SYSTEM_PROMPT = "claude_code"  # fail-safe: unknown value → default
 # Main loop effort level.  SDK enum: low|medium|high|max (the "extra-high" level
 # accepted by CLI/frontmatter is NOT part of the SDK enum and would be rejected
 # by ClaudeAgentOptions).  Subagents resolve effort from frontmatter.  ADR-028.
@@ -182,7 +192,8 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
     prompt = task if task.startswith("/") else f"/{skill} {task}"
 
     logger.info(
-        "project=%s skill=%s prompt=%s cwd=%s cli=%s v=%s model=%s effort=%s",
+        "project=%s skill=%s prompt=%s cwd=%s cli=%s v=%s model=%s effort=%s "
+        "system_prompt=%s pins=%s",
         project_name,
         skill,
         prompt,
@@ -191,6 +202,8 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         ".".join(map(str, CLI_VERSION)) if CLI_VERSION else "unknown",
         MODEL,
         AUTOPILOT_EFFORT,
+        AUTOPILOT_SYSTEM_PROMPT,
+        ALIAS_PINS,
     )
     runner_cli.warn_if_stale(CLI_PATH, CLI_VERSION, MODEL)
 
@@ -202,6 +215,8 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         effort=AUTOPILOT_EFFORT,
         cli_path=CLI_PATH,
         max_turns=MAX_TURNS,
+        alias_pins=ALIAS_PINS,
+        system_prompt=AUTOPILOT_SYSTEM_PROMPT,
     )
 
     state = runner_result.new_run_state()
@@ -290,6 +305,8 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         refusal=refusal,
         stderr_log=str(stderr_file),
         stderr_line_count=len(stderr_lines),
+        alias_pins=ALIAS_PINS,
+        system_prompt=AUTOPILOT_SYSTEM_PROMPT,
     )
     runner_result.log_refusal_telemetry(
         refusal,

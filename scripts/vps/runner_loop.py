@@ -84,12 +84,28 @@ def make_stderr_collector(stderr_path: Path | None = None):
     return stderr_lines, _collector
 
 
-def build_options(project_path: Path, stderr_collector, *, model, effort, cli_path, max_turns):
+def build_options(
+    project_path: Path,
+    stderr_collector,
+    *,
+    model,
+    effort,
+    cli_path,
+    max_turns,
+    alias_pins=None,
+    system_prompt="claude_code",
+):
     """Assemble ClaudeAgentOptions for one run."""
     return ClaudeAgentOptions(
         cwd=str(project_path),
         model=model,  # pinned by the caller (env: AUTOPILOT_MODEL)
         effort=effort,  # pinned by the caller (default high); see ADR-028
+        # EXP-009. Left unset, the SDK sends `--system-prompt ""` and the main loop runs
+        # without the CLI's own prompt — every run until 2026-09-23 did. The preset
+        # without `append` passes no flag at all, so the CLI uses its default prompt.
+        system_prompt=(
+            {"type": "preset", "preset": "claude_code"} if system_prompt == "claude_code" else None
+        ),
         cli_path=cli_path,  # system CLI, not the stale bundled one (model pin drifts)
         setting_sources=["user", "project"],  # Loads CLAUDE.md + .claude/skills/
         allowed_tools=ALLOWED_TOOLS,
@@ -116,6 +132,9 @@ def build_options(project_path: Path, stderr_collector, *, model, effort, cli_pa
             # timeout (23.08) could not help: the loop is inside the tool call.
             "BASH_DEFAULT_TIMEOUT_MS": os.environ.get("BASH_DEFAULT_TIMEOUT_MS", "900000"),
             "BASH_MAX_TIMEOUT_MS": os.environ.get("BASH_MAX_TIMEOUT_MS", "1800000"),
+            # ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL: what frontmatter aliases
+            # resolve to. See runner_models.alias_pins.
+            **(alias_pins or {}),
         },
         stderr=stderr_collector,
     )

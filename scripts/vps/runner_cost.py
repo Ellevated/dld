@@ -16,44 +16,50 @@ this process; anything the CLI did not report is not in it. Runs that end normal
 using the ResultMessage figure — `cost_source` in the run log says which one you are
 reading. Never sum an estimated cost with a billed one and present the total as spend.
 
-stdlib only, no SDK import: the runner's tests load these modules with a fake SDK in
+stdlib plus runner_models, no SDK import: the runner's tests load these modules with a fake SDK in
 `sys.modules`, and duck-typing keeps this one out of that dance.
 """
 
 import logging
 
+import runner_models
+
 logger = logging.getLogger("claude-runner")
 
-# USD per million tokens: (input, output). Source: rules/model-capabilities.md,
-# which is checked against platform.claude.com rather than from memory.
-# Sonnet's introductory $2/$10 expired 2026-08-31 — this is the standard rate.
+# USD per million tokens: (input, output, cache-read multiplier). Source:
+# rules/model-capabilities.md, which is checked against platform.claude.com rather
+# than from memory. Sonnet's introductory $2/$10 expired 2026-08-31 — this is the
+# standard rate. Cache reads are not one multiplier across the family: Opus 5.5 reads
+# at 0.05x its input rate and Fable 5.1 at 0.025x, against the standard 0.1x.
 _PRICES = {
-    "claude-opus-5": (5.0, 25.0),
-    "claude-opus-4-8": (5.0, 25.0),
-    "claude-sonnet-5": (3.0, 15.0),
-    "claude-haiku-4-5": (1.0, 5.0),
-    "claude-fable-5": (10.0, 50.0),
+    "claude-opus-5-5": (4.0, 20.0, 0.05),
+    "claude-opus-5": (5.0, 25.0, 0.1),
+    "claude-opus-4-8": (5.0, 25.0, 0.1),
+    "claude-sonnet-5": (3.0, 15.0, 0.1),
+    "claude-haiku-4-5": (1.0, 5.0, 0.1),
+    "claude-fable-5-1": (10.0, 50.0, 0.025),
+    "claude-fable-5": (10.0, 50.0, 0.1),
 }
 _DEFAULT_PRICE = _PRICES["claude-opus-5"]  # the pinned main-loop model
 
-# Anthropic cache multipliers against the model's base input rate.
+# Anthropic cache-write multipliers against the model's base input rate.
 _CACHE_WRITE_5M = 1.25
 _CACHE_WRITE_1H = 2.0
-_CACHE_READ = 0.1
 
 
-def _price_for(model: str) -> tuple[float, float]:
-    """Match a reported model id to a price row by longest-prefix, never by equality.
+def _price_for(model: str) -> tuple[float, float, float]:
+    """Look a reported model id up by its canonical name — exact, never by prefix.
 
-    Reported ids carry build suffixes (`claude-haiku-4-5-20251001`), and an unknown
-    model must not silently price at zero — an unpriced model would reintroduce the
-    exact blind spot this module exists to close, just one generation later.
+    Prefix matching priced `claude-opus-5-5` as `claude-opus-5` without a word: 25%
+    over on input and output, 2.5x over on cache reads. An unknown model must not
+    silently price at zero either — an unpriced model would reintroduce the exact
+    blind spot this module exists to close, just one generation later.
     """
     if not model:
         return _DEFAULT_PRICE
-    for known in sorted(_PRICES, key=len, reverse=True):
-        if model.startswith(known):
-            return _PRICES[known]
+    price = _PRICES.get(runner_models.canonical_model(model))
+    if price is not None:
+        return price
     logger.warning(
         "COST ESTIMATE: model %r is not in the price table — pricing it as opus-5. "
         "Add it to runner_cost._PRICES (source: rules/model-capabilities.md).",
@@ -110,13 +116,13 @@ def estimate(stream_usage: dict) -> float:
     """Price accumulated per-model usage. Returns USD, rounded to 4 decimals."""
     total = 0.0
     for model, u in (stream_usage or {}).items():
-        price_in, price_out = _price_for(model)
+        price_in, price_out, cache_read = _price_for(model)
         total += (
             u.get("input", 0) * price_in
             + u.get("output", 0) * price_out
             + u.get("cache_write_5m", 0) * price_in * _CACHE_WRITE_5M
             + u.get("cache_write_1h", 0) * price_in * _CACHE_WRITE_1H
-            + u.get("cache_read", 0) * price_in * _CACHE_READ
+            + u.get("cache_read", 0) * price_in * cache_read
         ) / 1_000_000
     return round(total, 4)
 

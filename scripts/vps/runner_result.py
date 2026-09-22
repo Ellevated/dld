@@ -2,7 +2,7 @@
 Module: runner_result
 Role: parse the agent's final ResultMessage text, roll per-model usage up into
       session-wide telemetry, and fold SDK message state into the run log.
-Uses: json, os, re, logging
+Uses: json, re, logging, runner_cost, runner_models
 
 Used by:
   - claude-runner.py
@@ -15,10 +15,10 @@ the already-typed message.
 
 import json
 import logging
-import os
 import re
 
 import runner_cost
+import runner_models
 
 logger = logging.getLogger("claude-runner")
 
@@ -53,19 +53,13 @@ def _extract_task_status(result_text: str) -> str:
     return m.group(1) if m else ""
 
 
-# Models this generation is supposed to use. Subagents resolve `opus`/`sonnet`
-# aliases through the CLI, so a stale binary silently serves a previous
-# generation to every subagent while the main loop's explicit pin looks correct.
-# Production logs from 2026-07-16..18 show exactly that: main loop on
-# claude-opus-4-8 with claude-opus-4-6 and claude-sonnet-4-6 subagents underneath.
-_EXPECTED_MODELS = frozenset(
-    m.strip()
-    for m in os.environ.get(
-        "AUTOPILOT_EXPECTED_MODELS",
-        "claude-opus-5,claude-sonnet-5,claude-haiku-4-5-20251001",
-    ).split(",")
-    if m.strip()
-)
+# Models this generation is supposed to use: the main loop plus the three pinned
+# aliases (runner_models). Subagents resolve their aliases through the CLI, so a stale
+# binary silently serves a previous generation to every subagent while the main
+# loop's explicit pin looks correct. Production logs from 2026-07-16..18 show exactly
+# that: main loop on claude-opus-4-8 with claude-opus-4-6 and claude-sonnet-4-6
+# subagents underneath.
+_EXPECTED_MODELS = runner_models.expected_models()
 
 
 def _usage_field(usage: dict, *names: str) -> int:
@@ -101,6 +95,9 @@ def _session_totals(model_usage: dict) -> dict:
     if not isinstance(model_usage, dict):
         return totals
 
+    # Compare canonical names: newer CLIs key model_usage as `claude-opus-5[1m]`,
+    # which is the pinned model, not drift.
+    expected = {runner_models.canonical_model(m) for m in _EXPECTED_MODELS}
     for model, usage in model_usage.items():
         if not isinstance(usage, dict):
             usage = getattr(usage, "__dict__", {}) or {}
@@ -117,7 +114,7 @@ def _session_totals(model_usage: dict) -> dict:
             totals["cost_by_model"][model] = round(float(cost), 4)
         except (TypeError, ValueError):
             totals["cost_by_model"][model] = 0.0
-        if model not in _EXPECTED_MODELS:
+        if runner_models.canonical_model(model) not in expected:
             totals["model_drift"].append(model)
 
     denom = (
@@ -240,6 +237,8 @@ def build_log_data(
     refusal: dict | None = None,
     stderr_log: str | None = None,
     stderr_line_count: int = 0,
+    alias_pins: dict | None = None,
+    system_prompt: str | None = None,
 ) -> dict:
     """Assemble the run-log dict written to logs/<project>-<ts>.log.
 
@@ -273,6 +272,12 @@ def build_log_data(
         "cli_version": cli_version,
         "model": model,
         "effort": effort,
+        # What the subagent aliases were pinned to and which system prompt the main
+        # loop ran under. Both used to be invisible — the alias floated with the CLI
+        # and the SDK sent an empty system prompt — so no experiment could tell which
+        # configuration it had measured.
+        "alias_pins": alias_pins or {},
+        "system_prompt": system_prompt,
         "input_tokens": usage_metrics["input_tokens"],
         "output_tokens": usage_metrics["output_tokens"],
         "cache_creation_input_tokens": usage_metrics["cache_creation_input_tokens"],
