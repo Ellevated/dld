@@ -2,14 +2,14 @@
 id: EXP-008
 title: Codex-слот исполнял мартовский бинарь — раннер берёт CLI из PATH, которым мы управляем
 opened: 2026-09-08
-status: open
+status: inconclusive
 metric: доля диспатчей на провайдера codex, которые дожили до первого коммита (сейчас — доля, падающая за <60 с с exit 1)
 baseline: 0 из 7 · все codex-диспатчи, сохранившиеся в pueue (1208-1210 от 25.08, 1434/1437/1440/1442 от 07.09), упали за 15-40 с; четыре из них увели спеки в blocked за один вечер 07.09 (dowry:FTR-510, awardybot:FTR-1511/1514/1520)
 expected: >= 3 из следующих 5 codex-диспатчей живут дольше 5 минут и оставляют коммит в ветке. Ниже — дело не в бинаре, и codex убирается из ротации провайдеров, а не чинится дальше
 command: "ssh dld@5.61.91.190 'cd ~/projects/dld/scripts/vps && sqlite3 -header -column orchestrator.db \"SELECT task_label, started_at, exit_code, (strftime('%s',finished_at)-strftime('%s',started_at)) AS secs FROM task_log WHERE started_at > '2026-09-08' AND status='failed' AND secs < 90\"'"
 check_after_runs: 5
 check_after_date: 2026-09-22
-verdict:
+verdict: 'Мерить нечего: после фикса 08.09 на codex не ушла ни одна спека. Команда выше за 08–22.09 возвращает 0 строк, но не потому, что прогоны выжили, — прогонов не было. В pueue после 1442 только два smoke-запуска 08.09 (1547 убит через 4 мин 42 с, 1549 успех за 9 с); все 10 проектов в projects.json на provider=claude, а LLM-диспатчер берёт провайдера проекта. Фикс PATH оставлен: он ничего не стоит и чинит заодно gemini. Codex из ротации не убираем, потому что в ротации его фактически нет, и дешёвый путь строим не на нём (docs/2026-09-22-revyu-dld-opus55-i-deshevye-modeli.md §6).'
 ---
 
 ## Что было
