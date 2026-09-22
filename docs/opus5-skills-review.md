@@ -1137,6 +1137,28 @@ reverted three of the founder's uncommitted files twice before the pattern was c
 from pre-commit's own patch file, and the commit was then made from a detached worktree. Six
 projects remain unpatched pending that verification.
 
+### Step 14 result — three settings this review assumed were never live, 2026-09-23
+
+Found while reviewing the tree for Opus 5.5 (`docs/2026-09-22-revyu-dld-opus55-i-deshevye-modeli.md`).
+Each one invalidates a premise stated above, so they are recorded here next to the steps
+they correct.
+
+- **`@`-includes in agent files do not expand.** Claude Code imports `@path` lines in
+  CLAUDE.md, not in `.claude/agents/*.md`. A canary agent ignored a rule it received through
+  an `@` line three times out of three and followed the same rule written into its body. On
+  the VPS, `output-conventions.md` was opened by 5 of 782 production subagent runs and
+  `minimal-code.md` by 0 of 434 coder runs. So ADR-029(d) never took effect. Step 5's arms,
+  which `expand-agent.mjs` expanded, did not match what production ran. And Step 7's "folding
+  into `@_shared/` saves zero tokens" was true only because the fold delivered nothing. The
+  modules are now inlined by `.claude/scripts/expand-agent-includes.mjs`; the integrity check
+  fails on a raw `@` line or a stale block. Measured as EXP-010.
+- **The main loop ran with an empty system prompt.** An unset `system_prompt` makes
+  `claude_agent_sdk` send `--system-prompt ""`, so every autopilot run lacked the CLI's own
+  prompt. It is now the `claude_code` preset. Measured as EXP-009.
+- **The main loop's effort was `medium`, not `high`.** `scripts/vps/.env` sets it, and all
+  251 Opus 5 autopilot run logs carry `effort: medium`. Every cost figure in Step 1 was
+  therefore taken at `medium`.
+
 ## How it stays honest
 
 Measured, not tasted. The eval harness works: `test/agents/review/` scored ADR-029 at
