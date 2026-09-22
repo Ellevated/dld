@@ -77,14 +77,14 @@ def env(tmp_path, monkeypatch):
 def test_newest_wins_over_path_order(env, monkeypatch, cli):
     """The exact VPS shape: stale binary first on PATH, current one elsewhere."""
     stale = _fake_cli(env["tmp"] / "usr-local-bin", "2.1.72 (Claude Code)")
-    fresh = _fake_cli(env["tmp"] / "installer", "2.1.220 (Claude Code)")
+    fresh = _fake_cli(env["tmp"] / "installer", "2.1.280 (Claude Code)")
     monkeypatch.setattr(shutil, "which", lambda _n: str(stale))
 
     ns = cli(str(fresh))
     path, version = ns._resolve_cli_path()
 
     assert Path(path).resolve() == fresh.resolve(), "PATH order beat version again"
-    assert version == (2, 1, 220)
+    assert version == (2, 1, 280)
     assert version >= ns._MIN_CLI_VERSION
 
 

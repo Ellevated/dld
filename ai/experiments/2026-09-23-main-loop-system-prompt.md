@@ -2,14 +2,14 @@
 id: EXP-009
 title: Main loop получает системный промпт Claude Code вместо пустого; алиасы субагентов запинены на поколение main loop
 opened: 2026-09-23
-status: open
+status: abandoned
 metric: автопилот по флоту и по awardybot — timeout_rate, p50_min, p50_usd, доля ok; плюс model_drift и поле system_prompt в run-логах (run_metrics.py --split 2026-09-23)
 baseline: срез с 05.09 по 22.09 — n=61, ok=45, timeout=8 (13%), p50_min 74, p50_usd 10.4 (awardybot n=38, ok=30, t/o 8%, p50 75 мин, $10.6). Все 251 прогон на claude-opus-5 шли с --system-prompt "" и effort medium из .env; model_drift 0 из 251
 expected: не хуже baseline при лучшем соответствии конфигурации — timeout_rate <= 15%, p50_usd <= 12.0, p50_min <= 85, доля ok не ниже 70%; model_drift остаётся 0 после ближайшего обновления CLI на VPS; в каждом новом run-логе system_prompt=claude_code и заполнен alias_pins
 command: python3 scripts/metrics/run_metrics.py --split 2026-09-23 --by none && python3 scripts/metrics/run_metrics.py --split 2026-09-23 --project awardybot
 check_after_runs: 15
 check_after_date: 2026-10-14
-verdict:
+verdict: 'Замер на Opus 5 отменён в день открытия: 23.09 Олег перевёл флот на Opus 5.5 той же ночью (на 5 не остаёмся, результат по 5 применить некуда). Сама правка не откатывается — пресет claude_code и пины алиасов остаются и меряются вместе с 5.5 и раскрытыми модулями в EXP-011. До закрытия на пресете успели пройти прогоны dispatcher и автопилот dowry-mc FTR-425 (старт 00:47): коммиты в ветку спеки шли штатно (00:55, 01:08), остановки перед commit не было.'
 ---
 
 ## Что было

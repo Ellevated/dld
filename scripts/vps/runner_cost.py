@@ -40,7 +40,7 @@ _PRICES = {
     "claude-fable-5-1": (10.0, 50.0, 0.025),
     "claude-fable-5": (10.0, 50.0, 0.1),
 }
-_DEFAULT_PRICE = _PRICES["claude-opus-5"]  # the pinned main-loop model
+_DEFAULT_PRICE = _PRICES[runner_models.DEFAULT_MAIN_MODEL]  # the pinned main-loop model
 
 # Anthropic cache-write multipliers against the model's base input rate.
 _CACHE_WRITE_5M = 1.25
@@ -61,9 +61,10 @@ def _price_for(model: str) -> tuple[float, float, float]:
     if price is not None:
         return price
     logger.warning(
-        "COST ESTIMATE: model %r is not in the price table — pricing it as opus-5. "
+        "COST ESTIMATE: model %r is not in the price table — pricing it as %s. "
         "Add it to runner_cost._PRICES (source: rules/model-capabilities.md).",
         model,
+        runner_models.DEFAULT_MAIN_MODEL,
     )
     return _DEFAULT_PRICE
 

@@ -2,14 +2,14 @@
 id: EXP-010
 title: Общие модули агентов впервые доходят до модели — output-conventions, minimal-code и search-cascade вписаны в тела агентов
 opened: 2026-09-23
-status: open
+status: abandoned
 metric: (1) golden A/B planner/coder/review/devil — промпт как в проде (сырая @-строка) против раскрытого; (2) после раскатки template на awardybot — timeout_rate, p50_usd, p50_min, p50_turns, доля ok (run_metrics.py --split <дата раскатки> --project awardybot)
 baseline: в проде модули не доставлялись — output-conventions открыт 5 из 782 боевых запусков субагентов на VPS, minimal-code 0 из 434 у кодера, tester и review 0; флот с 05.09 — n=61, t/o 13%, p50 74 мин, p50 $10.4, p50 turns 53 (тот же срез, что у EXP-009)
 expected: (1) раскрытый вариант не хуже сырого ни на одном из четырёх golden-наборов больше чем на 0.03 по blind pairwise; (2) на awardybot после раскатки timeout_rate <= 15%, p50_usd не выше +10% к срезу до раскатки, доля ok не ниже 70%
 command: python3 scripts/metrics/run_metrics.py --split <дата раскатки template на awardybot> --project awardybot
 check_after_runs: 15
 check_after_date: 2026-11-04
-verdict:
+verdict: 'Отдельного замера не будет: 23.09 Олег решил раскатать модули на флот сразу, вместе с переходом на Opus 5.5. Golden A/B на Opus 5 не запускался — его результат относился бы к модели, на которой флот больше не работает. Совокупный эффект (5.5 + системный промпт Claude Code + раскрытые модули) меряется в EXP-011.'
 ---
 
 ## Что было

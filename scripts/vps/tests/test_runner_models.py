@@ -36,6 +36,7 @@ import runner_models  # noqa: E402
 import runner_result  # noqa: E402
 
 PINNED_5 = frozenset({"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"})
+PINNED_55 = frozenset({"claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"})
 
 
 class TestCanonicalModel:
@@ -84,8 +85,14 @@ class TestAliasPins:
 
 class TestExpectedModels:
     def test_default_is_main_loop_plus_pins(self):
-        """EC-3: the same set the old hard-coded default named."""
-        assert runner_models.expected_models(env={}) == PINNED_5
+        """EC-3: the main loop moved to Opus 5.5 on 2026-09-23 and its opus pin with it."""
+        assert runner_models.DEFAULT_MAIN_MODEL == "claude-opus-5-5"
+        assert runner_models.expected_models(env={}) == PINNED_55
+
+    def test_rollback_to_opus_5_is_one_variable(self):
+        """The documented rollback: AUTOPILOT_MODEL alone moves main loop and opus pin."""
+        env = {"AUTOPILOT_MODEL": "claude-opus-5"}
+        assert runner_models.expected_models(env=env) == PINNED_5
 
     def test_moving_the_main_loop_moves_the_expectation(self):
         expected = runner_models.expected_models(env={"AUTOPILOT_MODEL": "claude-opus-5-5"})

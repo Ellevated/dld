@@ -84,7 +84,7 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 
 | Параметр | Значение | Где |
 |----------|----------|-----|
-| `MODEL` | `AUTOPILOT_MODEL` env, default **`claude-opus-5`** | `claude-runner.py::MODEL` |
+| `MODEL` | `AUTOPILOT_MODEL` env, default **`claude-opus-5-5`** (с 23.09.2026; было `claude-opus-5`, откат — `AUTOPILOT_MODEL=claude-opus-5`). Нужен CLI ≥ 2.1.280 | `runner_models.py::DEFAULT_MAIN_MODEL` |
 | `effort` | `AUTOPILOT_EFFORT` env, default **`high`**, enum `{low,medium,high,max}` (xhigh нет в SDK) | `claude-runner.py::AUTOPILOT_EFFORT` |
 | `max_turns` | **300** (ADR-031; было 120 — стало бы новым узким местом после подъёма таймаута) | `claude-runner.py::MAX_TURNS` |
 | `setting_sources` | `["user","project"]` — грузит CLAUDE.md + .claude/skills/ | `runner_loop.py::build_options` |

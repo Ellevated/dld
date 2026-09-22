@@ -16,8 +16,8 @@ verified against platform.claude.com, not from memory.
 
 | Role | Model ID | Pricing (in/out per Mtok) |
 |------|----------|---------------------------|
-| Main loop, deep reasoning, review | `claude-opus-5` | $5 / $25 |
-| Successor to Opus 5 — switch deliberately, see below | `claude-opus-5-5` | $4 / $20 |
+| Main loop, deep reasoning, review | `claude-opus-5-5` | $4 / $20 |
+| Previous generation — rollback target | `claude-opus-5` | $5 / $25 |
 | Implementation, research, orchestration | `claude-sonnet-5` | $3 / $15 (introductory $2 / $10 ended 2026-08-31) |
 | Formatting, collection, listing | `claude-haiku-4-5-20251001` | $1 / $5 |
 | Highest capability, 2× Opus 5 — route deliberately | `claude-fable-5` | $10 / $50 |
@@ -32,9 +32,11 @@ its default `medium` effort it matches or beats Opus 5 at `high` on agentic codi
 code review, in fewer steps and with about half the tokens. Knowledge cutoff June 2026.
 Breaking changes are listed under "Opus 5 → Opus 5.5" below.
 
-**CLI 2.1.280 resolves the `opus` alias to `claude-opus-5-5`.** A session whose main model
-is pinned to `claude-opus-5` therefore sends every `model: opus` subagent to the next
-generation unless the aliases are pinned too — see "Model Routing" at the end.
+**CLI 2.1.280 resolves the `opus` alias to `claude-opus-5-5`, and CLIs before 2.1.280
+refuse the model outright** (`400 … does not support this model; version 2.1.280 or newer
+is required`). Update the CLI before switching. A session whose main model is pinned to one
+generation sends every `model: opus` subagent to whatever the CLI calls current unless the
+aliases are pinned too — see "Model Routing" at the end.
 
 **Claude Fable 5.1** — successor to Fable 5 at the same price. Cache reads cost $0.25 per
 Mtok (0.025×). Forced `tool_choice` (`any` / `tool`) is rejected with a 400.
@@ -49,7 +51,8 @@ architectures feel the doubled rate hardest, because their spend is the number o
 built. Measure it on one real task against your own baseline rather than routing it by
 reputation.
 
-**Previous:** Opus 4.8 (`claude-opus-4-8`) — superseded, still available for rollback.
+**Previous:** Opus 5 (`claude-opus-5`) — superseded by 5.5, the rollback target.
+Opus 4.8 (`claude-opus-4-8`) before it — superseded, still available.
 
 ---
 
@@ -246,6 +249,7 @@ overloaded or unavailable models, not classifier routing.)
 
 | What | Impact | Action |
 |------|--------|--------|
+| Claude Code **before 2.1.280** does not know the model | `400 … does not support this model; version 2.1.280 or newer is required` on the first request | Update the CLI first; a non-interactive runner must resolve the new binary, not the first one on `PATH` |
 | Thinking **always on**: `{"type":"disabled"}` and `budget_tokens` return 400 at every effort | Breaking for code that disables thinking | Omit `thinking`; lower `effort` instead. Never add "do not think" rules |
 | **Default effort is `medium`**, and at the same level 5.5 thinks more than Opus 5 | A route that omits `effort` runs one level lower; a route that keeps Opus 5's level gets longer turns | Set `effort` explicitly and sweep it; lower effort before prompting for brevity |
 | Forced `tool_choice` (`any` / `tool`) returns 400 | Breaking for direct API callers | `auto` + `strict: true` + the tool named in the prompt, or structured outputs |

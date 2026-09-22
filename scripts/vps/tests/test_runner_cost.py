@@ -7,7 +7,7 @@ timed-out run was logged as $0.00 while being the most expensive class of run th
 EC-1: usage streamed per turn is accumulated per model
 EC-2: a billed ResultMessage figure always wins over the estimate
 EC-3: no usage at all → cost stays 0 and says so, rather than inventing a number
-EC-4: an unknown model is priced (as opus-5) instead of silently costing nothing
+EC-4: an unknown model is priced (as the main-loop model) instead of silently costing nothing
 EC-5: cache tokens are priced at their own multipliers, not as plain input
 EC-6: apply_assistant_message wires accumulation into the real run state
 """
@@ -121,8 +121,9 @@ class TestEstimate:
         assert runner_cost.estimate({"claude-haiku-4-5-20251001": {"input": 1_000_000}}) == 1.0
 
     def test_unknown_model_is_priced_not_zeroed(self):
-        """EC-4: an unpriced model would reopen the exact blind spot being closed."""
-        assert runner_cost.estimate({"claude-something-6": {"input": 1_000_000}}) == 5.0
+        """EC-4: an unpriced model would reopen the exact blind spot being closed.
+        Priced as the main-loop model — claude-opus-5-5 since 2026-09-23, $4 input."""
+        assert runner_cost.estimate({"claude-something-6": {"input": 1_000_000}}) == 4.0
 
     def test_empty_usage(self):
         assert runner_cost.estimate({}) == 0.0

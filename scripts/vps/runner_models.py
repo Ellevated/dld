@@ -16,7 +16,10 @@ import re
 
 # The main loop's model when AUTOPILOT_MODEL is unset. claude-runner and the expected
 # set below read the same env name with this default, so they cannot disagree.
-DEFAULT_MAIN_MODEL = "claude-opus-5"
+# Opus 5 -> 5.5 on 2026-09-23. Needs CLI >= 2.1.280 (runner_cli._MIN_CLI_VERSION):
+# 2.1.263 answers `400 ... does not support this model`. Rollback without a code
+# change: AUTOPILOT_MODEL=claude-opus-5 in scripts/vps/.env.
+DEFAULT_MAIN_MODEL = "claude-opus-5-5"
 
 # Suffixes that are not part of the model's identity: the context-window tag newer
 # CLIs append to model_usage keys (`claude-opus-5[1m]`, seen on 2.1.280) and a build
@@ -36,8 +39,8 @@ def alias_pins(main_model: str, env=None) -> dict:
     """What the CLI must resolve `opus` / `sonnet` / `haiku` to for this run.
 
     Frontmatter says `model: opus`, and the CLI resolves that alias to whatever its
-    own release calls current — CLI 2.1.280 already answers `claude-opus-5-5` while
-    the main loop is pinned to `claude-opus-5`. Passing these through the run's env
+    own release calls current — on 2026-09-23 CLI 2.1.280 answered `claude-opus-5-5`
+    while the main loop was still pinned to `claude-opus-5`. Passing these through the run's env
     holds every subagent on the main loop's generation until someone moves the pin on
     purpose. The opus alias follows an Opus main loop, so moving AUTOPILOT_MODEL
     moves the whole run; each variable can still be set on its own.

@@ -16,10 +16,12 @@ from pathlib import Path
 
 logger = logging.getLogger("claude-runner")
 
-# A CLI older than this does not know the Opus 5 / Sonnet 5 model IDs and will
-# silently run its own era's default model instead of the one we pin. 2.1.190 is
-# the floor we have verified resolves `claude-opus-5` correctly.
-_MIN_CLI_VERSION = (2, 1, 190)
+# A CLI older than this does not know the pinned model. Old enough ones (2.1.72) do not
+# error — they silently run their own era's default instead; newer ones refuse. 2.1.190
+# was the floor for `claude-opus-5`. Since 2026-09-23 the main loop is `claude-opus-5-5`,
+# and 2.1.263 rejects it with `400 Claude Code 2.1.263 does not support this model;
+# version 2.1.280 or newer is required` — verified on the VPS before the switch.
+_MIN_CLI_VERSION = (2, 1, 280)
 
 # Distro-style install location, probed last. Named so tests can point it
 # somewhere hermetic instead of at whatever the host happens to have.

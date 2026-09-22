@@ -11,8 +11,9 @@ paths:
 # Model Capabilities (Claude Opus 5 / 5.5, Sonnet 5)
 
 Reference for agents about current model capabilities.
-Last updated: 2026-09-23 — Opus 5.5 facts from Anthropic's migration guide (bundled
-`claude-api` skill, CLI 2.1.280); the rest verified against platform.claude.com.
+Last updated: 2026-09-23 — main loop moved to Opus 5.5; Opus 5.5 facts from Anthropic's
+migration guide (bundled `claude-api` skill, CLI 2.1.280); the rest verified against
+platform.claude.com.
 
 ---
 
@@ -20,8 +21,8 @@ Last updated: 2026-09-23 — Opus 5.5 facts from Anthropic's migration guide (bu
 
 | Role | Model ID | Pricing (in/out per Mtok) |
 |------|----------|---------------------------|
-| Main loop, deep reasoning, review | `claude-opus-5` | $5 / $25 |
-| **Not routed yet** — see below | `claude-opus-5-5` | $4 / $20 |
+| Main loop, deep reasoning, review (since 2026-09-23) | `claude-opus-5-5` | $4 / $20 |
+| Previous main loop — rollback target | `claude-opus-5` | $5 / $25 |
 | Implementation, research, orchestration | `claude-sonnet-5` | $3 / $15 (introductory $2 / $10 ended 2026-08-31) |
 | Formatting, collection, listing | `claude-haiku-4-5-20251001` | $1 / $5 |
 | **Not routed** — see below | `claude-fable-5` | $10 / $50 |
@@ -37,17 +38,19 @@ its default `medium` effort it matches or beats Opus 5 at `high` on agentic codi
 code review, in fewer steps and with about half the tokens. Knowledge cutoff June 2026.
 Breaking changes are listed under "Opus 5 → Opus 5.5" below.
 
-**CLI 2.1.280 resolves the `opus` alias to `claude-opus-5-5`.** A run whose main loop is
-pinned to `claude-opus-5` therefore sends every `model: opus` subagent to the next
-generation unless the aliases are pinned too. `claude-runner.py` pins them since
-2026-09-23 (`runner_models.alias_pins`); the main-loop switch to 5.5 is a separate,
-measured step.
+**CLI 2.1.280 resolves the `opus` alias to `claude-opus-5-5`, and CLIs before 2.1.280
+refuse the model outright** — 2.1.263 answers `400 Claude Code 2.1.263 does not support this
+model; version 2.1.280 or newer is required`. A run whose main loop is pinned to one
+generation sends every `model: opus` subagent to whatever the CLI calls current unless the
+aliases are pinned too. `claude-runner.py` pins them (`runner_models.alias_pins`), and the
+opus pin follows the main loop.
 
 **Claude Fable 5.1** — successor to Fable 5 at the same price. Cache reads cost $0.25 per
 Mtok (0.025×). Forced `tool_choice` (`any` / `tool`) is rejected with a 400. Not routed,
 for the same reasons as Fable 5.
 
-**Previous:** Opus 4.8 (`claude-opus-4-8`) — superseded, still available for rollback.
+**Previous:** Opus 5 (`claude-opus-5`) — main loop until 2026-09-23, the rollback target.
+Opus 4.8 (`claude-opus-4-8`) before it — superseded, still available.
 
 ### Fable 5 — deliberately not routed
 
@@ -79,6 +82,11 @@ token price can still be cheaper per completed spec. Raise the timeout first.
 > **2026-07-25:** VPS pipeline switched 4.8 → 5. `scripts/vps/claude-runner.py`
 > pins `MODEL = AUTOPILOT_MODEL` env (default `claude-opus-5`). Rollback without
 > code change: `AUTOPILOT_MODEL=claude-opus-4-8`.
+>
+> **2026-09-23:** VPS pipeline switched 5 → 5.5 (`runner_models.DEFAULT_MAIN_MODEL`),
+> CLI 2.1.263 → 2.1.280 first, because 2.1.263 rejects the model. `_MIN_CLI_VERSION` is
+> 2.1.280. Rollback without code change: `AUTOPILOT_MODEL=claude-opus-5` in
+> `scripts/vps/.env` — the opus pin follows it. Measured as EXP-011.
 
 ---
 
@@ -306,6 +314,7 @@ for category or fallback model.
 
 | What | Impact | Action |
 |------|--------|--------|
+| Claude Code **before 2.1.280** does not know the model | `400 … does not support this model; version 2.1.280 or newer is required` on the first request | Update the CLI first; a non-interactive runner must resolve the new binary, not the first one on `PATH` |
 | Thinking **always on**: `{"type":"disabled"}` and `budget_tokens` return 400 at every effort | Breaking for code that disables thinking | Omit `thinking`; lower `effort` instead. Never add "do not think" rules |
 | **Default effort is `medium`**, and at the same level 5.5 thinks more than Opus 5 | A route that omits `effort` runs one level lower; a route that keeps Opus 5's level gets longer turns | Set `effort` explicitly and sweep it; lower effort before prompting for brevity |
 | Forced `tool_choice` (`any` / `tool`) returns 400 | Breaking for direct API callers | `auto` + `strict: true` + the tool named in the prompt, or structured outputs |
