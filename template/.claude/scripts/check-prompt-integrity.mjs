@@ -31,6 +31,7 @@
 
 import { readdirSync, readFileSync, existsSync, statSync } from 'fs';
 import { join, resolve, relative, dirname } from 'path';
+import { expandText } from './lib/agent-includes.mjs';
 
 const args = process.argv.slice(2);
 
@@ -257,8 +258,51 @@ for (const file of mdFiles) {
       severity: 'high',
       file: rel(file),
       detail: `@-include '${incPath}' resolves to no file.`,
-      why: 'The include expands into the prompt at dispatch time; an unresolved one silently drops whatever rules it carried.'
+      why: 'A reference to a file that is not there silently drops whatever rules it was meant to carry.'
     });
+  }
+}
+
+// --- Check 5: shared modules that never reach the model ---------------------
+// Claude Code imports `@path` lines in CLAUDE.md but not in agent files, where the
+// model receives the path instead of the module (canary, CLI 2.1.280; 5 of 782
+// production subagent runs ever opened output-conventions.md). A raw line is a rule
+// nobody receives; a stale block is a copy that disagrees with its source.
+const sharedDir = join(agentsDir, '_shared');
+if (existsSync(sharedDir)) {
+  for (const file of walk(agentsDir)) {
+    if (!relative(sharedDir, file).startsWith('..')) continue;
+    let res;
+    try {
+      res = expandText(corpus.get(file) ?? '', sharedDir);
+    } catch (err) {
+      findings.push({
+        kind: 'stale_include',
+        severity: 'high',
+        file: rel(file),
+        detail: err.message,
+        why: 'The generated block cannot be rebuilt from its source.'
+      });
+      continue;
+    }
+    if (res.raw.length) {
+      findings.push({
+        kind: 'unexpanded_include',
+        severity: 'high',
+        file: rel(file),
+        detail: `raw @-line for ${res.raw.join(', ')} — nothing expands it inside an agent file.`,
+        why: 'The model receives the path, not the module. Run node .claude/scripts/expand-agent-includes.mjs --tree <tree>.'
+      });
+    }
+    if (res.stale.length) {
+      findings.push({
+        kind: 'stale_include',
+        severity: 'high',
+        file: rel(file),
+        detail: `generated block for ${res.stale.join(', ')} differs from agents/_shared/.`,
+        why: 'Edit the shared source, then re-run expand-agent-includes.mjs; a hand edit inside the block is overwritten.'
+      });
+    }
   }
 }
 

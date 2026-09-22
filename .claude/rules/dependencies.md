@@ -150,8 +150,9 @@ re-export block, because the runner's tests reach the moved names as `runner.<na
 | `runner_cli.py` | 129 | `_MIN_CLI_VERSION`, `_SYSTEM_CLI_FALLBACK`, `_cli_version`, `_resolve_cli_path` (newest CLI, not first on PATH), `warn_if_stale`, `ALLOWED_TOOLS` |
 | `runner_heartbeat.py` | 42 | `_write_heartbeat` — atomic per-turn heartbeat (TECH-198) |
 | `runner_refusal.py` | 113 | `_refusal_from_message`, `_refusal_summary`, `_REFUSAL_*` — classifier declines; owns the exit-4 decision (ADR-029). stdlib only, duck-typed, never imports the SDK |
-| `runner_result.py` | 367 | `new_run_state` + `apply_*`, `_session_totals`, `build_log_data`, `write_run_log`, `_EXIT_REASONS`, `log_post_result_error`, `log_refusal_telemetry`. Also SDK-free — the caller does the isinstance checks |
-| `runner_loop.py` | 220 | `build_options`, `consume` (the `async for` over `query`), `handle_sdk_exception` (ADR-024 BUG-188 branch, SDK-init-timeout → 124) |
+| `runner_result.py` | 390 | `new_run_state` + `apply_*`, `_session_totals`, `build_log_data`, `write_run_log`, `_EXIT_REASONS`, `log_post_result_error`, `log_refusal_telemetry`. Also SDK-free — the caller does the isinstance checks. The run log carries `alias_pins` and `system_prompt` (EXP-009) |
+| `runner_models.py` | 63 | `DEFAULT_MAIN_MODEL`, `alias_pins` (ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL — what frontmatter aliases resolve to), `expected_models` (the model_drift set), `canonical_model` (drops `[1m]` and build dates, keeps the version). stdlib only; imported by claude-runner, runner_result, runner_cost |
+| `runner_loop.py` | 283 | `build_options` (`system_prompt` preset `claude_code` or none — EXP-009; alias pins into env), `consume` (the `async for` over `query`), `handle_sdk_exception` (ADR-024 BUG-188 branch, SDK-init-timeout → 124) |
 
 **The split line is the SDK.** `runner_loop` is the only sibling that imports
 `claude_agent_sdk`, and that is not a style choice: the runner's tests load
@@ -866,7 +867,8 @@ renaming one, grep the skill that calls it.**
 | `run-eval.mjs` | `skills/skill-creator/SKILL.md` | shells out to `claude --print --setting-sources=project -p "/<skill> …"`. Drops `--setting-sources` and every eval silently measures nothing |
 | `aggregate-benchmark.mjs` | `skills/skill-creator/SKILL.md`, `skills/skill-creator/references/schemas.md` | argv: workspace. Consumes `iteration-N/run-summary.json` written by `run-eval.mjs` — the two share that filename as a contract |
 | `eval-agents.mjs` | `skills/eval` | Root-only. Scans `test/agents/` golden datasets; unrelated to `run-eval.mjs` despite the name |
-| `check-prompt-integrity.mjs` | CI (`.github/workflows/ci.yml` → `prompt-integrity`), manual | argv: `--tree <dir> [--root <dir>] [--json]`. 0 = clean, 1 = findings, 2 = usage. Finds agents nothing dispatches, scripts a prompt tells an agent to *run* that do not exist, unresolved `@`-includes, and agents whose `model:`/`effort:` is unstated. Suppressions live in `prompt-integrity-baseline.json` **with a reason** — the whole point is that a green run means something. Reporting, not blocking |
+| `check-prompt-integrity.mjs` | CI (`.github/workflows/ci.yml` → `prompt-integrity`), manual | argv: `--tree <dir> [--root <dir>] [--json]`. 0 = clean, 1 = findings, 2 = usage. Finds agents nothing dispatches, scripts a prompt tells an agent to *run* that do not exist, unresolved `@`-includes, raw `@`-lines left in agent files and generated include blocks that drifted from `agents/_shared/` (via `lib/agent-includes.mjs`), and agents whose `model:`/`effort:` is unstated. Suppressions live in `prompt-integrity-baseline.json` **with a reason** — the whole point is that a green run means something. Reporting, not blocking |
+| `expand-agent-includes.mjs` + `lib/agent-includes.mjs` | manual, after editing `agents/_shared/` (both trees) | argv: `[--tree <dir>] [--check]`. 0 = done or clean, 1 = `--check` found a raw `@`-line or a stale block, 2 = usage / missing module. Claude Code does not expand `@path` inside agent files, so the shared text is written into each agent between `<!-- include: _shared/X -->` markers. `context-loader` / `context-updater` are deliberately not inlined (`NOT_INLINED`). Tests: `test/scripts/agent-includes.test.mjs` |
 
 ### When changing API, check
 

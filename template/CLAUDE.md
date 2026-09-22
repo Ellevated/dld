@@ -148,12 +148,19 @@ ai/glossary/
 └── ...
 ```
 
-### Protocols (agents use automatically)
+### Protocols (reference, read on demand)
 
-| Protocol | When | Who |
-|----------|------|-----|
-| `context-loader.md` | BEFORE work | spark, planner, coder, review, debugger, council |
-| `context-updater.md` | AFTER work | spark, coder |
+Both live in `.claude/agents/_shared/` and are **not** inlined into any agent. Rules with
+`paths:` already load when an agent touches matching files, so reading them all up front
+only makes every cold start more expensive. The shared modules that agents do receive
+(`output-conventions`, `minimal-code`, `search-cascade`) are written into each agent by
+`node .claude/scripts/expand-agent-includes.mjs`: Claude Code does not expand `@path`
+lines inside agent files, only in CLAUDE.md.
+
+| Protocol | When |
+|----------|------|
+| `context-loader.md` | Before work in a domain you have not seen |
+| `context-updater.md` | After a change to a domain's public API |
 
 ### Impact Tree Algorithm (5 steps)
 
