@@ -246,6 +246,38 @@ stdlib, CLI как у `run_metrics.py` (`--log-dir`, `--since`, `--until`, `--sk
 
 ---
 
+## Drift Log
+
+Проверено 2026-09-23 по worktree TECH-223 (HEAD `5bb80495`). **Итог: light — ссылки поправлены в плане, эскалации нет.**
+
+- **Код — без дрейфа.** `runner_loop.py` 281 LOC: `build_options` `:87-140`, пресет `:106-108`,
+  `allowed_tools` `:111`, `permission_mode` `:112`, env `:114-138`, импорт `:36`. `runner_cli.py` 131 LOC,
+  `ALLOWED_TOOLS` `:119-131`. `claude-runner.py` 368 LOC: вызов `build_options` `:211-220`,
+  `build_log_data` `:294-310`, `write_run_log` `:320`. `test_runner_models.py` 241 LOC: `loop_module`
+  `:145-189`, `_options` `:192-201`, `TestBuildOptions` `:204-220`. Единственный вызов `build_options` — `claude-runner.py:211`.
+- **Промпты — без дрейфа.** `qa/SKILL.md`: NEVER DO `:33-42`, Step 0b `:85-105`, Step 0c `:107-120`,
+  секции в двух деревьях совпадают построчно; файлы целиком — нет (689 / 661 строка) → EC-8 сверяется по секциям.
+  `safety-rules.md`: §«Ход не заканчивается ожиданием» `:39-81` в обоих деревьях. Автопилот фон нигде не
+  предписывает (`run_in_background` встречается только в запретах: `SKILL.md:182`, `safety-rules.md:41`).
+- **SDK подтверждён.** venv `claude_agent_sdk 0.1.63`: `disallowed_tools: list[str]` (`types.py:1188`),
+  `env: dict[str, str]` (`:1198`). Транспорт отдаёт `--disallowedTools` одной строкой через запятую
+  (`_internal/transport/subprocess_cli.py:247-248`), а не через пробел, как в пробе P3; `options.env`
+  кладётся поверх `os.environ` (`:398-404`). → AV-F1 переписан на форму SDK + `bypassPermissions`.
+- **Light:** `.claude/rules/dependencies.md` пишет `runner_loop.py` 283 LOC (факт 281) и `runner_cli.py`
+  129 (факт 131) — правится в Task 5.
+- **Light:** «QA ≈15–16 прогонов за 23.09» — к концу дня QA-логов 27. Baseline эксперимента берётся из
+  вывода скрипта, не из спеки.
+- **Логи сверены с метрикой.** Run-лог — один JSON-объект (`runner_result.py:317-319`), `skill` и
+  `result_preview[:1000]` (`:291`); stderr — `<base>.stderr.txt`. За 23.09 `Background tasks still running
+  after` встречается ровно в одном stderr: `awardybot-20260923-115025` (autopilot, preview начинается с
+  `export PATH=…`). Регэксп из Design ловит 6 QA-прогонов: awardybot `064843` («Wait until…»), `094656`
+  (`.venv/bin/python`), `192602` (`cd …`); dowry `074426` и `110216` (`until …`); dowry-mc `045340` (`for i in …`).
+- **EXP id:** занято 001–005, 008–012, 007 — пример в README → **EXP-013**; TECH-224..226 EXP-id не резервируют.
+- **Отклонение от Design (осознанное):** `headless_guards` считает `runner_loop.headless_guards(options)`
+  из реально переданных опций; в раннере +2 строки. Срез по полю — группировкой в скрипте, без отдельного флага.
+
+---
+
 ## Implementation Plan
 
 ### Research Sources
@@ -257,40 +289,156 @@ stdlib, CLI как у `run_metrics.py` (`--log-dir`, `--since`, `--until`, `--sk
 ### Task 1: build_options — фон выключен для автопилота, инструменты ожидания сняты для всех
 **Type:** code
 **Files:**
-  - modify: `scripts/vps/runner_cli.py` — `HEADLESS_DISALLOWED_TOOLS = ["ScheduleWakeup", "Monitor", "CronCreate", "CronDelete", "CronList", "RemoteTrigger"]`, `NO_BACKGROUND_SKILLS = frozenset({"autopilot"})`, комментарий с датой и FTR-1515
-  - modify: `scripts/vps/runner_loop.py` — kwarg `skill=None`, `disallowed_tools=`, env-флаг по правилу из Design
-  - modify: `scripts/vps/tests/test_runner_models.py` — EC-1..EC-4, EC-6
-**Acceptance:** EC-1..EC-4 и EC-6 зелёные; `pytest scripts/vps/tests/test_runner_models.py -q`.
+- Modify: `scripts/vps/runner_cli.py:131` (дописать после `ALLOWED_TOOLS`)
+- Modify: `scripts/vps/runner_loop.py:6,36,87-140`
+- Test: `scripts/vps/tests/test_runner_models.py` (новый класс после `TestBuildOptions`, `:220`)
+
+**Context:** механика из Design. Один источник правды: константы в `runner_cli` (там уже живёт
+`ALLOWED_TOOLS`, `:116-118` объясняет почему), решение — в `build_options`.
+
+**Steps:**
+1. Тесты — класс `TestHeadlessGuards`, через существующий хелпер `_options(loop_module, tmp_path, **kw)`
+   (`:192-201`) и фикстуру `loop_module` (`:145-189`); `HEADLESS_BACKGROUND_TASKS` — через `monkeypatch`:
+   - `test_autopilot_runs_without_background` (EC-1): `delenv`; `opts.env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"` при `skill="autopilot"`.
+   - `test_qa_keeps_background` (EC-2): `"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS" not in opts.env` при `skill="qa"`.
+   - `test_wait_tools_denied_for_every_skill` (EC-3), `parametrize("skill", ["autopilot","qa","reflect","dispatcher","spark",None])`: `set(opts.disallowed_tools) >= {"ScheduleWakeup","Monitor","CronCreate","CronDelete","CronList","RemoteTrigger"}`.
+   - `test_rollback_lever_returns_background` (EC-4): `setenv("HEADLESS_BACKGROUND_TASKS","on")`, `skill="autopilot"` → ключа нет в env, `disallowed_tools` тот же набор.
+   - `test_no_skill_means_not_autopilot` (EC-7): `_options(...)` без `skill` → ключа нет, `disallowed_tools` выставлен.
+   - EC-6: три существующих теста `TestBuildOptions` (`:205-220`) не трогать.
+   - В докстринге модуля (`:12-18`) дописать строки с префиксом `TECH-223 EC-n` — номера EC-1..7 файла уже заняты EXP-009.
+2. `pytest scripts/vps/tests/test_runner_models.py -q` → красные: `TypeError: build_options() got an unexpected keyword argument 'skill'` (EC-1..4), `AttributeError: … 'disallowed_tools'` (EC-7).
+3. Реализация:
+   - `runner_cli.py` после `:131`: `HEADLESS_DISALLOWED_TOOLS` (6 имён, порядок как в EC-3) и
+     `NO_BACKGROUND_SKILLS = frozenset({"autopilot"})`. Комментарий ≤ 5 строк: headless-прогону
+     будить некого; FTR-1515 23.09 — два фоновых `Agent` + `ScheduleWakeup(1800)` → `Background tasks
+     still running after 600s`; фон выключен только автопилоту, потому что QA законно держит
+     dev-сервер в фоне, а spark фанит скаутов.
+   - `runner_loop.py:36`: импортировать обе константы; `:6` докстринг `runner_cli (ALLOWED_TOOLS)` → добавить имена.
+   - `build_options` (`:87-97`): keyword `skill=None` последним. Рядом с `allowed_tools` (`:111`):
+     `disallowed_tools=list(HEADLESS_DISALLOWED_TOOLS)`. В `env` после `BASH_MAX_TIMEOUT_MS` (`:134`),
+     до `**(alias_pins or {})` (`:137`): ключ `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"` только если
+     `skill in NO_BACKGROUND_SKILLS and os.environ.get("HEADLESS_BACKGROUND_TASKS") != "on"`.
+   - **Инвариант:** в остальных случаях ключа нет вовсе, а не `"0"` — CLI проверяет переменную на
+     truthy (`…||a.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`, probe P1), и строка `"0"` выключила бы фон всем.
+   - **Не менять:** `allowed_tools`, `permission_mode`, значения `BASH_*`, логику `system_prompt`, порядок
+     аргументов (все вызовы — keyword, единственный вызывающий — `claude-runner.py:211`).
+4. `pytest scripts/vps/tests/test_runner_models.py -q` → все зелёные.
+
+**Acceptance:** EC-1, EC-2, EC-3, EC-4, EC-6, EC-7.
 
 ### Task 2: раннер передаёт skill и пишет headless_guards в run-лог
 **Type:** code
 **Files:**
-  - modify: `scripts/vps/claude-runner.py` — `build_options(..., skill=skill)`; `log_data["headless_guards"] = {...}` между `build_log_data` и `write_run_log`
-  - modify: `scripts/vps/tests/test_runner_models.py` — EC-5
-**Acceptance:** EC-5; `wc -l scripts/vps/claude-runner.py` ≤ 400; `bash scripts/check-loc-limit.sh` exit 0.
+- Modify: `scripts/vps/runner_loop.py` (новая функция сразу после `build_options`)
+- Modify: `scripts/vps/claude-runner.py:211-220`, вставка между `:310` и `:311`
+- Test: `scripts/vps/tests/test_runner_models.py`
+
+**Context:** эксперимент режет по полю, а не по дате (урок EXP-009). Поле выводится из объекта
+опций, который реально ушёл в SDK, — лог не может разойтись с прогоном. Отклонение от Design
+осознанное: хелпер в `runner_loop`, в раннере +2 строки, а не ≤ 6 (W003).
+
+**Steps:**
+1. Тест `test_run_log_records_headless_guards` (EC-5): `loop_module.headless_guards(_options(..., skill="autopilot")) == {"background_tasks_disabled": True, "disallowed_tools": [6 имён в порядке константы]}`; для `skill="qa"` — `background_tasks_disabled is False`, тот же список.
+2. `pytest scripts/vps/tests/test_runner_models.py -q` → красный: `AttributeError: module 'runner_loop' has no attribute 'headless_guards'`.
+3. Реализация:
+   - `runner_loop.headless_guards(options) -> dict`: `background_tasks_disabled` = `options.env.get("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS") == "1"`, `disallowed_tools` = `list(options.disallowed_tools)`.
+   - `claude-runner.py:211-220`: kwarg `skill=skill` в вызове `build_options`.
+   - `claude-runner.py`, после закрывающей скобки `build_log_data` (`:310`), до `log_refusal_telemetry` (`:311`):
+     `log_data["headless_guards"] = runner_loop.headless_guards(options)`.
+   - **Не трогать** `runner_result.py` (390/400) и ключи `build_log_data` — это контракт `callback._parse_log_file`.
+4. `pytest scripts/vps/tests/ -q` → зелёные. Строку в раннере исполняют существующие e2e-тесты `run_task`
+   (`test_claude_runner_refusal.py`, `test_claude_runner_stderr_log.py`, `FakeOptions` хранит kwargs) —
+   опечатка в ней уронит их. С `pip install -r scripts/vps/requirements.txt` также
+   `pytest tests/integration/test_claude_runner_post_result_exception.py -q` (настоящий `ClaudeAgentOptions`).
+
+**Acceptance:** EC-5; `wc -l scripts/vps/claude-runner.py` ≤ 372; `bash scripts/check-loc-limit.sh` exit 0.
 
 ### Task 3: правило для QA и абзац для автопилота, оба дерева
 **Type:** code (prompt)
 **Files:**
-  - modify: `template/.claude/skills/qa/SKILL.md`, затем `.claude/skills/qa/SKILL.md`
-  - modify: `template/.claude/skills/autopilot/safety-rules.md`, затем `.claude/skills/autopilot/safety-rules.md`
-**Acceptance:** EC-8; `node .claude/scripts/check-prompt-integrity.mjs --tree .claude` и `--tree template/.claude` без новых находок; `python scripts/check-tree-sync.py` clean.
+- Modify: `template/.claude/skills/qa/SKILL.md:42,103,117`, затем `.claude/skills/qa/SKILL.md:42,103,117`
+- Modify: `template/.claude/skills/autopilot/safety-rules.md:81-83`, затем `.claude/skills/autopilot/safety-rules.md:81-83`
+
+**Context:** QA закрываем правилом (решение основателя). Секции совпадают в обоих деревьях
+построчно; файлы qa целиком — нет (689 vs 661 строка), поэтому сверка по секциям, не по файлу.
+
+**Steps:**
+1. `qa/SKILL.md` (template, потом root — одинаковый текст):
+   - `### NEVER DO` — пункт после `:42`: не ждать CI и выкатку — ни `sleep`/`until`/`for`-циклом опроса,
+     ни `run_in_background`/`Monitor`, ни обещанием «пришлю итог, когда CI закончится». Причина одной
+     фразой: QA идёт headless, ход, закончившийся ожиданием, заканчивает сессию, итог не придёт.
+     Инвариант: **не запрещать** фоновый процесс, нужный самому тесту (dev-сервер, devil EC-8).
+   - Step 0c, строка `:117` (`in_progress`): действие → записать `CI: in_progress <sha>` в отчёт, продолжать, не ждать.
+   - Step 0b, строка `:103` (`Deployed SHA is behind`): BLOCKED остаётся, дописать «выкатку не ждать».
+   - По-русски, коротко (решение спеки; окружающий список — английский).
+2. `safety-rules.md` (template, потом root): абзац после `:81` (конец «Проверка перед завершением хода»),
+   до `## Test Safety` (`:83`) — содержание из Design §«safety-rules.md автопилота». Без DLD-id
+   (TECH-/FTR-) — template-sync, текст одинаковый в обоих деревьях.
+3. Проверка — каждая команда печатает пусто:
+   `diff <(sed -n '/^### NEVER DO/,/^### ALWAYS DO/p' .claude/skills/qa/SKILL.md) <(sed -n '/^### NEVER DO/,/^### ALWAYS DO/p' template/.claude/skills/qa/SKILL.md)`;
+   то же для `'/^\*\*Step 0b/,/^\*\*Gate summary/p'`;
+   `diff <(sed -n '/^## Ход не заканчивается/,/^## Test Safety/p' .claude/skills/autopilot/safety-rules.md) <(… template/…)`.
+
+**Acceptance:** EC-8; `node .claude/scripts/check-prompt-integrity.mjs --tree .claude` и `--tree template/.claude` — без новых находок; `python scripts/check-tree-sync.py` exit 0.
 
 ### Task 4: скрипт замера
 **Type:** code
 **Files:**
-  - create: `scripts/metrics/bg_turn_endings.py`
-**Acceptance:** EC-9 на VPS: `python3 scripts/metrics/bg_turn_endings.py --log-dir ~/projects/dld/scripts/vps/logs --since 2026-09-23 --until 2026-09-23`.
+- Create: `scripts/metrics/bg_turn_endings.py` (цель ≤ 120 LOC, stdlib)
+
+**Context:** инструмент для baseline и вердикта. Формат логов проверен на `scripts/vps/logs` за 23.09
+(см. Drift Log).
+
+**Steps:**
+1. Каркас по образцу `run_metrics.py`: докстринг (что, зачем, Usage, «exit 0 always»), `argparse`
+   с `--log-dir` (default `DEFAULT_LOG_DIR`), `--since`, `--until`, `--skill` (default `all`), `--json`;
+   нет каталога логов → сообщение в stderr, exit 0 (`run_metrics.py:196-199`).
+2. `from run_metrics import DEFAULT_LOG_DIR, _NAME_RE` (при запуске скриптом `scripts/metrics/` уже в
+   `sys.path[0]`). Свой загрузчик — копия разбора хвоста JSON из `run_metrics.py:39-51`, потому что
+   `_load_run` отбрасывает `result_preview`; фильтры дат/скилла — как `run_metrics.py:82-95`.
+3. По каждому `*.log`:
+   - `bg_killed` — существует `path[:-4] + ".stderr.txt"` и содержит `Background tasks still running after`;
+   - `ended_on_wait` — первая строка `result_preview.lstrip()` совпадает с регэкспом начала из Design
+     **или** в `result_preview` есть `пришлю|вернусь|I'll send|will report` (без учёта регистра);
+   - группировка по `(skill, "headless_guards" in data)` — строки `autopilot` и `autopilot+guards`:
+     это и есть срез по полю (урок EXP-009), без отдельного флага.
+4. Вывод: таблица `skill | runs | bg_killed | ended_on_wait`; `--json` — тот же dict плюс имена логов
+   по обоим признакам (для вердикта).
+5. Прогон: `python3 scripts/metrics/bg_turn_endings.py --log-dir ~/projects/dld/scripts/vps/logs --since 2026-09-23 --until 2026-09-23`.
+
+**Acceptance:** EC-9 — `autopilot` `bg_killed` ≥ 1 (включая `awardybot-20260923-115025`), `qa` `ended_on_wait` ≥ 4 (по Drift Log ожидается 6); `ruff check scripts/metrics/bg_turn_endings.py && ruff format --check scripts/metrics/bg_turn_endings.py`.
 
 ### Task 5: эксперимент + dependencies.md
 **Type:** code (docs)
 **Files:**
-  - create: `ai/experiments/2026-09-23-headless-no-background-wait.md` — id: следующий свободный EXP (`grep -h "^id:" ai/experiments/*.md`); metric: `bg_killed` автопилота и `ended_on_wait` QA по `bg_turn_endings.py`, срез по полю `headless_guards` в run-логе; baseline — вывод Task 4 за 23.09 (ожидается автопилот `bg_killed` 1 из 25, QA `ended_on_wait` ≈5 из 16); expected: автопилот `bg_killed` = 0, QA `ended_on_wait` ≤ 1 из 15; command — Task 4 с `--since` даты выкатки; check_after_runs 15; check_after_date +14 дней. Тело: что делать, если QA не сдвинулся (механика для QA: флаг фона и для `qa`), и если автопилот стал упираться в таймаут Bash (сужать набор в репо проекта, не поднимать лимит).
-  - modify: `.claude/rules/dependencies.md` — строка `runner_loop.py` в таблице claude-runner: `build_options` также ставит `disallowed_tools` и флаг фона для autopilot (TECH-223)
-**Acceptance:** `python scripts/check-experiments.py` exit 0 (новый файл не «просрочен»); `python scripts/check-rules-loading.py .` ok.
+- Create: `ai/experiments/2026-09-23-headless-no-background-wait.md`
+- Modify: `.claude/rules/dependencies.md:150,155`
+
+**Steps:**
+1. Эксперимент — плоский frontmatter по `ai/experiments/README.md:29-42`: `id: EXP-013` (занято
+   001–005, 008–012; 007 — пример в README); `opened: 2026-09-23`; `status: open`; `metric` — `bg_killed`
+   автопилота и `ended_on_wait` QA по `bg_turn_endings.py`, только строки `+guards`; вторичная —
+   `timeout_rate` автопилота по `run_metrics.py --split` (фоновые субагенты стали синхронными, растёт
+   wall-clock). `baseline` — **числа из вывода Task 4 за 23.09**, не из спеки (QA за день — 27 логов, не
+   15–16). `expected`: автопилот `bg_killed` = 0, QA `ended_on_wait` ≤ 1 из 15, `timeout_rate` автопилота
+   не выше baseline EXP-011. `command` — команда Task 4 с `--since` даты выкатки. `check_after_runs: 15`,
+   `check_after_date: 2026-10-07`, `verdict:` пустой.
+   Тело (образец — EXP-009): что было, что изменено, механизм, пересечения (EXP-011 по тем же прогонам),
+   «если не сработает»: QA не сдвинулся → `qa` в `NO_BACKGROUND_SKILLS` ценой dev-сервера в фоне;
+   автопилот упирается в таймаут Bash → сужать набор в репо проекта, лимиты не поднимать; в run-логе нет
+   `headless_guards` → на VPS не этот раннер.
+2. `dependencies.md:150` (`runner_cli.py`): LOC по факту, добавить `HEADLESS_DISALLOWED_TOOLS`,
+   `NO_BACKGROUND_SKILLS`. `:155` (`runner_loop.py`): LOC по факту (сейчас стоит 283 при фактических
+   281); к `build_options` — `disallowed_tools` для всех, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` для
+   autopilot, откат `HEADLESS_BACKGROUND_TASKS=on` (TECH-223); добавить `headless_guards` (поле run-лога).
+
+**Acceptance:** `python scripts/check-experiments.py` exit 0; `python scripts/check-rules-loading.py .` exit 0.
 
 ### Execution Order
-1 → 2 → 3 → 4 → 5
+- Task 1 → Task 2: Task 2 передаёт `skill=` и читает `disallowed_tools`, которых до Task 1 нет.
+- Task 3 и Task 4 ни от чего не зависят.
+- Task 5 — последним: baseline берётся из вывода Task 4, строка dependencies.md описывает код Tasks 1–2.
+- Один коммит на задачу; финальный прогон — Verify Command + `ruff check . && ruff format --check .` (ruff 0.16.1), `pytest tests/ -q`.
 
 ---
 
@@ -351,7 +499,7 @@ stdlib, CLI как у `run_metrics.py` (`--log-dir`, `--since`, `--until`, `--sk
 
 | ID | Check | Setup | Action | Expected |
 |----|-------|-------|--------|----------|
-| AV-F1 | Механика на флотовом CLI | VPS, CLI 2.1.280 | `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 claude -p "<проба P2>" --disallowedTools ScheduleWakeup Monitor CronCreate CronDelete CronList RemoteTrigger --model claude-sonnet-5` (текст пробы — probe-results.md P2) | Bash `run_in_background` → `InputValidationError`; `Agent` фоновый → синхронный hand-back; `ScheduleWakeup` недоступен |
+| AV-F1 | Механика на флотовом CLI | VPS, CLI 2.1.280 | `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 claude -p "<проба P2>" --disallowedTools ScheduleWakeup,Monitor,CronCreate,CronDelete,CronList,RemoteTrigger --permission-mode bypassPermissions --model claude-sonnet-5` (форма, которую шлёт SDK 0.1.63, и режим раннера) (текст пробы — probe-results.md P2) | Bash `run_in_background` → `InputValidationError`; `Agent` фоновый → синхронный hand-back; `ScheduleWakeup` недоступен |
 | AV-F2 | Первый боевой прогон после выкатки | ближайший autopilot-прогон | `jq .headless_guards` его run-лога | `background_tasks_disabled: true`, 6 инструментов; `grep -c "Background tasks still running" <его .stderr.txt>` = 0 |
 
 ### Verify Command (copy-paste ready)
