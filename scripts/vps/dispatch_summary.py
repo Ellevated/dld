@@ -16,7 +16,7 @@ Deliberately NOT a gate: it never filters a spec out. A spec that looks
 undispatchable is reported WITH the reason, because "fix the allowlist and run
 it" is a decision the dispatcher can make and a gate cannot.
 
-Uses: json, os, re, subprocess, sys, pathlib, db, lifecycle
+Uses: json, os, re, subprocess, sys, pathlib, db, lifecycle, spec_deps
 Used by: skills/dispatcher (via ~/ops/dispatcher.sh), operators on the VPS
 """
 
@@ -35,6 +35,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import db  # noqa: E402
 import lifecycle  # noqa: E402
+import spec_deps  # noqa: E402
 
 ALLOWLIST_HEADING = re.compile(r"^## Allowed Files\s*$", re.MULTILINE)
 PROVIDERS = ("claude", "codex", "gemini")
@@ -74,10 +75,12 @@ def _spec_problem(project_dir: str, spec_id: str) -> str | None:
 
 
 def _depends_on(project_dir: str, spec_id: str) -> list[str]:
-    row = lifecycle.read_lifecycle(project_dir, spec_id) or {}
-    deps = row.get("depends_on") or []
+    # Every declared edge, not just the yaml's `depends_on`: until 2026-09-23 this read
+    # the yaml alone, and a spec whose dependency lived in its `**AFTER <ID>**` header
+    # was briefed as ready (see spec_deps). A dep absent from this repo's lifecycle is
+    # reported as `missing` — usually a cross-repo edge the dispatcher checks by hand.
     unmet = []
-    for dep in deps:
+    for dep in sorted(spec_deps.declared(project_dir, spec_id)):
         drow = lifecycle.read_lifecycle(project_dir, dep) or {}
         if drow.get("status") != "done":
             unmet.append(f"{dep}={drow.get('status', 'missing')}")

@@ -248,7 +248,7 @@ Split into four flat siblings; `orchestrator.py` keeps bootstrap (`_load_env`,
 | `orchestrator_slots.py` | 209 | `sync_projects`, `get_live_pueue_ids`, `pueue_has_active_label/_spec`, `release_orphan_slots`, `is_agent_running`, `_pueue_add` |
 | `orchestrator_backlog.py` | 303 | `_parse_backlog` (ADR-026), `_bump_unparsable_counter`, `bootstrap_new_specs`, `_parse_priority_kind`, `cleanup_stale_stashes` |
 | `orchestrator_inbox.py` | 136 | `_parse_inbox_file`, `scan_inbox` (ADR-021/022) |
-| `orchestrator_queue.py` | 400 | `_backlog_deps` (deprecated fallback), `_spec_deps` (TECH-222 — lifecycle `depends_on` ∪ backlog `AFTER`, logs `DEP_VIA`/`DEP_SHAPE`), `_unmet_dependencies`, the decomposed `scan_queued` steps, `dispatch_night_review` |
+| `orchestrator_queue.py` | 373 | `_AFTER_DEP_RE` / `_backlog_deps` / `_spec_deps` — aliases of `spec_deps.AFTER_ROW_RE` / `backlog_deps` / `declared`, kept under their TECH-222 names for the facade and tests; `_unmet_dependencies` (the gate's fail-open policy), the decomposed `scan_queued` steps, `dispatch_night_review` |
 
 **Two contracts that look stylistic and are not:**
 
@@ -289,6 +289,38 @@ No sibling imports `orchestrator` (enforced by a test). Edges: `orchestrator` �
 - [ ] callback.py (label format "project_id:SPEC-ID" must stay consistent)
 - [ ] run-agent.sh (arg order: project_dir task provider skill)
 - [ ] db.py (get_all_projects, try_acquire_slot, log_task, update_project_phase signatures)
+
+---
+
+## scripts/vps/spec_deps.py
+
+**Path:** `scripts/vps/spec_deps.py`
+
+Which specs a spec waits for — edges only, never status. `declared(project_dir, spec_id)` =
+lifecycle `depends_on` ∪ `**AFTER <ID>**` in the first 15 spec lines ∪ backlog-row `AFTER`.
+Until 2026-09-23 the gate read yaml ∪ backlog and the dispatcher's briefing the yaml alone,
+while Spark writes the edge into the header; 25 specs had it only there (EXP-012).
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| lifecycle.py | scripts/vps/lifecycle.py | read_lifecycle() — `depends_on` |
+| spec bodies | ai/features/{ID}-*.md, {ID}.md | header regex = Spark's `completion.md` step 2 grep |
+| backlog | ai/backlog.md | row regex (deprecated BUG-206 marker) |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| orchestrator_queue.py | scripts/vps/orchestrator_queue.py | aliased as `_spec_deps` / `_backlog_deps` / `_AFTER_DEP_RE` → `_unmet_dependencies` (built-in gate) |
+| dispatch_summary.py | scripts/vps/dispatch_summary.py `_depends_on` | `declared()` → "waits on X=status" lines of the LLM dispatcher's briefing |
+
+### When changing API, check
+
+- [ ] `skills/spark/completion.md` step 2 (both trees) — the header regex and 15-line window must stay the grep Spark uses to fill `depends_on`
+- [ ] `orchestrator.py` facade re-exports `_AFTER_DEP_RE`, `_backlog_deps` (`TestFacadeCompatSurface`)
+- [ ] scripts/vps/tests/test_spec_deps.py, scripts/vps/tests/test_orchestrator.py (`TestSpecDeps`, `TestDependencyGate`)
 
 ---
 

@@ -11,7 +11,7 @@ called by the wrapper as `orchestrator_queue.<name>(...)`, never re-exported
 by bare name.
 
 Uses: os (import), db (import), lifecycle (import), gate_logic (import),
-      gate_ancestry (import), orchestrator_slots._pueue_add
+      gate_ancestry (import), spec_deps (declared edges), orchestrator_slots._pueue_add
 Used by: orchestrator (facade re-export of dep helpers; attribute calls into
          the six scan_queued steps from the wrapper)
 """
@@ -31,45 +31,18 @@ import db  # noqa: E402
 import gate_ancestry  # noqa: E402
 import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
+import spec_deps  # noqa: E402
 from orchestrator_slots import _pueue_add  # noqa: E402,F401
 
 log = logging.getLogger("orchestrator")
 
 
-# BUG-206 / TECH-222: dependency-aware dispatch. The edge lives on the dependent spec
-# (`depends_on: [ID]` in its lifecycle yaml, written by Spark); the `AFTER <ID>` backlog
-# marker is a deprecated fallback (deps_via=backlog). STATUS always from the lifecycle SoT.
-_AFTER_DEP_RE = re.compile(r"\bafter\s+([A-Z]{2,5}-\d+)", re.IGNORECASE)
-
-
-def _backlog_deps(project_dir: str, spec_id: str) -> set:
-    """Deprecated 'AFTER <ID>' deps from spec_id's backlog row; empty when absent."""
-    backlog = Path(project_dir) / "ai" / "backlog.md"
-    if not backlog.is_file():
-        return set()
-    row_re = re.compile(rf"^\s*\|\s*{re.escape(spec_id)}\s*\|")
-    try:
-        for line in backlog.read_text(errors="replace").splitlines():
-            if row_re.match(line):
-                deps = {m.group(1).upper() for m in _AFTER_DEP_RE.finditer(line)}
-                deps.discard(spec_id)
-                return deps
-    except OSError:
-        pass
-    return set()
-
-
-def _spec_deps(project_dir: str, spec_id: str) -> set:
-    """Declared deps: lifecycle `depends_on` (SoT) ∪ backlog `AFTER` row (legacy)."""
-    raw = (lifecycle.read_lifecycle(project_dir, spec_id) or {}).get("depends_on") or []
-    if not isinstance(raw, list):
-        log.warning("DEP_SHAPE: %s depends_on is not a list — ignored", spec_id)
-        raw = []
-    yaml_deps = {d.upper() for d in raw if isinstance(d, str)}
-    legacy = _backlog_deps(project_dir, spec_id) - yaml_deps
-    if legacy:
-        log.info("DEP_VIA: %s deps_via=backlog (legacy) %s", spec_id, sorted(legacy))
-    return yaml_deps | legacy
+# BUG-206 / TECH-222: dependency-aware dispatch. Which edges a spec declares —
+# lifecycle `depends_on` ∪ spec-header `AFTER` ∪ backlog `AFTER` — is spec_deps'
+# answer, shared with the dispatcher's briefing. STATUS always from the lifecycle SoT.
+_AFTER_DEP_RE = spec_deps.AFTER_ROW_RE
+_backlog_deps = spec_deps.backlog_deps
+_spec_deps = spec_deps.declared
 
 
 def _unmet_dependencies(project_dir: str, spec_id: str) -> list:
