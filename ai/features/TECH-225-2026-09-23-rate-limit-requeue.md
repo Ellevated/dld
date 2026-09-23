@@ -251,53 +251,252 @@ callback_decisions WHERE spec_id=? AND verdict='requeue' AND reason='rate_limite
 - [claude-agent-sdk-python PR #648 — RateLimitEvent](https://github.com/anthropics/claude-agent-sdk-python/pull/648)
 - [Agent SDK reference — Python](https://code.claude.com/docs/en/agent-sdk/python) — `AssistantMessage.error`, `RateLimitEvent`
 - `scripts/vps/runner_refusal.py` — образец модуля и тестов (`scripts/vps/tests/test_claude_runner_refusal.py`)
+- Проверено на месте (2026-09-24), без веба: боевой venv `scripts/vps/venv` = `claude_agent_sdk-0.1.63`.
+  `types.py:896-903` (`AssistantMessageError` содержит `"rate_limit"`), `:917-928` (`AssistantMessage.error`),
+  `:1037-1081` (`RateLimitInfo(status, resets_at, rate_limit_type, utilization, overage_status, overage_resets_at,
+  overage_disabled_reason, raw)`, `RateLimitEvent(rate_limit_info, uuid, session_id)`), `:1006-1023` (`ResultMessage`
+  без `api_error_status`). `_internal/message_parser.py:233-252` выдаёт `rate_limit_event` как `RateLimitEvent`.
+  Конструкторы из AV-F1 валидны как есть.
 
-### Task 1: runner_ratelimit.py + тесты
+### Drift Log
+
+**Verdict: light → auto_fix.** Все функции, на которые опирается дизайн, существуют с ожидаемыми сигнатурами;
+сдвинулись строки, LOC и пара деталей контракта. Остальные разделы спеки не правились (по заданию) — правильные
+ссылки ниже и в задачах.
+
+| # | Спека говорит | Код на 2026-09-24 | Действие |
+|---|---|---|---|
+| D1 | LOC: runner_loop 281, claude-runner 368, callback 371 | 297 / 370 / 358; runner_result 390, db 376, db_decisions 169 — совпадают | бюджеты ниже пересчитаны |
+| D2 | `runner_loop.py:161-200` consume, `:187-189` refusal, `:278-281` generic → exit 1 | consume `:159-216`, refusal-сбор `:203-205`, generic `:294-297`, BUG-188 блок `:269-289` | якоря ниже |
+| D3 | `claude-runner.py:273-290` refusal / exit 4 | summary `:274`, exit 4 `:287-291`, salvage `:293`, `build_log_data` `:295-311`, `headless_guards` `:312` | якоря ниже |
+| D4 | Step 7 `callback.py:333-360` | Step 7 `:307-340`, `if sid:` `:316`, `verify_status_sync` `:330-336`; Step 7b `:342-349` — `autopilot_event(project_path, task_label, status, verdict, why)`, вердикт `(status, reason) \| None` | `requeue` возвращает тот же кортеж и ставит `why` |
+| D5 | `bash scripts/check-loc-limit.sh` (Task 2, Verify Command) | файл — `scripts/vps/check-loc-limit.sh` | везде: `bash scripts/vps/check-loc-limit.sh` |
+| D6 | `requeue(project_path, sid, pueue_id, project_id, preview)` | `preview` не используется; `callback_decisions.project_id` пишется как `Path(project_path).name` (`callback_sync.py:330`), а не как project_id из label | `requeue(project_path, spec_id, pueue_id)`, project_id выводится внутри тем же способом |
+| D7 | `count_requeues_since(spec_id, hours)` | spec-id уникальны только внутри проекта (флот: awardybot TECH-1535, dowry TECH-526 — диапазоны пересекаются) | `count_requeues_since(project_id, spec_id, hours)` — то же количество кода, без ложных совпадений между проектами |
+| D8 | дизайн `requeue` сразу вызывает `write_lifecycle` | без `lifecycle.yaml` запись **создаст** файл (Rule 3, `lifecycle_git.py:108-132`); открытый circuit (TECH-169) не проверяется | переиспользовать `callback_sync._read_existing_status` (`:87-118`: circuit / Rule 3 / Rule 7) и `_write_status` (`:255-298`: Rule 7 race → noop `rule_7_saved`) |
+| D9 | абзац LOC называет `runner_ratelimit.decide(state, summary)` | в Design — `decide_exit(state, rl)` | `decide_exit` |
+| D10 | Task 3 без тестового файла, EC-10 без места | `test_db.py` вне Allowed Files | EC-10 — в `tests/integration/test_callback_rate_limit_requeue.py`, файл создаётся в Task 3 |
+| D11 | «следующий свободный EXP» | максимум в `ai/experiments/` — EXP-013 (`2026-09-23-headless-no-background-wait.md`) | **EXP-014** |
+| D12 | — | `.github/workflows/test.yml:62` «split callback.py into seven modules»; `.claude/rules/dependencies.md` «binds 12 names» (на деле уже 13) | Task 4 / Task 6 правят числа |
+| D13 | — | причина пишется в `blocked_reason` и для `queued` (`lifecycle_git.py:144-145`; так же делает `reconcile_orphans`); в `transitions` причины нет | EC-8 проверяет `blocked_reason` |
+
+**Sync zones:** нет. `.claude/rules/dependencies.md` в корне расходится с `template/` намеренно
+(`.claude/rules/template-sync.md:97`); `scripts/vps/` в template не поставляется. Задача синхронизации не нужна.
+
+> Номера строк ниже — на момент **до** соответствующей задачи. Задачи 2 и 4 правят разные файлы, так что сдвиги
+> не пересекаются.
+
+### Task 1: `runner_ratelimit` — детектор, сводка, решение exit 5
+
 **Type:** code
 **Files:**
-  - create: `scripts/vps/runner_ratelimit.py`
-  - create: `scripts/vps/tests/test_runner_ratelimit.py`
-**Acceptance:** EC-1..EC-5.
+- Create: `scripts/vps/runner_ratelimit.py` (≤ 110 LOC)
+- Test: `scripts/vps/tests/test_runner_ratelimit.py` (create)
+
+**Context:** модуль по образцу `runner_refusal.py:1-13` (докстринг Module/Role/Uses/Used by): только stdlib,
+утиная типизация, SDK **не импортировать** — `runner_loop` должен остаться единственным модулем, импортирующим SDK
+(фикстуры перезагружают только его, `dependencies.md` «The split line is the SDK»).
+
+**Contract:**
+- `from_message(message) -> dict | None`
+  - `info = getattr(message, "rate_limit_info", None)`; не `None` → `{"source": "event", "status", "resets_at",
+    "rate_limit_type", "utilization", "overage_status"}`, каждое через `getattr(info, …, None)`. Любой статус пишется,
+    `allowed_warning` тоже.
+  - иначе `getattr(message, "error", None) == "rate_limit"` → ровно `{"source": "assistant_error", "status": "rejected"}`
+    (EC-1 сравнивает весь dict — лишних ключей нет).
+  - иначе `None`. Текст сообщения не читается вообще (EC-3).
+- `summary(events: list) -> dict` — ключи всегда все восемь: `detected` (`bool(events)`), `rejected` (любой
+  `status == "rejected"`; `assistant_error` всегда даёт `"rejected"`), `rate_limit_type` и `resets_at` (последнее
+  непустое), `resets_at_iso` (`datetime.fromtimestamp(resets_at, tz=timezone.utc).isoformat()` или `None`),
+  `utilization_max` (max непустых или `None`), `sources` (sorted, без повторов), `events` (`[:10]`).
+- `decide_exit(state: dict, rl: dict) -> int` — `5`, если `rl["rejected"]` и
+  `not (state["result_received"] and not state["result_is_error"])` (ADR-024) и `state["exit_code"] in (0, 1, 2, 3)`;
+  иначе `state["exit_code"]` без изменений (124, 4, 143 не трогаются). `state` не мутирует. При возврате 5 —
+  `logger.warning("RATE_LIMITED type=%s resets_at=%s exit %d→5", …)`, `logging.getLogger("claude-runner")`.
+
+**Tests (red today: `ModuleNotFoundError: runner_ratelimit`)** — стабы через `types.SimpleNamespace`, фикстура раннера не нужна:
+- EC-1 `test_synthetic_message_is_rejected` — `from_message(NS(content=[…], model="<synthetic>", error="rate_limit")) == {"source": "assistant_error", "status": "rejected"}`.
+- EC-2 `test_rejected_event_summary` — событие `rejected / 1790161200 / five_hour` → `summary(...)["rejected"] is True`, `resets_at == 1790161200`, `resets_at_iso == "2026-09-23T11:00:00+00:00"`, `rate_limit_type == "five_hour"`.
+- EC-1/EC-2 на настоящих типах: `test_real_sdk_types` — `pytest.importorskip("claude_agent_sdk")`, `AssistantMessage(content=[], model="<synthetic>", error="rate_limit")` и `RateLimitEvent(rate_limit_info=RateLimitInfo(status="rejected", resets_at=1790161200, rate_limit_type="five_hour"), uuid="u", session_id="s")` дают те же результаты (ловит переименование полей в SDK — главный риск утиной типизации).
+- EC-3 `test_agent_text_about_limits_is_not_detected` — parametrize: ассистент с текстом «You've hit your session limit» и `error=None`; result-подобный объект; `NS(subtype="init", data={})` → `None`.
+- EC-4 `test_allowed_warning_is_detected_not_rejected` — `status="allowed_warning", utilization=0.91` → `detected True`, `rejected False`, `utilization_max == 0.91`.
+- EC-5 `test_empty_summary_has_every_key` — `summary([])`: `detected False`, `rejected False`, `resets_at None`, `events == []`, набор ключей = восемь из контракта.
+- `test_decide_exit_*` (EC-6/EC-7 на уровне функции) — rejected + exit 1 без результата → 5; rejected + `result_received=True, result_is_error=False` → 0; exit 124 / 4 / 143 → без изменений; `rejected=False` → без изменений.
+
+**Commands:** `pytest scripts/vps/tests/test_runner_ratelimit.py -v` — сначала падает на импорте, после реализации зелёный.
+
+**Acceptance:** EC-1, EC-2, EC-3, EC-4, EC-5.
 
 ### Task 2: раннер собирает события и ставит exit 5
+
 **Type:** code
 **Files:**
-  - modify: `scripts/vps/runner_loop.py` — сбор в `consume`
-  - modify: `scripts/vps/claude-runner.py` — `decide_exit`, `log_data["rate_limit"]`
-  - modify: `scripts/vps/runner_result.py` — `_EXIT_REASONS[5] = "rate_limited"`
-  - modify: `scripts/vps/tests/test_runner_ratelimit.py` — EC-6, EC-7 (прогон через `run_task` с поддельным SDK, как в `test_claude_runner_refusal.py`)
-**Acceptance:** EC-6, EC-7; `bash scripts/check-loc-limit.sh` exit 0.
+- Modify: `scripts/vps/runner_loop.py:7,33-35,203-205` (297 → ≤ 302)
+- Modify: `scripts/vps/claude-runner.py:29,291-293,312` (370 → ≤ 375; бюджет спеки ≤ 8 строк)
+- Modify: `scripts/vps/runner_result.py:31` (390 → 391, **ровно одна строка**)
+- Test: `scripts/vps/tests/test_runner_ratelimit.py` (extend)
+
+**Context:** прогон с упором в лимит сейчас пишет `exit_code: 1` и ничего о причине.
+
+**Steps:**
+1. Тесты (красные: exit 1, нет ключа `rate_limit`). Взять фикстуру и фейки из соседнего теста — прецедент
+   `test_orchestrator.py:22` (`from test_db import …`): `import test_claude_runner_refusal as base`, `runner = base.runner`
+   (присваивание атрибута модуля регистрирует фикстуру и не даёт ruff F811 на параметр `runner`), драйверы
+   `base.run` / `base.read_log`, `base.FakeAssistantMessage` (уже принимает `error=`, `:52`). Для события лимита —
+   локальный класс `FakeRateLimitEvent` с атрибутом `rate_limit_info` (isinstance по нему в раннере нет).
+   - EC-6 `test_rate_limit_then_sdk_exception_exits_5` — поток: `FakeAssistantMessage(content=[FakeTextBlock("You've hit your session limit · resets 2pm (Europe/Helsinki)")], model="<synthetic>", error="rate_limit")`, затем `raise RuntimeError("Command failed with exit code 1 … Check stderr output for details")` (патч `runner.runner_loop.query`, как `test_claude_runner_refusal.py:419-425`). Перед запуском `runner._salvage = SimpleNamespace(spec_id_from_path=lambda _p: "TECH-1", salvage_run=lambda _path, _sid, reason: {"reason": reason})`. Ожидание: `exit_code == 5`, `read_log(runner)["rate_limit"]["rejected"] is True`, `read_log(runner)["salvage"]["reason"] == "rate_limited"`, `runner._EXIT_REASONS[5] == "rate_limited"`.
+   - EC-7 `test_rate_limit_after_successful_result_keeps_exit_0` — `FakeResultMessage(result='{"task_status": "complete"}')`, затем `FakeRateLimitEvent(status="rejected")` → `exit_code == 0`, `rate_limit.rejected is True` (записано, но не решает).
+   - EC-5 на уровне лога: `test_clean_run_logs_rate_limit_block` — обычный прогон → `read_log(runner)["rate_limit"]["detected"] is False`.
+2. `runner_loop.py`: импорт `import runner_ratelimit` между `runner_heartbeat` и `runner_refusal` (`:33-34`), строка `Uses:` (`:6-7`) дополняется им же. В `consume` сразу после добавления refusal-события (`:203-205`): `ev = runner_ratelimit.from_message(message)` → если не `None`, `state.setdefault("rate_limit_events", []).append(ev)`. `setdefault`, а не новый ключ в `new_run_state` — у `runner_result.py` нет запаса LOC.
+3. `claude-runner.py`: `import runner_ratelimit  # noqa: E402 — rate-limit detection, exit 5 (TECH-225)` после `:29` (`runner_models`). Между концом exit-4 блока (`:291`) и `salvage_info = …` (`:293`): `rate_limit = runner_ratelimit.summary(state.get("rate_limit_events", []))`, `state["exit_code"] = runner_ratelimit.decide_exit(state, rate_limit)` — **до** salvage, чтобы причина salvage была `rate_limited`. После `log_data["headless_guards"] = …` (`:312`): `log_data["rate_limit"] = rate_limit`.
+4. `runner_result.py:31`: после `4: "classifier_refusal",` добавить `5: "rate_limited",`.
+
+**Must NOT change:** строка `claude-runner.py:287` `if refusal["unrecovered"] and state["exit_code"] == 0:` (её текст проверяет
+`test_claude_runner_refusal.py:486`); BUG-188 ветка `runner_loop.py:269-289` без присваиваний `exit_code`
+(`test_claude_runner_refusal.py:473-480`); `runner_result.new_run_state` и `build_log_data` — не трогать.
+
+**Commands:** `pytest scripts/vps/tests/test_runner_ratelimit.py scripts/vps/tests/test_claude_runner_refusal.py scripts/vps/tests/test_claude_runner_timeout.py -v` зелёный; `bash scripts/vps/check-loc-limit.sh` → exit 0; `grep -n '5: "rate_limited"' scripts/vps/runner_result.py` → 1 строка.
+
+**Acceptance:** EC-6, EC-7.
 
 ### Task 3: счётчик возвратов в БД
+
 **Type:** code
 **Files:**
-  - modify: `scripts/vps/db_decisions.py`, `scripts/vps/db.py`, `scripts/vps/schema.sql`
+- Modify: `scripts/vps/db_decisions.py:9,30,53` (169 → ≤ 186)
+- Modify: `scripts/vps/db.py:353` (376 → 377, одна строка)
+- Modify: `scripts/vps/schema.sql:80` (только комментарий)
+- Test: `tests/integration/test_callback_rate_limit_requeue.py` (create)
+
+**Steps:**
+1. Тест (красный: `AttributeError: module 'db' has no attribute 'count_requeues_since'`): фикстура `tmp_db` — копия
+   `tests/integration/test_callback_blocked_no_dispatch.py:43-53` (в `tests/integration/` нет прецедента импорта между
+   тестовыми модулями). EC-10 `test_count_requeues_since_window_and_scope` — через `db.record_decision`: 2 строки
+   `("proj", "TECH-1", "requeue", "rate_limited")` сейчас; 1 такая же строка с `ts` на 25 ч назад (сырой
+   `INSERT` с `strftime('%Y-%m-%dT%H:%M:%SZ','now','-25 hours')`); 1 для `TECH-2`; 1 для `("other", "TECH-1")`;
+   1 `requeue` с `reason="fleet_paused"` → `db.count_requeues_since("proj", "TECH-1", 24) == 2`.
+2. `db_decisions.py`: после `count_demotes_since` (`:41-52`) — `count_requeues_since(conn, project_id: str, spec_id: str, hours: int) -> int`,
+   по образцу `:46-52`: `COUNT(*)` при `project_id = ? AND spec_id = ? AND verdict = 'requeue' AND reason = 'rate_limited'
+   AND ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)` с параметром `f"-{int(hours)} hours"` (ADR-017, только `?`).
+   Дописать имя в «Used by» (`:9`), `'requeue'` — в список вердиктов (`:30`).
+3. `db.py`: после `:353` — `count_requeues_since = _delegate(db_decisions.count_requeues_since)`.
+4. `schema.sql:80`: комментарий → `-- 'demote' | 'sync' | 'noop' | 'circuit_open' | 'requeue'`. Таблица и индексы не меняются.
+
+**Commands:** `pytest tests/integration/test_callback_rate_limit_requeue.py -v -n0` зелёный; `pytest scripts/vps/tests/test_db.py -q` зелёный.
+
 **Acceptance:** EC-10.
 
 ### Task 4: callback возвращает спеку в очередь
+
 **Type:** code
 **Files:**
-  - create: `scripts/vps/callback_ratelimit.py`
-  - modify: `scripts/vps/callback.py`
-  - create: `tests/integration/test_callback_rate_limit_requeue.py`
-  - modify: `.github/workflows/test.yml` — `--cov=callback_ratelimit`
+- Create: `scripts/vps/callback_ratelimit.py` (≤ 90 LOC)
+- Modify: `scripts/vps/callback.py:11,41,316` (358 → ≤ 366)
+- Modify: `.github/workflows/test.yml:62,78`
+- Test: `tests/integration/test_callback_rate_limit_requeue.py` (extend)
+
+**Context:** exit 5 у autopilot — не провал работы; спека должна уйти в `queued`, а не в `blocked`.
+
+**Contract — `callback_ratelimit.requeue(project_path: str, spec_id: str, pueue_id: int | None) -> tuple[str, str] | None`:**
+шапка модуля и `sys.path` — по образцу `callback_circuit.py:1-32`; `log = logging.getLogger("callback")`; константы
+`REQUEUE_CEILING = 3`, `REQUEUE_WINDOW_HOURS = 24`, `REQUEUE_REASON = "rate_limited"`. Соседние модули вызываются
+как атрибуты модуля (контракт TECH-216: так их достаёт monkeypatch).
+1. `project_id = Path(project_path).name`; `audit = callback_sync._Audit(project_id, spec_id, pueue_id, "queued", time.monotonic())`.
+2. `callback_sync._read_existing_status(project_path, spec_id, audit)` вернул `None` → вернуть `None` (circuit open /
+   нет yaml / уже `done` — noop и строку аудита он пишет сам). Это покрывает EC-11.
+3. `prior = db.count_requeues_since(project_id, spec_id, REQUEUE_WINDOW_HOURS)`; ошибка БД → `log.warning`, `prior = 0`
+   (возврат в очередь не должен ломаться на счётчике).
+4. `prior >= REQUEUE_CEILING - 1` → `("blocked", f"repeated_rate_limit:{prior + 1}")` + `callback_circuit.note_demote(project_id, spec_id, reason)`
+   (`demoted=1`, в окно circuit breaker попадает); иначе `("queued", REQUEUE_REASON)` +
+   `callback_circuit._record(project_id, spec_id, "requeue", REQUEUE_REASON)` (`demoted=0`).
+5. `log.warning("REQUEUE_RATE_LIMIT %s → %s (%s)", spec_id, status, reason)` — по этой строке считает эксперимент.
+6. `callback_sync._write_status(project_path, spec_id, status, reason, audit)` вернул False → `None` (гонка по Rule 7 →
+   noop `rule_7_saved`, это уже сделано внутри). Иначе `audit.emit(status, reason)`, вернуть `(status, reason)`.
+Порядок «записать решение → записать статус» повторяет `verify_status_sync` (`callback_sync.py:362-373`).
+
+**Steps:**
+1. Тесты (красные: спека уходит в `blocked` через `verify_status_sync`). Хелперы копируются из
+   `test_callback_blocked_no_dispatch.py:60-148` (`stub_event_writer`, `_git`, `_make_project`, `_seed_db`, label
+   `autopilot-<ID>`, project dir `proj`). Драйвер: `monkeypatch.setattr(callback, "extract_agent_output", lambda *a, **kw: ("autopilot", "", ""))`,
+   `monkeypatch.setenv("CALLBACK_AUDIT_LOG", str(tmp_path / "audit.jsonl"))` (иначе аудит пишется в `scripts/vps/`),
+   `patch("sys.argv", ["callback.py", str(pid), "claude-runner", "Failed", "5"])`, `patch("sys.exit")`. События Hermes
+   записываются подменой `event_writer.notify` на функцию-регистратор (`callback_event` вызывает его как атрибут модуля).
+   - EC-8 `test_exit5_requeues_spec` — lifecycle: `status == "queued"`, `updated_by == "callback"`, `blocked_reason == "rate_limited"`, `transitions[-1]` = `in_progress → queued`, `by: callback`; `callback_decisions`: одна строка `verdict='requeue'`, `reason='rate_limited'`, `demoted=0`; `db.count_demotes_since(10) == 0`; в записанном событии есть `"autopilot queued"` и `"rate_limited"`.
+   - EC-9 `test_third_requeue_in_24h_blocks` — заранее 2 × `db.record_decision("proj", sid, "requeue", "rate_limited", demoted=False)` → `status == "blocked"`, `blocked_reason == "repeated_rate_limit:3"`, последняя строка решений `verdict='demote'`, `demoted=1`.
+   - EC-11 `test_already_done_is_noop` — перед `main()` `lifecycle.write_lifecycle(repo, sid, "done", by="callback")` → статус остаётся `done`, есть строка `noop` / `already_done_terminal`, строк `requeue` нет, `sys.exit` вызван с `0`.
+2. `callback_ratelimit.py` — по контракту выше.
+3. `callback.py`: `import callback_ratelimit  # noqa: E402  — exit 5 → queued (TECH-225)` после `:41` (`callback_logs`);
+   в `Uses:` после `:11` — `  - callback_ratelimit: requeue  (TECH-225)`. Строку `:316` `if sid:` заменить на
+   `if sid and exit_code == 5:` → `verdict = callback_ratelimit.requeue(project_path, sid, int(pueue_id) if pueue_id else None)`,
+   `why = "no_decision"`; затем `elif sid:` — существующее тело `:317-337` остаётся как есть, без смены отступов.
+   `exit_code` уже есть в области видимости (`:234`, `map_result`).
+4. `test.yml`: после `:78` — `--cov=callback_ratelimit \`; комментарий `:62` → «TECH-216/224/225 split callback.py into eight modules».
+
+**Must NOT change:** условие Step 7 `skill == "autopilot" and status in ("done", "failed")` (`:308`), Step 7b (`:342-349`),
+`finally: sys.exit(0)`; `callback_sync.py` (вне Allowed Files — только вызов его функций).
+
+**Commands:** `PYTHONPATH=scripts/vps pytest tests/integration/test_callback_*.py -v -n0` зелёный;
+coverage-гейт из `test.yml:67-81` локально → ≥ 54%; `bash scripts/vps/check-loc-limit.sh` → exit 0.
+
 **Acceptance:** EC-8, EC-9, EC-11.
 
-### Task 5: эксперимент
+### Task 5: эксперимент EXP-014
+
 **Type:** code (docs)
 **Files:**
-  - create: `ai/experiments/2026-09-23-rate-limit-requeue.md` — id: следующий свободный EXP; metric: autopilot-прогоны, упёршиеся в лимит (`grep -l '"exit_code": 5' scripts/vps/logs/*.log` с даты выкатки), и чем кончилась их спека (`grep REQUEUE_RATE_LIMIT scripts/vps/callback-debug.log` против `STATUS_SYNC … blocked` для тех же спек); baseline: 23.09 — 2 прогона упёрлись, 2 из 2 → `blocked` (exit 1, причина нигде не записана); expected: 100% упёршихся → `queued` с причиной `rate_limited`, 0 спек в `blocked` из-за лимита, кроме `repeated_rate_limit`; check_after_runs 40; check_after_date +21 день (событие редкое — если за срок лимит не случился, вердикт `inconclusive` с этой формулировкой). Тело: что делать, если `rate_limit_event` не приходит (детектор работает только по `assistant_error`, `resets_at` всегда unknown → TECH-226 живёт на запасном интервале; поднять SDK до версии с `api_error_status`).
-**Acceptance:** `python scripts/check-experiments.py` exit 0.
+- Create: `ai/experiments/2026-09-23-rate-limit-requeue.md`
+
+**Contract:** шапка по `ai/experiments/README.md:29-42` (обязательные поля — `scripts/check-experiments.py:32`):
+`id: EXP-014`; `opened:` дата коммита; `status: open`;
+`metric:` autopilot-прогоны с `"exit_code": 5` в `~/projects/dld/scripts/vps/logs/*.log` с даты выкатки и что стало с их
+спекой (`grep REQUEUE_RATE_LIMIT scripts/vps/callback-debug.log` против `STATUS_SYNC … blocked` для тех же спек);
+`baseline:` 23.09 — 2 прогона упёрлись в лимит, 2 из 2 → `blocked` (`branch_pushed_not_merged`), exit 1, причина нигде не записана;
+`expected:` 100% упёршихся → exit 5 с блоком `rate_limit`; первый возврат каждой спеки → `queued` (`rate_limited`);
+ни одного `blocked` из-за лимита, кроме `repeated_rate_limit:<n>`;
+`command:` `find ~/projects/dld/scripts/vps/logs -name '*.log' -newermt <opened> | xargs grep -l '"exit_code": 5'`;
+`check_after_runs: 40`; `check_after_date:` opened + 21 день; `verdict:` пусто.
+Тело: (а) что меняется и зачем; (б) **без TECH-226 спека, возвращённая в очередь, сразу диспатчится снова и упирается
+в тот же лимит — три таких круга за минуты дают `repeated_rate_limit:3`. Это известный потолок, а не опровержение;
+вердикт выносится по срезу после выкатки TECH-226**; (в) что делать, если `rate_limit_event` не приходит: детектор
+видит только `assistant_error`, `resets_at` всегда unknown → TECH-226 живёт на запасном интервале; поднять SDK до
+версии с `ResultMessage.api_error_status` (≥ 0.1.81); (г) лимит за срок не случился → `inconclusive` с этой формулировкой.
+
+**Commands:** `python scripts/check-experiments.py` → exit 0.
+
+**Acceptance:** DoD «check-experiments exit 0».
 
 ### Task 6: доки
+
 **Type:** code (docs)
 **Files:**
-  - modify: `docs/orchestrator/status-model.md` — exit 5, путь `in_progress → queued (rate_limited)`, потолок 3/24ч
-  - modify: `.claude/rules/dependencies.md` — таблица модулей claude-runner (`runner_ratelimit.py`), модули callback (`callback_ratelimit.py`), `db_decisions.count_requeues_since`
-**Acceptance:** доки называют exit 5 и новый путь.
+- Modify: `docs/orchestrator/status-model.md:172` + новый подраздел между `:270` и `:272`
+- Modify: `.claude/rules/dependencies.md` — разделы `scripts/vps/db`, `scripts/vps/claude-runner.py`, `scripts/vps/callback.py`
+
+**Steps:**
+1. `status-model.md:172` (строка Step 7 в таблице): добавить «autopilot с `exit_code == 5` → `callback_ratelimit.requeue` вместо `verify_status_sync` (TECH-225)».
+2. Новый подраздел `### Rate limit → queued (TECH-225)` перед `### TECH-197 hardening`: exit 5 = `rate_limited`
+   (раннер: `AssistantMessage.error == "rate_limit"` или `RateLimitEvent` `rejected` без успешного результата, ADR-024);
+   `in_progress → queued`, `by=callback`, причина в `blocked_reason`; решение `requeue`, `demoted=0`; третий возврат за
+   24 ч → `blocked repeated_rate_limit:<n>` через `note_demote`; noop-пути те же, что в Step 1 `verify_status_sync`;
+   salvage пушит ветку, следующий диспатч её продолжает (TECH-221); пауза до `resets_at` — TECH-226.
+3. `dependencies.md`: таблица модулей claude-runner — строка `runner_ratelimit.py` (`from_message`, `summary`,
+   `decide_exit`, решение exit 5, только stdlib), актуальные LOC для `runner_loop.py` / `runner_result.py` /
+   `claude-runner.py`, `_EXIT_REASONS` включает 5 = `rate_limited`; раздел callback — строка `callback_ratelimit.py`,
+   «six flat siblings» → seven, «lists all seven modules» → eight, LOC `callback.py`; раздел db — `count_requeues_since`
+   в строке `db_decisions.py`, «binds 12 names» → 14; «When changing API» (db) — «claude-runner exit 5 = `rate_limited`».
+
+**Commands:** `grep -c "rate_limited" docs/orchestrator/status-model.md .claude/rules/dependencies.md` → ≥ 1 в каждом;
+`python scripts/check-rules-loading.py .` → exit 0.
+
+**Acceptance:** DoD — доки называют exit 5 и путь `in_progress → queued`.
 
 ### Execution Order
-1 → 2 → 3 → 4 → 5 → 6
+
+- **1 → 2:** Task 2 импортирует `runner_ratelimit`.
+- **3 → 4:** `callback_ratelimit` вызывает `db.count_requeues_since`; Task 4 дописывает тестовый файл, созданный в Task 3.
+- **2, 4 → 5:** эксперимент описывает уже работающее поведение и строку лога `REQUEUE_RATE_LIMIT`.
+- **1–4 → 6:** доки описывают итоговые сигнатуры и LOC.
+- Итоговый порядок: 1 → 2 → 3 → 4 → 5 → 6. Финальная проверка — Verify Command спеки, но LOC-гейт запускать как `bash scripts/vps/check-loc-limit.sh` (D5).
 
 ---
 
