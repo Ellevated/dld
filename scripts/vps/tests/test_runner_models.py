@@ -271,6 +271,27 @@ class TestHeadlessGuards:
         assert "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS" not in opts.env
         assert set(opts.disallowed_tools) >= {"ScheduleWakeup", "Monitor"}
 
+    def test_run_log_records_headless_guards(self, loop_module, tmp_path):
+        """TECH-223 EC-5: the field is derived from the options object that actually
+        went to the SDK, so an experiment can cut by field rather than by date (EXP-009)."""
+        wait_tools = [
+            "ScheduleWakeup",
+            "Monitor",
+            "CronCreate",
+            "CronDelete",
+            "CronList",
+            "RemoteTrigger",
+        ]
+        autopilot_opts = _options(loop_module, tmp_path, skill="autopilot")
+        assert loop_module.headless_guards(autopilot_opts) == {
+            "background_tasks_disabled": True,
+            "disallowed_tools": wait_tools,
+        }
+        qa_opts = _options(loop_module, tmp_path, skill="qa")
+        guards = loop_module.headless_guards(qa_opts)
+        assert guards["background_tasks_disabled"] is False
+        assert guards["disallowed_tools"] == wait_tools
+
 
 def test_run_log_records_pins_and_system_prompt():
     """EC-7: an experiment has to be able to tell which configuration it measured."""

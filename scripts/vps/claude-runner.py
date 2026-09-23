@@ -217,6 +217,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         max_turns=MAX_TURNS,
         alias_pins=ALIAS_PINS,
         system_prompt=AUTOPILOT_SYSTEM_PROMPT,
+        skill=skill,
     )
 
     state = runner_result.new_run_state()
@@ -308,6 +309,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         alias_pins=ALIAS_PINS,
         system_prompt=AUTOPILOT_SYSTEM_PROMPT,
     )
+    log_data["headless_guards"] = runner_loop.headless_guards(options)
     runner_result.log_refusal_telemetry(
         refusal,
         db=_orch_db,

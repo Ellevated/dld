@@ -147,6 +147,15 @@ def build_options(
     )
 
 
+def headless_guards(options) -> dict:
+    """What a run-log reader needs to cut by field, not by date (EXP-009 lesson):
+    the guards actually reaching the SDK, from the options object itself."""
+    return {
+        "background_tasks_disabled": options.env.get("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS") == "1",
+        "disallowed_tools": list(options.disallowed_tools),
+    }
+
+
 async def consume(
     state: dict,
     prompt: str,
