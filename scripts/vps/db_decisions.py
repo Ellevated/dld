@@ -4,9 +4,9 @@ Module: db_decisions
 Role: circuit-breaker decisions (TECH-169) + SDK/gate telemetry (BUG-188, ARCH-190).
 Uses: sqlite3 (stdlib) — receives an open connection, never opens one.
 Used by: db.py only, through thin delegates that keep the public names
-         db.record_decision / db.count_demotes_since / db.clear_decisions /
-         db.log_sdk_post_result_error / db.log_gate_cycle / db.get_gate_health /
-         db.log_classifier_refusal.
+         db.record_decision / db.count_demotes_since / db.count_requeues_since /
+         db.clear_decisions / db.log_sdk_post_result_error / db.log_gate_cycle /
+         db.get_gate_health / db.log_classifier_refusal.
 
 Pure leaf (TECH-212): must never import db. The caller owns the connection and the
 transaction; db.get_db() stays the single place migrations run.
@@ -27,7 +27,7 @@ def record_decision(
     """Insert one callback decision row. Returns row id.
 
     TECH-169: Used by callback.verify_status_sync to feed the circuit-breaker.
-    `verdict` is one of: 'demote', 'sync', 'noop', 'circuit_open'.
+    `verdict` is one of: 'demote', 'sync', 'noop', 'circuit_open', 'requeue'.
     """
     cursor = conn.execute(
         "INSERT INTO callback_decisions "
@@ -48,6 +48,24 @@ def count_demotes_since(conn: sqlite3.Connection, min_ago: int) -> int:
         "WHERE demoted = 1 "
         "AND ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)",
         (f"-{int(min_ago)} minutes",),
+    ).fetchone()
+    return int(row["cnt"]) if row else 0
+
+
+def count_requeues_since(
+    conn: sqlite3.Connection, project_id: str, spec_id: str, hours: int
+) -> int:
+    """Count 'requeue'/'rate_limited' rows for a spec in the last `hours` (TECH-225).
+
+    Feeds the repeated-rate-limit ceiling. Scoped by project_id — spec ids are
+    only unique within a project.
+    """
+    row = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM callback_decisions "
+        "WHERE project_id = ? AND spec_id = ? AND verdict = 'requeue' "
+        "AND reason = 'rate_limited' "
+        "AND ts >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)",
+        (project_id, spec_id, f"-{int(hours)} hours"),
     ).fetchone()
     return int(row["cnt"]) if row else 0
 

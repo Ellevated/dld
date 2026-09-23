@@ -351,6 +351,7 @@ def _delegate(fn, immediate: bool = False):
 # --- decisions + telemetry -> db_decisions.py (TECH-212) ---
 record_decision = _delegate(db_decisions.record_decision)
 count_demotes_since = _delegate(db_decisions.count_demotes_since)
+count_requeues_since = _delegate(db_decisions.count_requeues_since)
 clear_decisions = _delegate(db_decisions.clear_decisions, immediate=True)
 log_sdk_post_result_error = _delegate(db_decisions.log_sdk_post_result_error)
 log_gate_cycle = _delegate(db_decisions.log_gate_cycle)

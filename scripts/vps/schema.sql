@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS callback_decisions (
     ts           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     project_id   TEXT NOT NULL,
     spec_id      TEXT,
-    verdict      TEXT NOT NULL,        -- 'demote' | 'sync' | 'noop' | 'circuit_open'
+    verdict      TEXT NOT NULL,        -- 'demote' | 'sync' | 'noop' | 'circuit_open' | 'requeue'
     reason       TEXT,
     demoted      INTEGER NOT NULL DEFAULT 0
 );
