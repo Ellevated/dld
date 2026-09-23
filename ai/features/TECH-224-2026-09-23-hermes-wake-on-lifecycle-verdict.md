@@ -478,3 +478,15 @@ DEPLOY_URL=local-only
 
 ## Autopilot Log
 [Auto-populated by autopilot during execution]
+
+### 2026-09-24 — autopilot (tech/TECH-224)
+- **Plan:** planner re-validated; drift auto-fixed (LOC gate at `scripts/vps/check-loc-limit.sh`, AV-F1 greps by project, unused `import event_writer` removed) — `504752f3`.
+- **Task 1** (tests EC-1..5, EC-8): coder → 4 red / 2 green on old code; review inline OK — `38175174`.
+- **Task 2** (`verify_status_sync` → `(status, reason) | None`): coder; existing callback tests green; review OK; `callback_sync.py` 382 LOC — `8459c52f`.
+- **Task 3** (tests EC-6, EC-7 + reflect/empty): coder; red on missing module — `450ce0f6`.
+- **Task 4** (`callback_event.py`, Step 7b): coder; 10/10 new tests, 151 callback tests green; LOC gate exit 0; `callback.py` 371 → 358; AV-S1 → `callback_event` — `4f94fdd9`.
+- **Task 5** (CI `--cov=callback_event`, status-model/README step 7b) — `ee6f96f6`. **Task 6** (dependencies.md) — `9b57f595`.
+- **Documenter:** completed — `docs/dependencies-changelog.md` row — `14fc8001`.
+- **Final suite (CI_PARITY_UNAVAILABLE, one run):** ruff 0.16.1 check+format clean; `pytest tests/ scripts/vps/tests/` → 1194 passed, 3 skipped, 1 failed: `test_worktree_hook_blocks.py::test_installer_leaves_guard_active_from_relative_legacy_state` — env leak, the runner's `CLAUDE_CURRENT_SPEC_PATH` reaches the test's git hook; passes with the var unset; file untouched by this branch. Node harness, prompt-integrity, tree-sync, LOC gate — clean. Post-suite tree delta: docs only (`dependencies-changelog.md`) → not re-run.
+- **Exa verification:** skipped — stdlib-only change, no external library/pattern to check.
+- **AV-F1:** pending — first autopilot block after deploy (`grep -A3 "<project> autopilot blocked" scripts/vps/logs/hermes-wake.log`). Deploy = the callback is invoked per pueue completion from the develop checkout; no service restart needed.
