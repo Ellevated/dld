@@ -80,6 +80,12 @@ Parallel autopilot instances can:
 осталось ровно то, что перечислено в отчёте как намеренно незакоммиченное. Непустой вывод +
 завершение хода = потерянная работа.
 
+**Механика, не только правило.** В headless-прогонах раннер выключает фон механически
+(`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, без `ScheduleWakeup`/`Monitor`/`Cron*`): у Bash
+отсутствует `run_in_background`, `Agent` возвращает результат синхронно. Долгая команда
+выполняется в переднем плане в пределах таймаута Bash; не влезает — сузить набор, а не
+искать обход.
+
 ## Test Safety
 
 - ⛔ **NEVER modify** `tests/contracts/**` or `tests/regression/**`

@@ -40,6 +40,7 @@ When something breaks, you describe the symptom ("button does nothing after clic
 - ❌ Read test files (`tests/`, `__tests__/`, `*.test.*`, `*.spec.*`)
 - ❌ Analyze imports, dependencies, or module structure
 - ❌ Use `Grep` to search through source code
+- ❌ Ждать CI или выкатку — ни `sleep`/`until`/`for`-циклом опроса, ни `run_in_background`/`Monitor`, ни обещанием «пришлю итог, когда CI закончится» (фоновый процесс, нужный самому тесту — например dev-сервер, — не запрещён): QA идёт headless, ход, закончившийся ожиданием, заканчивает сессию — итог не придёт никогда
 
 ### ALWAYS DO:
 
@@ -100,7 +101,7 @@ Check deployed version using info from Step 0a:
 | Deploy check | QA action |
 |-------------|-----------|
 | Deployed SHA matches local HEAD | ✅ Proceed |
-| Deployed SHA is behind | ❌ **BLOCKED** — "Deploy is stale, testing old code". Report deploy lag |
+| Deployed SHA is behind | ❌ **BLOCKED** — "Deploy is stale, testing old code". Report deploy lag; выкатку не ждать |
 | Deploy URL unreachable | ❌ **BLOCKED** — report as Critical infra bug |
 | No deploy info / local-only | ⚠️ WARN — note in report, proceed |
 
@@ -114,7 +115,7 @@ gh run list --branch develop --limit 1 --json conclusion,headSha,event,name 2>/d
 |-----------|-----------|
 | `conclusion: "success"` | ✅ Note in report |
 | `conclusion: "failure"` | ⚠️ WARN — note in report. If deploy is live, test anyway (CI may fail on unrelated check) |
-| `conclusion: "in_progress"` | ⚠️ WARN — deploy may be incomplete |
+| `conclusion: "in_progress"` | ⚠️ WARN — записать `CI: in_progress <sha>` в отчёт и продолжать, не ждать |
 | No CI runs / `gh` unavailable | Skip silently |
 
 **Gate summary:** Deploy not reached = BLOCKED. CI failure = WARN. QA tests the **running product**, not the pipeline.
