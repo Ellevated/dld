@@ -542,3 +542,20 @@ GROWTH падает в `task/`). В Python её нет; `orchestrator_queue.reco
 - **Evidence:** ai/features/TECH-222-*.md Task 5 шаг 1 (исходный блок); исправлено в
   .claude/skills/spark/completion.md:23-32 — экстракция проверена на шапке самой TECH-222
   (`AFTER TECH-220, AFTER TECH-221` → `['TECH-220','TECH-221']`) и на пустом входе (`[]`).
+
+---
+### SIGNAL-2026-09-23-2305
+- **Source:** spark (TECH-223..226)
+- **Target:** spark
+- **Type:** contradiction
+- **Message:** Protocol Phase 4 «Session Budget» велит делить крупное на `ARCH-*` эпик + детей,
+  все `queued`. Но `queued`-эпик оркестратор диспатчит в автопилот, как любую спеку: ARCH-219
+  (30.08) ушёл в pueue 1256 и кончился `blocked autopilot_signaled_blocked` — прогон, потраченный
+  на индекс. В этой сессии четыре независимых спеки созданы **без эпика**, связаны ссылками в
+  Context и рёбрами `**AFTER**` в шапке. Нужен явный ответ протокола: либо эпик создаётся в
+  статусе, который диспатч пропускает (и это статус, а не проза), либо эпика нет вовсе — только
+  рёбра зависимостей.
+- **Evidence:** `git show origin/develop:ai/lifecycle/ARCH-219.yaml` → `pueue_id: 1256`,
+  `status: blocked`, `blocked_reason: autopilot_signaled_blocked`;
+  `.claude/skills/spark/feature-mode.md` §Session Budget «Claim one `ARCH-*` id for the epic»;
+  completion.md «every created spec exits Spark as `queued`».

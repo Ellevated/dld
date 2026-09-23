@@ -1,0 +1,53 @@
+{
+  "spec_id": "TECH-223",
+  "created": "2026-09-23T19:20:26.332Z",
+  "phases": {
+    "collect": {
+      "status": "done",
+      "ts": "2026-09-23T19:34:15.320Z",
+      "problem": "TECH-223: Hermes-событие по вердикту lifecycle; rate_limit → requeue + пауза диспатча до resetsAt + один алерт (реактивно, без проактивного троттлинга); headless-прогоны не ждут CI, фон в headless закрыт механикой для автопилота, правилом для QA"
+    },
+    "research": {
+      "status": "done",
+      "ts": "2026-09-23T20:00:10.335Z",
+      "files": [
+        "research-web.md",
+        "research-codebase.md",
+        "research-devil.md",
+        "probe-results.md"
+      ]
+    },
+    "synthesize": {
+      "status": "done",
+      "ts": "2026-09-23T20:00:10.336Z"
+    },
+    "decide": {
+      "status": "done",
+      "ts": "2026-09-23T20:00:10.337Z",
+      "approach": 1,
+      "route": "AUTO",
+      "split": [
+        "TECH-223",
+        "TECH-224",
+        "TECH-225",
+        "TECH-226"
+      ],
+      "note": "no epic — ARCH-219 precedent"
+    },
+    "write": {
+      "status": "done",
+      "ts": "2026-09-23T20:00:10.338Z"
+    },
+    "validate": {
+      "status": "done",
+      "ts": "2026-09-23T20:00:10.338Z"
+    },
+    "reflect": {
+      "status": "done",
+      "ts": "2026-09-23T20:00:10.339Z"
+    },
+    "completion": {
+      "status": "pending"
+    }
+  }
+}
