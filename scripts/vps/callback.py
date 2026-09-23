@@ -10,7 +10,7 @@ Uses:
   - callback_circuit: is_circuit_open, _trip_circuit, _record, _reset_circuit_cli  (TECH-216)
   - callback_sync: verify_status_sync  (TECH-216)
   - db: release_slot, finish_task, update_project_phase, record_decision, count_demotes_since
-  - event_writer: notify, notify_circuit_event
+  - callback_event: write_event_for_skill, autopilot_event (TECH-224)
   - subprocess: pueue CLI fallback
 
 Used by:
@@ -37,11 +37,11 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import callback_circuit  # noqa: E402  — circuit-breaker (TECH-216)
 import callback_dispatch  # noqa: E402  — QA/reflect dispatch (TECH-216)
+import callback_event  # noqa: E402  — Hermes events (TECH-224)
 import callback_logs  # noqa: E402  — agent output extraction (TECH-216)
 import callback_scope  # noqa: E402  — allowlist telemetry + audit log (TECH-216)
 import callback_sync  # noqa: E402  — the status gate + Step 6 (TECH-216)
 import db  # noqa: E402
-import event_writer  # noqa: E402
 import gate_logic  # noqa: E402 — single source of gate logic (TECH-210)
 
 log = logging.getLogger("callback")
@@ -185,33 +185,7 @@ _record = callback_circuit._record
 
 verify_status_sync = callback_sync.verify_status_sync
 _step6_dispatch_qa_reflect = callback_dispatch._step6_dispatch_qa_reflect
-
-
-def write_event_for_skill(project_path: str, skill: str, status: str, task_label: str) -> None:
-    """Write OpenClaw event for applicable skills."""
-    if skill not in ("autopilot", "qa", "reflect", "spark"):
-        return
-    if status != "done" and not (status == "failed" and skill == "qa"):
-        return
-
-    artifact_rel = ""
-    p = Path(project_path)
-    if skill == "qa":
-        qa_files = sorted(p.glob("ai/qa/[0-9]*-*.md"))
-        if qa_files:
-            artifact_rel = str(qa_files[-1].relative_to(p))
-    elif skill == "reflect":
-        reflect_files = sorted(p.glob("ai/reflect/findings-*.md"))
-        if reflect_files:
-            artifact_rel = str(reflect_files[-1].relative_to(p))
-
-    event_writer.notify(
-        project_path,
-        skill,
-        status,
-        f"{skill} {status} for {task_label}",
-        artifact_rel,
-    )
+write_event_for_skill = callback_event.write_event_for_skill
 
 
 def main() -> None:  # pragma: no cover
@@ -304,7 +278,8 @@ def main() -> None:  # pragma: no cover
         except Exception as exc:
             log.warning("extract_agent_output failed: %s", exc)
 
-        # Step 5: Write OpenClaw event
+        # Step 5: Write OpenClaw event — qa/reflect/spark only; autopilot's event
+        # is Step 7b, built from the Step 7 verdict.
         try:
             project_path = ""
             state = db.get_project_state(project_id)
@@ -331,6 +306,7 @@ def main() -> None:  # pragma: no cover
 
         # Step 7: Verify spec + backlog status sync
         if skill == "autopilot" and status in ("done", "failed"):
+            verdict, why = None, "no_spec_id"
             try:
                 if not project_path:
                     state = db.get_project_state(project_id)
@@ -351,15 +327,26 @@ def main() -> None:  # pragma: no cover
                                 target = "done"
                         else:
                             target = "blocked"
-                        verify_status_sync(
+                        verdict = verify_status_sync(
                             project_path,
                             sid,
                             target,
                             pueue_id=int(pueue_id) if pueue_id else None,
                             autopilot_signaled=task_status in ("blocked", "needs_review"),
                         )
+                        why = "no_decision"
             except Exception as exc:
                 log.warning("status_sync check failed: %s", exc)
+                why = f"exception: {type(exc).__name__}"
+
+            # Step 7b: one Hermes event for this autopilot run, carrying the
+            # Step 7 verdict — done/blocked+reason, or the pueue status with
+            # why the verdict is missing. Never silence (TECH-224).
+            try:
+                if project_path:
+                    callback_event.autopilot_event(project_path, task_label, status, verdict, why)
+            except Exception as exc:
+                log.warning("autopilot_event failed: %s", exc)
 
     except Exception:
         log.exception("callback fatal error")
