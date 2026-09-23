@@ -119,13 +119,17 @@ pueue completion → callback.py (всегда exit 0):
   2. finish_task (task_log)
   3. update_project_phase
   4. extract_agent_output → skill / preview / task_status
-  5. event_writer.notify → Hermes
+  5. callback_event.write_event_for_skill → Hermes   ── только qa/reflect/spark;
+     событие автопилота здесь НЕ пишется   [TECH-224]
   6. dispatch QA + reflect   ── ТОЛЬКО если task_status == "complete"   [TECH-194 Layer E]
-  7. verify_status_sync:
+  7. verify_status_sync → (status, reason) | None:
        guard gate_ancestry.find_implementation (branch <type>/<ID> — предок origin/develop
        И принесла allowed-файл; deprecated subject-regex — fallback, TECH-220)
        → lifecycle.write_lifecycle(by="callback")  → done | blocked
        task_status blocked/needs_review перебивает pueue Success → blocked
+  7b. callback_event.autopilot_event → Hermes: вердикт есть → status = вердикт Step 7
+      (done / blocked + причина); вердикта нет → pueue-статус + «вердикт lifecycle
+      недоступен: <why>». Ровно одно событие на прогон автопилота, включая exit≠0   [TECH-224]
 
 QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=idle
 ```

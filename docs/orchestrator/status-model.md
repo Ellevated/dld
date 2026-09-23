@@ -167,16 +167,19 @@ status-only. `backlog.md` — read-only render статуса, не SoT. Full `r
 | 2 | `finish_task` — обновить task_log |
 | 3 | `update_project_phase` |
 | 4 | `extract_agent_output` → skill / preview / `task_status` (регекс `"task_status"\s*:\s*"([a-z_]+)"` ловит токен в markdown-fence) |
-| 5 | `event_writer.notify` → Hermes |
+| 5 | `callback_event.write_event_for_skill` → Hermes, только `qa`/`reflect`/`spark` — событие автопилота здесь не пишется (TECH-224) |
 | 6 | dispatch QA + reflect — **только если `task_status == "complete"`** (TECH-194 Layer E, allowlist не blocklist) |
-| 7 | `verify_status_sync` → запись статуса |
+| 7 | `verify_status_sync` → запись статуса, возвращает `(status, reason) \| None` |
+| 7b | `callback_event.autopilot_event` → Hermes: вердикт есть → `status` = вердикт Step 7 (`done` / `blocked` + причина); вердикта нет → pueue-статус + «вердикт lifecycle недоступен: `<why>`». Ровно одно событие на прогон автопилота, включая `exit≠0` (TECH-224) |
 
 ### verify_status_sync (текущий, ужат с 2026-05-21)
 
-`verify_status_sync(project_path, spec_id, target="done", pueue_id=None, autopilot_signaled=False)` —
+`verify_status_sync(project_path, spec_id, target="done", pueue_id=None, autopilot_signaled=False) -> tuple[str, str] | None` —
 `callback_sync.py::verify_status_sync`. **Не редактирует markdown.** Решение — чистая функция от (origin/develop после
 fetch, allowed_files, существующий lifecycle); pueue exit-code и activity-окна НЕ влияют. Запись —
-только через `lifecycle.write_lifecycle(by="callback")`.
+только через `lifecycle.write_lifecycle(by="callback")`. Возвращает вынесенный вердикт `(status, reason)`;
+`None` — там, где вердикта нет (circuit open, нет lifecycle-записи, спека уже `done`,
+запись не удалась или сработал Rule 7 save).
 
 `task_status` перебивает pueue Success: `blocked`/`needs_review` → `target="blocked"`; `""`/`"complete"`
 → `target="done"` (`:1509-1519`). При гонке Rule 7 (`LifecycleAlreadyDoneError`) — noop `rule_7_saved` +

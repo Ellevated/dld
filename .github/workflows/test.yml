@@ -59,7 +59,7 @@ jobs:
         # lifecycle.write_lifecycle and is covered there
         # (test_lifecycle_done_terminal.py, 15 cases). main() is excluded
         # via pragma: no cover (pueue daemon entry point).
-        # TECH-216 split callback.py into six modules; --cov is keyed by
+        # TECH-216/224 split callback.py into seven modules; --cov is keyed by
         # module name, so each new module is listed or its code silently
         # drops out of the measurement. Threshold unchanged.
         # TODO: regain 65% by mocking event_writer.notify + monkeypatching
@@ -72,6 +72,7 @@ jobs:
             --cov=callback \
             --cov=callback_logs \
             --cov=callback_dispatch \
+            --cov=callback_event \
             --cov=callback_scope \
             --cov=callback_circuit \
             --cov=callback_sync \
