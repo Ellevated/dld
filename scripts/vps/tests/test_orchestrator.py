@@ -555,9 +555,9 @@ class TestHeartbeatMonitor:
         captured = capsys.readouterr()
         assert "ALERT: orchestrator heartbeat stale" in captured.err
         mock_module.notify.assert_called_once()
-        args, _ = mock_module.notify.call_args
-        assert args[0] == "dld"
-        assert "ORCHESTRATOR_STALE" in args[1]
+        args, _ = mock_module.notify.call_args  # real signature: path, skill, status, message
+        assert (len(args), args[0], args[2]) == (4, str(heartbeat_monitor.SCRIPT_DIR), "failed")
+        assert "ORCHESTRATOR_STALE" in args[3]
 
     def test_missing_heartbeat_file_no_crash(self, tmp_path, monkeypatch, capsys):
         """Missing file = WARN to stderr, no crash."""

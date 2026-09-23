@@ -41,7 +41,14 @@ def main() -> None:
             sys.path.insert(0, str(SCRIPT_DIR))
             from event_writer import notify
 
-            notify("dld", f"ORCHESTRATOR_STALE: last heartbeat {age} ago")
+            # notify() takes (project_path, skill, status, message). Until 2026-09-23 this
+            # passed two arguments, raised TypeError into the except below and never alerted.
+            notify(
+                str(SCRIPT_DIR),
+                "heartbeat_monitor",
+                "failed",
+                f"ORCHESTRATOR_STALE: last heartbeat {age} ago",
+            )
         except Exception as exc:  # noqa: BLE001
             print(f"WARN: could not fire Hermes event: {exc}", file=sys.stderr)
 

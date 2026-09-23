@@ -155,18 +155,23 @@ in `db.py`), **decisions** (`record_decision`/`count_demotes_since`/`clear_decis
 
 ---
 
-## <a name="event_writerpy"></a>event_writer.py — события в Hermes ⚠️
+## <a name="event_writerpy"></a>event_writer.py — события в Hermes
 
-`notify(project_path, skill, status, message, artifact_rel="")` (`:95-104`): пишет pending-event JSON в
-`{project}/ai/openclaw/pending-events/{ts}-{skill}.json` + будит Hermes (`wake_hermes`, `:62-92`).
+`notify(project_path, skill, status, message, artifact_rel="")`: пишет pending-event JSON в
+`{project}/ai/openclaw/pending-events/{ts}-{skill}.json` и будит Hermes (`wake_hermes`) —
+`hermes -z "<prompt>"`, отсоединённым процессом. Промпт называет **один** только что
+записанный файл: `pending-events/` никто не чистит (к 23.09 там 911 файлов у awardybot), это
+история, а не очередь. Агент сам решает, писать ли в Telegram: сбой, блокировка, решение
+Олега — да; рядовое успешное завершение — нет. Цель — `HERMES_NOTIFY_TARGET` из окружения или
+из `scripts/vps/.env` (на VPS — топик «DLD Orch»), иначе домашний канал Hermes.
 `notify_circuit_event(action, count, window)` — события circuit-breaker (TECH-169).
 
-> ⚠️ **АКТИВНЫЙ blind spot алертинга.** `wake_hermes` спавнит бинарь `hermes`; если его нет →
-> `log.debug` + `return False`, а `notify()` **игнорирует возврат** (`:104`) — no fallback,
-> ошибка не всплывает.
-> Per memory `openclaw-gateway-down`: gateway снесён ~25 дней, Hermes/Telegram-алерты молча не доходят.
-> Через `notify()` идут ВСЕ алерты: night-review, `CIRCUIT_OPEN`, reap. **Перед запуском оркестратора —
-> проверить, что транспорт алертов жив** (см. [runbook.md](runbook.md#проверка-перед-запуском)).
+> ⚠️ **Доставка по-прежнему fire-and-forget:** код оркестратора не видит, отправил ли агент
+> сообщение. Видно другое — вывод каждого пробуждения дописывается в `scripts/vps/logs/hermes-wake.log`.
+> **С 13.08 по 23.09.2026 не дошёл ни один алерт.** Hermes 2026.8 убрал флаг `-q`, пробуждение
+> падало на ошибке argparse, вывод уходил в `/dev/null`; одновременно модель в
+> `~/.hermes/config.yaml` (`gpt-5.6-tr`) перестала приниматься провайдером (HTTP 400).
+> Проверка звена: `hermes -z "ответь: ок"` и `tail scripts/vps/logs/hermes-wake.log`.
 
 ---
 

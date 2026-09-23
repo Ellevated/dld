@@ -393,7 +393,7 @@ CI coverage gate lists all six modules (`--cov` is keyed by module name).
 
 | What | Where | Function |
 |------|-------|----------|
-| openclaw CLI | ~/.npm-global/bin/openclaw | system event --mode now (immediate wake) |
+| hermes CLI | `$HERMES_BIN` or ~/.local/bin/hermes | `hermes -z <prompt>` one-shot wake, output → `logs/hermes-wake.log`; target `HERMES_NOTIFY_TARGET` (env or `.env`). Was `-q` until 2026-09-23 — removed upstream in Hermes 2026.8, every wake failed silently |
 
 ### Used by (←)
 
