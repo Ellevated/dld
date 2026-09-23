@@ -4,11 +4,16 @@ depends_on: []
 finished_at: null
 kind: TECH
 priority: p1
-pueue_id: null
+pueue_id: 3172
 spec_id: TECH-224
-started_at: null
-status: queued
-transitions: []
-updated_at: '2026-09-23T19:47:59Z'
-updated_by: spark
-version: 1
+started_at: '2026-09-23T21:47:04Z'
+status: in_progress
+transitions:
+- at: '2026-09-23T21:47:04Z'
+  by: orchestrator
+  from: queued
+  pueue_id: 3172
+  to: in_progress
+updated_at: '2026-09-23T21:47:04Z'
+updated_by: orchestrator
+version: 2
