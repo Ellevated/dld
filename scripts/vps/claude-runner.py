@@ -27,6 +27,7 @@ import runner_env  # noqa: E402 — .env loader (TECH-213)
 import runner_heartbeat  # noqa: E402 — per-turn heartbeat file (TECH-213)
 import runner_loop  # noqa: E402 — the SDK message loop (TECH-213)
 import runner_models  # noqa: E402 — main-loop default, alias pins, expected models
+import runner_ratelimit  # noqa: E402 — rate-limit detection, exit 5 (TECH-225)
 import runner_refusal  # noqa: E402 — classifier-decline detection (TECH-213)
 import runner_result  # noqa: E402 — run state, usage rollup, run log (TECH-213)
 
@@ -290,6 +291,9 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         # upgrade from 0, so a timeout or a process error keeps its own code.
         state["exit_code"] = 4
 
+    rate_limit = runner_ratelimit.summary(state.get("rate_limit_events", []))
+    state["exit_code"] = runner_ratelimit.decide_exit(state, rate_limit)
+
     salvage_info = _salvage_if_needed(project_path, state["exit_code"])
 
     log_data = runner_result.build_log_data(
@@ -310,6 +314,7 @@ async def run_task(project_dir: str, task: str, skill: str) -> dict:
         system_prompt=AUTOPILOT_SYSTEM_PROMPT,
     )
     log_data["headless_guards"] = runner_loop.headless_guards(options)
+    log_data["rate_limit"] = rate_limit
     runner_result.log_refusal_telemetry(
         refusal,
         db=_orch_db,

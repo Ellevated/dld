@@ -29,6 +29,7 @@ _EXIT_REASONS = {
     2: "cli_connection_error",
     3: "cli_process_error",
     4: "classifier_refusal",
+    5: "rate_limited",
     143: "sigterm",
 }
 

@@ -13,6 +13,7 @@ file tests `runner_ratelimit` directly, which never imports `claude_agent_sdk`.
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,9 @@ if str(VPS_DIR) not in sys.path:
     sys.path.insert(0, str(VPS_DIR))
 
 import runner_ratelimit as rl  # noqa: E402
+import test_claude_runner_refusal as base  # noqa: E402
+
+runner = base.runner  # module-attribute assignment registers the fixture, no ruff F811
 
 
 def _state(exit_code=1, result_received=False, result_is_error=False):
@@ -139,3 +143,57 @@ class TestDecideExit:
         before = dict(state)
         rl.decide_exit(state, s)
         assert state == before
+
+
+class FakeRateLimitEvent:
+    """Duck-typed `RateLimitEvent` — the runner checks for `rate_limit_info`, not isinstance."""
+
+    def __init__(self, status="rejected", resets_at=None, rate_limit_type=None):
+        self.rate_limit_info = NS(
+            status=status, resets_at=resets_at, rate_limit_type=rate_limit_type
+        )
+
+
+class TestRunnerIntegration:
+    """End to end through claude-runner.py's real message loop (TECH-225 Task 2)."""
+
+    def test_rate_limit_then_sdk_exception_exits_5(self, runner):
+        runner._salvage = NS(
+            spec_id_from_path=lambda _p: "TECH-1",
+            salvage_run=lambda _path, _sid, reason: {"reason": reason},
+        )
+
+        async def _query(**_kwargs):
+            yield base.FakeAssistantMessage(
+                content=[
+                    base.FakeTextBlock(
+                        "You've hit your session limit · resets 2pm (Europe/Helsinki)"
+                    )
+                ],
+                model="<synthetic>",
+                error="rate_limit",
+            )
+            raise RuntimeError("Command failed with exit code 1 … Check stderr output for details")
+
+        runner.runner_loop.query = _query
+        out = asyncio.run(runner.run_task(str(Path.cwd()), "/autopilot T", "autopilot"))
+        assert out["exit_code"] == 5
+        logged = base.read_log(runner)
+        assert logged["rate_limit"]["rejected"] is True
+        assert logged["salvage"]["reason"] == "rate_limited"
+        assert runner._EXIT_REASONS[5] == "rate_limited"
+
+    def test_rate_limit_after_successful_result_keeps_exit_0(self, runner):
+        out = base.run(
+            runner,
+            [
+                base.FakeResultMessage(result='{"task_status": "complete"}', num_turns=2),
+                FakeRateLimitEvent(status="rejected"),
+            ],
+        )
+        assert out["exit_code"] == 0
+        assert out["rate_limit"]["rejected"] is True
+
+    def test_clean_run_logs_rate_limit_block(self, runner):
+        base.run(runner, [base.FakeResultMessage(result="ok")])
+        assert base.read_log(runner)["rate_limit"]["detected"] is False

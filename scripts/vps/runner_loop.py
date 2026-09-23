@@ -4,7 +4,7 @@ Module: runner_loop
 Role: the SDK message loop — build options, drain the stream into run state, and map
       an SDK exception onto an exit code.
 Uses: claude_agent_sdk, runner_cli (ALLOWED_TOOLS, HEADLESS_DISALLOWED_TOOLS,
-      NO_BACKGROUND_SKILLS), runner_heartbeat, runner_refusal, runner_result
+      NO_BACKGROUND_SKILLS), runner_heartbeat, runner_ratelimit, runner_refusal, runner_result
 Used by: claude-runner.py (run_task)
 
 Split out of claude-runner.py by TECH-213. The runner keeps the pinned constants,
@@ -31,6 +31,7 @@ except ImportError:  # pragma: no cover — the runner itself reports this
     raise
 
 import runner_heartbeat
+import runner_ratelimit
 import runner_refusal
 import runner_result
 from runner_cli import ALLOWED_TOOLS, HEADLESS_DISALLOWED_TOOLS, NO_BACKGROUND_SKILLS
@@ -203,6 +204,10 @@ async def consume(
             refusal_event = runner_refusal._refusal_from_message(message)
             if refusal_event is not None:
                 state["refusal_events"].append(refusal_event)
+
+            rate_limit_event = runner_ratelimit.from_message(message)
+            if rate_limit_event is not None:
+                state.setdefault("rate_limit_events", []).append(rate_limit_event)
 
             if isinstance(message, AssistantMessage):
                 runner_result.apply_assistant_message(state, message)
