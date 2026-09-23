@@ -16,11 +16,11 @@ Used by:
   - callback.main: verify_status_sync (Step 7)
   - callback_dispatch._merge_confirmed reuses the same gate_logic calls (TECH-207)
 
-Extracted from callback.py by TECH-216. verify_status_sync keeps its name,
-signature and return; its body is the 2026-05-21 redesign split into named
-steps. Every helper binds its collaborators through the owning module
-(`callback_scope._commit_stats`, `callback_circuit.is_circuit_open`) so a
-monkeypatch on that module is what tests reach for.
+Extracted from callback.py by TECH-216. verify_status_sync keeps its name and
+signature; it returns the verdict since TECH-224. Its body is the 2026-05-21
+redesign split into named steps. Every helper binds its collaborators through
+the owning module (`callback_scope._commit_stats`, `callback_circuit.is_circuit_open`)
+so a monkeypatch on that module is what tests reach for.
 """
 
 import logging
@@ -307,7 +307,7 @@ def verify_status_sync(
     target: str = "done",
     pueue_id: int | None = None,
     autopilot_signaled: bool = False,
-) -> None:
+) -> tuple[str, str] | None:
     """Single gate: lifecycle.status = done iff origin/develop contains a commit
     with `<spec_id>:` in its subject AND touching at least one allowed file.
 
@@ -324,6 +324,8 @@ def verify_status_sync(
     Preserves:
       - Circuit breaker (TECH-169) on mass-demote
       - Audit log (TECH-171) exactly one JSONL line per call
+
+    Returns `(status, reason)` it wrote or found in place, `None` when it reached no verdict.
     """
     project_id = Path(project_path).name
     audit = _Audit(project_id, spec_id, pueue_id, target, time.monotonic())
@@ -331,7 +333,7 @@ def verify_status_sync(
     # Step 1: circuit / project boundary / terminal done
     existing_status = _read_existing_status(project_path, spec_id, audit)
     if existing_status is None:
-        return
+        return None
 
     # Step 2: allowlist + telemetry (out-of-scope is WARNING only, BUG-199)
     allowed, out_of_scope_files = _collect_scope(project_path, spec_id, audit)
@@ -355,7 +357,7 @@ def verify_status_sync(
         log.info("NOOP: %s — already %s", spec_id, new_status)
         callback_circuit._record(project_id, spec_id, "noop", "already_correct")
         audit.emit(new_status, "already_correct")
-        return
+        return new_status, "already_correct"
 
     # Step 5: demote accounting feeds the circuit breaker (TECH-169)
     if new_status == "blocked":
@@ -368,7 +370,7 @@ def verify_status_sync(
         "STATUS_SYNC: %s — %s → %s (%s)", spec_id, existing_status, new_status, reason or "ok"
     )
     if not _write_status(project_path, spec_id, new_status, reason, audit):
-        return
+        return None
 
     # Step 7: audit (TECH-171). Rule 5 inline backlog render was removed in
     # ARCH-196 — backlog.md is single-writer (spark/autopilot Edit).
@@ -377,3 +379,4 @@ def verify_status_sync(
         reason or "ok",
         out_of_scope_files=out_of_scope_files if out_of_scope_files else None,
     )
+    return new_status, reason or "ok"
