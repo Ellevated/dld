@@ -559,3 +559,11 @@ GROWTH падает в `task/`). В Python её нет; `orchestrator_queue.reco
   `status: blocked`, `blocked_reason: autopilot_signaled_blocked`;
   `.claude/skills/spark/feature-mode.md` §Session Budget «Claim one `ARCH-*` id for the epic»;
   completion.md «every created spec exits Spark as `queued`».
+
+---
+### SIGNAL-2026-09-24-0010
+- **Source:** autopilot (TECH-223)
+- **Target:** spark
+- **Type:** gap
+- **Message:** Интеграционный тест хука коммита не изолирован от окружения автопилот-сессии: `_git` пробрасывает весь `os.environ`, и `CLAUDE_CURRENT_SPEC_PATH` (раннер выставляет его каждому прогону) включает в хуке проверку spec-id в subject → «feat: ordinary change» отклоняется. Внутри любого headless-автопилота в dld полный `pytest tests/` даёт 1 ложный red; в CI зелено. Нужен `env -u`/явный пустой `CLAUDE_CURRENT_SPEC_PATH` в `_git`.
+- **Evidence:** `tests/integration/test_worktree_hook_blocks.py:66` (`full_env = {**os.environ, ...}`), `:310` assert; прогон TECH-223 PHASE 3: 1 failed, с `env -u CLAUDE_CURRENT_SPEC_PATH` — 1 passed.

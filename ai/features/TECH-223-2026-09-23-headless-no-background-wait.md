@@ -546,4 +546,47 @@ DEPLOY_URL=local-only
 ---
 
 ## Autopilot Log
-[Auto-populated by autopilot during execution]
+
+### Task 1/5: build_options — guards — 2026-09-24
+- Coder: completed (3 files: runner_cli.py, runner_loop.py, test_runner_models.py)
+- Tester: passed (test_runner_models 33, -k runner 153, integration post_result_exception 7)
+- Spec compliance: matches (6 имён + NO_BACKGROUND_SKILLS; skill=None последним; флаг только "1", иначе ключа нет)
+- Code Quality Reviewer: approved (0 blocking, 1 advisory: scripts/vps/.env.example не декларирует HEADLESS_BACKGROUND_TASKS — вне Allowed Files; documenter подтвердил конвенцию: рычаги раннера там не перечисляются)
+- Local Verify: AV-S1 pass
+- Commit: 8f98781e
+
+### Task 2/5: skill в раннере + headless_guards в run-логе — 2026-09-24
+- Coder: completed (3 files: runner_loop.py, claude-runner.py, test_runner_models.py); claude-runner.py 370/400
+- Tester: passed (79 targeted + 7 integration с реальным SDK; coder: scripts/vps/tests 859 passed)
+- Spec compliance: matches (skill=skill claude-runner.py:220; log_data["headless_guards"] :312; runner_result.py не тронут)
+- Code Quality Reviewer: approved (0 blocking)
+- Commit: ca78c6a5
+
+### Task 3/5: QA-правило + абзац safety-rules, оба дерева — 2026-09-24
+- Coder: completed (4 files)
+- Tester: passed (промпты: test_branch_prefix_parity 6 passed; других тестов на эти файлы нет)
+- Spec compliance: matches (EC-8: 3× diff секций root vs template пусто)
+- Code Quality Reviewer: approved (check-prompt-integrity обоих деревьев clean)
+- Commit: 99b6353d
+
+### Task 4/5: scripts/metrics/bg_turn_endings.py — 2026-09-24
+- Coder: completed (1 file, 142 LOC)
+- Tester: EC-9 pass на логах VPS 23.09 — autopilot bg_killed 1 (awardybot-20260923-115025), qa ended_on_wait 6
+- Spec compliance: matches
+- Code Quality Reviewer: approved (0 blocking, 1 advisory: фильтр load_runs повторяет run_metrics.load_runs — сознательно по плану, run_metrics вне Allowed Files)
+- Commit: f8c4f14a
+
+### Task 5/5: EXP-013 + dependencies.md — 2026-09-24
+- Coder: completed (2 files)
+- Tester: check-experiments.py OK, check-rules-loading.py OK
+- Spec compliance: matches (baseline — реальные числа Task 4)
+- Code Quality Reviewer: approved
+- Commit: 5371ed44
+
+### PHASE 3 — 2026-09-24
+- Final test: CI_PARITY_UNAVAILABLE (нет ./test ci) → один прогон `pytest tests/ scripts/vps/tests/` (venv с SDK): 1195 passed, 3 skipped, 1 failed — tests/integration/test_worktree_hook_blocks.py::test_installer_leaves_guard_active_from_relative_legacy_state. Причина вне спеки: `_git` (:66) пробрасывает os.environ, CLAUDE_CURRENT_SPEC_PATH автопилот-сессии включает проверку spec-id в subject; с `env -u CLAUDE_CURRENT_SPEC_PATH` — passed. В CI переменной нет. Сигнал в ai/reflect/upstream-signals.md.
+- Gates: ruff 0.16.1 check+format OK; check-loc-limit OK; prompt-integrity оба дерева clean; check-experiments OK; check-rules-loading OK; test/scripts harness OK; check-tree-sync — TREE_SYNC_UNAVAILABLE (нет ast-grep), md-правки сверены diff'ом.
+- Exa Verify: WARNING (advisory) — по issues #73453/#69030 флаг не останавливает fork-субагентов и тул `Workflow` (фонят всегда); `Workflow` не в HEADLESS_DISALLOWED_TOOLS. Fan-out автопилота становится последовательным (~2.8× wall-clock в #73453) — покрыто вторичной метрикой timeout_rate в EXP-013.
+- AV-S1: pass (боевой venv, 6 имён). AV-F1: pass — CLI 2.1.280, флаг + --disallowedTools через запятую + bypassPermissions: Bash run_in_background → InputValidationError; ScheduleWakeup/Monitor/CronCreate недоступны ($0.18). AV-F2: после первого боевого прогона.
+- Documenter: completed — docs/orchestrator/components.md (+2 строки в таблице конфигурации раннера), acd0919d
+- Post-Deploy Verify: skip (DEPLOY_URL=local-only)
