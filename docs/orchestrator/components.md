@@ -96,6 +96,8 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 | `cli_path` | НОВЕЙШИЙ `claude` на машине, не первый в PATH (иначе тихо резолвится модель прошлого поколения) | `runner_cli.py::_resolve_cli_path` |
 | `TIMEOUT_SECONDS` | **10800 (3 ч)** hard limit (`asyncio.timeout`) → exit 124 (ADR-031; на 5400 падал верхний дециль нормальных прогонов) | `claude-runner.py::TIMEOUT_SECONDS` |
 | Bash-таймаут внутри сессии | `BASH_DEFAULT_TIMEOUT_MS=900000`, `BASH_MAX_TIMEOUT_MS=1800000` — дефолт CLI 120 с убивал прогон тестов внутри tool call, и подъём внешнего таймаута этого не лечил | `runner_loop.py::build_options` |
+| `disallowed_tools` | `ScheduleWakeup`, `Monitor`, `CronCreate`, `CronDelete`, `CronList`, `RemoteTrigger` — снято у **всех** headless-скиллов (TECH-223): будить некого, будильник = зависший ход | `runner_cli.py::HEADLESS_DISALLOWED_TOOLS` |
+| Фоновый `Bash`/`Agent` | Только у autopilot (`NO_BACKGROUND_SKILLS`): `env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"`, если не выставлен рычаг отката `HEADLESS_BACKGROUND_TASKS=on` в `.env` (EXP-009-style, ключ должен отсутствовать, не `"0"`). QA сохраняет фон прозой (devil EC-8) — TECH-223 / EXP-013 | `runner_loop.py::build_options` |
 
 - **Heartbeat (TECH-198):** на КАЖДОМ SDK-сообщении (не только Assistant) пишет
   `logs/{project}-{ts}.heartbeat.json` (поля: `turn`, `elapsed_s`, `last_tool`, `started_at`, `model`,
