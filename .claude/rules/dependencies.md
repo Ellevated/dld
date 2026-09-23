@@ -138,7 +138,7 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 
 ## scripts/vps/claude-runner.py
 
-**Path:** `scripts/vps/claude-runner.py` (329 LOC — was 912, TECH-213 split)
+**Path:** `scripts/vps/claude-runner.py` (370 LOC — was 912, TECH-213 split)
 
 Entry point only: pinned config (`MODEL`/`AUTOPILOT_EFFORT`/`TIMEOUT_SECONDS`/`MAX_TURNS`
 and the measurements behind them), `_salvage_if_needed`, `run_task`, `main` — plus a
@@ -147,12 +147,12 @@ re-export block, because the runner's tests reach the moved names as `runner.<na
 | Module | LOC | Holds |
 |---|---|---|
 | `runner_env.py` | 31 | `load_env` — `.env` next to the script into `os.environ` |
-| `runner_cli.py` | 129 | `_MIN_CLI_VERSION`, `_SYSTEM_CLI_FALLBACK`, `_cli_version`, `_resolve_cli_path` (newest CLI, not first on PATH), `warn_if_stale`, `ALLOWED_TOOLS` |
+| `runner_cli.py` | 149 | `_MIN_CLI_VERSION`, `_SYSTEM_CLI_FALLBACK`, `_cli_version`, `_resolve_cli_path` (newest CLI, not first on PATH), `warn_if_stale`, `ALLOWED_TOOLS`, `HEADLESS_DISALLOWED_TOOLS` (ScheduleWakeup/Monitor/Cron*/RemoteTrigger, denied for every headless skill — TECH-223), `NO_BACKGROUND_SKILLS` (`{"autopilot"}`) |
 | `runner_heartbeat.py` | 42 | `_write_heartbeat` — atomic per-turn heartbeat (TECH-198) |
 | `runner_refusal.py` | 113 | `_refusal_from_message`, `_refusal_summary`, `_REFUSAL_*` — classifier declines; owns the exit-4 decision (ADR-029). stdlib only, duck-typed, never imports the SDK |
 | `runner_result.py` | 390 | `new_run_state` + `apply_*`, `_session_totals`, `build_log_data`, `write_run_log`, `_EXIT_REASONS`, `log_post_result_error`, `log_refusal_telemetry`. Also SDK-free — the caller does the isinstance checks. The run log carries `alias_pins` and `system_prompt` (EXP-009) |
 | `runner_models.py` | 63 | `DEFAULT_MAIN_MODEL`, `alias_pins` (ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL — what frontmatter aliases resolve to), `expected_models` (the model_drift set), `canonical_model` (drops `[1m]` and build dates, keeps the version). stdlib only; imported by claude-runner, runner_result, runner_cost |
-| `runner_loop.py` | 283 | `build_options` (`system_prompt` preset `claude_code` or none — EXP-009; alias pins into env), `consume` (the `async for` over `query`), `handle_sdk_exception` (ADR-024 BUG-188 branch, SDK-init-timeout → 124) |
+| `runner_loop.py` | 297 | `build_options` (`system_prompt` preset `claude_code` or none — EXP-009; alias pins into env; sets `disallowed_tools` for every skill and `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` for autopilot unless `.env` rollback `HEADLESS_BACKGROUND_TASKS=on` — TECH-223), `headless_guards` (what actually reached the SDK, for the run-log field of the same name), `consume` (the `async for` over `query`), `handle_sdk_exception` (ADR-024 BUG-188 branch, SDK-init-timeout → 124) |
 
 **The split line is the SDK.** `runner_loop` is the only sibling that imports
 `claude_agent_sdk`, and that is not a style choice: the runner's tests load
