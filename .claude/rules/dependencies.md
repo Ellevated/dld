@@ -326,12 +326,13 @@ while Spark writes the edge into the header; 25 specs had it only there (EXP-012
 
 ## scripts/vps/callback.py
 
-**Path:** `scripts/vps/callback.py` (371 LOC — was 1438, TECH-216 split, 2026-08-30; the dead
+**Path:** `scripts/vps/callback.py` (358 LOC — was 1438, TECH-216 split, 2026-08-30; the dead
 `_render_and_commit_backlog` and its `import lifecycle` were deleted in TECH-222)
 
-Split into five flat siblings; `callback.py` keeps bootstrap, `resolve_label`/`parse_label`/
-`map_result`, `write_event_for_skill`, `main`, and **re-exports every moved name** — root
-`tests/` and `spec_operator.py` reach them as `callback.<name>`.
+Split into six flat siblings; `callback.py` keeps bootstrap, `resolve_label`/`parse_label`/
+`map_result`, `main`, and **re-exports every moved name** — `write_event_for_skill` included,
+now a re-export of `callback_event.write_event_for_skill` (TECH-224) — root `tests/` and
+`spec_operator.py` reach them all as `callback.<name>`.
 
 | Module | LOC | Holds |
 |---|---|---|
@@ -339,14 +340,21 @@ Split into five flat siblings; `callback.py` keeps bootstrap, `resolve_label`/`p
 | `callback_dispatch.py` | 260 | `resolve_spec_id`, `is_already_queued`, `_pueue_add`, `dispatch_qa`, `dispatch_reflect`, `_merge_confirmed`, `_step6_dispatch_qa_reflect` (TECH-194 E / TECH-207) |
 | `callback_scope.py` | 241 | `_get_started_at`, `_commit_stats`, `_is_test_path`, `_detect_out_of_scope_files` (BUG-199), `_audit_log_path`/`_write_audit`/`_emit_audit` (TECH-171) |
 | `callback_circuit.py` | 202 | `CIRCUIT_*`, `is_circuit_open`, `_pueue_pause/_resume`, `_trip_circuit`, `_reset_circuit_cli`, `_record`, `note_demote` (TECH-169) |
-| `callback_sync.py` | 349 | `verify_status_sync` as six named steps (`_read_existing_status` → `_collect_scope` → `_push_local_develop` → `_decide_status` → `_write_status` → `_Audit.emit`) |
+| `callback_sync.py` | 382 | `verify_status_sync` as six named steps (`_read_existing_status` → `_collect_scope` → `_push_local_develop` → `_decide_status` → `_write_status` → `_Audit.emit`); returns its `(status, reason) \| None` verdict since TECH-224 instead of `None` always |
+| `callback_event.py` | 99 | `pick_artifact`, `write_event_for_skill`, `autopilot_event` (TECH-224) |
 
 **Same two contracts as the orchestrator split:** `main()` calls the re-exports by bare name,
 so `monkeypatch.setattr(callback, "extract_agent_output", …)` still intercepts; the siblings
 call each other as MODULE ATTRIBUTES (`callback_scope._commit_stats(...)`), so a test that
 wants to reach `verify_status_sync` patches `callback_scope`/`callback_circuit`/`callback_sync`,
 not `callback`. `SCRIPT_DIR` and `db` are per-module — patch the owning module.
-CI coverage gate lists all six modules (`--cov` is keyed by module name).
+CI coverage gate lists all seven modules (`--cov` is keyed by module name).
+
+**Event order (TECH-224):** `callback_event.write_event_for_skill` fires at Step 5, unchanged,
+for `qa`/`reflect`/`spark` only. Autopilot's event is Step 7b — `callback_event.autopilot_event`,
+called right after Step 7's `verify_status_sync` returns its verdict, so the one Hermes event
+per autopilot run carries `done`/`blocked`+reason (or, with no verdict, the pueue status plus
+why) instead of the raw pueue exit code.
 
 ### Uses (→)
 
@@ -355,8 +363,8 @@ CI coverage gate lists all six modules (`--cov` is keyed by module name).
 | db.py | scripts/vps/db.py | release_slot(), finish_task(), update_project_phase(), get_project_state(), try_acquire_slot(), log_task(), get_task_by_pueue_id() |
 | db.py | scripts/vps/db.py | record_decision(), count_demotes_since(), clear_decisions() (TECH-169) |
 | lifecycle.py | scripts/vps/lifecycle.py | write_lifecycle() — atomic plumbing commit of status (ARCH-186) |
-| event_writer.py | scripts/vps/event_writer.py | notify() — send Hermes event |
-| event_writer.py | scripts/vps/event_writer.py | notify_circuit_event() (TECH-169) |
+| event_writer.py | via callback_event.py | notify() — send Hermes event (Step 5 qa/reflect/spark, Step 7b autopilot verdict — TECH-224) |
+| event_writer.py | via callback_circuit.py | notify_circuit_event() (TECH-169) |
 | run-agent.sh | scripts/vps/run-agent.sh | pueue add for QA/Reflect dispatch |
 | pueue CLI | PATH | pueue status --json, pueue log --json, pueue add |
 | pueue CLI | PATH | pueue pause/start --group claude-runner (TECH-169 circuit) |
@@ -431,14 +439,17 @@ CI coverage gate lists all six modules (`--cov` is keyed by module name).
 
 | Who | File:line | Function |
 |-----|-----------|----------|
-| callback.py | scripts/vps/callback.py | import: notify() |
-| callback.py | scripts/vps/callback.py | import: notify_circuit_event() (TECH-169) |
+| callback_event.py | scripts/vps/callback_event.py | import: notify() — Step 5 qa/reflect/spark event + Step 7b autopilot verdict (TECH-224) |
+| callback_sync.py | scripts/vps/callback_sync.py | import: notify() — Rule 7 structural save |
+| callback_circuit.py | scripts/vps/callback_circuit.py | import: notify_circuit_event() (TECH-169) |
 | night-reviewer.sh | scripts/vps/night-reviewer.sh | CLI: python3 event_writer.py <project_id> <msg> |
 | heartbeat_reaper.py | scripts/vps/heartbeat_reaper.py | import: notify() — reap alert (TECH-198) |
 
 ### When changing API, check
 
-- [ ] callback.py (notify import)
+- [ ] callback_event.py (notify import — TECH-224)
+- [ ] callback_sync.py (notify import — Rule 7 save)
+- [ ] callback_circuit.py (notify_circuit_event import — TECH-169)
 - [ ] night-reviewer.sh (CLI arg order)
 - [ ] heartbeat_reaper.py (notify 5-arg signature — TECH-198)
 
