@@ -3,8 +3,8 @@
 Module: runner_loop
 Role: the SDK message loop — build options, drain the stream into run state, and map
       an SDK exception onto an exit code.
-Uses: claude_agent_sdk, runner_cli (ALLOWED_TOOLS), runner_heartbeat, runner_refusal,
-      runner_result
+Uses: claude_agent_sdk, runner_cli (ALLOWED_TOOLS, HEADLESS_DISALLOWED_TOOLS,
+      NO_BACKGROUND_SKILLS), runner_heartbeat, runner_refusal, runner_result
 Used by: claude-runner.py (run_task)
 
 Split out of claude-runner.py by TECH-213. The runner keeps the pinned constants,
@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover — the runner itself reports this
 import runner_heartbeat
 import runner_refusal
 import runner_result
-from runner_cli import ALLOWED_TOOLS
+from runner_cli import ALLOWED_TOOLS, HEADLESS_DISALLOWED_TOOLS, NO_BACKGROUND_SKILLS
 
 logger = logging.getLogger("claude-runner")
 
@@ -94,8 +94,37 @@ def build_options(
     max_turns,
     alias_pins=None,
     system_prompt="claude_code",
+    skill=None,
 ):
     """Assemble ClaudeAgentOptions for one run."""
+    env = {
+        "PROJECT_DIR": str(project_path),
+        "CLAUDE_PROJECT_DIR": str(project_path),
+        "CLAUDE_CURRENT_SPEC_PATH": os.environ.get("CLAUDE_CURRENT_SPEC_PATH", ""),
+        "ENABLE_PROMPT_CACHING_1H": os.environ.get("ENABLE_PROMPT_CACHING_1H", "1"),
+        # TECH-178: bypass cosmetic pre-commit fixers that auto-fix + exit 1
+        # (trailing-whitespace, end-of-file-fixer, mixed-line-ending) so that
+        # research-md commits don't trigger autopilot retry-loops. Lint-only
+        # hooks (ruff/mypy/etc.) remain active. Operators can override per-task
+        # by exporting SKIP="" before pueue add.
+        "SKIP": os.environ.get("SKIP", "trailing-whitespace,end-of-file-fixer,mixed-line-ending"),
+        # 2026-08-30 audit: CLI default Bash timeout is 120 s (max 600 s).
+        # awardybot tests/architecture alone takes 325-423 s on the VPS, so
+        # tester agents saw their pytest killed at 5:01, waited on pgrep and
+        # re-ran it — three 5-minute suites per tester, 82 of 180 min in the
+        # FTR-1467 run that TIMEOUT_SECONDS then killed. Raising the run
+        # timeout (23.08) could not help: the loop is inside the tool call.
+        "BASH_DEFAULT_TIMEOUT_MS": os.environ.get("BASH_DEFAULT_TIMEOUT_MS", "900000"),
+        "BASH_MAX_TIMEOUT_MS": os.environ.get("BASH_MAX_TIMEOUT_MS", "1800000"),
+    }
+    # TECH-223: background disabled only for autopilot, and only unless the .env
+    # rollback lever (EXP-009 style) is set. The key must be ABSENT otherwise,
+    # never "0" — the CLI checks the variable as truthy.
+    if skill in NO_BACKGROUND_SKILLS and os.environ.get("HEADLESS_BACKGROUND_TASKS") != "on":
+        env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
+    # ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL: what frontmatter aliases
+    # resolve to. See runner_models.alias_pins.
+    env.update(alias_pins or {})
     return ClaudeAgentOptions(
         cwd=str(project_path),
         model=model,  # pinned by the caller (env: AUTOPILOT_MODEL)
@@ -109,33 +138,11 @@ def build_options(
         cli_path=cli_path,  # system CLI, not the stale bundled one (model pin drifts)
         setting_sources=["user", "project"],  # Loads CLAUDE.md + .claude/skills/
         allowed_tools=ALLOWED_TOOLS,
+        # TECH-223: a headless run has nobody to wake it — see runner_cli.
+        disallowed_tools=list(HEADLESS_DISALLOWED_TOOLS),
         permission_mode="bypassPermissions",
         max_turns=max_turns,
-        env={
-            "PROJECT_DIR": str(project_path),
-            "CLAUDE_PROJECT_DIR": str(project_path),
-            "CLAUDE_CURRENT_SPEC_PATH": os.environ.get("CLAUDE_CURRENT_SPEC_PATH", ""),
-            "ENABLE_PROMPT_CACHING_1H": os.environ.get("ENABLE_PROMPT_CACHING_1H", "1"),
-            # TECH-178: bypass cosmetic pre-commit fixers that auto-fix + exit 1
-            # (trailing-whitespace, end-of-file-fixer, mixed-line-ending) so that
-            # research-md commits don't trigger autopilot retry-loops. Lint-only
-            # hooks (ruff/mypy/etc.) remain active. Operators can override per-task
-            # by exporting SKIP="" before pueue add.
-            "SKIP": os.environ.get(
-                "SKIP", "trailing-whitespace,end-of-file-fixer,mixed-line-ending"
-            ),
-            # 2026-08-30 audit: CLI default Bash timeout is 120 s (max 600 s).
-            # awardybot tests/architecture alone takes 325-423 s on the VPS, so
-            # tester agents saw their pytest killed at 5:01, waited on pgrep and
-            # re-ran it — three 5-minute suites per tester, 82 of 180 min in the
-            # FTR-1467 run that TIMEOUT_SECONDS then killed. Raising the run
-            # timeout (23.08) could not help: the loop is inside the tool call.
-            "BASH_DEFAULT_TIMEOUT_MS": os.environ.get("BASH_DEFAULT_TIMEOUT_MS", "900000"),
-            "BASH_MAX_TIMEOUT_MS": os.environ.get("BASH_MAX_TIMEOUT_MS", "1800000"),
-            # ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL: what frontmatter aliases
-            # resolve to. See runner_models.alias_pins.
-            **(alias_pins or {}),
-        },
+        env=env,
         stderr=stderr_collector,
     )
 

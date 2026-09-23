@@ -16,6 +16,12 @@ EC-4: Opus 5.5 and Fable 5.1 are priced at their own rates, cache reads included
 EC-5: `[1m]` keys are not drift; a different generation is
 EC-6: build_options sends the CLI preset, or nothing, and passes the pins in env
 EC-7: the run log records which pins and which system prompt the run used
+
+TECH-223 EC-1: autopilot gets CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1, no lever set
+TECH-223 EC-2: qa keeps background — the flag is absent from env, not "0"
+TECH-223 EC-3: the wait/schedule tools are denied for every headless skill, autopilot included
+TECH-223 EC-4: HEADLESS_BACKGROUND_TASKS=on returns background to autopilot; deny list unchanged
+TECH-223 EC-7: a build_options call with no skill kwarg behaves like a non-autopilot skill
 """
 
 from __future__ import annotations
@@ -218,6 +224,52 @@ class TestBuildOptions:
         assert opts.env["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-opus-5"
         assert opts.env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "claude-haiku-4-5-20251001"
         assert opts.env["BASH_DEFAULT_TIMEOUT_MS"]  # the fixed keys are still there
+
+
+class TestHeadlessGuards:
+    def test_autopilot_runs_without_background(self, loop_module, tmp_path, monkeypatch):
+        """TECH-223 EC-1: autopilot never sees run_in_background as a Bash/Agent option."""
+        monkeypatch.delenv("HEADLESS_BACKGROUND_TASKS", raising=False)
+        opts = _options(loop_module, tmp_path, skill="autopilot")
+        assert opts.env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
+
+    def test_qa_keeps_background(self, loop_module, tmp_path):
+        """TECH-223 EC-2: QA may legitimately hold a dev server in the background (devil EC-8)."""
+        opts = _options(loop_module, tmp_path, skill="qa")
+        assert "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS" not in opts.env
+
+    @pytest.mark.parametrize("skill", ["autopilot", "qa", "reflect", "dispatcher", "spark", None])
+    def test_wait_tools_denied_for_every_skill(self, loop_module, tmp_path, skill):
+        """TECH-223 EC-3: nobody headless has anyone to wake up."""
+        opts = _options(loop_module, tmp_path, skill=skill)
+        assert set(opts.disallowed_tools) >= {
+            "ScheduleWakeup",
+            "Monitor",
+            "CronCreate",
+            "CronDelete",
+            "CronList",
+            "RemoteTrigger",
+        }
+
+    def test_rollback_lever_returns_background(self, loop_module, tmp_path, monkeypatch):
+        """TECH-223 EC-4: the EXP-009-style .env lever, without touching the tool deny list."""
+        monkeypatch.setenv("HEADLESS_BACKGROUND_TASKS", "on")
+        opts = _options(loop_module, tmp_path, skill="autopilot")
+        assert "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS" not in opts.env
+        assert set(opts.disallowed_tools) >= {
+            "ScheduleWakeup",
+            "Monitor",
+            "CronCreate",
+            "CronDelete",
+            "CronList",
+            "RemoteTrigger",
+        }
+
+    def test_no_skill_means_not_autopilot(self, loop_module, tmp_path):
+        """TECH-223 EC-7: direct callers that never pass `skill` behave like a non-autopilot skill."""
+        opts = _options(loop_module, tmp_path)
+        assert "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS" not in opts.env
+        assert set(opts.disallowed_tools) >= {"ScheduleWakeup", "Monitor"}
 
 
 def test_run_log_records_pins_and_system_prompt():

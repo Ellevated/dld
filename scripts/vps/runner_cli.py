@@ -129,3 +129,21 @@ ALLOWED_TOOLS = [
     "WebSearch",
     "NotebookEdit",
 ]
+
+# TECH-223: a headless run has nobody to wake up. FTR-1515 23.09 ran two background
+# Agent coders plus ScheduleWakeup(1800) and died with "Background tasks still
+# running after 600s" — 73 min, $14.16, spec stuck in blocked. Denied for every
+# headless skill, not just autopilot: none of them can receive a wake either.
+HEADLESS_DISALLOWED_TOOLS = [
+    "ScheduleWakeup",
+    "Monitor",
+    "CronCreate",
+    "CronDelete",
+    "CronList",
+    "RemoteTrigger",
+]
+
+# Background Bash/Agent is disabled only for autopilot: QA may legitimately hold a
+# dev server in the background (devil EC-8), and spark fans scouts out in the
+# background by design.
+NO_BACKGROUND_SKILLS = frozenset({"autopilot"})
