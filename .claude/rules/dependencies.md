@@ -68,10 +68,10 @@ Dependency map between project components.
 
 ## scripts/vps/db (orchestrator SQLite)
 
-**Path:** `scripts/vps/db.py` (373 LOC — was 602, TECH-212 split)
+**Path:** `scripts/vps/db.py` (377 LOC — was 602, TECH-212 split)
 
 `db.py` keeps `get_db`/`_ensure_migrations`/slots/`projects`/`task_log`/`seed_projects_from_json`
-plus a `_delegate` factory that binds 12 names from the two leaves below back onto the `db`
+plus a `_delegate` factory that binds 14 names from the two leaves below back onto the `db`
 module, so `db.<name>` and `from db import get_db` are unchanged for every consumer.
 
 ### Uses (→)
@@ -80,7 +80,7 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 |------|-------|----------|
 | sqlite3 | stdlib | connection, Row, contextmanager |
 | schema.sql | scripts/vps/schema.sql | project_state, compute_slots, task_log, night_findings, callback_decisions, classifier_refusals |
-| db_decisions.py | scripts/vps/db_decisions.py | record_decision, count_demotes_since, clear_decisions, log_sdk_post_result_error, log_gate_cycle, get_gate_health — delegated, `immediate=True` preserved for `clear_decisions` |
+| db_decisions.py | scripts/vps/db_decisions.py | record_decision, count_demotes_since, count_requeues_since (rate-limit requeue ceiling, TECH-225), clear_decisions, log_sdk_post_result_error, log_gate_cycle, get_gate_health — delegated, `immediate=True` preserved for `clear_decisions` |
 | db_findings.py | scripts/vps/db_findings.py | save_finding, get_new_findings, update_finding_status, get_finding_by_id, get_all_findings, get_projects_for_night_scan — delegated, `immediate=True` preserved for save_finding/update_finding_status |
 | db_cli.py | scripts/vps/db_cli.py | `main(sys.argv, sys.modules[__name__])` — argv dispatcher, deliberately does NOT `import db` (avoids a second module object with its own `DB_PATH` under `python3 db.py`) |
 
@@ -91,6 +91,7 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 | orchestrator.py | scripts/vps/orchestrator.py | seed_projects_from_json(), get_all_projects(), get_project_state(), try_acquire_slot(), log_task(), update_project_phase() |
 | callback.py | scripts/vps/callback.py | release_slot(), finish_task(), update_project_phase(), get_project_state() |
 | callback.py | scripts/vps/callback.py | record_decision(), count_demotes_since(), clear_decisions() (TECH-169) |
+| callback_ratelimit.py | scripts/vps/callback_ratelimit.py | count_requeues_since() — rate-limit requeue ceiling, 3 per 24h (TECH-225) |
 | night-reviewer.sh | scripts/vps/night-reviewer.sh (FTR-147 Task 4) | CLI: save-finding, get-new-findings, update-phase |
 | claude-runner.py | scripts/vps/claude-runner.py | log_sdk_post_result_error() (BUG-188 Layer 4, lazy import) |
 | claude-runner.py | scripts/vps/claude-runner.py | log_classifier_refusal() — classifier decline telemetry (lazy import; failure logs WARNING and never fails the run) |
@@ -103,6 +104,7 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 - [ ] night-reviewer.sh (CLI: save-finding / get-new-findings / update-phase)
 - [ ] claude-runner.py (log_sdk_post_result_error signature — BUG-188)
 - [ ] claude-runner.py (log_classifier_refusal signature — refusal detect; exit 4 = `classifier_refusal`)
+- [ ] claude-runner.py exit 5 = `rate_limited` (`runner_ratelimit.decide_exit`, ADR-024) / callback_ratelimit.py (`count_requeues_since` window and ceiling — TECH-225)
 - [ ] gate-daemon.py (log_gate_cycle signature — ARCH-190)
 - [ ] db_decisions.py / db_findings.py (pure leaves, first param is the sqlite connection — no `import db`; keep it that way)
 - [ ] db_cli.py (`main(argv, api)` — api param must stay the db module, not a fresh import)
@@ -138,7 +140,7 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 
 ## scripts/vps/claude-runner.py
 
-**Path:** `scripts/vps/claude-runner.py` (370 LOC — was 912, TECH-213 split)
+**Path:** `scripts/vps/claude-runner.py` (375 LOC — was 912, TECH-213 split)
 
 Entry point only: pinned config (`MODEL`/`AUTOPILOT_EFFORT`/`TIMEOUT_SECONDS`/`MAX_TURNS`
 and the measurements behind them), `_salvage_if_needed`, `run_task`, `main` — plus a
@@ -150,9 +152,10 @@ re-export block, because the runner's tests reach the moved names as `runner.<na
 | `runner_cli.py` | 149 | `_MIN_CLI_VERSION`, `_SYSTEM_CLI_FALLBACK`, `_cli_version`, `_resolve_cli_path` (newest CLI, not first on PATH), `warn_if_stale`, `ALLOWED_TOOLS`, `HEADLESS_DISALLOWED_TOOLS` (ScheduleWakeup/Monitor/Cron*/RemoteTrigger, denied for every headless skill — TECH-223), `NO_BACKGROUND_SKILLS` (`{"autopilot"}`) |
 | `runner_heartbeat.py` | 42 | `_write_heartbeat` — atomic per-turn heartbeat (TECH-198) |
 | `runner_refusal.py` | 113 | `_refusal_from_message`, `_refusal_summary`, `_REFUSAL_*` — classifier declines; owns the exit-4 decision (ADR-029). stdlib only, duck-typed, never imports the SDK |
-| `runner_result.py` | 390 | `new_run_state` + `apply_*`, `_session_totals`, `build_log_data`, `write_run_log`, `_EXIT_REASONS`, `log_post_result_error`, `log_refusal_telemetry`. Also SDK-free — the caller does the isinstance checks. The run log carries `alias_pins` and `system_prompt` (EXP-009) |
+| `runner_result.py` | 391 | `new_run_state` + `apply_*`, `_session_totals`, `build_log_data`, `write_run_log`, `_EXIT_REASONS` (5 = `rate_limited`, TECH-225), `log_post_result_error`, `log_refusal_telemetry`. Also SDK-free — the caller does the isinstance checks. The run log carries `alias_pins` and `system_prompt` (EXP-009) |
 | `runner_models.py` | 63 | `DEFAULT_MAIN_MODEL`, `alias_pins` (ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL — what frontmatter aliases resolve to), `expected_models` (the model_drift set), `canonical_model` (drops `[1m]` and build dates, keeps the version). stdlib only; imported by claude-runner, runner_result, runner_cost |
-| `runner_loop.py` | 297 | `build_options` (`system_prompt` preset `claude_code` or none — EXP-009; alias pins into env; sets `disallowed_tools` for every skill and `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` for autopilot unless `.env` rollback `HEADLESS_BACKGROUND_TASKS=on` — TECH-223), `headless_guards` (what actually reached the SDK, for the run-log field of the same name), `consume` (the `async for` over `query`), `handle_sdk_exception` (ADR-024 BUG-188 branch, SDK-init-timeout → 124) |
+| `runner_loop.py` | 302 | `build_options` (`system_prompt` preset `claude_code` or none — EXP-009; alias pins into env; sets `disallowed_tools` for every skill and `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` for autopilot unless `.env` rollback `HEADLESS_BACKGROUND_TASKS=on` — TECH-223), `headless_guards` (what actually reached the SDK, for the run-log field of the same name), `consume` (the `async for` over `query`, collects `rate_limit_events` via `runner_ratelimit.from_message` — TECH-225), `handle_sdk_exception` (ADR-024 BUG-188 branch, SDK-init-timeout → 124) |
+| `runner_ratelimit.py` | 105 | `from_message` (rate-limit event/synthetic-error detection), `summary` (aggregates a run's events into the `rate_limit` log field), `decide_exit` (exit 5 = `rate_limited`, ADR-024 — never overrides a successful result or codes 124/4/143). stdlib only, duck-typed, never imports the SDK — same split line as `runner_refusal.py` |
 
 **The split line is the SDK.** `runner_loop` is the only sibling that imports
 `claude_agent_sdk`, and that is not a style choice: the runner's tests load
@@ -326,10 +329,10 @@ while Spark writes the edge into the header; 25 specs had it only there (EXP-012
 
 ## scripts/vps/callback.py
 
-**Path:** `scripts/vps/callback.py` (358 LOC — was 1438, TECH-216 split, 2026-08-30; the dead
+**Path:** `scripts/vps/callback.py` (365 LOC — was 1438, TECH-216 split, 2026-08-30; the dead
 `_render_and_commit_backlog` and its `import lifecycle` were deleted in TECH-222)
 
-Split into six flat siblings; `callback.py` keeps bootstrap, `resolve_label`/`parse_label`/
+Split into seven flat siblings; `callback.py` keeps bootstrap, `resolve_label`/`parse_label`/
 `map_result`, `main`, and **re-exports every moved name** — `write_event_for_skill` included,
 now a re-export of `callback_event.write_event_for_skill` (TECH-224) — root `tests/` and
 `spec_operator.py` reach them all as `callback.<name>`.
@@ -342,13 +345,14 @@ now a re-export of `callback_event.write_event_for_skill` (TECH-224) — root `t
 | `callback_circuit.py` | 202 | `CIRCUIT_*`, `is_circuit_open`, `_pueue_pause/_resume`, `_trip_circuit`, `_reset_circuit_cli`, `_record`, `note_demote` (TECH-169) |
 | `callback_sync.py` | 382 | `verify_status_sync` as six named steps (`_read_existing_status` → `_collect_scope` → `_push_local_develop` → `_decide_status` → `_write_status` → `_Audit.emit`); returns its `(status, reason) \| None` verdict since TECH-224 instead of `None` always |
 | `callback_event.py` | 99 | `pick_artifact`, `write_event_for_skill`, `autopilot_event` (TECH-224) |
+| `callback_ratelimit.py` | 71 | `requeue` — exit 5 (`rate_limited`) path: `in_progress → queued` instead of `verify_status_sync`'s ancestry gate; 3rd requeue in 24h escalates to `blocked repeated_rate_limit:<n>` via `callback_circuit.note_demote` (TECH-225) |
 
 **Same two contracts as the orchestrator split:** `main()` calls the re-exports by bare name,
 so `monkeypatch.setattr(callback, "extract_agent_output", …)` still intercepts; the siblings
 call each other as MODULE ATTRIBUTES (`callback_scope._commit_stats(...)`), so a test that
 wants to reach `verify_status_sync` patches `callback_scope`/`callback_circuit`/`callback_sync`,
 not `callback`. `SCRIPT_DIR` and `db` are per-module — patch the owning module.
-CI coverage gate lists all seven modules (`--cov` is keyed by module name).
+CI coverage gate lists all eight modules (`--cov` is keyed by module name).
 
 **Event order (TECH-224):** `callback_event.write_event_for_skill` fires at Step 5, unchanged,
 for `qa`/`reflect`/`spark` only. Autopilot's event is Step 7b — `callback_event.autopilot_event`,
@@ -361,7 +365,7 @@ why) instead of the raw pueue exit code.
 | What | Where | Function |
 |------|-------|----------|
 | db.py | scripts/vps/db.py | release_slot(), finish_task(), update_project_phase(), get_project_state(), try_acquire_slot(), log_task(), get_task_by_pueue_id() |
-| db.py | scripts/vps/db.py | record_decision(), count_demotes_since(), clear_decisions() (TECH-169) |
+| db.py | scripts/vps/db.py | record_decision(), count_demotes_since(), clear_decisions() (TECH-169); count_requeues_since() via callback_ratelimit (TECH-225) |
 | lifecycle.py | scripts/vps/lifecycle.py | write_lifecycle() — atomic plumbing commit of status (ARCH-186) |
 | event_writer.py | via callback_event.py | notify() — send Hermes event (Step 5 qa/reflect/spark, Step 7b autopilot verdict — TECH-224) |
 | event_writer.py | via callback_circuit.py | notify_circuit_event() (TECH-169) |

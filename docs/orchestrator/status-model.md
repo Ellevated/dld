@@ -169,7 +169,7 @@ status-only. `backlog.md` — read-only render статуса, не SoT. Full `r
 | 4 | `extract_agent_output` → skill / preview / `task_status` (регекс `"task_status"\s*:\s*"([a-z_]+)"` ловит токен в markdown-fence) |
 | 5 | `callback_event.write_event_for_skill` → Hermes, только `qa`/`reflect`/`spark` — событие автопилота здесь не пишется (TECH-224) |
 | 6 | dispatch QA + reflect — **только если `task_status == "complete"`** (TECH-194 Layer E, allowlist не blocklist) |
-| 7 | `verify_status_sync` → запись статуса, возвращает `(status, reason) \| None` |
+| 7 | `verify_status_sync` → запись статуса, возвращает `(status, reason) \| None`; autopilot с `exit_code == 5` → `callback_ratelimit.requeue` вместо `verify_status_sync` (TECH-225) |
 | 7b | `callback_event.autopilot_event` → Hermes: вердикт есть → `status` = вердикт Step 7 (`done` / `blocked` + причина); вердикта нет → pueue-статус + «вердикт lifecycle недоступен: `<why>`». Ровно одно событие на прогон автопилота, включая `exit≠0` (TECH-224) |
 
 ### verify_status_sync (текущий, ужат с 2026-05-21)
@@ -268,6 +268,27 @@ activity-окна, нет `--all`, нет auto-close.** Fail-closed: любая 
 `pueue pause --group claude-runner` (`:936-967`). Лечится сам если 0 демоутов за 30 мин, либо
 `callback.py --reset-circuit` (= `db.clear_decisions(30)` + `pueue start` + notify). Пока OPEN —
 verify_status_sync noop (не мутирует статус).
+
+### Rate limit → queued (TECH-225)
+
+`exit 5` = `rate_limited` — раннер решает это до salvage, не callback: `AssistantMessage.error
+== "rate_limit"` (синтетический отказ CLI) или `RateLimitEvent` со `status == "rejected"`, если
+успешный результат (`ResultMessage.is_error=False`) не получен (ADR-024, `runner_ratelimit.decide_exit`).
+Коды 124/4/143 не трогаются; коды 0/1/2/3 с rejected-событием и без успешного результата становятся 5.
+
+Callback видит `exit_code == 5` в Step 7 и вызывает `callback_ratelimit.requeue` вместо
+`verify_status_sync` — это не провал работы, ветка запушена salvage'ем (следующий диспатч её
+продолжает, TECH-221), спека просто уходит обратно в очередь:
+
+- `in_progress → queued`, `by=callback`, причина в `blocked_reason` (`rate_limited`).
+- Решение в БД: `verdict='requeue'`, `demoted=0` (`db.record_decision`); `db.count_requeues_since`
+  считает возвраты этой спеки за 24 часа.
+- Третий возврат за 24 часа (`prior >= REQUEUE_CEILING - 1`, потолок 3) → `blocked`,
+  `reason=repeated_rate_limit:<n>`, через `callback_circuit.note_demote` (`demoted=1`, попадает в
+  окно circuit breaker наравне с обычными demote).
+- Noop-пути те же, что у `verify_status_sync` в Step 1: circuit open, нет lifecycle-записи, спека
+  уже `done` — `callback_sync._read_existing_status` возвращает `None`, `requeue` не пишет ничего.
+- Пауза флота до `resets_at` — TECH-226, здесь её нет.
 
 ### TECH-197 hardening
 
