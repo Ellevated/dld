@@ -9,6 +9,7 @@ Uses:
   - callback_scope: _commit_stats, _detect_out_of_scope_files, _emit_audit  (TECH-216)
   - callback_circuit: is_circuit_open, _trip_circuit, _record, _reset_circuit_cli  (TECH-216)
   - callback_sync: verify_status_sync  (TECH-216)
+  - callback_ratelimit: requeue  (TECH-225)
   - db: release_slot, finish_task, update_project_phase, record_decision, count_demotes_since
   - callback_event: write_event_for_skill, autopilot_event (TECH-224)
   - subprocess: pueue CLI fallback
@@ -39,6 +40,7 @@ import callback_circuit  # noqa: E402  — circuit-breaker (TECH-216)
 import callback_dispatch  # noqa: E402  — QA/reflect dispatch (TECH-216)
 import callback_event  # noqa: E402  — Hermes events (TECH-224)
 import callback_logs  # noqa: E402  — agent output extraction (TECH-216)
+import callback_ratelimit  # noqa: E402  — exit 5 → queued (TECH-225)
 import callback_scope  # noqa: E402  — allowlist telemetry + audit log (TECH-216)
 import callback_sync  # noqa: E402  — the status gate + Step 6 (TECH-216)
 import db  # noqa: E402
@@ -313,7 +315,12 @@ def main() -> None:  # pragma: no cover
                     project_path = state.get("path", "") if state else ""
                 if project_path:
                     sid = resolve_spec_id(task_label, preview, project_path)
-                    if sid:
+                    if sid and exit_code == 5:
+                        verdict = callback_ratelimit.requeue(
+                            project_path, sid, int(pueue_id) if pueue_id else None
+                        )
+                        why = "no_decision"
+                    elif sid:
                         if status == "done":
                             # task_status=blocked or needs_review → demote to blocked
                             if task_status in ("blocked", "needs_review"):
