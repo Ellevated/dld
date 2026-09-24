@@ -72,6 +72,11 @@ case "$PROVIDER" in
         # Agent SDK only. No CLI fallback.
         VENV_PY="${SCRIPT_DIR}/venv/bin/python3"
         [[ -x "$VENV_PY" ]] || { echo '{"error":"venv python not found"}' >&2; exit 1; }
+        # TECH-226: fleet paused until subscription limit resets; exit 75 = EX_TEMPFAIL;
+        # fail-open on any other rc so a broken check never stops the fleet.
+        rc=0
+        "$VENV_PY" "${SCRIPT_DIR}/fleet_pause.py" --check >&2 || rc=$?
+        if [[ $rc -eq 75 ]]; then exit 75; fi
         exec "$VENV_PY" "${SCRIPT_DIR}/claude-runner.py" "$PROJECT_DIR" "$TASK" "$SKILL"
         ;;
     codex)
