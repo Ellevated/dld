@@ -16,7 +16,7 @@ Deliberately NOT a gate: it never filters a spec out. A spec that looks
 undispatchable is reported WITH the reason, because "fix the allowlist and run
 it" is a decision the dispatcher can make and a gate cannot.
 
-Uses: json, os, re, subprocess, sys, pathlib, db, lifecycle, spec_deps
+Uses: json, os, re, subprocess, sys, pathlib, db, fleet_pause, lifecycle, spec_deps
 Used by: skills/dispatcher (via ~/ops/dispatcher.sh), operators on the VPS
 """
 
@@ -34,6 +34,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import db  # noqa: E402
+import fleet_pause  # noqa: E402
 import lifecycle  # noqa: E402
 import spec_deps  # noqa: E402
 
@@ -204,12 +205,18 @@ def build(project_rows: list[dict]) -> dict:
         "pueue_active": _pueue_active(),
         "projects": projects,
         "recent": _recent_verdicts(),
+        "paused": fleet_pause.active_pause(),
     }
 
 
 def render(summary: dict) -> str:
     """Markdown for a prompt: short, and every line is a fact the model can act on."""
     out: list[str] = ["# Dispatch briefing", ""]
+    if p := summary.get("paused"):
+        until = p.get("until_iso") or p.get("until")
+        rl_type = p.get("rate_limit_type") or "unknown"
+        out.append(f"**PAUSED until {until} ({rl_type})** — не диспатчить claude-спеки")
+        out.append("")
     free = summary["slots_free"]
     health = summary.get("provider_health", {})
     for prov in PROVIDERS:

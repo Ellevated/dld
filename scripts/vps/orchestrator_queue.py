@@ -10,8 +10,9 @@ coupling: nothing in this module is a monkeypatch target, so each step is
 called by the wrapper as `orchestrator_queue.<name>(...)`, never re-exported
 by bare name.
 
-Uses: os (import), db (import), lifecycle (import), gate_logic (import),
-      gate_ancestry (import), spec_deps (declared edges), orchestrator_slots._pueue_add
+Uses: os (import), db (import), fleet_pause (import, TECH-226 dispatch gate),
+      lifecycle (import), gate_logic (import), gate_ancestry (import),
+      spec_deps (declared edges), orchestrator_slots._pueue_add
 Used by: orchestrator (facade re-export of dep helpers; attribute calls into
          the six scan_queued steps from the wrapper)
 """
@@ -28,6 +29,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
+import fleet_pause  # noqa: E402
 import gate_ancestry  # noqa: E402
 import gate_logic  # noqa: E402
 import lifecycle  # noqa: E402
@@ -172,6 +174,11 @@ def gate_before_pueue_add(
     provider = resolve_provider(
         spec_files[0], (state["provider"] if state else None) or "claude", spec_id
     )
+    if provider == "claude" and (pause := fleet_pause.active_pause()):
+        until = pause.get("until_iso") or pause.get("until")
+        rl_type = pause.get("rate_limit_type") or "unknown"
+        log.info("skip dispatch: %s fleet paused until %s (%s)", spec_id, until, rl_type)
+        return None
     if db.get_available_slots(provider) < 1:
         log.info("no slots for %s provider=%s (busy)", project_id, provider)
         return None

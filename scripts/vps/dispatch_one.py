@@ -10,19 +10,21 @@ lifecycle row, log the task. Nothing here judges whether the spec deserves to
 run: that judgement now lives in the dispatcher prompt, which can also repair a
 spec instead of refusing it.
 
-Three refusals remain, and all three are physics rather than policy:
+Four refusals remain, and all four are physics rather than policy:
   * no free slot for the provider — there is nowhere to run;
   * this spec is already live in pueue — a second run would fight the first over
     the same branch and worktree;
-  * the spec body does not exist — there is nothing to hand the agent.
+  * the spec body does not exist — there is nothing to hand the agent;
+  * the fleet is paused on a Claude subscription rate limit (TECH-226) — codex
+    and gemini are unaffected, they run on a different account entirely.
 Each prints a one-line reason and exits 2, so the caller can say why in words.
 
 Usage:
     python3 dispatch_one.py <project_id> <SPEC-ID> [--skill autopilot]
                             [--provider claude] [--reason "why now"]
 
-Uses: argparse, json, os, sys, pathlib, db, lifecycle, orchestrator_queue,
-      orchestrator_slots
+Uses: argparse, json, os, sys, pathlib, db, fleet_pause, lifecycle,
+      orchestrator_queue, orchestrator_slots
 Used by: skills/dispatcher (via ~/ops/dispatcher.sh), operators on the VPS
 """
 
@@ -39,6 +41,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import db  # noqa: E402
+import fleet_pause  # noqa: E402
 import orchestrator_queue  # noqa: E402
 import orchestrator_slots  # noqa: E402
 
@@ -61,6 +64,10 @@ def dispatch(project_id: str, spec_id: str, skill: str, provider: str | None, re
         return _fail(f"{spec_id}: no spec body in {project_dir}/ai/features/")
 
     provider = provider or (state.get("provider") or "claude")
+    if provider == "claude" and (pause := fleet_pause.active_pause()):
+        until = pause.get("until_iso") or pause.get("until")
+        rl_type = pause.get("rate_limit_type") or "unknown"
+        return _fail(f"fleet paused until {until} ({rl_type})")
     if db.get_available_slots(provider) < 1:
         return _fail(f"no free {provider} slot")
 
