@@ -111,6 +111,48 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 
 ---
 
+## scripts/vps/fleet_pause.py (TECH-226)
+
+**Path:** `scripts/vps/fleet_pause.py`
+
+Single source of "closed until X" — a rate-limit pause window the whole fleet respects.
+stdlib-only by contract: `run-agent.sh` runs its CLI on every claude launch, so it must
+never import `db` or the SDK. Marker file: `scripts/vps/.rate-limited-until` (JSON
+`until`/`until_iso`/`rate_limit_type`/`set_at`/`source`), written atomically
+(`os.replace`) under a lock file (`.rate-limited-until.lock`, `O_CREAT|O_EXCL`, stale
+after 30s). `active_pause(now=None) -> dict | None` — missing/expired/corrupt marker all
+read as "no pause" (corrupt logs a WARNING, never stops the fleet). `set_pause(until,
+rate_limit_type, source, now=None) -> bool` — `True` iff this call opened the window
+(first caller of N concurrent ones); a marker already open only extends `until`, never
+reopens, never re-alerts. CLI `--check`: exit 0 free, exit 75 (`EX_TEMPFAIL`) paused,
+prints the marker as JSON on stderr caller side.
+
+### Uses (→)
+
+| What | Where | Function |
+|------|-------|----------|
+| json, logging, os, sys, time, pathlib, datetime | stdlib only | marker read/write, atomic replace, lock file |
+
+### Used by (←)
+
+| Who | File:line | Function |
+|-----|-----------|----------|
+| run-agent.sh | scripts/vps/run-agent.sh (`claude)` branch, before `exec`) | CLI `--check` → exit 75 stops the launch before the Claude API is ever called |
+| runner_ratelimit.py | scripts/vps/runner_ratelimit.py `on_rejected` | `set_pause()` on exit 5 — opens/extends the window, gates the one alert on the `bool` it returns |
+| dispatch_one.py | scripts/vps/dispatch_one.py `dispatch` | `active_pause()` — refuses a `claude` spec before `pueue add` (fourth refusal) |
+| orchestrator_queue.py | scripts/vps/orchestrator_queue.py `gate_before_pueue_add` | `active_pause()` — same refusal on the built-in dispatch path (`DISPATCH_MODE=builtin`) |
+| dispatch_summary.py | scripts/vps/dispatch_summary.py `build` | `active_pause()` → `summary["paused"]`, rendered as the briefing's leading `**PAUSED until …` line |
+
+### When changing API, check
+
+- [ ] run-agent.sh (exit code 75 is `EX_TEMPFAIL`; only claude-only branch reads it)
+- [ ] runner_ratelimit.py `on_rejected` (reads `set_pause`'s bool return to decide the one alert)
+- [ ] dispatch_one.py / orchestrator_queue.py (`active_pause()` return shape — `until`/`until_iso`/`rate_limit_type` read by both)
+- [ ] dispatch_summary.py (`summary["paused"]` key, `.get()` so an old summary without it still renders)
+- [ ] scripts/vps/tests/test_fleet_pause.py, scripts/vps/tests/test_dispatch_one_pause.py
+
+---
+
 ## scripts/vps/run-agent.sh (provider dispatcher)
 
 **Path:** `scripts/vps/run-agent.sh`
@@ -122,6 +164,7 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 | claude-runner.py | scripts/vps/claude-runner.py | exec dispatch |
 | codex-runner.sh | scripts/vps/codex-runner.sh | exec dispatch |
 | /proc/meminfo | Linux kernel | RAM floor gate (3GB check) |
+| fleet_pause.py | scripts/vps/fleet_pause.py | `--check` guard before `exec` in the `claude)` branch → exit 75 (`EX_TEMPFAIL`), fail-open on any other rc (TECH-226) |
 
 ### Used by (←)
 
@@ -155,7 +198,7 @@ re-export block, because the runner's tests reach the moved names as `runner.<na
 | `runner_result.py` | 391 | `new_run_state` + `apply_*`, `_session_totals`, `build_log_data`, `write_run_log`, `_EXIT_REASONS` (5 = `rate_limited`, TECH-225), `log_post_result_error`, `log_refusal_telemetry`. Also SDK-free — the caller does the isinstance checks. The run log carries `alias_pins` and `system_prompt` (EXP-009) |
 | `runner_models.py` | 63 | `DEFAULT_MAIN_MODEL`, `alias_pins` (ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL — what frontmatter aliases resolve to), `expected_models` (the model_drift set), `canonical_model` (drops `[1m]` and build dates, keeps the version). stdlib only; imported by claude-runner, runner_result, runner_cost |
 | `runner_loop.py` | 302 | `build_options` (`system_prompt` preset `claude_code` or none — EXP-009; alias pins into env; sets `disallowed_tools` for every skill and `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` for autopilot unless `.env` rollback `HEADLESS_BACKGROUND_TASKS=on` — TECH-223), `headless_guards` (what actually reached the SDK, for the run-log field of the same name), `consume` (the `async for` over `query`, collects `rate_limit_events` via `runner_ratelimit.from_message` — TECH-225), `handle_sdk_exception` (ADR-024 BUG-188 branch, SDK-init-timeout → 124) |
-| `runner_ratelimit.py` | 105 | `from_message` (rate-limit event/synthetic-error detection), `summary` (aggregates a run's events into the `rate_limit` log field), `decide_exit` (exit 5 = `rate_limited`, ADR-024 — never overrides a successful result or codes 124/4/143). stdlib only, duck-typed, never imports the SDK — same split line as `runner_refusal.py` |
+| `runner_ratelimit.py` | 105 | `from_message` (rate-limit event/synthetic-error detection), `summary` (aggregates a run's events into the `rate_limit` log field), `decide_exit` (exit 5 = `rate_limited`, ADR-024 — never overrides a successful result or codes 124/4/143), `on_rejected` (called from `claude-runner.py:main()` after exit 5 — opens/extends the `fleet_pause` window and sends exactly one `event_writer.notify` alert, only when its own call opened the window; whole body `try/except` so a failed alert never turns exit 5 into a crash, TECH-226). stdlib only, duck-typed, never imports the SDK — same split line as `runner_refusal.py` |
 
 **The split line is the SDK.** `runner_loop` is the only sibling that imports
 `claude_agent_sdk`, and that is not a style choice: the runner's tests load
@@ -345,7 +388,7 @@ now a re-export of `callback_event.write_event_for_skill` (TECH-224) — root `t
 | `callback_circuit.py` | 202 | `CIRCUIT_*`, `is_circuit_open`, `_pueue_pause/_resume`, `_trip_circuit`, `_reset_circuit_cli`, `_record`, `note_demote` (TECH-169) |
 | `callback_sync.py` | 382 | `verify_status_sync` as six named steps (`_read_existing_status` → `_collect_scope` → `_push_local_develop` → `_decide_status` → `_write_status` → `_Audit.emit`); returns its `(status, reason) \| None` verdict since TECH-224 instead of `None` always |
 | `callback_event.py` | 99 | `pick_artifact`, `write_event_for_skill`, `autopilot_event` (TECH-224) |
-| `callback_ratelimit.py` | 71 | `requeue` — exit 5 (`rate_limited`) path: `in_progress → queued` instead of `verify_status_sync`'s ancestry gate; 3rd requeue in 24h escalates to `blocked repeated_rate_limit:<n>` via `callback_circuit.note_demote` (TECH-225) |
+| `callback_ratelimit.py` | 71 | `requeue` — exit 5 (`rate_limited`) path: `in_progress → queued` instead of `verify_status_sync`'s ancestry gate; 3rd requeue in 24h escalates to `blocked repeated_rate_limit:<n>` via `callback_circuit.note_demote` (TECH-225). `paused=True` (exit 75, `fleet_paused`, TECH-226) takes the same `queued` return path but never calls `count_requeues_since` — the fleet hit a wall, not the spec's own ceiling; called from `callback.py` Step 7 on `exit_code in (5, 75)` |
 
 **Same two contracts as the orchestrator split:** `main()` calls the re-exports by bare name,
 so `monkeypatch.setattr(callback, "extract_agent_output", …)` still intercepts; the siblings

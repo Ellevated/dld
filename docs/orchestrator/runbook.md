@@ -230,6 +230,55 @@ sqlite3 scripts/vps/orchestrator.db "SELECT * FROM project_state WHERE project_i
 
 ---
 
+## Сценарий 8: Флот на паузе по лимиту подписки (TECH-226)
+
+**Симптом:** claude-спеки не диспатчатся, `dispatch_summary.py` (LLM-диспетчер) начинается со
+строки `**PAUSED until …`, pueue-задачи claude-раннера завершаются `Failed (75)` за секунды, без
+нового run-лога.
+
+**Что происходит:** первый прогон, упёршийся в лимит подписки (exit 5, TECH-225), открывает окно
+паузы до `resets_at` (или `now + 60 мин`, если `resets_at` неизвестен) и шлёт **ровно один** алерт
+в Hermes — параллельные прогоны, упёршиеся в тот же лимит, окно не переоткрывают и не алертят.
+Дальше, пока окно открыто:
+- `run-agent.sh` для ветки `claude)` перед `exec` спрашивает `fleet_pause.py --check` и при паузе
+  выходит **75**, ни разу не вызывая Claude API — это единственный путь запуска (диспетчер, QA/reflect,
+  support-nightly, автопилот) и единственная общая точка проверки;
+- `dispatch_one.py` и встроенный путь (`orchestrator_queue.gate_before_pueue_add`) отказывают
+  диспатчить claude-спеки заранее, не доходя до `pueue add`;
+- автопилот, чья pueue-задача успела стартовать до паузы и вышла 75, в callback Step 7 возвращается
+  в lifecycle `queued` с причиной `fleet_paused` — **не** считается в потолок 3/24ч TECH-225
+  (`count_requeues_since` фильтрует только `reason='rate_limited'`);
+- QA/reflect, пойманные паузой, тоже выходят 75, но **не** передиспатчатся — это осознанный
+  out-of-scope (TECH-226 Scope), редкий случай, фиксируется в эксперименте `EXP-015`.
+
+**Диагностика:**
+```bash
+cat ~/projects/dld/scripts/vps/.rate-limited-until      # until, until_iso, rate_limit_type, source
+cd ~/projects/dld/scripts/vps && venv/bin/python3 fleet_pause.py --check; echo $?   # 75 = пауза
+venv/bin/python3 dispatch_summary.py | head -3          # строка "**PAUSED until …"
+pueue status                                            # claude-задачи — Failed (75)
+grep fleet_paused ai/lifecycle/<SPEC_ID>.yaml            # blocked_reason/reason у вернувшихся в queued
+```
+
+**Fix:**
+- Снимается **само**, по времени (`until` истёк → `active_pause()` возвращает `None`).
+- Ручное снятие раньше срока:
+  ```bash
+  rm ~/projects/dld/scripts/vps/.rate-limited-until
+  # если лежит осиротевший lock после упавшего set_pause — тоже убрать:
+  rm -f ~/projects/dld/scripts/vps/.rate-limited-until.lock
+  ```
+
+**Важно:**
+- Эта пауза **не трогает pueue-группы**. Circuit breaker (TECH-169, `callback_circuit._pueue_pause`)
+  ставит на паузу группу `claude-runner` по отдельной причине (mass-demote) — два независимых
+  механизма на разных состояниях. `pueue start --group claude-runner` паузу TECH-226 **не снимает**
+  (маркер остаётся, следующий claude-запуск снова выйдет 75).
+- codex/gemini не участвуют — маркер про лимит подписки Claude, оба других провайдера продолжают
+  работать без ограничений.
+
+---
+
 ## Остановка
 
 ```bash
