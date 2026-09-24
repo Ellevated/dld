@@ -287,7 +287,8 @@ def main() -> None:  # pragma: no cover
             state = db.get_project_state(project_id)
             if state:
                 project_path = state.get("path", "")
-            if project_path:
+            # exit 75 (fleet_paused, TECH-226): the pause already sent its one alert.
+            if project_path and exit_code != 75:
                 write_event_for_skill(project_path, skill, status, task_label)
         except Exception as exc:
             log.warning("write_event failed: %s", exc)
@@ -315,9 +316,12 @@ def main() -> None:  # pragma: no cover
                     project_path = state.get("path", "") if state else ""
                 if project_path:
                     sid = resolve_spec_id(task_label, preview, project_path)
-                    if sid and exit_code == 5:
+                    if sid and exit_code in (5, 75):
                         verdict = callback_ratelimit.requeue(
-                            project_path, sid, int(pueue_id) if pueue_id else None
+                            project_path,
+                            sid,
+                            int(pueue_id) if pueue_id else None,
+                            paused=exit_code == 75,
                         )
                         why = "no_decision"
                     elif sid:

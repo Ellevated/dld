@@ -4,6 +4,8 @@ Module: callback_ratelimit
 Role: exit 5 (rate_limited) — return the spec to `queued` instead of demoting
       it to `blocked`. A 3rd requeue for the same spec within 24h escalates to
       `blocked` through the ordinary circuit-breaker demote path (TECH-225).
+      exit 75 (fleet_paused, TECH-226) takes the same `queued` return path but
+      never touches the requeue ceiling — the fleet, not the spec, hit a wall.
 
 Uses:
   - callback_sync: _Audit, _read_existing_status, _write_status
@@ -11,13 +13,13 @@ Uses:
   - db: count_requeues_since
 
 Used by:
-  - callback.main: Step 7, autopilot exit_code == 5
+  - callback.main: Step 7, autopilot exit_code in (5, 75)
 
-A narrower sibling of callback_sync.verify_status_sync: exit 5 never runs the
-ancestry gate (_decide_status) — it always writes queued or escalates on the
-requeue ceiling alone. Reuses verify_status_sync's Rule 3/7/circuit read and
-Rule 7 race-safe write so every noop case it already covers (no lifecycle.yaml,
-open circuit, already done) is covered here too.
+A narrower sibling of callback_sync.verify_status_sync: exit 5/75 never run the
+ancestry gate (_decide_status) — they always write queued or escalate on the
+requeue ceiling alone (exit 5 only). Reuses verify_status_sync's Rule 3/7/circuit
+read and Rule 7 race-safe write so every noop case it already covers (no
+lifecycle.yaml, open circuit, already done) is covered here too.
 """
 
 import logging
@@ -36,10 +38,17 @@ log = logging.getLogger("callback")
 REQUEUE_CEILING = 3
 REQUEUE_WINDOW_HOURS = 24
 REQUEUE_REASON = "rate_limited"
+PAUSED_REASON = "fleet_paused"
 
 
-def requeue(project_path: str, spec_id: str, pueue_id: int | None) -> tuple[str, str] | None:
+def requeue(
+    project_path: str, spec_id: str, pueue_id: int | None, *, paused: bool = False
+) -> tuple[str, str] | None:
     """Requeue a spec after a rate-limit exit, or escalate on the 3rd/24h.
+
+    `paused=True` (exit 75, TECH-226) always writes `queued`/`fleet_paused` and
+    skips `count_requeues_since` entirely — the fleet-wide pause is not the
+    spec's own rate-limit ceiling. `paused=False` behaves exactly as before.
 
     Returns `(status, reason)` written, or None on a noop (circuit open, no
     lifecycle.yaml, already done — see `callback_sync._read_existing_status`).
@@ -50,18 +59,22 @@ def requeue(project_path: str, spec_id: str, pueue_id: int | None) -> tuple[str,
     if callback_sync._read_existing_status(project_path, spec_id, audit) is None:
         return None
 
-    try:
-        prior = db.count_requeues_since(project_id, spec_id, REQUEUE_WINDOW_HOURS)
-    except Exception as exc:  # noqa: BLE001 — counter failure must not block the requeue
-        log.warning("REQUEUE_RATE_LIMIT: count_requeues_since failed: %s", exc)
-        prior = 0
-
-    if prior >= REQUEUE_CEILING - 1:
-        status, reason = "blocked", f"repeated_rate_limit:{prior + 1}"
-        callback_circuit.note_demote(project_id, spec_id, reason)
-    else:
-        status, reason = "queued", REQUEUE_REASON
+    if paused:
+        status, reason = "queued", PAUSED_REASON
         callback_circuit._record(project_id, spec_id, "requeue", reason)
+    else:
+        try:
+            prior = db.count_requeues_since(project_id, spec_id, REQUEUE_WINDOW_HOURS)
+        except Exception as exc:  # noqa: BLE001 — counter failure must not block the requeue
+            log.warning("REQUEUE_RATE_LIMIT: count_requeues_since failed: %s", exc)
+            prior = 0
+
+        if prior >= REQUEUE_CEILING - 1:
+            status, reason = "blocked", f"repeated_rate_limit:{prior + 1}"
+            callback_circuit.note_demote(project_id, spec_id, reason)
+        else:
+            status, reason = "queued", REQUEUE_REASON
+            callback_circuit._record(project_id, spec_id, "requeue", reason)
 
     log.warning("REQUEUE_RATE_LIMIT %s → %s (%s)", spec_id, status, reason)
 

@@ -183,18 +183,25 @@ def _seed_db(project_id: str, project_path: str, pueue_id: int, task_label: str)
         )
 
 
-def _run_main_exit5(pueue_id: int, monkeypatch):
-    """Invoke callback.main() simulating a pueue callback for exit_code=5.
+def _run_main_exit(pueue_id: int, exit_code: int, monkeypatch, skill: str = "autopilot"):
+    """Invoke callback.main() simulating a pueue callback for the given exit code.
 
-    autopilot's own task_status is irrelevant here — exit_code=5 is decided
-    by the runner before any task_status JSON is produced. Returns the
+    autopilot's own task_status is irrelevant here — exit_code 5/75 are decided
+    by the runner/guard before any task_status JSON is produced. Returns the
     `sys.exit` mock so callers can assert the exit code.
     """
-    monkeypatch.setattr(callback, "extract_agent_output", lambda *a, **kw: ("autopilot", "", ""))
-    with patch("sys.argv", ["callback.py", str(pueue_id), "claude-runner", "Failed", "5"]):
+    monkeypatch.setattr(callback, "extract_agent_output", lambda *a, **kw: (skill, "", ""))
+    with patch(
+        "sys.argv", ["callback.py", str(pueue_id), "claude-runner", "Failed", str(exit_code)]
+    ):
         with patch("sys.exit") as fake_exit:
             callback.main()
     return fake_exit
+
+
+def _run_main_exit5(pueue_id: int, monkeypatch):
+    """EC-8/9/11 (TECH-225): exit_code=5, skill=autopilot."""
+    return _run_main_exit(pueue_id, 5, monkeypatch)
 
 
 # ---------------------------------------------------------------------------
@@ -318,3 +325,94 @@ def test_already_done_is_noop(tmp_path, tmp_db, stub_event_writer, monkeypatch):
     assert not any(r["verdict"] == "requeue" for r in rows)
 
     fake_exit.assert_called_with(0)
+
+
+# ---------------------------------------------------------------------------
+# TECH-226 Task 6 — exit 75 (fleet_paused): requeue outside the ceiling
+# ---------------------------------------------------------------------------
+
+
+def test_exit75_requeues_without_counting(tmp_path, tmp_db, stub_event_writer, monkeypatch):
+    """EC-12: exit 75 requeues to `queued`/`fleet_paused` without touching the
+    rate-limit ceiling `count_requeues_since` scopes on `reason='rate_limited'`.
+    """
+    spec_id = "TECH-4"
+    project_id = "proj"
+    pueue_id = 604
+    task_label = f"autopilot-{spec_id}"
+
+    repo = _make_project(tmp_path, spec_id)
+    _seed_db(project_id, str(repo), pueue_id, task_label)
+    monkeypatch.setenv("CALLBACK_AUDIT_LOG", str(tmp_path / "audit.jsonl"))
+    monkeypatch.setattr(event_writer, "notify", lambda *a, **kw: None)
+
+    _run_main_exit(pueue_id, 75, monkeypatch)
+
+    lc = lifecycle.read_lifecycle(str(repo), spec_id)
+    assert lc["status"] == "queued"
+    assert lc["blocked_reason"] == "fleet_paused"
+
+    with db.get_db() as conn:
+        rows = conn.execute(
+            "SELECT verdict, reason FROM callback_decisions WHERE spec_id = ?",
+            (spec_id,),
+        ).fetchall()
+    requeue_rows = [r for r in rows if r["verdict"] == "requeue"]
+    assert len(requeue_rows) == 1
+    assert requeue_rows[0]["reason"] == "fleet_paused"
+
+    assert db.count_requeues_since(project_id, spec_id, 24) == 0
+
+
+def test_exit75_ignores_ceiling(tmp_path, tmp_db, stub_event_writer, monkeypatch):
+    """A fleet pause requeues even when the spec already used up the 3/24h
+    rate-limit ceiling — the ceiling is the spec's own problem, not the fleet's.
+    """
+    spec_id = "TECH-5"
+    project_id = "proj"
+    pueue_id = 605
+    task_label = f"autopilot-{spec_id}"
+
+    repo = _make_project(tmp_path, spec_id)
+    _seed_db(project_id, str(repo), pueue_id, task_label)
+    monkeypatch.setenv("CALLBACK_AUDIT_LOG", str(tmp_path / "audit.jsonl"))
+    monkeypatch.setattr(event_writer, "notify", lambda *a, **kw: None)
+
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT INTO callback_decisions "
+            "(project_id, spec_id, verdict, reason, demoted) VALUES (?, ?, ?, ?, ?)",
+            (project_id, spec_id, "requeue", "rate_limited", 0),
+        )
+        conn.execute(
+            "INSERT INTO callback_decisions "
+            "(project_id, spec_id, verdict, reason, demoted) VALUES (?, ?, ?, ?, ?)",
+            (project_id, spec_id, "requeue", "rate_limited", 0),
+        )
+
+    _run_main_exit(pueue_id, 75, monkeypatch)
+
+    lc = lifecycle.read_lifecycle(str(repo), spec_id)
+    assert lc["status"] == "queued"
+    assert lc["blocked_reason"] == "fleet_paused"
+
+
+def test_qa_exit75_sends_no_event(tmp_path, tmp_db, stub_event_writer, monkeypatch):
+    """D9: a QA run the fleet-pause guard stopped before calling Claude sends
+    no Hermes event — the pause already sent its one alert.
+    """
+    spec_id = "TECH-6"
+    project_id = "proj"
+    pueue_id = 606
+    task_label = f"qa-{spec_id}"
+
+    repo = _make_project(tmp_path, spec_id)
+    _seed_db(project_id, str(repo), pueue_id, task_label)
+    monkeypatch.setenv("CALLBACK_AUDIT_LOG", str(tmp_path / "audit.jsonl"))
+
+    events = []
+    monkeypatch.setattr(event_writer, "notify", lambda *a, **kw: events.append((a, kw)))
+
+    _run_main_exit(pueue_id, 75, monkeypatch, skill="qa")
+
+    assert events == []
