@@ -366,6 +366,9 @@ def main():
     # Timeout is inside run_task (asyncio.timeout context). No wait_for here.
     result = asyncio.run(run_task(project_dir, task, skill))
 
+    if result["exit_code"] == 5:
+        runner_ratelimit.on_rejected(result["rate_limit"], f"{Path(project_dir).name}:{skill}")
+
     # Output structured JSON (same contract as bash version)
     print(json.dumps(result, ensure_ascii=False))
     sys.exit(result["exit_code"])

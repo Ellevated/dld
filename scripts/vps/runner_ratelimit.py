@@ -2,11 +2,14 @@
 """
 Module: runner_ratelimit
 Role: detect a subscription rate-limit rejection in the SDK message stream, fold
-      events into a run-log summary, and decide whether the run's exit code should
-      become 5 (`rate_limited`).
-Uses: datetime (stdlib only — duck-typed over SDK messages, never imports the SDK)
+      events into a run-log summary, decide whether the run's exit code should
+      become 5 (`rate_limited`), and — on exit 5 — open the fleet-wide pause
+      window and send the one alert for it (TECH-226).
+Uses: datetime, logging, time (stdlib); event_writer.notify, fleet_pause.set_pause
+      (both stdlib-only siblings — this module still never imports the SDK)
 Used by: runner_loop.py (from_message, per message in consume),
-         claude-runner.py (summary + decide_exit after the run)
+         claude-runner.py (summary + decide_exit after the run; on_rejected from
+         main(), after asyncio.run — TECH-226 Task 2)
 
 23.09 the fleet hit the 5h Max subscription window mid-run. The CLI sends a
 synthetic `AssistantMessage` (`error: "rate_limit"`) and, when the server includes
@@ -15,14 +18,26 @@ one, a `RateLimitEvent` — but nothing raises, so the run finished as a plain
 session transcript by hand. This module owns the exit-5 decision the same way
 `runner_refusal` owns exit-4: its own module, its own tests, ADR-024 respected.
 See TECH-225 Design.
+
+TECH-226 adds `on_rejected`: the fleet must stop hammering a closed window and
+the founder must hear about it exactly once, regardless of how many parallel
+runs hit exit 5 in the same window.
 """
 
 import logging
+import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import event_writer
+import fleet_pause
 
 logger = logging.getLogger("claude-runner")
 
 _RATE_LIMIT_EVENT_LIMIT = 10
+_UNKNOWN_RESET_GRACE = 3600
+_WEEKDAYS = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+_HELSINKI = "Europe/Helsinki"
 
 
 def from_message(message) -> dict | None:
@@ -103,3 +118,72 @@ def decide_exit(state: dict, rl: dict) -> int:
         )
         return 5
     return state["exit_code"]
+
+
+def _local_dt(ts: float) -> datetime:
+    """`ts` in Europe/Helsinki, falling back to UTC when tzdata is unavailable."""
+    try:
+        tz = ZoneInfo(_HELSINKI)
+    except ZoneInfoNotFoundError:
+        tz = timezone.utc
+    return datetime.fromtimestamp(ts, tz=tz)
+
+
+def _duration_words(seconds: float) -> str:
+    total = max(int(seconds), 0)
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, _ = divmod(rem, 60)
+    if days >= 1:
+        return f"{days} д {hours} ч"
+    if hours >= 1:
+        return f"{hours} ч {minutes} мин"
+    return f"{minutes} мин"
+
+
+def _alert_text(until: float, rate_limit_type: str, known: bool, now: float) -> str:
+    """Russian alert text for the one Hermes event a pause opens. See TECH-226 Scope item 8."""
+    if not known:
+        return (
+            f"Флот на паузе по лимиту подписки ({rate_limit_type}): время сброса "
+            "неизвестно, повторная проверка через 60 мин. "
+            "Снять вручную: rm scripts/vps/.rate-limited-until"
+        )
+    now_dt = _local_dt(now)
+    until_dt = _local_dt(until)
+    duration = _duration_words(until - now)
+    if now_dt.date() == until_dt.date():
+        when = f"до {until_dt:%H:%M} (через {duration})"
+    else:
+        weekday = _WEEKDAYS[until_dt.weekday()]
+        when = f"до {weekday} {until_dt:%d.%m %H:%M} ({duration})"
+    return (
+        f"Флот на паузе по лимиту подписки ({rate_limit_type}) {when}. "
+        "Снять вручную: rm scripts/vps/.rate-limited-until"
+    )
+
+
+def on_rejected(rl: dict, source: str, now: float | None = None) -> None:
+    """Open the fleet pause window on a rejected rate limit, alerting once.
+
+    Called from `claude-runner.py:main()` after the process exits 5. `rl` is the
+    run's `rate_limit` summary block. The whole body is best-effort: a failed
+    alert must never turn a clean exit 5 into a crashed `main()` (which callback
+    would read as `blocked`).
+    """
+    try:
+        if now is None:
+            now = time.time()
+        until = rl.get("resets_at") or now + _UNKNOWN_RESET_GRACE
+        known = rl.get("resets_at") is not None
+        rate_limit_type = rl.get("rate_limit_type") or "unknown"
+        opened = fleet_pause.set_pause(until, rate_limit_type, source, now=now)
+        if opened:
+            event_writer.notify(
+                str(fleet_pause.SCRIPT_DIR),
+                "rate_limit",
+                "failed",
+                _alert_text(until, rate_limit_type, known, now),
+            )
+    except Exception as exc:  # noqa: BLE001 — a failed alert must not crash the runner
+        logger.warning("on_rejected failed: %s", exc)
