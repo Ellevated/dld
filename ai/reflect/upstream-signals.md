@@ -567,3 +567,11 @@ GROWTH падает в `task/`). В Python её нет; `orchestrator_queue.reco
 - **Type:** gap
 - **Message:** Интеграционный тест хука коммита не изолирован от окружения автопилот-сессии: `_git` пробрасывает весь `os.environ`, и `CLAUDE_CURRENT_SPEC_PATH` (раннер выставляет его каждому прогону) включает в хуке проверку spec-id в subject → «feat: ordinary change» отклоняется. Внутри любого headless-автопилота в dld полный `pytest tests/` даёт 1 ложный red; в CI зелено. Нужен `env -u`/явный пустой `CLAUDE_CURRENT_SPEC_PATH` в `_git`.
 - **Evidence:** `tests/integration/test_worktree_hook_blocks.py:66` (`full_env = {**os.environ, ...}`), `:310` assert; прогон TECH-223 PHASE 3: 1 failed, с `env -u CLAUDE_CURRENT_SPEC_PATH` — 1 passed.
+
+---
+### SIGNAL-2026-09-24-0400
+- **Source:** autopilot (TECH-225)
+- **Target:** spark
+- **Type:** gap
+- **Message:** Повтор SIGNAL-2026-09-24-0010 (третий прогон подряд: TECH-223, TECH-224, TECH-225) — `test_installer_leaves_guard_active_from_relative_legacy_state` ложно красный внутри headless-автопилота из-за `CLAUDE_CURRENT_SPEC_PATH` в окружении. Каждый прогон тратит диагностический шаг на один и тот же известный red. Нужна спека на фикс `_git` (или conftest, снимающий переменную для tests/integration).
+- **Evidence:** PHASE 3 TECH-225: `1 failed, 1230 passed, 3 skipped` (787 s); `env -u CLAUDE_CURRENT_SPEC_PATH pytest tests/integration/test_worktree_hook_blocks.py` → 4 passed.

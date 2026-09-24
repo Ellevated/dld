@@ -601,3 +601,53 @@ DEPLOY_URL=local-only
 
 ## Autopilot Log
 [Auto-populated by autopilot during execution]
+
+### Task 1/6: runner_ratelimit — 2026-09-24
+- Coder: completed (2 files: scripts/vps/runner_ratelimit.py, scripts/vps/tests/test_runner_ratelimit.py)
+- Tester: passed (16/16)
+- Spec compliance: matches (EC-1..EC-5 + test_real_sdk_types)
+- Code Quality Reviewer: approved (0 blocking, 1 advisory)
+- Commit: be5a97da
+
+### Task 2/6: exit 5 в раннере — 2026-09-24
+- Coder: completed (4 files: runner_loop.py 302, claude-runner.py 375, runner_result.py 391 (+1 строка), test_runner_ratelimit.py)
+- Tester: passed (144/144)
+- Spec compliance: matches (EC-6, EC-7; decide_exit до salvage → reason rate_limited)
+- Code Quality Reviewer: approved (0 blocking)
+- Commit: 86e23e38
+
+### Task 3/6: count_requeues_since — 2026-09-24
+- Coder: completed (4 files: db_decisions.py, db.py, schema.sql, tests/integration/test_callback_rate_limit_requeue.py)
+- Tester: passed (86/86)
+- Spec compliance: matches (EC-10; + project_id scope, drift D7)
+- Code Quality Reviewer: approved (0 blocking)
+- Commit: ccf4835b
+
+### Task 4/6: callback requeue — 2026-09-24
+- Coder: completed (4 files: callback_ratelimit.py 71, callback.py 365, test.yml, integration test)
+- Tester: passed (215/215; prod orchestrator.db не тронута)
+- Spec compliance: matches (EC-8, EC-9, EC-11)
+- Code Quality Reviewer: approved (0 blocking, 1 advisory)
+- Commit: e2b576e8
+
+### Task 5/6: EXP-014 — 2026-09-24
+- Coder: completed (1 file); check-experiments exit 0
+- Tester: skipped (docs)
+- Spec compliance: matches
+- Code Quality Reviewer: approved
+- Commit: 0ae2232d
+
+### Task 6/6: доки — 2026-09-24
+- Coder: completed (2 files: status-model.md, dependencies.md); check-rules-loading exit 0
+- Tester: skipped (docs)
+- Spec compliance: matches
+- Code Quality Reviewer: approved
+- Commit: 60152337
+
+### Finish — 2026-09-24
+- Final test: CI_PARITY_UNAVAILABLE (нет ./test ci) → `pytest tests/ scripts/vps/tests/` одной командой: 1230 passed, 3 skipped, 1 failed — `test_worktree_hook_blocks.py::test_installer_leaves_guard_active_from_relative_legacy_state`, утечка CLAUDE_CURRENT_SPEC_PATH из окружения раннера (с `env -u` 4/4 passed; SIGNAL-2026-09-24-0010 + 0400), вне скоупа
+- Gates: ruff check/format (0.16.1) OK, check-loc-limit OK, check-experiments OK, prompt-integrity clean
+- Local Verify: AV-S1 pass (`ok`), AV-F1 pass (rejected True, resets_at 1790161200); AV-F2 — при первом боевом 429 (EXP-014)
+- Exa Verify: no issues — issue #401 (error парсился из message.error) не касается 0.1.63: парсер читает `data.get("error")` верхнего уровня, как в транскрипте 23.09
+- Documenter: completed (components.md, README.md, model-capabilities.md, status-model.md anchor) — d93b01eb
+- Post-Deploy Verify: skip (local-only)
