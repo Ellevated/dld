@@ -71,7 +71,11 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
    `insufficient_ram` + `exit 78` (EX_CONFIG). Запуск под памятью = OOM на полпути =
    потраченные токены.
 2. `SKIP` env (TECH-178): bypass косметических pre-commit fixers.
-3. Dispatch (case по provider): `claude` → `venv/bin/python3 claude-runner.py <dir> <task> <skill>`;
+3. **Fleet-pause guard (TECH-226), только ветка `claude)`:** перед `exec` — `fleet_pause.py --check`.
+   Пауза открыта → **exit 75** (`EX_TEMPFAIL`), ни разу не дозвонившись до Claude API; любой другой
+   код из проверки — fail-open, запуск продолжается как обычно. codex/gemini эту проверку не видят —
+   маркер про лимит подписки Claude. См. [runbook.md Сценарий 8](runbook.md#сценарий-8-флот-на-паузе-по-лимиту-подписки-tech-226).
+4. Dispatch (case по provider): `claude` → `venv/bin/python3 claude-runner.py <dir> <task> <skill>`;
    `codex` → `codex-runner.sh`; `gemini` → `gemini-runner.sh`. Unknown → error exit 1.
 
 > Порядок аргументов у runner'ов отличается: run-agent.sh принимает `(dir, provider, skill, task)`,
@@ -124,6 +128,12 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
   результата нет (ADR-024 — успешный `ResultMessage` не перебивается); коды 124/4/143 не трогает.
   Callback на exit 5 у autopilot зовёт `callback_ratelimit.requeue` вместо `verify_status_sync` —
   см. [status-model.md](status-model.md#rate-limit--queued-tech-225). — `runner_ratelimit.py::decide_exit`
+- **Fleet pause (TECH-226):** на exit 5, `main()` зовёт `runner_ratelimit.on_rejected` — открывает/
+  продлевает окно `fleet_pause.set_pause(resets_at)` (или `+60 мин`, если `resets_at` неизвестен) и
+  шлёт **ровно один** алерт в Hermes (`event_writer.notify`, только если этот вызов сам открыл окно).
+  Пока окно открыто, следующий claude-запуск выходит **exit 75** прямо в `run-agent.sh`, не доходя до
+  этого модуля; callback на 75 зовёт тот же `callback_ratelimit.requeue`, но без потолка 3/24ч —
+  см. [status-model.md](status-model.md#rate-limit--queued-tech-225). — `runner_ratelimit.py::on_rejected`
 - **JSON-контракт вывода:** `exit_code`, `turns`, `cost_usd`, токены, `task_status` (`complete`/
   `blocked`/`needs_review`), `result_preview`, `refusal`, `salvage`, `rate_limit` (TECH-225).
   — `runner_result.py::build_log_data`
@@ -179,6 +189,9 @@ in `db.py`), **decisions** (`record_decision`/`count_demotes_since`/`clear_decis
 Олега — да; рядовое успешное завершение — нет. Цель — `HERMES_NOTIFY_TARGET` из окружения или
 из `scripts/vps/.env` (на VPS — топик «DLD Orch»), иначе домашний канал Hermes.
 `notify_circuit_event(action, count, window)` — события circuit-breaker (TECH-169).
+`runner_ratelimit.on_rejected` (TECH-226) зовёт тот же общий `notify(..., "rate_limit", "failed",
+...)` напрямую — нового типа события нет, ровно один вызов за окно паузы гарантирует
+`fleet_pause.set_pause` своим `bool`-возвратом, не что-то в этом модуле.
 
 > ⚠️ **Доставка по-прежнему fire-and-forget:** код оркестратора не видит, отправил ли агент
 > сообщение. Видно другое — вывод каждого пробуждения дописывается в `scripts/vps/logs/hermes-wake.log`.
@@ -271,3 +284,7 @@ alert/blocked), оба heartbeat-инструмента fail-open (никогд�
     лог, не `return False`.
 17. **`startup_reconcile` fail-closed.** `get_live_pueue_ids() is None` (pueue недоступен) —
     восстановление пропускается целиком; демоут по предположению снёс бы живую очередь.
+18. **Fleet pause режет `claude`-диспатч на обоих путях (TECH-226).** Пока `fleet_pause.active_pause()`
+    открыт, `dispatch_one.py` и `orchestrator_queue.gate_before_pueue_add` отказывают
+    `provider == "claude"` спеке ещё до `pueue add` — тот же маркер, что `run-agent.sh` проверяет
+    перед `exec`. codex/gemini диспатч не затронут.

@@ -193,6 +193,9 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 7. **Timeout как hard-limit** (claude 90м / codex 15м / gemini 30м) + heartbeat-reaper добивает зависшие.
 8. **exit_code contract (ADR-024)** — post-result Exception не оверрайдит `exit_code=0` (иначе ре-блок готовой спеки).
 9. **CI-parity merge-gate (TECH-206)** — не мержить в красный develop.
+10. **Fleet pause (TECH-226)** — пока `fleet_pause.active_pause()` открыт, `claude`-спеки не
+    диспатчатся ни одним из двух путей, а `run-agent.sh` выходит exit 75 до вызова API, если
+    что-то всё же успело просочиться в pueue.
 
 ---
 
@@ -228,7 +231,8 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 | TECH-220 | Implementation guard: branch-ancestry primary (`gate_ancestry.find_implementation`), subject-regex deprecated fallback, `gate_via` telemetry | актуально |
 | TECH-221 | Re-dispatch after a timeout continues the salvaged branch: `gate_ancestry.branch_state()`, `blocked_reason=branch_pushed_not_merged:<N>`, three-way `orchestrator_queue.reconcile()` ("done"\|"continue"\|"fresh"), `CLAUDE_CONTINUE_BRANCH` env | актуально |
 | TECH-222 | Dependency edge moves onto lifecycle YAML: `depends_on: [ID]` in the dependent spec's yaml (Spark writes it at claim time via `create_initial`; `lifecycle.set_depends_on` retrofits existing specs). `orchestrator_queue._spec_deps` reads it as SoT, backlog `AFTER` demoted to deprecated fallback logged as `DEP_VIA` (30-day zero-`DEP_VIA` telemetry gate before deletion, same shape as TECH-220's `gate_via`) | актуально |
-| TECH-225 | Rate-limit hit recognised structurally: runner exit 5 (`rate_limited`, `runner_ratelimit.decide_exit`, ADR-024-respecting) instead of a bare `exit_code: 1`; callback routes it through `callback_ratelimit.requeue` (`in_progress → queued`, not `blocked`), 3rd requeue of the same spec in 24h escalates to `blocked repeated_rate_limit:<n>`. No fleet-wide dispatch pause yet — that is TECH-226 | актуально (EXP-014 open) |
+| TECH-225 | Rate-limit hit recognised structurally: runner exit 5 (`rate_limited`, `runner_ratelimit.decide_exit`, ADR-024-respecting) instead of a bare `exit_code: 1`; callback routes it through `callback_ratelimit.requeue` (`in_progress → queued`, not `blocked`), 3rd requeue of the same spec in 24h escalates to `blocked repeated_rate_limit:<n>`. Fleet-wide dispatch pause added by TECH-226 | актуально (EXP-014 open) |
+| TECH-226 | Fleet-wide pause on subscription rate limit: first exit 5 in a closed window opens `scripts/vps/.rate-limited-until` (`runner_ratelimit.on_rejected` → `fleet_pause.set_pause`) and sends exactly one Hermes alert; while open, `run-agent.sh` exits **75** before the `claude)` branch ever calls the API, and both dispatch paths (`dispatch_one.py`, `orchestrator_queue.gate_before_pueue_add`) refuse `claude` specs ahead of `pueue add`. Callback treats exit 75 as `callback_ratelimit.requeue(paused=True)` — `queued`/`fleet_paused`, never counted toward the 3/24h ceiling. codex/gemini unaffected | актуально (EXP-015 open) |
 
 > ⚠️ **Известный дрейф в in-repo ADR-таблице** (`.claude/rules/architecture.md`): TECH-170/176
 > там описаны как актуальные, но текущий код (`gate_ancestry.find_implementation`, TECH-220) их не

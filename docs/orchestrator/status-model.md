@@ -288,7 +288,23 @@ Callback видит `exit_code == 5` в Step 7 и вызывает `callback_rat
   окно circuit breaker наравне с обычными demote).
 - Noop-пути те же, что у `verify_status_sync` в Step 1: circuit open, нет lifecycle-записи, спека
   уже `done` — `callback_sync._read_existing_status` возвращает `None`, `requeue` не пишет ничего.
-- Пауза флота до `resets_at` — TECH-226, здесь её нет.
+
+**`exit 75` = `fleet_paused` (TECH-226)** идёт по тому же `requeue` (`callback.py` Step 7 расширен
+до `exit_code in (5, 75)`, `callback_ratelimit.requeue(..., paused=True)`), но с двумя отличиями от
+`rate_limited` выше:
+
+- `blocked_reason` = `fleet_paused`, не `rate_limited` — записывает, что встал весь флот, а не эта
+  спека упёрлась в свой личный лимит.
+- **Никогда не эскалирует.** `paused=True` пропускает `db.count_requeues_since` целиком — потолок
+  3/24ч (`REQUEUE_CEILING`) считает только `reason='rate_limited'`, третий подряд `fleet_paused` не
+  демоутит спеку в `blocked`.
+
+Окно паузы (`scripts/vps/.rate-limited-until`, JSON `until`/`rate_limit_type`) открывает
+`runner_ratelimit.on_rejected` на самом первом exit 5 в закрытом окне и шлёт один алерт в Hermes;
+`fleet_pause.active_pause()` — то, что заставило текущий запуск выйти 75 до вызова Claude API
+(`run-agent.sh` `--check` guard) или отказаться диспатчить (`dispatch_one.py`,
+`orchestrator_queue.gate_before_pueue_add`). Диагностика и снятие вручную —
+[runbook.md Сценарий 8](runbook.md#сценарий-8-флот-на-паузе-по-лимиту-подписки-tech-226).
 
 ### TECH-197 hardening
 
