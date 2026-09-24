@@ -506,4 +506,31 @@ DEPLOY_URL=local-only
 ---
 
 ## Autopilot Log
-[Auto-populated by autopilot during execution]
+
+Planner (2026-09-24): plan re-validated, 8 tasks, 10 drift items auto-fixed (D1–D10): guard fail-open (D5), claude-only pause (D7), `requeue(paused=)` (D6), Step 5 event skipped on exit 75 (D9), `on_rejected` called from `main()` not `run_task` (D4).
+
+### Task 1/8: fleet_pause.py — 2026-09-24
+- Coder: completed (2 files) · Tester: passed 5/5 · Spec compliance: matches EC-1..5 · Code Quality: approved (1 advisory) · Commit: 36745e2f
+
+### Task 2/8: on_rejected + claude-runner call — 2026-09-24
+- Coder: completed (3 files) · Tester: passed (372 incl. venv SDK-gated runner tests; marker not leaked) · Spec compliance: matches EC-6, EC-7 · Code Quality: approved (1 advisory) · Commit: 2c6a3846
+
+### Task 3/8: run-agent.sh guard — 2026-09-24
+- Coder: completed (1 file) · Tester: bash -n + /tmp probe (claude → rc 75, runner not started; no marker → runs; broken check → fail-open; codex unaffected) · Spec compliance: matches · Code Quality: approved · Commit: 918d7826
+- Local Verify: EC-8/AV-F1 require production venv + pueue on VPS — deferred to QA
+
+### Task 4-5/8: dispatch refusal + PAUSED briefing line — 2026-09-24
+- Coder: completed (4 files) · Tester: passed 178 · Spec compliance: matches EC-9..11 · Code Quality: approved (advisory: pre-existing bare except orchestrator_queue.py:92) · Commit: d66b214c
+
+### Task 6/8: callback exit 75 → queued/fleet_paused — 2026-09-24
+- Coder: completed (3 files) · Tester: passed 228 (venv) + mutation check (reverting callback.py → 3 new tests red) · Spec compliance: matches EC-12 · Code Quality: approved (advisory: pre-existing bare excepts callback.py:113,362) · Commit: 1477a7dd
+
+### Task 7/8: EXP-015 — Coder: completed · check-experiments exit 0 · Commit: a43478ef
+### Task 8/8: runbook Сценарий 8 + dependencies.md — Coder: completed · Commit: a26d1cf0
+
+### PHASE 3 — 2026-09-24
+- Final test: CI_PARITY_UNAVAILABLE (no ./test in dld) → `pytest tests/ scripts/vps/tests/` once (venv): 1250 passed, 1 failed, 3 skipped. The failure is `test_worktree_hook_blocks.py::test_installer_leaves_guard_active_from_relative_legacy_state` — env leak of `CLAUDE_CURRENT_SPEC_PATH` from the runner (passes with it unset; SIGNAL-2026-09-24-0010/0400), not this spec.
+- Gates: ruff 0.16.1 clean, bash -n ok, LOC OK (orchestrator_queue 380, claude-runner 378, callback 369), check-experiments OK, prompt-integrity clean.
+- Exa Verify: no issues (O_CREAT|O_EXCL lock + os.replace is the standard local-FS pattern; stale-lock break at 30 s is safe for a ms-long critical section)
+- Documenter: completed — components.md, status-model.md, README.md (9b4bd9c6)
+- Post-Deploy Verify: skip (DEPLOY_URL=local-only); AV-S1/AV-F1 on VPS → QA

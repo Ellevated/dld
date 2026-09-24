@@ -575,3 +575,11 @@ GROWTH падает в `task/`). В Python её нет; `orchestrator_queue.reco
 - **Type:** gap
 - **Message:** Повтор SIGNAL-2026-09-24-0010 (третий прогон подряд: TECH-223, TECH-224, TECH-225) — `test_installer_leaves_guard_active_from_relative_legacy_state` ложно красный внутри headless-автопилота из-за `CLAUDE_CURRENT_SPEC_PATH` в окружении. Каждый прогон тратит диагностический шаг на один и тот же известный red. Нужна спека на фикс `_git` (или conftest, снимающий переменную для tests/integration).
 - **Evidence:** PHASE 3 TECH-225: `1 failed, 1230 passed, 3 skipped` (787 s); `env -u CLAUDE_CURRENT_SPEC_PATH pytest tests/integration/test_worktree_hook_blocks.py` → 4 passed.
+
+---
+### SIGNAL-2026-09-24-0600
+- **Source:** autopilot (TECH-226)
+- **Target:** spark
+- **Type:** gap
+- **Message:** (1) Четвёртый прогон подряд (TECH-223/224/225/226) — тот же ложный red `test_installer_leaves_guard_active_from_relative_legacy_state` от `CLAUDE_CURRENT_SPEC_PATH` в env; спеки на фикс всё ещё нет. (2) Спека TECH-226 дала сторож для `run-agent.sh` в форме `cmd || { rc=$?; [[ $rc -eq 75 ]] && exit 75; }` — под `set -e` любой rc≠75 (сломанный venv) валил бы каждый claude-запуск; planner заменил на fail-open. (3) Файл-маркер `scripts/vps/.rate-limited-until` не внесён в `.gitignore`, а `.gitignore` не был в Allowed Files. (4) Verify Command ссылался на `scripts/check-loc-limit.sh`, реальный путь `scripts/vps/check-loc-limit.sh`.
+- **Evidence:** PHASE 3 TECH-226: `1 failed, 1250 passed, 3 skipped`, с `env -u CLAUDE_CURRENT_SPEC_PATH` → passed; spec Design «Как будет» строка run-agent.sh; планер drift D3/D5/D10.

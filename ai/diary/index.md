@@ -61,3 +61,10 @@
 | 2026-09-24 | TECH-225 | success | Task 6/6: status-model + dependencies (+ documenter: components, README, model-capabilities) | 0 | 2 | done |
 | 2026-09-24 | TECH-225 | advisory | Tasks 1,4 advisory → 2026-09-24-TECH-225-advisory.md | 0 | 0 | done |
 | 2026-09-24 | REFLECT-2026-09-24-s3 | reflect | 7 pending TECH-225 (чистый, 0 debug) + SIGNAL-2026-09-24-0400. Дополнение 2 в findings-2026-09-24.md: (1) №4 — третий ложный red подряд (TECH-223/224/225), спеки нет, по приоритету теперь впереди №2; (2) №1 — 25 reflect-wake, findings не прочитан ни разу; (3) новая №5 — autopilot-state.json «для /reflect» не читает никто, кроме plan_exists в pre-edit.mjs, 3 из 5 копий врут (TECH-212/222/225 pending при done) → убрать запись по шагам и шаг 8.5. Находки 1–4 с 82adc907 не тронуты. Exa ×1. | 0 | 0 | done |
+| 2026-09-24 | TECH-226 | success | Task 1/8: fleet_pause.py marker + CLI --check | 0 | 2 | pending |
+| 2026-09-24 | TECH-226 | success | Task 2/8: runner_ratelimit.on_rejected, one alert per window | 0 | 3 | pending |
+| 2026-09-24 | TECH-226 | success | Task 3/8: run-agent.sh guard exit 75 (fail-open) | 0 | 1 | pending |
+| 2026-09-24 | TECH-226 | success | Task 4-5/8: dispatch_one + builtin gate refusal, PAUSED briefing line | 0 | 4 | pending |
+| 2026-09-24 | TECH-226 | success | Task 6/8: callback exit 75 → queued fleet_paused outside ceiling | 0 | 3 | pending |
+| 2026-09-24 | TECH-226 | success | Task 7-8/8: EXP-015, runbook, dependencies (+ documenter: components, status-model, README) | 0 | 3 | pending |
+| 2026-09-24 | TECH-226 | advisory | Tasks 1,2,4,6 advisory → 2026-09-24-TECH-226-advisory.md | 0 | 0 | pending |
