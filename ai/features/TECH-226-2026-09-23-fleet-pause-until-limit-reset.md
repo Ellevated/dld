@@ -1,7 +1,7 @@
 # Feature: [TECH-226] Флот встаёт на паузу до сброса лимита подписки и присылает один алерт
 
 **Priority:** P1 | **Date:** 2026-09-23 | **Risk:** R1 (все пути запуска Claude на VPS) | **AFTER TECH-225**
-**Size:** 7 tasks / 15 files — неделимо: пауза, которую уважает только один путь запуска, не
+**Size:** 8 tasks / 15 files — неделимо: пауза, которую уважает только один путь запуска, не
 пауза (диспетчер ходит своим таймером, QA/reflect — из callback, автопилот — из dispatch_one);
 сторож в `run-agent.sh` без возврата спеки в очередь снова уводит её в `blocked`.
 
@@ -36,14 +36,14 @@
 
 - Разбор суток: `C:\Users\Oleg\.claude\task-journal\2026-09-23-dld-orch24h.md`.
 - Пути запуска Claude на VPS (все идут через `scripts/vps/run-agent.sh` → `claude-runner.py`):
-  - автопилот: LLM-диспетчер → `dispatch_one.py` → `pueue add` (`dispatch_one.py:52-77`);
+  - автопилот: LLM-диспетчер → `dispatch_one.py` → `pueue add` (`dispatch_one.py:51-103`, `pueue add` на `:74-82`);
     встроенный путь `DISPATCH_MODE=builtin` → `orchestrator_queue.gate_before_pueue_add` (`:109`) —
     сейчас выключен (`orchestrator.py:282`, дефолт `llm`), но обязан уважать паузу;
   - диспетчер: systemd `dispatcher.timer` каждые 15 мин → `~/ops/dispatcher.sh` → `pueue add
     --group dispatcher … run-agent.sh … dispatcher /dispatcher` (проверено на VPS 23.09);
   - QA/reflect: callback Step 6 → `callback_dispatch._pueue_add` → `run-agent.sh`;
   - support-nightly: `~/ops/support-nightly.sh` → `run-agent.sh`.
-  Единственное общее место — `run-agent.sh`, ветка `claude)` (`run-agent.sh:69-73`).
+  Единственное общее место — `run-agent.sh`, ветка `claude)` (`run-agent.sh:71-76`, `exec` на `:75`).
 - Circuit breaker (`callback_circuit._pueue_pause/_resume`, TECH-169) ставит на паузу pueue-группу
   `claude-runner`. **Эта спека pueue-группы не трогает**: два независимых «почему пауза» на одном
   булевом состоянии pueue — гонка при снятии (research-devil.md, Hidden Coupling).
@@ -85,7 +85,7 @@
 
 ### Step 1: UP — who uses?
 - `grep -rn "run-agent.sh" scripts/vps/*.py` → `dispatch_one.py:67`, `orchestrator_slots._pueue_add` (через `orchestrator_queue`), `callback_dispatch._pueue_add`; вне репо — `~/ops/dispatcher.sh`, `~/ops/support-nightly.sh`.
-- `grep -rn "def dispatch\b\|_fail(" scripts/vps/dispatch_one.py` → отказы `:56-71`.
+- `grep -rn "def dispatch\b\|_fail(" scripts/vps/dispatch_one.py` → отказы `:53-71`.
 - `grep -rn "def build\|def render" scripts/vps/dispatch_summary.py` → `:172`, `:210`.
 
 ### Step 2: DOWN
@@ -98,8 +98,8 @@
 
 | File | Line | Status | Action |
 |------|------|--------|--------|
-| `scripts/vps/run-agent.sh` | 67-74 | ветка `claude)` сразу `exec` | modify (сторож) |
-| `scripts/vps/dispatch_one.py` | 56-71 | три отказа | modify (+ четвёртый) |
+| `scripts/vps/run-agent.sh` | 71-76 | ветка `claude)` сразу `exec` | modify (сторож) |
+| `scripts/vps/dispatch_one.py` | 53-71 | три отказа | modify (+ четвёртый) |
 | `scripts/vps/orchestrator_queue.py` | 109 | `gate_before_pueue_add` | modify (+ пауза) |
 | `scripts/vps/dispatch_summary.py` | 172-250 | брифинг | modify (строка PAUSED) |
 
@@ -137,9 +137,10 @@ ONLY the files listed below may be modified during implementation.
 - `docs/orchestrator/runbook.md` — «флот на паузе по лимиту»: как увидеть, как снять руками (modify)
 - `.claude/rules/dependencies.md` — fleet_pause.py и сторож в run-agent.sh (modify)
 
-**LOC headroom:** `orchestrator_queue.py` 373/400 — проверка ≤ 6 строк, логика в `fleet_pause`;
-`claude-runner.py` — после TECH-223/225 около 382/400, здесь ≤ 2 строк (вызов в `runner_ratelimit`);
-`callback.py` — условие `exit_code in (5, 75)` вместо `== 5`, 0 новых строк.
+**LOC headroom (замерено 2026-09-24, после TECH-225):** `orchestrator_queue.py` 373/400 — проверка
+≤ 7 строк, логика в `fleet_pause`; `claude-runner.py` 375/400, здесь ≤ 3 строк (вызов в
+`runner_ratelimit`); `callback.py` 365/400 — условие `exit_code in (5, 75)` + kwarg, ≤ 3 строк;
+`runner_ratelimit.py` 105, `callback_ratelimit.py` 71, `dispatch_one.py` 118, `dispatch_summary.py` 262.
 
 ---
 
@@ -194,11 +195,12 @@ claude-runner (exit 5, TECH-225)
         ├─ opened = fleet_pause.set_pause(until, rl.rate_limit_type or "unknown", source)
         └─ opened → event_writer.notify(SCRIPT_DIR, "rate_limit", "failed", text)
 
-run-agent.sh (claude):  venv/bin/python3 fleet_pause.py --check || { rc=$?; [[ $rc -eq 75 ]] && exit 75; }
+run-agent.sh (claude):  rc=0; "$VENV_PY" fleet_pause.py --check >&2 || rc=$?; [[ $rc -eq 75 ]] && exit 75
+                        (fail-open: любой другой rc — запуск идёт дальше; см. Drift Log D5)
 dispatch_one.dispatch:  p = fleet_pause.active_pause(); if p: return _fail(f"fleet paused until …")
 orchestrator_queue.gate_before_pueue_add: то же → не диспатчить
 dispatch_summary.build/render: summary["paused"] = active_pause() → верхняя строка
-callback Step 7: autopilot и exit_code in (5, 75) → callback_ratelimit.requeue(..., counted = exit_code == 5)
+callback Step 7: autopilot и exit_code in (5, 75) → callback_ratelimit.requeue(..., paused=exit_code == 75)
 ```
 
 **`set_pause`** атомарна: запись во временный файл + `os.replace`. «Окно открыл этот вызов» =
@@ -219,63 +221,187 @@ callback Step 7: autopilot и exit_code in (5, 75) → callback_ratelimit.requeu
 
 ---
 
+## Drift Log
+
+**Checked:** 2026-09-24, worktree `.worktrees/TECH-226` after TECH-225 was merged (`eba410c5`).
+**Result:** light drift, fixed in place. Nothing is heavy: every file, function and signature the spec leans on exists.
+
+| # | Spec assumed | Reality | Action |
+|---|---|---|---|
+| D1 | `dispatch_one.py:52-77`, refusals `:56-71`; `run-agent.sh:69-73` | refusals `:53-71`, `pueue add` `:74-82`; `claude)` branch `:71-76`, `exec` `:75` | references fixed above |
+| D2 | `claude-runner.py` ≈382 LOC | 375 LOC; `callback.py` 365; `orchestrator_queue.py` 373 (matches) | LOC headroom line updated |
+| D3 | Verify command `bash scripts/check-loc-limit.sh` | the gate is `scripts/vps/check-loc-limit.sh` (CI `ci.yml:108`) | fixed in Verify Command |
+| D4 | `on_rejected` is called in `run_task` right after `decide_exit` (`claude-runner.py:294-295`) | `test_runner_ratelimit.py::test_rate_limit_then_sdk_exception_exits_5` runs `run_task` and ends in exit 5. A call there would write the real `scripts/vps/.rate-limited-until` and call the real `event_writer.notify`, which wakes Hermes on the VPS, every time the suite runs. That test file is not in Allowed Files | the call moves to `main()` after `asyncio.run` (`:367`). Only a real process reaches `main()`, and no test calls it (grep `\.main\(` in `test_claude_runner*` → 0) |
+| D5 | the guard is `fleet_pause.py --check \|\| { rc=$?; [[ $rc -eq 75 ]] && exit 75; }` | under `set -e` the `{…}` group is the last command of the `\|\|` list, so any rc other than 75 (a traceback, a broken venv) returns 1 from the group and **stops every claude launch with exit 1** | fail-open form: `rc=0; … \|\| rc=$?; if [[ $rc -eq 75 ]]; then exit 75; fi` |
+| D6 | `requeue(project_path, spec_id, pueue_id)` cannot say why it is requeuing | `count_requeues_since` already filters `reason = 'rate_limited'` (`db_decisions.py:66`), and the TECH-225 test EC-10 already puts in a `fleet_paused` row and checks that it is not counted | add keyword `paused: bool = False` to `requeue`; `paused=True` writes reason `fleet_paused`, does not read the counter, does not escalate |
+| D7 | pause refuses dispatch for all providers | the marker records the **Claude subscription** window, and codex/gemini have nothing to do with it. The `run-agent.sh` guard is already claude-only | `dispatch_one` and `gate_before_pueue_add` refuse only when `provider == "claude"`; the briefing line says the pause is claude-only |
+| D8 | exit 75 reaches callback | confirmed: pueue fills `{{ exit_code }}` since 2026-09-01 (`callback-debug.log` shows `exit_code=124/4/1`). With no run log, `runner_exit_code` would return None, so the pueue argument is the only source, and it works | none |
+| D9 | — | QA/reflect that exit 75 still reach callback Step 5 → `write_event_for_skill` → Hermes «qa failed» (`callback_event.py:60`). That is the 23.09 noise from Why, and it is one wake per paused QA | Task 6 skips Step 5 when `exit_code == 75` (condition change, 0 new lines) |
+| D10 | — | `scripts/vps/.rate-limited-until` is not in `.gitignore` (`:39-51` ignore `.orchestrator-heartbeat` and similar). `.gitignore` is not an Allowed File | warning only: while a pause is active, the marker shows as untracked in the VPS main checkout. It does not affect `git pull` or the worktrees |
+
+Allowlist block untouched (autopilot already started). No `template/` counterparts: `scripts/vps/*` exists
+only in root, and `rules/dependencies.md` is deliberately root-specific (`template-sync.md:97`), so no sync task.
+
 ## Implementation Plan
 
 ### Research Sources
-- `scripts/vps/orchestrator.py:350-354` — образец файла-состояния рядом со скриптами (`.orchestrator-heartbeat`)
-- `scripts/vps/event_writer.py:138-170` — `notify_circuit_event` как образец системного алерта
+- `scripts/vps/orchestrator.py:349-354` — state file next to the scripts (`.orchestrator-heartbeat`)
+- `scripts/vps/event_writer.py:138-168` — `notify_circuit_event`: system alert with `project_path = scripts/vps`
+- `scripts/vps/tests/conftest.py:10-37` — `scripts/vps` is on `sys.path`, fixtures `isolated_db` / `seed_project`
+- No external research needed: stdlib only (`os.open(O_CREAT|O_EXCL)`, `os.replace`, `zoneinfo`).
 
-### Task 1: fleet_pause.py + тесты
+**Invariant for the whole plan:** every reader calls `fleet_pause.active_pause()` **as a module attribute**, and
+`fleet_pause` reads the module global `MARKER` **at call time** (never as a default argument).
+Tests move the marker with a single `monkeypatch.setattr(fleet_pause, "MARKER", tmp_path / ".rate-limited-until")`.
+
+### Task 1: fleet_pause.py — marker, window, CLI
 **Type:** code
 **Files:**
-  - create: `scripts/vps/fleet_pause.py`
-  - create: `scripts/vps/tests/test_fleet_pause.py`
-**Acceptance:** EC-1..EC-5.
+- Create: `scripts/vps/fleet_pause.py` (~90 LOC, stdlib only: json, logging, os, sys, time, pathlib)
+- Create: `scripts/vps/tests/test_fleet_pause.py`
 
-### Task 2: раннер ставит паузу и алертит один раз
+**Context:** the single source of «closed until X». `run-agent.sh` runs it on every claude launch, so it must not
+import `db` or the SDK.
+
+**Steps:**
+1. Tests (red: `ModuleNotFoundError: fleet_pause`):
+   - `test_set_pause_opens_window` (EC-1): `set_pause(now+1800, "five_hour", "x", now=now) is True`, `active_pause(now=now)["until"] == now+1800`
+   - `test_repeat_in_open_window_does_not_reopen_or_shrink` (EC-2): a second `set_pause(now+1200, …)` → `False`, `until` is still `now+1800`. A third call with `now+2400` → `False`, `until == now+2400`
+   - `test_expired_marker_is_absent_and_reopens` (EC-3): marker with `until = now-1` → `active_pause(now=now) is None`, `set_pause(now+600, …) is True`
+   - `test_garbage_marker_is_absent_with_warning` (EC-4): `MARKER.write_text("{not json")` → `active_pause() is None`, `caplog` has a WARNING
+   - `test_cli_check` (EC-5): `main(["--check"])` → `0` with no marker; with an active marker → `75`, and `capsys` stdout is JSON with `skipped == "fleet_paused"` and `until`
+2. `pytest scripts/vps/tests/test_fleet_pause.py -v` → red.
+3. Implementation:
+   - `SCRIPT_DIR = Path(__file__).resolve().parent`; `MARKER = SCRIPT_DIR / ".rate-limited-until"`; `EX_TEMPFAIL = 75`
+   - `active_pause(now: float | None = None) -> dict | None` — read `MARKER`. Missing file → None. JSON/`KeyError`/`ValueError` → `log.warning` + None. `until <= now` → None
+   - `set_pause(until: float, rate_limit_type: str, source: str, now: float | None = None) -> bool`:
+     - `until <= now` → False, nothing written
+     - the whole «read → decide → write» runs under the lock file `MARKER.parent / (MARKER.name + ".lock")`, taken with `os.open(O_CREAT|O_EXCL|O_WRONLY)` and retried up to ~2 s at 0.02 s steps. If the lock is older than 30 s it is stale: unlink and retry. Lock not taken → `log.warning`, return False. The lock is unlinked in `finally`
+     - under the lock: `cur = active_pause(now)`. If `cur` exists, write only when `until > cur["until"]`, and return False. If `cur` is None, write and return True
+     - write = `json.dumps({until, until_iso (UTC isoformat), rate_limit_type, set_at, source})` to `MARKER.name + ".tmp"`, then `os.replace`
+   - `main(argv: list[str]) -> int`: `--check` → prints `{"skipped":"fleet_paused", **pause}` and returns 75, otherwise 0. `if __name__ == "__main__": sys.exit(main(sys.argv[1:]))`
+4. `pytest scripts/vps/tests/test_fleet_pause.py -v` → 5 passed.
+
+**Acceptance:** EC-1, EC-2, EC-3, EC-4, EC-5.
+
+### Task 2: the runner sets the pause and alerts once
 **Type:** code
 **Files:**
-  - modify: `scripts/vps/runner_ratelimit.py` — `on_rejected(rl, source)`, текст алерта
-  - modify: `scripts/vps/claude-runner.py` — вызов после `decide_exit`, только при exit 5
-  - modify: `scripts/vps/tests/test_fleet_pause.py` — EC-6, EC-7
-**Acceptance:** EC-6, EC-7; `bash scripts/check-loc-limit.sh` exit 0.
+- Modify: `scripts/vps/runner_ratelimit.py` (append after `decide_exit`, `:90-105`; docstring `Uses/Used by` gets `fleet_pause, event_writer`)
+- Modify: `scripts/vps/claude-runner.py:367-371` (`main()`, between `asyncio.run` and `print`)
+- Test: `scripts/vps/tests/test_fleet_pause.py`
 
-### Task 3: сторож в run-agent.sh
+**Context:** only the call that opens the window sends the alert. N parallel runs hitting 429 must produce exactly one alert.
+
+**Steps:**
+1. Tests (red: `AttributeError: on_rejected`). `event_writer.notify` is replaced by a counter through
+   `monkeypatch.setattr(runner_ratelimit.event_writer, "notify", …)`:
+   - `test_five_threads_one_alert` (EC-6): `threading.Barrier(5)`, 5 threads call `on_rejected({"resets_at": now+1800, "rate_limit_type": "five_hour"}, "p:autopilot")` → counter `== 1`, marker `until == now+1800`
+   - `test_unknown_reset_pauses_one_hour` (EC-7a): `resets_at=None`, `now=` fixed → `active_pause()["until"] == now+3600`, alert text contains `время сброса неизвестно`
+   - `test_seven_day_text_has_weekday_and_days` (EC-7b): `rate_limit_type="seven_day"`, `resets_at = now + 2*86400 + 14*3600` → text contains `2 д 14 ч` and matches `r"(пн|вт|ср|чт|пт|сб|вс) \d\d\.\d\d"`
+2. `pytest scripts/vps/tests/test_fleet_pause.py -v` → 3 red.
+3. Implementation in `runner_ratelimit.py`:
+   - `import event_writer`, `import fleet_pause` at module level (both stdlib-only, never import the SDK, and the split line stays intact)
+   - `on_rejected(rl: dict, source: str, now: float | None = None) -> None`: `until = rl.get("resets_at") or now + 3600`; `opened = fleet_pause.set_pause(until, rl.get("rate_limit_type") or "unknown", source, now=now)`; `opened` → `event_writer.notify(str(fleet_pause.SCRIPT_DIR), "rate_limit", "failed", _alert_text(...))`. **The whole body sits in `try/except Exception` → `logger.warning`.** A failed alert must not turn exit 5 into a crashed `main()` and exit 1: callback would read that as `blocked`
+   - `_alert_text(until, rate_limit_type, known: bool, now) -> str`: the time is local `Europe/Helsinki` (`zoneinfo`; on `ZoneInfoNotFoundError`, e.g. Windows without tzdata, fall back to UTC). A different day adds `«<пн..вс> DD.MM »` before `HH:MM`. The duration is written in words (`N д M ч` / `N ч M мин` / `N мин`). The text names `rate_limit_type`, «флот на паузе до …» and «снять: rm scripts/vps/.rate-limited-until». When the reset time is unknown: «время сброса неизвестно, повторная проверка через 60 мин»
+4. `claude-runner.py`, after `result = asyncio.run(...)` (`:367`): `if result["exit_code"] == 5:` → `runner_ratelimit.on_rejected(result["rate_limit"], f"{Path(project_dir).name}:{skill}")`. That is ≤3 lines, and nothing else in the file changes.
+5. `pytest scripts/vps/tests/test_fleet_pause.py scripts/vps/tests/test_runner_ratelimit.py -v` → green. After that, `git status --short scripts/vps` must not show `.rate-limited-until` (proves D4: the runner test does not reach `on_rejected`). Then `bash scripts/vps/check-loc-limit.sh` → `LOC limit OK`.
+
+**Acceptance:** EC-6, EC-7. `claude-runner.py` ≤ 378 LOC.
+
+### Task 3: guard in run-agent.sh
 **Type:** code
 **Files:**
-  - modify: `scripts/vps/run-agent.sh`
-**Acceptance:** `bash -n scripts/vps/run-agent.sh`; EC-8 проверяется на VPS пробой AV-F1 (скрипт
-зовёт боевой `venv/bin/python3`, локальный тест его не воспроизводит честно).
+- Modify: `scripts/vps/run-agent.sh:74-75` (between the `VENV_PY` check and `exec`, inside `claude)`)
 
-### Task 4: отказ диспатча и строка брифинга
+**Context:** the only path shared by the dispatcher, QA/reflect, support-nightly and autopilot.
+
+**Steps:**
+1. Insert 3-4 lines: `rc=0`; `"$VENV_PY" "${SCRIPT_DIR}/fleet_pause.py" --check >&2 || rc=$?`; `if [[ $rc -eq 75 ]]; then exit 75; fi`.
+   Any other `rc` → continue with `exec` (fail-open, D5). Quote every variable; `set -euo pipefail` is unchanged.
+2. `bash -n scripts/vps/run-agent.sh` → exit 0. The codex/gemini branches are untouched.
+
+**Acceptance:** EC-8 is checked on the VPS with probe AV-F1 (the script calls the production `venv/bin/python3`, so a local test cannot reproduce it honestly).
+
+### Task 4: dispatch refusal (LLM path and builtin path)
 **Type:** code
 **Files:**
-  - modify: `scripts/vps/dispatch_one.py`, `scripts/vps/orchestrator_queue.py`, `scripts/vps/dispatch_summary.py`
-  - create: `scripts/vps/tests/test_dispatch_one_pause.py`
-**Acceptance:** EC-9, EC-10, EC-11.
+- Modify: `scripts/vps/dispatch_one.py:63-64` (after `provider = …`, before the slot check); docstring `:13-18` «Three refusals» → «Four», plus the reason; `Uses:` gets `fleet_pause`
+- Modify: `scripts/vps/orchestrator_queue.py:171-175` (after `resolve_provider`, before `get_available_slots`); `import fleet_pause  # noqa: E402` next to `:30-34`
+- Create: `scripts/vps/tests/test_dispatch_one_pause.py`
 
-### Task 5: callback — exit 75 в очередь вне потолка
+**Steps:**
+1. Tests (red: dispatch goes further, gate returns a tuple):
+   - `test_dispatch_one_refuses_when_paused` (EC-9): `isolated_db`, `db.seed_projects_from_json([{project_id:"p", path:str(tmp_path), provider:"claude", …}])`, spec body `tmp_path/ai/features/TECH-1-x.md`, active pause → `dispatch_one.dispatch("p","TECH-1","autopilot",None,"")  == 2`, and `json.loads(capsys stdout)["reason"].startswith("fleet paused until")`
+   - `test_dispatch_one_pause_is_claude_only`: same setup, `provider="codex"`, `monkeypatch.setattr(dispatch_one.db, "get_available_slots", lambda p: 0)` → reason `== "no free codex slot"`. This refuses before `pueue add`, so real pueue is never called
+   - `test_builtin_gate_refuses_when_paused` (EC-10): spec with `## Allowed Files` + `<!-- callback-allowlist v1 -->` + a bullet (as in `test_orchestrator.py:1486-1502`), `patch("orchestrator_queue.db.get_available_slots", return_value=1)` and `get_project_state → {"provider":"claude"}`, active pause → `gate_before_pueue_add(...) is None`, and `caplog` contains `fleet paused`
+2. `pytest scripts/vps/tests/test_dispatch_one_pause.py -v` → red.
+3. `dispatch_one`: `if provider == "claude" and (pause := fleet_pause.active_pause()):` → `return _fail(f"fleet paused until {pause['until_iso']} ({pause['rate_limit_type']})")`. `orchestrator_queue`: the same condition → `log.info("skip dispatch: %s fleet paused until %s (%s)", …)`; `return None`. ≤7 lines, final count ≤ 380.
+4. `pytest scripts/vps/tests/test_dispatch_one_pause.py scripts/vps/tests/test_orchestrator.py -q` → green.
+
+**Acceptance:** EC-9, EC-10.
+
+### Task 5: PAUSED line in the dispatcher briefing
 **Type:** code
 **Files:**
-  - modify: `scripts/vps/callback_ratelimit.py`, `scripts/vps/callback.py`
-  - modify: `tests/integration/test_callback_rate_limit_requeue.py`
+- Modify: `scripts/vps/dispatch_summary.py:201-207` (`build` return dict gets `"paused": fleet_pause.active_pause()`), `:212` (`render`, right after `["# Dispatch briefing", ""]`); import next to `:36-38`; `Uses:` in the docstring
+- Test: `scripts/vps/tests/test_dispatch_one_pause.py`
+
+**Steps:**
+1. Test `test_briefing_leads_with_paused` (EC-11): `isolated_db`, active pause, `out = dispatch_summary.render(dispatch_summary.build([]))`. The non-empty lines of `out`: `[0] == "# Dispatch briefing"`, `[1].startswith("**PAUSED until")`. Control: without a marker, no line contains `PAUSED`.
+2. Red → implementation: `if p := summary.get("paused"):` → `out += [f"**PAUSED until {p['until_iso']} ({p['rate_limit_type']})** — не диспатчить claude-спеки", ""]` before the provider lines. Use `.get`, so an old/hand-built summary without the key still renders.
+3. `pytest scripts/vps/tests/test_dispatch_one_pause.py scripts/vps/tests/test_spec_deps.py -q` → green.
+
+**Acceptance:** EC-11.
+
+### Task 6: callback — exit 75 goes back to the queue, outside the ceiling
+**Type:** code
+**Files:**
+- Modify: `scripts/vps/callback_ratelimit.py:41-66` (`requeue` signature + branch; constant `PAUSED_REASON = "fleet_paused"` next to `:38`; docstring `Used by` → `exit_code in (5, 75)`)
+- Modify: `scripts/vps/callback.py:290` (Step 5) and `:318-321` (Step 7)
+- Test: `tests/integration/test_callback_rate_limit_requeue.py`
+
+**Context:** a spec whose task was already queued in pueue before the pause returns to `queued`, not `blocked`, and does not use up the 3/24h ceiling from TECH-225.
+
+**Steps:**
+1. Tests (real git + sqlite, same fixtures; `_run_main_exit5` is generalised to a code argument, or a sibling `_run_main_exit75` is added with argv `…, "Failed", "75"`):
+   - `test_exit75_requeues_without_counting` (EC-12): `in_progress` → after `main()`: `status == "queued"`, `blocked_reason == "fleet_paused"`, there is a row `verdict='requeue', reason='fleet_paused'`, `db.count_requeues_since("proj", spec_id, 24) == 0`
+   - `test_exit75_ignores_ceiling`: seed 2 rows `requeue/rate_limited` → exit 75 → `queued` (not `blocked repeated_rate_limit:3`)
+   - `test_qa_exit75_sends_no_event` (D9): `task_log.skill='qa'`, `extract_agent_output → ("qa","","")`, exit 75 → the `event_writer.notify` counter `== 0`
+2. `pytest tests/integration/test_callback_rate_limit_requeue.py -v` → the 3 new tests are red. Today exit 75 → `verify_status_sync` → `blocked`.
+3. `requeue(project_path, spec_id, pueue_id, *, paused: bool = False)`: `paused` → `status, reason = "queued", PAUSED_REASON` + `callback_circuit._record(..., "requeue", reason)`, and the `count_requeues_since` block (`:53-64`) is skipped. `paused=False` behaves exactly as today (EC-8/9/11 of TECH-225 stay green).
+4. `callback.py:318`: `if sid and exit_code in (5, 75):` → `callback_ratelimit.requeue(project_path, sid, <pueue_id as now>, paused=exit_code == 75)`. `:290`: `if project_path and exit_code != 75:`. That is ≤3 new lines. Step 7b (`autopilot_event`) is unchanged: the event carries `queued/fleet_paused`.
+5. `pytest tests/integration/test_callback_rate_limit_requeue.py tests/ -q` → green.
+
 **Acceptance:** EC-12.
 
-### Task 6: эксперимент
-**Type:** code (docs)
+### Task 7: experiment
+**Type:** docs
 **Files:**
-  - create: `ai/experiments/2026-09-23-fleet-pause-on-rate-limit.md` — id: следующий свободный EXP; metric: для каждого окна лимита (маркер открыт → `until`) — сколько прогонов Claude **стартовало** внутри окна и получило 429 (run-логи с exit 5 после первого в окне) и сколько алертов ушло (`grep "rate_limit failed" logs/hermes-wake.log`); baseline 23.09: окно 10:31–11:00Z, внутри него 5 прогонов упали с exit 1 (TECH-526, QA BUG-521, reflect, 2 диспетчера), алертов про лимит 0; expected: 0 прогонов Claude стартует внутри окна после первого упора (только сторожевые exit 75 без вызова API), ровно 1 алерт на окно; check_after_runs 40; check_after_date +21 день (нет события — `inconclusive`). Тело: если диспетчер продолжает стартовать внутри окна — сторож не на том пути (проверить `~/ops/dispatcher.sh`); если алертов больше одного на окно — гонка в `set_pause`.
-**Acceptance:** `python scripts/check-experiments.py` exit 0.
+- Create: `ai/experiments/2026-09-23-fleet-pause-on-rate-limit.md` — front matter follows `2026-09-23-rate-limit-requeue.md:1-13`
 
-### Task 7: доки
-**Type:** code (docs)
+**Steps:** `id: EXP-015` (last is EXP-014), `opened: 2026-09-24`, `status: open`,
+`check_after_runs: 40`, `check_after_date: 2026-10-15`, `verdict:` empty. Metric, baseline and expected are the ones from the
+previous draft of this task: for each window, starts with 429 after the first hit and the number of alerts (`grep "rate_limit failed" logs/hermes-wake.log`).
+Baseline 23.09: window 10:31–11:00Z, 5 runs with exit 1, 0 alerts. Expected: 0 API starts after the first hit, 1 alert per window. No event by the date → `inconclusive`.
+Body: dispatcher still starting inside the window → the guard is on the wrong path (`~/ops/dispatcher.sh`); >1 alert → race in `set_pause`; QA/reflect that hit the pause are not retried (Out of scope, count them).
+`python scripts/check-experiments.py` → exit 0.
+
+**Acceptance:** DoD Technical «check-experiments exit 0».
+
+### Task 8: docs
+**Type:** docs
 **Files:**
-  - modify: `docs/orchestrator/runbook.md` — раздел «Флот на паузе по лимиту подписки»: признаки (`cat scripts/vps/.rate-limited-until`, строка PAUSED в брифинге, exit 75 в pueue), снятие вручную (`rm` маркера), что пауза не трогает pueue-группы
-  - modify: `.claude/rules/dependencies.md` — `fleet_pause.py` (Uses/Used by), сторож в разделе `run-agent.sh`
-**Acceptance:** runbook описывает, как увидеть и снять паузу.
+- Modify: `docs/orchestrator/runbook.md` — new `## Сценарий 8: Флот на паузе по лимиту подписки (TECH-226)` before `## Остановка` (`:233`)
+- Modify: `.claude/rules/dependencies.md` — new section `## scripts/vps/fleet_pause.py` (Uses: stdlib; Used by: run-agent.sh guard, runner_ratelimit.on_rejected, dispatch_one, orchestrator_queue.gate_before_pueue_add, dispatch_summary.build); the `run-agent.sh` Uses row gets «fleet_pause.py --check → exit 75»; the `runner_ratelimit.py` row in the claude-runner table gets `on_rejected`; the `callback_ratelimit.py` row gets `paused=True → fleet_paused, outside the ceiling`
+
+**Steps:** runbook section contents: symptoms (`cat scripts/vps/.rate-limited-until`, the PAUSED line in `dispatch_summary.py`, `Failed (75)` in `pueue status`, `fleet_paused` in lifecycle); manual lift (`rm scripts/vps/.rate-limited-until`); the pause does NOT touch pueue groups (the circuit breaker is separate); codex/gemini keep running. Verify: `grep -n "rate-limited-until" docs/orchestrator/runbook.md .claude/rules/dependencies.md` → ≥1 hit in each.
+
+**Acceptance:** DoD «ручное снятие описано в runbook».
 
 ### Execution Order
-1 → 2 → 3 → 4 → 5 → 6 → 7
+1 → 2 (needs `fleet_pause`) → 3 (needs the CLI from 1) → 4 → 5 (4 and 5 share the test file; do them in sequence) → 6 (independent of 2-5; after 1 only for consistency) → 7 → 8.
+Final gate: the Verify Command block in full (`pytest tests/ scripts/vps/tests/ -q`, `bash -n`, `bash scripts/vps/check-loc-limit.sh`, ruff 0.16.1, `check-experiments`).
 
 ---
 
@@ -286,10 +412,10 @@ callback Step 7: autopilot и exit_code in (5, 75) → callback_ratelimit.requeu
 | 1 | Прогон упёрся в лимит, exit 5 | - | TECH-225 |
 | 2 | Раннер открывает окно паузы и шлёт один алерт | Task 1, 2 | ✓ |
 | 3 | Новые запуски (диспетчер, QA, reflect, support) выходят 75 без вызова API | Task 3 | ✓ |
-| 4 | LLM-диспетчер и встроенный путь не диспатчат, брифинг говорит PAUSED | Task 4 | ✓ |
-| 5 | Спека, стартовавшая в окно, возвращается в очередь без счёта в потолок | Task 5 | ✓ |
+| 4 | LLM-диспетчер и встроенный путь не диспатчат, брифинг говорит PAUSED | Task 4, 5 | ✓ |
+| 5 | Спека, стартовавшая в окно, возвращается в очередь без счёта в потолок | Task 6 | ✓ |
 | 6 | После `until` пауза снимается сама | Task 1 | ✓ |
-| 7 | Замер и вердикт | Task 6 | ✓ |
+| 7 | Замер и вердикт | Task 7 | ✓ |
 
 ---
 
@@ -318,8 +444,8 @@ callback Step 7: autopilot и exit_code in (5, 75) → callback_ratelimit.requeu
 ### TDD Order
 1. EC-1..EC-5 → Task 1
 2. EC-6, EC-7 → Task 2
-3. EC-9..EC-11 → Task 4
-4. EC-12 → Task 5; EC-8 → AV-F1
+3. EC-9, EC-10 → Task 4; EC-11 → Task 5
+4. EC-12 → Task 6; EC-8 → Task 3 / AV-F1
 
 ---
 
@@ -345,7 +471,7 @@ pip install -r scripts/vps/requirements.txt
 pytest scripts/vps/tests/test_fleet_pause.py scripts/vps/tests/test_dispatch_one_pause.py tests/integration/test_callback_rate_limit_requeue.py -v
 pytest tests/ scripts/vps/tests/ -q
 bash -n scripts/vps/run-agent.sh
-bash scripts/check-loc-limit.sh
+bash scripts/vps/check-loc-limit.sh
 ruff check . && ruff format --check .
 python scripts/check-experiments.py
 ```
