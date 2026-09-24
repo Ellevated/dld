@@ -269,7 +269,7 @@ activity-окна, нет `--all`, нет auto-close.** Fail-closed: любая 
 `callback.py --reset-circuit` (= `db.clear_decisions(30)` + `pueue start` + notify). Пока OPEN —
 verify_status_sync noop (не мутирует статус).
 
-### Rate limit → queued (TECH-225)
+### <a name="rate-limit--queued-tech-225"></a>Rate limit → queued (TECH-225)
 
 `exit 5` = `rate_limited` — раннер решает это до salvage, не callback: `AssistantMessage.error
 == "rate_limit"` (синтетический отказ CLI) или `RateLimitEvent` со `status == "rejected"`, если

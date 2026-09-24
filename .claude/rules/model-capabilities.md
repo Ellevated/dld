@@ -310,6 +310,21 @@ for category or fallback model.
 - **A refused request is not billed** when it arrives before any output, so cost telemetry
   will not show it either. The `classifier_refusals` row is the only counter.
 
+#### Rate limit (subscription window), TECH-225
+
+A second exit code lives next to the refusal one, same shape: nothing raises when the fleet
+hits the 5h Max subscription window mid-run, so without this the run finished as a plain
+`exit_code: 1` with an empty stderr — found 2026-09-23 only by reading the session transcript
+by hand. `runner_ratelimit.py` (its own module, its own tests, same split as
+`runner_refusal.py`) recognises `AssistantMessage.error == "rate_limit"` (synthetic CLI
+decline) and `RateLimitEvent.rate_limit_info.status == "rejected"`, folds events into a
+`rate_limit` run-log block, and `decide_exit` upgrades **exit 5** (`rate_limited` in
+`_EXIT_REASONS`) only when the run got no successful result — 124/4/143 keep their code, same
+"only ever upgrades from 0/1/2/3" rule as exit 4. Unlike a refusal, this is not `blocked`:
+callback routes exit 5 through `callback_ratelimit.requeue` (`in_progress → queued`), and only
+a 3rd requeue of the same spec within 24h escalates to `blocked repeated_rate_limit:<n>`. See
+`docs/orchestrator/status-model.md#rate-limit--queued-tech-225`.
+
 ### Opus 5 → Opus 5.5
 
 | What | Impact | Action |

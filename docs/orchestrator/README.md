@@ -228,6 +228,7 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 | TECH-220 | Implementation guard: branch-ancestry primary (`gate_ancestry.find_implementation`), subject-regex deprecated fallback, `gate_via` telemetry | актуально |
 | TECH-221 | Re-dispatch after a timeout continues the salvaged branch: `gate_ancestry.branch_state()`, `blocked_reason=branch_pushed_not_merged:<N>`, three-way `orchestrator_queue.reconcile()` ("done"\|"continue"\|"fresh"), `CLAUDE_CONTINUE_BRANCH` env | актуально |
 | TECH-222 | Dependency edge moves onto lifecycle YAML: `depends_on: [ID]` in the dependent spec's yaml (Spark writes it at claim time via `create_initial`; `lifecycle.set_depends_on` retrofits existing specs). `orchestrator_queue._spec_deps` reads it as SoT, backlog `AFTER` demoted to deprecated fallback logged as `DEP_VIA` (30-day zero-`DEP_VIA` telemetry gate before deletion, same shape as TECH-220's `gate_via`) | актуально |
+| TECH-225 | Rate-limit hit recognised structurally: runner exit 5 (`rate_limited`, `runner_ratelimit.decide_exit`, ADR-024-respecting) instead of a bare `exit_code: 1`; callback routes it through `callback_ratelimit.requeue` (`in_progress → queued`, not `blocked`), 3rd requeue of the same spec in 24h escalates to `blocked repeated_rate_limit:<n>`. No fleet-wide dispatch pause yet — that is TECH-226 | актуально (EXP-014 open) |
 
 > ⚠️ **Известный дрейф в in-repo ADR-таблице** (`.claude/rules/architecture.md`): TECH-170/176
 > там описаны как актуальные, но текущий код (`gate_ancestry.find_implementation`, TECH-220) их не

@@ -117,8 +117,16 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 - **Classifier refusal (ADR-029):** отказ приходит как HTTP 200 с `stop_reason: "refusal"`, поэтому
   не попадает ни в один except. `unrecovered > 0` → **exit 4**, но только с нуля: таймаут и
   process error сохраняют свой код. — `runner_refusal.py::_refusal_summary`
+- **Rate limit (TECH-225):** CLI шлёт синтетический `AssistantMessage.error == "rate_limit"` и,
+  когда сервер его включает, `RateLimitEvent` — ничего не бросает, поэтому без этой логики прогон
+  тихо становится обычным `exit_code: 1` с пустым stderr (найдено 23.09 только чтением транскрипта
+  вручную). `decide_exit` поднимает код до **exit 5** (`rate_limited`), если отказ был и успешного
+  результата нет (ADR-024 — успешный `ResultMessage` не перебивается); коды 124/4/143 не трогает.
+  Callback на exit 5 у autopilot зовёт `callback_ratelimit.requeue` вместо `verify_status_sync` —
+  см. [status-model.md](status-model.md#rate-limit--queued-tech-225). — `runner_ratelimit.py::decide_exit`
 - **JSON-контракт вывода:** `exit_code`, `turns`, `cost_usd`, токены, `task_status` (`complete`/
-  `blocked`/`needs_review`), `result_preview`, `refusal`, `salvage`. — `runner_result.py::build_log_data`
+  `blocked`/`needs_review`), `result_preview`, `refusal`, `salvage`, `rate_limit` (TECH-225).
+  — `runner_result.py::build_log_data`
 
 **Прочие runner'ы:** `codex-runner.sh` (timeout 900с/15м, `--sandbox workspace-write --json`);
 `gemini-runner.sh` (timeout 1800с/30м, требует `GEMINI_API_KEY`).
