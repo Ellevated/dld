@@ -64,6 +64,24 @@ Run it after any MCP/plugin change, and when research quality feels off.
 
 ---
 
+## Стандарты — ядро знания (глобальные)
+
+Медленный слой: что такое хорошо и что плохо в области работы. Скиллы, спеки и код выводятся из
+стандартов, а не наоборот. Лежат в репо MeMyselfAndI, ветка `develop`: на машине Олега
+`D:\dev\RIS\MeMyselfAndI\standards\`, на сервере tietokettu-claude `~/deploy/mmi-ops/standards/`.
+
+**Задача попала в строку — открыть стандарт целиком до первого предложения или правки.**
+
+| Работа | Стандарт |
+| ------ | -------- |
+| конвейер, пайплайн, автоматизация, оркестратор, диспетчер, крон, хук, гейт, статусы, переходы, ретраи, дубли прогонов, дожим, очередь | `agent-vmesto-relsov.md` |
+| создать или править скилл, промпт агента, CLAUDE.md, AGENTS.md, `.claude/rules/` | `skilly.md` |
+| завести стандарт, «как у нас принято делать X» | `o-standartah.md` |
+
+Проектный стандарт уточняет глобальный, но не противоречит ему.
+
+---
+
 ## Contexts (conditional loading)
 
 `.claude/contexts/` does not exist in this repo — it is created by `/bootstrap` in a
