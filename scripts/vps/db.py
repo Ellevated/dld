@@ -3,7 +3,7 @@
 Module: db
 Role: SQLite WAL helpers for orchestrator state management.
 Uses: sqlite3 (stdlib), db_decisions, db_findings, db_cli
-Used by: orchestrator.py, callback.py, gate-daemon.py, claude-runner.py (lazy),
+Used by: orchestrator.py, callback.py, claude-runner.py (lazy),
          orchestrator_monitor.py (`from db import get_db`),
          night-reviewer.sh (CLI: save-finding / get-new-findings / update-phase)
 
@@ -53,7 +53,9 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         "cost_usd REAL, error_msg TEXT, stderr TEXT)",
         "CREATE INDEX IF NOT EXISTS idx_sdk_post_result_errors_ts ON sdk_post_result_errors(ts)",
     ),
-    # ARCH-190: gate-daemon per-cycle metrics
+    # ARCH-190: gate-daemon per-cycle metrics. The daemon and its writer were
+    # removed 2026-09-27; the table stays so existing databases and fresh ones
+    # keep the same shape — dropping it is a data decision, not a code cleanup.
     (
         "CREATE TABLE IF NOT EXISTS gate_health ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -335,8 +337,8 @@ def seed_projects_from_json(projects: list[dict]) -> None:
 def _delegate(fn, immediate: bool = False):
     """Bind a leaf-module function (conn first) to this module's connection.
 
-    Keeps `db.<name>` as the public seam — callback/orchestrator/gate-daemon/
-    claude-runner import `db` and nothing else — while the bodies live in pure
+    Keeps `db.<name>` as the public seam — callback/orchestrator/claude-runner
+    import `db` and nothing else — while the bodies live in pure
     leaves. `immediate` mirrors the BEGIN IMMEDIATE the original function used.
     """
 
@@ -354,8 +356,6 @@ count_demotes_since = _delegate(db_decisions.count_demotes_since)
 count_requeues_since = _delegate(db_decisions.count_requeues_since)
 clear_decisions = _delegate(db_decisions.clear_decisions, immediate=True)
 log_sdk_post_result_error = _delegate(db_decisions.log_sdk_post_result_error)
-log_gate_cycle = _delegate(db_decisions.log_gate_cycle)
-get_gate_health = _delegate(db_decisions.get_gate_health)
 log_classifier_refusal = _delegate(db_decisions.log_classifier_refusal)
 
 # --- night findings -> db_findings.py (TECH-212) ---

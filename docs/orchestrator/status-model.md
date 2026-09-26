@@ -189,8 +189,8 @@ notify «investigate who wrote done» (`:1290-1320`).
 
 **Текущий гейт (Rule 1, TECH-220):** `done` ⟺ ветка `<type>/<ID>` — предок `origin/develop`
 И принесла ≥1 не-bookkeeping allowed-файл. Одна функция, `gate_ancestry.find_implementation`,
-во всех четырёх точках вызова: `callback_sync._decide_status`, `callback_dispatch._merge_confirmed`,
-`orchestrator_queue.reconcile_if_implemented`, `gate-daemon._evaluate_project`. **Нет
+во всех точках вызова: `callback_sync._decide_status`, `callback_dispatch._merge_confirmed`,
+`orchestrator_queue.reconcile_if_implemented` (до 2026-09-27 ещё теневой `gate-daemon`). **Нет
 activity-окна, нет `--all`, нет auto-close.** Fail-closed: любая ошибка git → `None` → `blocked`,
 никогда не `done`.
 
@@ -225,10 +225,10 @@ activity-окна, нет `--all`, нет auto-close.** Fail-closed: любая 
   `git log` (обычный path-filtered + `--first-parent`, TREESAME-фикс plpilot BUG-338). Покрывает
   squash-мерж и ветку, удалённую с origin — оба случая, где ancestry-проверке ref смотреть не на
   что. Отдельная TECH удалит эту ступень + regex, когда наступит день ниже.
-- **Метрика и дата смерти.** Каждый вердикт (все четыре точки вызова) пишет `gate_via` = `ancestry`
+- **Метрика и дата смерти.** Вердикт callback-гейта пишет `gate_via` = `ancestry`
   | `subject` | `none` — в `callback-audit.jsonl` (`_Audit.gate_via`, default `"none"`, поле есть в
-  КАЖДОЙ строке через `_Audit.emit`, даже когда self-block переопределяет позитивный вердикт) и в
-  shadow-JSONL `gate-daemon.py`. Когда `gate_via=subject` не срабатывает 30 дней подряд —
+  КАЖДОЙ строке через `_Audit.emit`, даже когда self-block переопределяет позитивный вердикт). Теневой
+  JSONL `gate-daemon.py` снят 2026-09-27 — демон с 23.08 не перезапускался и поля не писал. Когда `gate_via=subject` не срабатывает 30 дней подряд —
   `match_subject`/`find_implementation_commit` и вся ступень 2 удаляются отдельной TECH.
 - **`_parse_allowed_files`** (`:529-565`, TECH-167): v1 strict (маркер
   `<!-- callback-allowlist v1 -->` + heading `## Allowed Files`, только канон-буллеты

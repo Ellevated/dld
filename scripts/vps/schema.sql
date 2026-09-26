@@ -103,7 +103,8 @@ CREATE TABLE IF NOT EXISTS sdk_post_result_errors (
 CREATE INDEX IF NOT EXISTS idx_sdk_post_result_errors_ts
     ON sdk_post_result_errors(ts);
 
--- ARCH-190: gate-daemon per-cycle health metrics
+-- ARCH-190: gate-daemon per-cycle health metrics. No writer since 2026-09-27 (daemon
+-- removed); kept so fresh and existing databases stay the same shape.
 CREATE TABLE IF NOT EXISTS gate_health (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
     ts                    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),

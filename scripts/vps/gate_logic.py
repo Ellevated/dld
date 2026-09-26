@@ -1,7 +1,7 @@
 """
 Module: gate_logic
-Role: Pure-function core for gate-daemon shadow (ARCH-190 Wave 1 MP-001).
-      Extracted from callback.py — ZERO I/O on import, stdlib-only.
+Role: Pure-function gate core (ARCH-190 MP-001). Extracted from callback.py — ZERO I/O
+      on import, stdlib-only.
 
 Uses:
   - re: _SPEC_ID_RE constant, match_subject patterns
@@ -10,9 +10,8 @@ Uses:
   - logging: logging.getLogger(__name__)
   - dataclasses: reserved for future GateResult value-object
 
-Used by:
-  - gate-daemon.py: fetch_develop, parse_allowed_files, match_subject,
-                    find_implementation_commit
+Used by: gate_ancestry, callback/_sync/_dispatch/_scope, orchestrator_queue, spec_verify
+         (gate-daemon.py, the original consumer, was removed 2026-09-27).
 
 Glossary: ai/glossary/ (orchestrator domain)
 
@@ -155,7 +154,7 @@ def _parse_allowed_files_legacy(spec_text: str) -> list[str] | None:
 def parse_allowed_files(spec_path: Path) -> list[str] | None:
     """Extract allowlist from a spec file.
 
-    Public API (gate-daemon entry point).
+    Public API.
 
     Strategy (TECH-167):
         1. If spec has the v1 marker -> strict canonical parse (no fallback).
@@ -312,7 +311,7 @@ def find_implementation_commit(
     """Return the SHA of the first commit on origin/develop that implements spec_id.
 
     Renamed from callback._is_done_on_develop. Returns commit SHA (str) instead
-    of bare bool, so gate-daemon can record matching_commit_sha in shadow JSONL.
+    of bare bool, so a caller can record the matching commit.
 
     Two-step approach (L-derived-3 / Devil Attack 2+10 mitigation):
         Step 1: `git log origin/develop --pretty=%H%x00%s -- <allowed_files>`

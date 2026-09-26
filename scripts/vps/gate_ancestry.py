@@ -2,7 +2,7 @@
 """
 Module: gate_ancestry
 Role: Branch-ancestry implementation gate (TECH-220) plus `find_implementation`,
-      the single entry point all four gate call sites use.
+      the single entry point every gate call site uses.
 
 The gate used to decide "this spec is implemented" from the *text* of a commit
 subject on origin/develop. Nine of fifteen downstream projects write
@@ -22,7 +22,6 @@ Used by:
   - callback_sync._decide_status
   - callback_dispatch._merge_confirmed
   - orchestrator_queue.reconcile_if_implemented / record_dispatch
-  - gate-daemon._evaluate_project
   - orchestrator_queue.reconcile (branch_state)
   - callback_sync._decide_status (branch_state)
 

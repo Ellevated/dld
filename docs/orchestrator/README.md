@@ -68,7 +68,6 @@ Founder ── inbox / git push ──┐
                                                   event_writer.py → Hermes/Telegram
 
    Side daemons / cron (read-only or kill-only — NEVER write status):
-     • gate-daemon.py     systemd, 60s   — shadow merge-gate (SHADOW_ONLY, just logs verdicts)
      • heartbeat_reaper   cron */5       — убивает зависшие claude-runner сессии (fail-open)
      • heartbeat_monitor  cron */5       — алерт если orchestrator-heartbeat > 10 мин
      • orchestrator_monitor cron */30    — service alive + circuit-breaker + demote-burst
@@ -83,7 +82,6 @@ Founder ── inbox / git push ──┐
 | `lifecycle.py` | Примитив записи статуса (CAS git-plumbing) | [status-model.md](status-model.md) |
 | `db.py` + `schema.sql` | SQLite рантайм-состояние (7 таблиц) | [components.md](components.md#db) |
 | `event_writer.py` | События в Hermes (⚠ silent-fail, см. ниже) | [components.md](components.md#event_writerpy) |
-| `gate-daemon.py` | Shadow merge-gate (ARCH-190, не cutover) | [components.md](components.md#gate-daemon) |
 | `heartbeat_reaper.py` | Жнец зависших сессий (TECH-198) | [components.md](components.md#heartbeat_reaper) |
 
 ---
@@ -217,7 +215,7 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 | ADR-026 | Bootstrap parser safety: column-aware, fail в `queued` не `done` | актуально |
 | ADR-027 | Spec-first ID generation через `create_initial` CAS (Kafka pattern) | актуально |
 | ADR-028 | Opus 4.8 config alignment: `AUTOPILOT_EFFORT` env (default high) | актуально |
-| ARCH-190 | Shadow merge-gate (`gate-daemon.py`), `SHADOW_ONLY_MODE=True` | актуально (Wave 1, не cutover) |
+| ARCH-190 | Shadow merge-gate (`gate-daemon.py`), `SHADOW_ONLY_MODE=True` | **[СНЯТ 2026-09-27]** — 34 дня в тени без потребителя, Wave 3 не согласован; `gate_logic.py` остался как общее ядро гейта. См. `docs/2026-09-27-snyatie-relsov-dispetchera.md` |
 | TECH-166 | Implementation guard: git-diff verify перед mark-done | актуально (механика переписана — см. ниже) |
 | TECH-169 | Circuit-breaker на mass-demote (>3/10мин) | актуально |
 | TECH-170 | Guard видит feature-branch коммиты через `--all` | **[SUPERSEDED]** — текущий guard = branch-ancestry gate (`gate_ancestry.find_implementation`, TECH-220), без `--all` |
@@ -253,7 +251,6 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 | **slot** | Запись в `compute_slots`. Один слот = одна параллельная задача провайдера (2 claude, 1 codex, 1 gemini). |
 | **phase** | `project_state.phase` в SQLite: `idle`/`autopilot`/`qa_pending`/... — рантайм, не статус спеки. |
 | **task_status** | JSON-сигнал autopilot → callback: `complete`/`blocked`/`needs_review`. Единственный способ autopilot повлиять на статус (он не writer). |
-| **gate-daemon** | `gate-daemon.py` — теневой наблюдатель merge-gate. Считает вердикты, пишет только JSONL-лог, статус НЕ трогает. |
 | **reaper** | `heartbeat_reaper.py` — cron-жнец зависших сессий (stale heartbeat + idle CPU → `pueue kill`). |
 | **Hermes** | Conversational layer founder↔pipeline. Получатель событий из `event_writer.py`. ⚠ см. [components.md](components.md#event_writerpy) — текущий silent-fail. |
 | **Agent SDK** | `claude-agent-sdk` — официальный SDK запуска Claude Code. Skills работают нативно через `setting_sources=["user","project"]`. |

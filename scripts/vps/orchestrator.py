@@ -105,9 +105,10 @@ def git_pull(project_id: str, project_dir: str) -> None:
 
     Uses `fetch` + `merge --ff-only origin/develop` rather than
     `pull --ff-only origin develop`: the latter merges from the shared,
-    non-atomic .git/FETCH_HEAD, which races with the gate-daemon's concurrent
-    `git fetch` and intermittently dies "Cannot fast-forward to multiple
-    branches". Merging from the tracking ref is immune to that race.
+    non-atomic .git/FETCH_HEAD, which races with any concurrent `git fetch` in
+    the same repo (the callback gate fetches too; the shadow gate-daemon did so
+    every 60s until 2026-09-27) and intermittently dies "Cannot fast-forward to
+    multiple branches". Merging from the tracking ref is immune to that race.
     """
     if not os.path.isdir(os.path.join(project_dir, ".git")):
         return
@@ -115,8 +116,8 @@ def git_pull(project_id: str, project_dir: str) -> None:
         log.info("skip git pull — agent running: %s", project_id)
         return
     try:
-        # FETCH_HEAD-race fix: gate-daemon (git fetch, 60s) and orchestrator
-        # (here) both touch the shared, non-atomic .git/FETCH_HEAD. Plain
+        # FETCH_HEAD-race fix: every fetcher in the repo (callback gate, here)
+        # touches the shared, non-atomic .git/FETCH_HEAD. Plain
         # `git pull origin develop` resolves its merge head from FETCH_HEAD, so
         # a concurrent fetch can inject a second for-merge entry →
         # "Cannot fast-forward to multiple branches". Fetch, then merge from the

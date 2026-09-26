@@ -204,7 +204,7 @@ echo ""
 echo "--- Pre-flight checks ---"
 
 # DA-1: loginctl enable-linger so the user's systemd units (pueued,
-# dld-orchestrator, dld-gate-daemon) start at boot and keep running with nobody
+# dld-orchestrator) start at boot and keep running with nobody
 # logged in. Linger alone is NOT what makes pueued reboot-safe — being a unit
 # is; linger is what lets that unit start without a login session.
 if command -v loginctl &>/dev/null; then
@@ -542,46 +542,14 @@ SyslogIdentifier=dld-orchestrator
 WantedBy=default.target
 EOF
 
-# Pre-flight for gate-daemon: ensure linger is set so --user units survive SSH logout (ARCH-190)
-loginctl enable-linger "${USER}" 2>/dev/null \
-    && ok "loginctl enable-linger confirmed for ${USER}" \
-    || warn "loginctl enable-linger failed (may already be set or need sudo)"
-
-cat > "${SYSTEMD_DIR}/dld-gate-daemon.service" << EOF
-[Unit]
-Description=DLD Gate Daemon (Alt C Wave 1 — shadow mode)
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=${SCRIPT_DIR}/venv/bin/python3 ${SCRIPT_DIR}/gate-daemon.py
-WorkingDirectory=${SCRIPT_DIR}
-EnvironmentFile=${SCRIPT_DIR}/.env
-MemoryMax=2G
-MemorySwapMax=0
-KillMode=control-group
-Restart=on-failure
-RestartSec=2s
-RestartMaxDelaySec=60s
-RestartSteps=5
-StartLimitBurst=10
-StartLimitIntervalSec=300s
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=dld-gate-daemon
-
-[Install]
-WantedBy=default.target
-EOF
+# dld-gate-daemon.service (ARCH-190 shadow merge-gate) is no longer installed: it ran
+# in shadow mode from 2026-08-23 with no consumer and was removed 2026-09-27. A host
+# set up before that still carries the unit — `systemctl --user disable --now
+# dld-gate-daemon` and delete ~/.config/systemd/user/dld-gate-daemon.service.
 
 systemctl --user daemon-reload 2>/dev/null \
     && ok "systemd units installed and daemon reloaded" \
     || warn "systemctl daemon-reload failed — units written but not loaded (no systemd?)"
-
-# Enable and start gate-daemon (ARCH-190 Wave 1 shadow mode)
-systemctl --user enable --now dld-gate-daemon.service 2>/dev/null \
-    && ok "dld-gate-daemon.service enabled and started" \
-    || warn "dld-gate-daemon.service enable failed — start manually: systemctl --user enable --now dld-gate-daemon.service"
 
 # Phase 4 hooks (idempotent, ARCH-193)
 if [[ -f "${SCRIPT_DIR}/projects.json" ]]; then

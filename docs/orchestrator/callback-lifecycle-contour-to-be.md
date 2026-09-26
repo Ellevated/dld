@@ -5,6 +5,11 @@
 **Date:** 2026-05-23
 **Status:** TO-BE specification. AS-IS is in `ai/audit/deep-audit-report.md`. Migration in `ai/architect/migration-path.md`.
 
+> **2026-09-27 — не выполняется.** Wave 3 (gate-daemon становится единственным writer'ом) так и не
+> был согласован; сам `gate-daemon.py` снят после 34 дней в тени без потребителя, а решение «что
+> запускать» с 07.09 принимает LLM-диспетчер. Документ оставлен как история замысла, не как план.
+> Разбор — `docs/2026-09-27-snyatie-relsov-dispetchera.md`.
+
 This is a SINGLE-FILE blueprint (vs the 6-file Greenfield template) because retrofit of one contour does not need full system-wide design rewrite. Other domain blueprints (managed projects' business logic) are unaffected and not in scope.
 
 ---

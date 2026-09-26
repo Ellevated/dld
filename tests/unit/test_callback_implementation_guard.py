@@ -9,7 +9,6 @@ callback.py now calls) — sha-truthy/None replaces is True/is False.
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import subprocess
 import sys
@@ -232,37 +231,23 @@ def test_tech220_self_block_overrides_ancestry(dev_repo, monkeypatch, tmp_path):
     )
 
 
-# --- TECH-220 EC-12: one (spec, git state) -> one verdict at all 4 sites -----
-
-_VPS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts" / "vps"
+# --- TECH-220 EC-12: one (spec, git state) -> one verdict at every site ------
 
 
-def _load_gate_daemon():
-    """gate-daemon.py has a hyphen — importlib.util load, mirrors
-    scripts/vps/tests/test_gate_daemon.py."""
-    spec = importlib.util.spec_from_file_location(
-        "gate_daemon_tech220", _VPS_DIR / "gate-daemon.py"
-    )
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def test_tech220_ec12_four_call_sites_agree(dev_repo, monkeypatch, tmp_path):
+def test_tech220_ec12_call_sites_agree(dev_repo, monkeypatch):
     """EC-12 (devil SA-5, P0): the same (spec, git state) produces the same
-    verdict at all four gate call sites. Not asserted by re-deriving the
+    verdict at every gate call site. Not asserted by re-deriving the
     verdict independently per site — a spy wraps the ONE
-    `gate_ancestry.find_implementation` all four sites import as a module
-    attribute and call through to the real (subprocess, no mock) result
+    `gate_ancestry.find_implementation` every site imports as a module
+    attribute and calls through to the real (subprocess, no mock) result
     (ADR-013: spies that call through are allowed). Every site observing the
     identical (sha, via) from that single shared call IS the proof they share
-    one gate, not four copies of it.
+    one gate, not copies of it. Four sites until 2026-09-27, when the shadow
+    gate-daemon was removed.
     """
     import callback_dispatch  # noqa: E402 — local: avoid shadowing module-level `callback`
     import callback_sync  # noqa: E402
     import orchestrator_queue  # noqa: E402
-
-    gd = _load_gate_daemon()
 
     spec_id = "TECH-220E"
     spec_rel = f"ai/features/{spec_id}-2026-08-30-x.md"
@@ -293,20 +278,12 @@ def test_tech220_ec12_four_call_sites_agree(dev_repo, monkeypatch, tmp_path):
 
     monkeypatch.setattr(gate_ancestry, "find_implementation", _spy)
 
-    shadow_log_path = tmp_path / "gate-daemon-shadow-ec12.jsonl"
-    monkeypatch.setenv("GATE_DAEMON_SHADOW_LOG", str(shadow_log_path))
-    handler = gd._make_shadow_handler()
-    gd._init_shadow_logger(handler)
-
-    # Order matters: gate-daemon reads in_progress/queued specs, so it must
-    # run before orchestrator_queue flips this spec to done.
     status_sync, _reason_sync, via_sync = callback_sync._decide_status(
         str(dev_repo), spec_id, "proj", allowed, autopilot_signaled=False
     )
     dispatch_confirmed = callback_dispatch._merge_confirmed(
         str(dev_repo), spec_id, "label", "aborted"
     )
-    _ev, _vw, _err = gd._evaluate_project("proj", str(dev_repo), 1, "2026-08-30T00:00:00Z")
     reconciled = orchestrator_queue.reconcile_if_implemented(
         str(dev_repo), spec_id, Path(dev_repo) / spec_rel
     )
@@ -315,15 +292,10 @@ def test_tech220_ec12_four_call_sites_agree(dev_repo, monkeypatch, tmp_path):
     assert dispatch_confirmed is True
     assert reconciled is True
 
-    # All 4 call sites went through the same gate_ancestry.find_implementation.
-    assert len(calls) == 4
+    # Every call site went through the same gate_ancestry.find_implementation.
+    assert len(calls) == 3
     shas = {c[0] for c in calls}
     vias = {c[1] for c in calls}
     assert len(shas) == 1 and None not in shas
     assert vias == {"ancestry"}
     assert via_sync == "ancestry"
-
-    shadow_rows = [json.loads(ln) for ln in shadow_log_path.read_text().splitlines() if ln.strip()]
-    shadow_row = next(r for r in shadow_rows if r["spec_id"] == spec_id)
-    assert shadow_row["gate_via"] == "ancestry"
-    assert shadow_row["gate_verdict"] == "done"

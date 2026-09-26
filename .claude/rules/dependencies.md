@@ -80,7 +80,7 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 |------|-------|----------|
 | sqlite3 | stdlib | connection, Row, contextmanager |
 | schema.sql | scripts/vps/schema.sql | project_state, compute_slots, task_log, night_findings, callback_decisions, classifier_refusals |
-| db_decisions.py | scripts/vps/db_decisions.py | record_decision, count_demotes_since, count_requeues_since (rate-limit requeue ceiling, TECH-225), clear_decisions, log_sdk_post_result_error, log_gate_cycle, get_gate_health — delegated, `immediate=True` preserved for `clear_decisions` |
+| db_decisions.py | scripts/vps/db_decisions.py | record_decision, count_demotes_since, count_requeues_since (rate-limit requeue ceiling, TECH-225), clear_decisions, log_sdk_post_result_error, log_classifier_refusal — delegated, `immediate=True` preserved for `clear_decisions` |
 | db_findings.py | scripts/vps/db_findings.py | save_finding, get_new_findings, update_finding_status, get_finding_by_id, get_all_findings, get_projects_for_night_scan — delegated, `immediate=True` preserved for save_finding/update_finding_status |
 | db_cli.py | scripts/vps/db_cli.py | `main(sys.argv, sys.modules[__name__])` — argv dispatcher, deliberately does NOT `import db` (avoids a second module object with its own `DB_PATH` under `python3 db.py`) |
 
@@ -95,7 +95,6 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 | night-reviewer.sh | scripts/vps/night-reviewer.sh (FTR-147 Task 4) | CLI: save-finding, get-new-findings, update-phase |
 | claude-runner.py | scripts/vps/claude-runner.py | log_sdk_post_result_error() (BUG-188 Layer 4, lazy import) |
 | claude-runner.py | scripts/vps/claude-runner.py | log_classifier_refusal() — classifier decline telemetry (lazy import; failure logs WARNING and never fails the run) |
-| gate-daemon.py | scripts/vps/gate-daemon.py | log_gate_cycle(), get_all_projects() (ARCH-190) |
 
 ### When changing API, check
 
@@ -105,7 +104,6 @@ module, so `db.<name>` and `from db import get_db` are unchanged for every consu
 - [ ] claude-runner.py (log_sdk_post_result_error signature — BUG-188)
 - [ ] claude-runner.py (log_classifier_refusal signature — refusal detect; exit 4 = `classifier_refusal`)
 - [ ] claude-runner.py exit 5 = `rate_limited` (`runner_ratelimit.decide_exit`, ADR-024) / callback_ratelimit.py (`count_requeues_since` window and ceiling — TECH-225)
-- [ ] gate-daemon.py (log_gate_cycle signature — ARCH-190)
 - [ ] db_decisions.py / db_findings.py (pure leaves, first param is the sqlite connection — no `import db`; keep it that way)
 - [ ] db_cli.py (`main(argv, api)` — api param must stay the db module, not a fresh import)
 
@@ -456,7 +454,6 @@ why) instead of the raw pueue exit code.
 | orchestrator.py | scripts/vps/orchestrator.py | list_by_status(), create_initial() (bootstrap), assert_clean_lifecycle_tree() (startup), reconcile_orphans() |
 | render_backlog.py | scripts/vps/render_backlog.py | read_lifecycle() + list_all() for view generation |
 | migrate_backlog_to_lifecycle.py | scripts/vps/migrate_backlog_to_lifecycle.py | initial migration one-shot |
-| gate-daemon.py | scripts/vps/gate-daemon.py | list_by_status() — read-only, shadow mode (ARCH-190) |
 | lifecycle_audit.py | scripts/vps/lifecycle_audit.py | read_lifecycle() — READ-ONLY drift detection (TECH-195) |
 | recover_bootstrap_as_done.py | scripts/vps/recover_bootstrap_as_done.py | list_by_status(), recover_bootstrap_artifact() (TECH-195) |
 
@@ -466,7 +463,6 @@ why) instead of the raw pueue exit code.
 - [ ] orchestrator.py (4 callsites: list_by_status, create_initial, assert_clean, reconcile_orphans)
 - [ ] render_backlog.py (read_lifecycle for view)
 - [ ] tests/integration/test_callback_*.py (use write_lifecycle for setup)
-- [ ] gate-daemon.py (list_by_status caller — ARCH-190 read-only)
 - [ ] lifecycle_audit.py (read_lifecycle, LIFECYCLE_DIR — TECH-195)
 - [ ] recover_bootstrap_as_done.py (recover_bootstrap_artifact, NotBootstrapArtifactError — TECH-195)
 
@@ -643,7 +639,6 @@ why) instead of the raw pueue exit code.
 | requirements.txt | scripts/vps/requirements.txt | pip install into venv |
 | callback.py | scripts/vps/callback.py | registered in pueue.yml callback |
 | orchestrator.py | scripts/vps/orchestrator.py | ExecStart in dld-orchestrator.service |
-| gate-daemon.py | scripts/vps/gate-daemon.py | ExecStart in dld-gate-daemon.service (ARCH-190) |
 | heartbeat_reaper.py | scripts/vps/heartbeat_reaper.py | cron install section 8d (TECH-198) |
 | .env | scripts/vps/.env | EnvironmentFile in systemd unit |
 
@@ -658,37 +653,9 @@ why) instead of the raw pueue exit code.
 
 - [ ] callback.py (callback arg order must match pueue.yml template)
 - [ ] orchestrator.py (ExecStart path in dld-orchestrator.service)
-- [ ] gate-daemon.py (ExecStart path in dld-gate-daemon.service — ARCH-190)
 
----
-
-## scripts/vps/gate-daemon.py (ARCH-190 Wave 1)
-
-**Path:** `scripts/vps/gate-daemon.py`
-
-### Uses (→)
-
-| What | Where | Function |
-|------|-------|----------|
-| gate_logic | scripts/vps/gate_logic.py | fetch_develop(), parse_allowed_files() |
-| gate_ancestry | scripts/vps/gate_ancestry.py | fetch_branch(), find_implementation() — THE gate (TECH-220); `_evaluate_project` writes `gate_via` into the shadow JSONL |
-| lifecycle | scripts/vps/lifecycle.py | list_by_status() |
-| db | scripts/vps/db.py | log_gate_cycle(), get_all_projects() |
-| subprocess | stdlib | git rev-parse origin/develop (SHA cache) |
-| logging.handlers | stdlib | RotatingFileHandler (shadow JSONL writer, 100MiB/5 backups) |
-
-### Used by (←)
-
-| Who | File:line | Function |
-|-----|-----------|----------|
-| systemd | dld-gate-daemon.service (Wave 2) | main daemon loop |
-
-### When changing API, check
-
-- [ ] setup-vps.sh (Wave 2 service install)
-- [ ] gate_logic.py (fetch_develop / parse_allowed_files signatures)
-- [ ] gate_ancestry.py (find_implementation / fetch_branch signatures — TECH-220)
-- [ ] db.py (log_gate_cycle signature)
+`gate-daemon.py` (ARCH-190 shadow merge-gate) and its unit were removed 2026-09-27 — 34 days in
+shadow mode with no consumer. `gate_health` stays in the schema with no writer.
 
 ---
 
@@ -708,14 +675,12 @@ why) instead of the raw pueue exit code.
 
 | Who | File:line | Function |
 |-----|-----------|----------|
-| gate-daemon.py | scripts/vps/gate-daemon.py | fetch_develop(), parse_allowed_files() directly; find_implementation_commit() only reached indirectly, as gate_ancestry's deprecated subject fallback |
 | orchestrator.py | scripts/vps/orchestrator.py | scan_queued reconciliation gate — parse_allowed_files(), fetch_develop() directly; find_implementation_commit() only reached indirectly, as gate_ancestry's deprecated subject fallback |
 | gate_ancestry.py | scripts/vps/gate_ancestry.py | strip_bookkeeping_paths() (ancestry diff-intersect) + find_implementation_commit() as the deprecated module-attribute subject fallback (TECH-220) — the sole caller of both now. `callback.py` (TECH-216 split into `callback_sync.py`) does not call `gate_logic` directly any more; it goes through `gate_ancestry.find_implementation`, which tries ancestry first |
 | .claude/scripts/validate-allowlist.mjs | `.claude/scripts/validate-allowlist.mjs` | **Not an import — a reimplementation in JS.** Spark's Phase 5.5 pre-flight check must accept exactly what this module accepts, or it rejects specs the pipeline would run. Enforced by `tests/test_allowlist_parity.py` |
 
 ### When changing API, check
 
-- [ ] gate-daemon.py (_evaluate_project — fetch_develop/parse_allowed_files call sites)
 - [ ] orchestrator.py (scan_queued reconciliation gate — same two functions)
 - [ ] gate_ancestry.py (`find_implementation` calls `gate_logic.find_implementation_commit` as a module ATTRIBUTE, positionally, with exactly three args — see that module's docstring; renaming/reordering breaks the subject fallback silently)
 - [ ] tests/test_gate_logic.py (pure-function tests, Wave 1 Task 2)
@@ -758,11 +723,10 @@ exactly the false-positive this exists to avoid).
 | callback_dispatch.py | scripts/vps/callback_dispatch.py `_merge_confirmed` | fetch_branch(), find_implementation() — gates the QA/Reflect dispatch, same verdict as the status gate |
 | orchestrator_queue.py | scripts/vps/orchestrator_queue.py `reconcile` (TECH-221; bool facade `reconcile_if_implemented`, the only name `scan_queued` calls) | fetch_branch(), find_implementation() — pre-dispatch "already on develop" check; branch_state() when nothing is found — distinguishes verdict `"continue"` (origin branch ahead of develop) from `"fresh"` (nothing pushed). `reconcile_if_implemented` sets/clears `CLAUDE_CONTINUE_BRANCH` in `os.environ` as a side effect, ALWAYS written (never only set). Telemetry only — `worktree-setup.md`/`autopilot-git.md` do NOT read this var; they detect continuation independently via `git ls-remote --heads origin <type>/<ID>` |
 | orchestrator_queue.py | scripts/vps/orchestrator_queue.py `record_dispatch` | branch_ref_for() — writes the real `<type>/<ID>` branch prefix into `task_log.branch` instead of a hardcoded `feature/` |
-| gate-daemon.py | scripts/vps/gate-daemon.py `_evaluate_project` | fetch_branch(), find_implementation() — shadow verdict, same gate as the enforcing callers |
 
 ### When changing API, check
 
-- [ ] callback_sync.py, callback_dispatch.py, orchestrator_queue.py, gate-daemon.py (all four `find_implementation` call sites — same 3-arg signature, same `(sha, via)` return shape)
+- [ ] callback_sync.py, callback_dispatch.py, orchestrator_queue.py (every `find_implementation` call site — same 3-arg signature, same `(sha, via)` return shape)
 - [ ] `BranchState` field names (TECH-221) — `callback_sync._decide_status` and `orchestrator_queue.reconcile` both read `.exists`/`.ahead`/`.ref` by attribute, not positionally, but the dataclass is frozen and has no version marker; renaming a field breaks both silently until the next dispatch
 - [ ] `CLAUDE_CONTINUE_BRANCH` env var (TECH-221) — written/popped in `orchestrator_queue.reconcile_if_implemented`, lands in the pueue dispatch env. NOT currently read by either `worktree-setup.md` or `autopilot-git.md` in either tree — both detect an existing pushed branch independently via `git ls-remote --heads origin <type>/<ID>` and reuse `origin/<type>/<ID>` on that basis alone. If a future change makes the prompts read the flag (or drops the independent git check), this row and the "when changing API" story go stale together — keep them in sync
 - [ ] `_BRANCH_PREFIX` map — four prose copies exist (`worktree-setup.md` Type-mapping table and `autopilot-git.md` bash `case`, in both trees). They disagreed until 2026-08-30, when GROWTH was added to all four; `scripts/vps/tests/test_branch_prefix_parity.py` is now the tripwire. **Downstream projects hold a fifth..eleventh copy each** and no test reaches them — `scripts/check-fleet-drift.py` is what covers those

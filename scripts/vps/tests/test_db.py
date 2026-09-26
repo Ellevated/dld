@@ -464,8 +464,6 @@ PUBLIC_SURFACE = [
     "count_demotes_since",
     "clear_decisions",
     "log_sdk_post_result_error",
-    "log_gate_cycle",
-    "get_gate_health",
     "log_classifier_refusal",
     "save_finding",
     "get_new_findings",
@@ -479,7 +477,7 @@ PUBLIC_SURFACE = [
 class TestSplitContract:
     def test_public_surface_intact_and_callable(self):
         """EC-1: every name the five consumers bind is present on `db` and callable."""
-        assert len(PUBLIC_SURFACE) == 26
+        assert len(PUBLIC_SURFACE) == 24
         missing = [n for n in PUBLIC_SURFACE if not hasattr(db, n)]
         assert missing == [], f"db lost public names: {missing}"
         not_callable = [n for n in PUBLIC_SURFACE if not callable(getattr(db, n))]

@@ -41,7 +41,7 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
   25 спек флота с ребром только в шапке выглядели свободными (EXP-012).
 - **Reconciliation gate (2026-06-26, ancestry-gate TECH-220; three-way TECH-221):** ПЕРЕД `pueue add` —
   `orchestrator_queue.reconcile()` возвращает `"done"` / `"continue"` / `"fresh"` (та же проверка,
-  что callback-guard и gate-daemon, plus `gate_ancestry.branch_state()` когда `find_implementation`
+  что callback-guard, plus `gate_ancestry.branch_state()` когда `find_implementation`
   ничего не находит). `"done"` — работа уже на develop, orchestrator сам пишет `done`
   (`by="orchestrator"`, reason `already_implemented_on_develop:<sha>`), сессию НЕ запускает. Закрывает
   дыру single-writer (ADR-023): работа, пришедшая мимо callback (другой разработчик / другое окно /
@@ -169,12 +169,12 @@ object with its own `DB_PATH` / `_MIGRATIONS_APPLIED`.
 | `night_findings` | Dedup-стор находок night-review (`UNIQUE(project_id, fingerprint)`) |
 | `callback_decisions` | Аудит circuit-breaker (TECH-169): verdict, reason, demoted |
 | `sdk_post_result_errors` | Телеметрия BUG-188: post-result SDK-исключения |
-| `gate_health` | Per-cycle метрики gate-daemon (ARCH-190) |
+| `gate_health` | Per-cycle метрики gate-daemon (ARCH-190). Писателя нет с 2026-09-27 — демон снят, таблица оставлена, чтобы схема не расходилась |
 
 Функции по группам: **slots** (`try_acquire_slot`/`release_slot`/`get_available_slots`/
 `get_occupied_slots`, in `db.py`), **task_log** (`log_task`/`finish_task`/`get_task_by_pueue_id`,
 in `db.py`), **decisions** (`record_decision`/`count_demotes_since`/`clear_decisions`, in
-`db_decisions.py`), **gate_health** (`log_gate_cycle`, in `db_decisions.py`), **findings**
+`db_decisions.py`), **findings**
 (`save_finding` INSERT OR IGNORE, in `db_findings.py`).
 
 ---
@@ -202,28 +202,20 @@ in `db.py`), **decisions** (`record_decision`/`count_demotes_since`/`clear_decis
 
 ---
 
-## <a name="gate-daemon"></a>gate-daemon.py + gate_logic.py — shadow merge-gate (ARCH-190)
+## <a name="gate-logic"></a>gate_logic.py + gate_ancestry.py — ядро гейта
 
-Отдельный systemd-демон `dld-gate-daemon.service`, цикл **60с**. **Read-only теневой наблюдатель:**
-прогоняет ту же gate-логику, что callback (вынесена в чистые функции `gate_logic`), и **только логирует
-вердикт** — статус НЕ трогает.
+Чистые функции гейта, общие для callback и оркестратора. Статус пишет только callback.
 
-- **`SHADOW_ONLY_MODE = True`** (`:47`), двойной assert (импорт + старт `main`): «Wave 3 cutover not yet
-  authorized». ZERO импортов callback, ZERO вызовов `write_lifecycle` (инвариант FF-09).
-- `_evaluate_project` (`:160-275`): `fetch_develop` → SHA-кэш (develop не менялся → `skipped`) →
-  `list_by_status({in_progress, queued})` → per-spec: `gate_ancestry.find_implementation` → вердикт
-  `done`/`in_progress`/`blocked` + `gate_via` (`ancestry`/`subject`/`none`, TECH-220).
-- `gate_logic` pure-функции: `fetch_develop` (15s timeout, fail-soft), `parse_allowed_files` (TECH-167
-  v1/legacy), `find_implementation_commit` (path-фильтр + `match_subject`, fail-closed, DEPRECATED —
-  reached only as `gate_ancestry`'s subject fallback), `match_subject` (subject-only, TECH-177).
+- `gate_logic`: `fetch_develop` (15s timeout, fail-soft), `parse_allowed_files` (TECH-167 v1/legacy),
+  `find_implementation_commit` (path-фильтр + `match_subject`, fail-closed, DEPRECATED — reached only
+  as `gate_ancestry`'s subject fallback), `match_subject` (subject-only, TECH-177).
 - `gate_ancestry.find_implementation` (TECH-220): ancestry primary — `<type>/<ID>` предок
   `origin/develop` И принесла ≥1 allowed-файл — before falling back to `find_implementation_commit`.
-- Пишет: JSONL shadow-лог (`RotatingFileHandler`, 100 MiB × 5, теперь несёт `gate_via`), `gate_health`
-  (db), `.gate-daemon-heartbeat`.
-  Per-project error isolation. **Не алертит.**
 
-> Назначение: параллельно с callback независимо считать «что бы я сделал» и копить shadow-данные перед
-> возможным cutover (Wave 3, не авторизован). Сейчас это диагностика, не enforcement.
+> **gate-daemon.py (ARCH-190) снят 2026-09-27.** Теневой демон с 23.08 раз в 60 с пересчитывал тот же
+> вердикт и писал JSONL; переход к Wave 3 так и не согласовали, потребителя у журнала не было, а
+> процесс 34 дня крутил код 23.08 без поля `gate_via`. Разбор —
+> `docs/2026-09-27-snyatie-relsov-dispetchera.md`.
 
 ---
 
