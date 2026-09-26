@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Module: spec_deps
-Role: one answer to "which specs does this spec wait for?" — shared by the
-      built-in dispatch gate (orchestrator_queue) and the LLM dispatcher's
-      briefing (dispatch_summary), so the two cannot disagree again.
+Role: one answer to "which specs does this spec wait for?" — the edges the
+      LLM dispatcher's briefing (dispatch_summary) shows it. Until 2026-09-27
+      the built-in dispatch gate read it too; that gate is gone.
 
 An edge is declared in any of three places, and the fleet uses all three:
   * `depends_on` in the lifecycle yaml — the SoT since TECH-222, written by
@@ -22,12 +22,11 @@ already cost a run: awardybot FTR-1531 was dispatched on 2026-09-11 before
 FTR-1530 merged and died two minutes in without code.
 
 Only the edges live here, never STATUS: whether a dependency counts as met is
-the caller's policy — fail-open on an unknown id in the gate, reported as
-`missing` in the briefing.
+the caller's policy — the briefing reports an unknown id as `missing` and lets
+the dispatcher judge it.
 
 Uses: itertools, logging, re, pathlib, lifecycle
-Used by: orchestrator_queue (re-exported under the TECH-222 names),
-         dispatch_summary
+Used by: dispatch_summary
 """
 
 import itertools

@@ -68,10 +68,11 @@ _ALLOWED_WRITERS_FOR_CREATE  = {spark} | _ALLOWED_WRITERS                       
 - `write_lifecycle` гейтит `by`: вне `_ALLOWED_WRITERS` → `ValueError` (`:576`).
 - **`autopilot` и `spark` — НЕ writers** (ADR-025). autopilot сигналит статус через JSON
   `task_status` (callback его исполняет); spark клеймит ID, но статус не мутирует.
-- **`orchestrator` пишет статус в трёх местах:** `reconcile_orphans` (демоут `in_progress` без живого
-  pueue_id), **reconciliation gate** в `scan_queued` (если queued-спека уже реализована на
-  origin/develop → `done`, `reason=already_implemented_on_develop:<sha>`, без сессии), и **диспатч**
-  в `scan_queued` — после успешного `pueue add` пишет `in_progress` с `pueue_id` (BUG-218). Отказ этой
+- **`orchestrator` пишет статус в двух местах:** `reconcile_orphans` (демоут `in_progress` без живого
+  pueue_id) и **диспатч** — `orchestrator_queue.record_dispatch`, которую зовёт `dispatch_one.py`, после
+  успешного `pueue add` пишет `in_progress` с `pueue_id` (BUG-218). Третье место — reconciliation gate
+  builtin-пути, писавший `done` в обход callback (`already_implemented_on_develop:<sha>`), — снято
+  2026-09-27 вместе с `scan_queued`. Отказ этой
   записи логируется и НЕ отменяет диспатч: задача уже в очереди pueue. Это единственная запись
   `in_progress` во всей системе — она включает `started_at` (`lifecycle_git.py::_build_yaml_content`)
   и делает `reconcile_orphans` работоспособным. `started_at` ставится на ЛЮБОМ входе в `in_progress`
@@ -189,8 +190,8 @@ notify «investigate who wrote done» (`:1290-1320`).
 
 **Текущий гейт (Rule 1, TECH-220):** `done` ⟺ ветка `<type>/<ID>` — предок `origin/develop`
 И принесла ≥1 не-bookkeeping allowed-файл. Одна функция, `gate_ancestry.find_implementation`,
-во всех точках вызова: `callback_sync._decide_status`, `callback_dispatch._merge_confirmed`,
-`orchestrator_queue.reconcile_if_implemented` (до 2026-09-27 ещё теневой `gate-daemon`). **Нет
+во всех точках вызова: `callback_sync._decide_status`, `callback_dispatch._merge_confirmed` (до
+2026-09-27 ещё `orchestrator_queue.reconcile_if_implemented` builtin-пути и теневой `gate-daemon`). **Нет
 activity-окна, нет `--all`, нет auto-close.** Fail-closed: любая ошибка git → `None` → `blocked`,
 никогда не `done`.
 
@@ -244,11 +245,8 @@ activity-окна, нет `--all`, нет auto-close.** Fail-closed: любая 
   salvage успел запушить `origin/<type>/<ID>` (обычно таймаут) — работа жива, ничего не потеряно.
   Reason: `branch_pushed_not_merged:{ahead} ahead — origin/{ref} carries the work; re-dispatch
   continues that branch`. **Force-done здесь — неверный совет** (в отличие от plain
-  `no_merged_implementation`): правильное действие — обычный `demote` в `queued`. Следующий
-  диспатч проходит через `orchestrator_queue.reconcile()`, который читает тот же `branch_state()`
-  и возвращает `"continue"` вместо `"fresh"`; `reconcile_if_implemented` (facade) выставляет
-  `CLAUDE_CONTINUE_BRANCH=1` в `os.environ` для этого диспатча (сигнал/телеметрия на будущее —
-  не gate). Независимо от флага, оба дерева autopilot-промптов (`worktree-setup.md` /
+  `no_merged_implementation`): правильное действие — обычный `demote` в `queued`. При следующем
+  диспатче оба дерева autopilot-промптов (`worktree-setup.md` /
   `autopilot-git.md`) сами проверяют `git ls-remote --heads origin <type>/<ID>` при PHASE 0
   (worktree setup) и, если ветка на origin существует, строят worktree ИЗ неё (`-b <branch>
   origin/<branch>`, rebase на develop, `push --force-with-lease` re-sync) вместо чистого
@@ -302,8 +300,7 @@ Callback видит `exit_code == 5` в Step 7 и вызывает `callback_rat
 Окно паузы (`scripts/vps/.rate-limited-until`, JSON `until`/`rate_limit_type`) открывает
 `runner_ratelimit.on_rejected` на самом первом exit 5 в закрытом окне и шлёт один алерт в Hermes;
 `fleet_pause.active_pause()` — то, что заставило текущий запуск выйти 75 до вызова Claude API
-(`run-agent.sh` `--check` guard) или отказаться диспатчить (`dispatch_one.py`,
-`orchestrator_queue.gate_before_pueue_add`). Диагностика и снятие вручную —
+(`run-agent.sh` `--check` guard) или отказаться диспатчить (`dispatch_one.py`). Диагностика и снятие вручную —
 [runbook.md Сценарий 8](runbook.md#сценарий-8-флот-на-паузе-по-лимиту-подписки-tech-226).
 
 ### TECH-197 hardening

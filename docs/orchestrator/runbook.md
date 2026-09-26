@@ -162,9 +162,7 @@ work; re-dispatch continues that branch`. Отличается от Сценар
 **НЕ применяй Сценарий 3 fix здесь.** `force-done` — неверный совет: работа реально не смёржена,
 а `verification.md` просит верифицировать смёрженный код, которого ещё нет на `origin/develop`.
 
-**Fix:** обычный demote → re-dispatch. Новый `orchestrator_queue.reconcile()` увидит ту же
-`branch_state()` (verdict `"continue"`), выставит `CLAUDE_CONTINUE_BRANCH=1` в окружение диспатча
-(телеметрия, не gate). Независимо от флага — оба дерева autopilot-промптов (`worktree-setup.md` /
+**Fix:** обычный demote → re-dispatch. Оба дерева autopilot-промптов (`worktree-setup.md` /
 `autopilot-git.md`) сами проверяют `git ls-remote --heads origin <type>/<ID>` при setup worktree и
 заберут `origin/<type>/<ID>` вместо чистого нового `develop` — сессия продолжает уже сделанные
 коммиты, а не начинает с нуля:
@@ -243,8 +241,7 @@ sqlite3 scripts/vps/orchestrator.db "SELECT * FROM project_state WHERE project_i
 - `run-agent.sh` для ветки `claude)` перед `exec` спрашивает `fleet_pause.py --check` и при паузе
   выходит **75**, ни разу не вызывая Claude API — это единственный путь запуска (диспетчер, QA/reflect,
   support-nightly, автопилот) и единственная общая точка проверки;
-- `dispatch_one.py` и встроенный путь (`orchestrator_queue.gate_before_pueue_add`) отказывают
-  диспатчить claude-спеки заранее, не доходя до `pueue add`;
+- `dispatch_one.py` отказывает диспатчить claude-спеки заранее, не доходя до `pueue add`;
 - автопилот, чья pueue-задача успела стартовать до паузы и вышла 75, в callback Step 7 возвращается
   в lifecycle `queued` с причиной `fleet_paused` — **не** считается в потолок 3/24ч TECH-225
   (`count_requeues_since` фильтрует только `reason='rate_limited'`);

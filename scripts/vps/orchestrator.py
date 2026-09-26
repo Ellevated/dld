@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
 Module: orchestrator
-Role: Main poll loop daemon — scan inbox, scan queued lifecycle, dispatch via pueue.
+Role: Main poll loop daemon — git pull, inbox, lifecycle bootstrap, slot upkeep.
 Uses: db (import), lifecycle (import), subprocess (pueue CLI), signal, threading
 Used by: systemd (dld-orchestrator.service)
 
 Replaces orchestrator.sh + inbox-processor.sh (ARCH-161).
 Post-ARCH-186: reads task queue from ai/lifecycle/*.yaml (not ai/backlog.md).
+
+This daemon does NOT decide which spec runs. Since 2026-09-07 that is the
+dispatcher skill (`~/ops/dispatcher.sh`, every 15 min), reading
+`dispatch_summary.py` and acting only through `dispatch_one.py`. The in-code
+gate chain it replaced (`scan_queued`, `DISPATCH_MODE=builtin`) was removed on
+2026-09-27 — see docs/2026-09-27-snyatie-relsov-dispetchera.md.
 """
 
 # ruff: noqa: I001
@@ -30,16 +36,7 @@ from threading import Event
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import db  # noqa: E402
-
-# gate_logic is not called from this module any more (the reconciliation step
-# moved to orchestrator_queue), but the import is load-bearing: eight sites in
-# test_orchestrator.py do patch.object(orchestrator.gate_logic, ...), which
-# works by mutating the shared module object. Deleting this as a "dead import"
-# breaks those eight tests. TECH-215.
-import gate_logic  # noqa: E402,F401
 import lifecycle  # noqa: E402
-import orchestrator_queue  # noqa: E402
-import orchestrator_ci_gate  # noqa: E402
 
 log = logging.getLogger("orchestrator")
 _stop = Event()
@@ -186,110 +183,11 @@ def startup_reconcile() -> None:
             )
 
 
-def _select_dispatchable_spec(project_dir: str, queued_list: list) -> str | None:
-    """BUG-206: first queued/resumed spec with no unmet `AFTER <ID>` dependency.
-
-    Extracted for EC-8 (scan_queued length), but kept in orchestrator.py rather
-    than orchestrator_queue.py: 13 tests patch `orchestrator._unmet_dependencies`,
-    which resolves bare-name only against THIS module's globals. A sibling
-    calling the same bare name would look it up in its own `__dict__` first and
-    silently miss the patch (Python docs, "Where to patch").
-    """
-    for cand in queued_list:
-        cid = cand["spec_id"]
-        unmet = _unmet_dependencies(project_dir, cid)
-        if unmet:
-            log.info("DEP_GATE: skip %s — unmet dependency %s (not done)", cid, ", ".join(unmet))
-            continue
-        return cid
-    return None
-
-
-# Queued specs one pass may try: a refused one is skipped, the next tried (cap keeps a
-# busy project from logging a refusal for its whole backlog every cycle).
-MAX_DISPATCH_CANDIDATES = 5
-
-
-def scan_queued(project_id: str, project_dir: str) -> bool:
-    """Find first queued/resumed spec via lifecycle.yaml and dispatch autopilot.
-
-    Returns True if dispatched. Post-ARCH-186: reads ai/lifecycle/*.yaml
-    (HEAD-based), not ai/backlog.md (which is now an auto-rendered read-only view).
-
-    Body stays here on purpose (TECH-215): four test files reach into it via
-    `orchestrator.<name>` monkeypatches. Uncoupled steps live in orchestrator_queue.
-    """
-    queued_list = orchestrator_ci_gate.queued_after_ci_gate(project_id, project_dir)
-    if not queued_list:
-        return False
-
-    # A refusal skips the spec, not the project (dowry BUG-507 held five ready specs).
-    remaining = list(queued_list)
-    for _ in range(MAX_DISPATCH_CANDIDATES):
-        spec_id = _select_dispatchable_spec(project_dir, remaining)
-        if spec_id is None:
-            return False
-        remaining = [c for c in remaining if c.get("spec_id") != spec_id]
-
-        gate = orchestrator_queue.gate_before_pueue_add(
-            project_id, project_dir, spec_id, SCRIPT_DIR / "callback-audit.jsonl"
-        )
-        if gate is None:
-            continue
-        spec_files, provider = gate
-        task_label = f"{project_id}:{spec_id}"
-        if pueue_has_active_label(task_label):
-            log.info("skip dispatch: %s already in pueue", task_label)
-            continue
-        if pueue_has_active_spec(spec_id):
-            log.info("skip dispatch: %s live in pueue under another project (Rule 8)", spec_id)
-            continue
-        # BUG-199: pin spec path for the pre-edit hook's Allowed Files enforcement.
-        # Without this, inferSpecFromBranch() returns null on develop after
-        # merge-back, and the hook degrades OPEN — allowing out-of-scope edits.
-        spec_path = str(spec_files[0])
-        pueue_env = {"CLAUDE_PROJECT_DIR": project_dir, "CLAUDE_CURRENT_SPEC_PATH": spec_path}
-        if not orchestrator_queue.status_still_dispatchable(project_dir, spec_id):
-            continue
-        if orchestrator_queue.reconcile_if_implemented(project_dir, spec_id, spec_files[0]):
-            continue
-        pueue_id = _pueue_add(
-            f"{provider}-runner",
-            task_label,
-            [
-                str(SCRIPT_DIR / "run-agent.sh"),
-                project_dir,
-                provider,
-                "autopilot",
-                f"/autopilot {spec_id}",
-            ],
-            env=pueue_env,
-        )
-        if pueue_id is None:
-            log.error("pueue submission failed: %s/%s", project_id, spec_id)
-            return False
-
-        orchestrator_queue.record_dispatch(
-            project_id, project_dir, spec_id, provider, task_label, pueue_id
-        )
-        log.info("autopilot submitted: %s spec=%s pueue_id=%d", project_id, spec_id, pueue_id)
-        return True
-
-    return False
-
-
-# `llm` (default 2026-09-07): the dispatcher skill decides, on its own timer.
-# `builtin`: the in-code gate chain below. Rollback is one env var, not a revert.
-DISPATCH_MODE = os.environ.get("DISPATCH_MODE", "llm").strip().lower()
-
-
 def process_project(project_id: str, project_dir: str) -> None:
-    """Process one project: git pull, inbox, lifecycle bootstrap, queued scan, invariant check."""
+    """Process one project: git pull, inbox, lifecycle bootstrap, invariant check."""
     git_pull(project_id, project_dir)
     scan_inbox(project_id, project_dir)
     bootstrap_new_specs(project_dir)
-    if DISPATCH_MODE == "builtin":
-        scan_queued(project_id, project_dir)
     state = db.get_project_state(project_id)
     if state and state.get("phase") == "qa_pending" and not state.get("current_task"):
         log.warning("qa_pending invariant: resetting %s to idle", project_id)
@@ -398,12 +296,7 @@ from orchestrator_inbox import (  # noqa: F401,E402
     _parse_inbox_file,
     scan_inbox,
 )
-from orchestrator_queue import (  # noqa: F401,E402
-    _AFTER_DEP_RE,
-    _backlog_deps,
-    _unmet_dependencies,
-    dispatch_night_review,
-)
+from orchestrator_queue import dispatch_night_review  # noqa: F401,E402
 from orchestrator_git import _GIT_ADVANCE_FAILURES  # noqa: F401,E402
 from orchestrator_git import _note_git_advance_failure, _one_line  # noqa: F401,E402
 

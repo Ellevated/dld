@@ -1,7 +1,7 @@
 """Tests for BUG-199 autopilot scope guard fixes.
 
 Fix A: prompt structural assertions (doc-lint style).
-Fix B: orchestrator autopilot dispatch sets CLAUDE_CURRENT_SPEC_PATH.
+Fix B: autopilot dispatch (dispatch_one since 2026-09-27) sets CLAUDE_CURRENT_SPEC_PATH.
 Fix C: callback detects out-of-scope files in spec-attributed commits.
 """
 
@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -82,33 +83,40 @@ class TestFixAPromptStructure:
 
 
 class TestFixBEnvWiring:
-    """Verify that scan_queued passes the spec path env var to pueue dispatch."""
+    """Verify that the dispatch verb pins the spec path for the pre-edit hook."""
 
-    def test_scan_queued_sets_spec_env_in_pueue_add(self) -> None:
-        """scan_queued must call _pueue_add with env containing CLAUDE_CURRENT_SPEC_PATH."""
-        orch_path = SCRIPT_DIR / "orchestrator.py"
-        content = orch_path.read_text(encoding="utf-8")
+    def test_dispatch_one_sets_spec_env_in_pueue_add(self, tmp_path: Path) -> None:
+        """dispatch_one must hand _pueue_add CLAUDE_CURRENT_SPEC_PATH = the spec body.
 
-        in_scan_queued = False
-        found_spec_path_in_env = False
-        found_env_in_pueue_add = False
+        Behavioural since 2026-09-27: this used to grep the text of
+        orchestrator.scan_queued, which left with the builtin dispatch path —
+        dispatch_one is now the only way a spec runs. Without the variable,
+        inferSpecFromBranch() returns null on develop after merge-back and the
+        pre-edit hook degrades OPEN.
+        """
+        import dispatch_one
 
-        for line in content.splitlines():
-            if "def scan_queued" in line:
-                in_scan_queued = True
-                continue
-            if in_scan_queued:
-                if line.strip().startswith("def ") and "scan_queued" not in line:
-                    break
-                if "CLAUDE_CURRENT_SPEC_PATH" in line and "pueue_env" in line:
-                    found_spec_path_in_env = True
-                if "env=pueue_env" in line:
-                    found_env_in_pueue_add = True
+        spec = tmp_path / "ai" / "features" / "TECH-1-x.md"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("# spec\n", encoding="utf-8")
+        add = MagicMock(return_value=7)
+        with (
+            patch(
+                "dispatch_one.db.get_project_state",
+                return_value={"path": str(tmp_path), "provider": "claude"},
+            ),
+            patch("dispatch_one.fleet_pause.active_pause", return_value=None),
+            patch("dispatch_one.db.get_available_slots", return_value=1),
+            patch("orchestrator_slots.pueue_has_active_label", return_value=False),
+            patch("orchestrator_slots.pueue_has_active_spec", return_value=False),
+            patch("orchestrator_slots._pueue_add", add),
+            patch("orchestrator_queue.record_dispatch"),
+        ):
+            assert dispatch_one.dispatch("p", "TECH-1", "autopilot", None, "") == 0
 
-        assert found_spec_path_in_env, (
-            "scan_queued must define pueue_env with CLAUDE_CURRENT_SPEC_PATH"
-        )
-        assert found_env_in_pueue_add, "scan_queued must pass env=pueue_env to _pueue_add"
+        env = add.call_args.kwargs["env"]
+        assert env["CLAUDE_CURRENT_SPEC_PATH"] == str(spec)
+        assert env["CLAUDE_PROJECT_DIR"] == str(tmp_path)
 
     def test_claude_runner_forwards_spec_env(self) -> None:
         """claude-runner.py must forward CLAUDE_CURRENT_SPEC_PATH to the agent session."""

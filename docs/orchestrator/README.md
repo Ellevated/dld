@@ -26,9 +26,11 @@ DLD Orchestrator — per-VPS демон (systemd user-unit `dld-orchestrator.ser
 
 - **Вход:** спеки в статусе `queued`/`resumed` (из `/spark` или Hermes-intake; только `queued`
   проходит intake-gate — ADR-021/022), список проектов `projects.json`, свободные compute-слоты.
-- **Нутро:** главный цикл (`orchestrator.py`, каждые 5 мин) — `git pull` → найти готовую спеку
-  (с TOCTOU-перепроверкой и учётом зависимостей) → занять слот → `pueue add run-agent.sh` →
-  autopilot-сессия (`claude-runner.py` на Agent SDK). По завершении pueue дёргает `callback.py`.
+- **Нутро:** главный цикл (`orchestrator.py`, каждые 5 мин) — `git pull`, intake, bootstrap yaml,
+  слоты. **Что запускать, решает модель:** скилл `/dispatcher` (с 2026-09-07, таймер 15 мин) читает
+  сводку `dispatch_summary.py` и запускает через `dispatch_one.py` → занять слот → `pueue add
+  run-agent.sh` → autopilot-сессия (`claude-runner.py` на Agent SDK). По завершении pueue дёргает
+  `callback.py`. Встроенная цепочка гейтов (`scan_queued`) снята 2026-09-27.
 - **Выход:** смёрженный код на `develop` + авторитетный статус в `ai/lifecycle/{spec}.yaml`
   (рендерится в `ai/backlog.md`), авто-QA и reflect после autopilot, события в Hermes/Telegram.
 
@@ -97,15 +99,18 @@ orchestrator.py · process_project (каждые ≤5 мин):
   git_pull (ff-only)                              # пропускается пока агент работает
   scan_inbox      → Hermes Status: queued → /spark|/architect|/bughunt|...
   bootstrap_new_specs → создать yaml для новых spec.md без него (safe default=queued)
-  scan_queued:
-    lifecycle.list_by_status({queued, resumed})   # SoT = yaml@HEAD, НЕ backlog.md
-    dependency gate: все зависимости должны быть done — `depends_on: [ID]` из lifecycle YAML
-                     ∪ `**AFTER <ID>**` в шапке спеки ∪ `AFTER <ID>` в backlog-строке
-                     (spec_deps.declared; ребро не из YAML → метрика DEP_VIA)
-    slot check + dup-guard (label + spec_id)
-    TOCTOU re-check: lifecycle.read_lifecycle(spec) ещё раз ПЕРЕД pueue add   [BUG-205]
+
+/dispatcher · пасс раз в 15 мин (~/ops/dispatcher.sh → run-agent.sh claude dispatcher):
+  dispatch_summary.py → сводка: слоты, здоровье провайдеров, живые задачи,
+    queued/resumed из lifecycle.list_by_status   # SoT = yaml@HEAD, НЕ backlog.md
+    + проблемы спеки и `waits on X=status` — `depends_on` ∪ шапка `**AFTER <ID>**` ∪
+      backlog `AFTER` (spec_deps.declared; ребро не из YAML → метрика DEP_VIA)
+  модель решает: что готово, что починить (allowlist), что пропустить — не больше 2 запусков
+  dispatch_one.py <project> <SPEC-NNN> --reason "…"   # единственный глагол
+    стены: нет слота · уже живая в pueue (label + spec_id) · нет тела спеки · флот на паузе
     pueue add → run-agent.sh <dir> claude autopilot "/autopilot SPEC-NNN"
-    try_acquire_slot + log_task(branch=feature/SPEC-NNN) + phase=autopilot
+    record_dispatch: try_acquire_slot + log_task(branch=<type>/SPEC-NNN) + phase=autopilot
+                     + lifecycle in_progress с pueue_id   [BUG-218]
 
 claude-runner.py · /autopilot:
   План → коммиты в feature/SPEC-NNN → git merge --ff-only develop
@@ -137,7 +142,7 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 | Переход | Триггер |
 |---------|---------|
 | `→ queued` | spark `create_initial` / orchestrator bootstrap (safe default) |
-| `* → in_progress` | orchestrator `scan_queued` после успешного `pueue add`: `write_lifecycle(..., "in_progress", by="orchestrator", pueue_id=<id>)`. `started_at` ставится на ЛЮБОМ входе в `in_progress`, а не только из `queued`/`resumed` — спека, поднятая из `blocked`, иначе теряла начало навсегда (замер 31.08.2026: 75 done-спек из 183 за две недели без `started_at`) |
+| `* → in_progress` | `orchestrator_queue.record_dispatch` (зовёт `dispatch_one.py`) после успешного `pueue add`: `write_lifecycle(..., "in_progress", by="orchestrator", pueue_id=<id>)`. `started_at` ставится на ЛЮБОМ входе в `in_progress`, а не только из `queued`/`resumed` — спека, поднятая из `blocked`, иначе теряла начало навсегда (замер 31.08.2026: 75 done-спек из 183 за две недели без `started_at`) |
 | `in_progress → done` | guard видит реализующий коммит на origin/develop |
 | `in_progress → blocked` | guard не нашёл реализацию ИЛИ autopilot сигналит blocked/needs_review |
 | `blocked → resumed` | оператор (`spec_operator demote --blocked`/правка backlog → resumed) |
@@ -159,8 +164,8 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 Полностью в [status-model.md](status-model.md#инварианты-статуса). Кратко:
 
 1. **Single-writer per transition.** Не «пишет только callback» — пишут `callback`, `orchestrator`
-   (диспатч `→ in_progress` в `scan_queued`, reconciliation gate и `reconcile_orphans` →
-   `done`/`queued`) и `operator`, но всегда через один и тот же примитив,
+   (диспатч `→ in_progress` в `record_dispatch` и `reconcile_orphans` → `queued`; reconciliation
+   gate, писавший `done`, снят 2026-09-27) и `operator`, но всегда через один и тот же примитив,
    `lifecycle.write_lifecycle(by=<writer>)`, никогда напрямую в yaml. Инвариант — не имя писателя,
    а то, что на каждый переход есть ровно один легитимный путь записи. Writers ограничены
    `{callback, orchestrator, operator, qa, audit, migration}`. `autopilot`/`spark` — **не** writers
@@ -179,21 +184,22 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 
 Полностью в [components.md](components.md#инварианты-диспатча). Кратко:
 
-1. **Не диспатчить spec, чей lifecycle-статус ≠ queued/resumed** (SoT = yaml@HEAD, не backlog.md).
-2. **Авторитетный TOCTOU re-check перед каждым `pueue add`** (BUG-205) — snapshot устаревает.
+1. **Не диспатчить spec, чей lifecycle-статус ≠ queued/resumed** (SoT = yaml@HEAD, не backlog.md) —
+   сводка диспетчера показывает только такие.
+2. ~~TOCTOU re-check перед `pueue add` (BUG-205)~~ — снят 2026-09-27 с builtin-путём; повторный
+   запуск живой спеки держит стена «уже живая в pueue» в `dispatch_one.py`.
 3. **Не bootstrap-ить в терминальный статус** — unparsable → `queued`, никогда `done`.
-4. **Dependency gate** — не диспатчить spec с незакрытой зависимостью из `depends_on`, шапки
-   `**AFTER <ID>**` или backlog-строки (BUG-206 + TECH-222; backlog-`AFTER` — deprecated-фолбэк,
-   снимается после 30 дней без `deps_via=backlog`). Сводка LLM-диспетчера берёт рёбра той же
-   функцией (`spec_deps.declared`).
+4. **Зависимости видны диспетчеру** — `depends_on`, шапка `**AFTER <ID>**`, backlog-строка
+   (BUG-206 + TECH-222; backlog-`AFTER` — deprecated-фолбэк, снимается после 30 дней без
+   `deps_via=backlog`) идут в сводку через `spec_deps.declared`; решение за диспетчером.
 5. **RAM floor ≥3GB** перед запуском LLM-агента (иначе OOM на полпути = потраченные токены).
 6. **Slot discipline + dup-guard** — не диспатчить без слота / дубликат spec_id.
 7. **Timeout как hard-limit** (claude 90м / codex 15м / gemini 30м) + heartbeat-reaper добивает зависшие.
 8. **exit_code contract (ADR-024)** — post-result Exception не оверрайдит `exit_code=0` (иначе ре-блок готовой спеки).
 9. **CI-parity merge-gate (TECH-206)** — не мержить в красный develop.
-10. **Fleet pause (TECH-226)** — пока `fleet_pause.active_pause()` открыт, `claude`-спеки не
-    диспатчатся ни одним из двух путей, а `run-agent.sh` выходит exit 75 до вызова API, если
-    что-то всё же успело просочиться в pueue.
+10. **Fleet pause (TECH-226)** — пока `fleet_pause.active_pause()` открыт, `dispatch_one.py` не
+    запускает `claude`-спеки, а `run-agent.sh` выходит exit 75 до вызова API, если что-то всё же
+    успело просочиться в pueue.
 
 ---
 
@@ -227,10 +233,10 @@ QA → ai/qa/*.md   ·   Reflect → ai/reflect/*.md   →  callback → phase=i
 | TECH-204 | night-reviewer notify cap (10) + confidence filter (medium+) | актуально |
 | TECH-206 | CI-parity merge-gate (`./test ci` перед push, needs_review на red) | актуально |
 | TECH-220 | Implementation guard: branch-ancestry primary (`gate_ancestry.find_implementation`), subject-regex deprecated fallback, `gate_via` telemetry | актуально |
-| TECH-221 | Re-dispatch after a timeout continues the salvaged branch: `gate_ancestry.branch_state()`, `blocked_reason=branch_pushed_not_merged:<N>`, three-way `orchestrator_queue.reconcile()` ("done"\|"continue"\|"fresh"), `CLAUDE_CONTINUE_BRANCH` env | актуально |
-| TECH-222 | Dependency edge moves onto lifecycle YAML: `depends_on: [ID]` in the dependent spec's yaml (Spark writes it at claim time via `create_initial`; `lifecycle.set_depends_on` retrofits existing specs). `orchestrator_queue._spec_deps` reads it as SoT, backlog `AFTER` demoted to deprecated fallback logged as `DEP_VIA` (30-day zero-`DEP_VIA` telemetry gate before deletion, same shape as TECH-220's `gate_via`) | актуально |
+| TECH-221 | Re-dispatch after a timeout continues the salvaged branch: `gate_ancestry.branch_state()`, `blocked_reason=branch_pushed_not_merged:<N>`, three-way `orchestrator_queue.reconcile()` ("done"\|"continue"\|"fresh"), `CLAUDE_CONTINUE_BRANCH` env | актуально, кроме `reconcile()` и `CLAUDE_CONTINUE_BRANCH` — **сняты 2026-09-27** с builtin-путём; продолжение ветки autopilot находит сам через `git ls-remote` |
+| TECH-222 | Dependency edge moves onto lifecycle YAML: `depends_on: [ID]` in the dependent spec's yaml (Spark writes it at claim time via `create_initial`; `lifecycle.set_depends_on` retrofits existing specs). `spec_deps.declared` reads it as SoT (was `orchestrator_queue._spec_deps` until the builtin gate was removed 2026-09-27; the dispatcher's briefing is the reader now), backlog `AFTER` demoted to deprecated fallback logged as `DEP_VIA` (30-day zero-`DEP_VIA` telemetry gate before deletion, same shape as TECH-220's `gate_via`) | актуально |
 | TECH-225 | Rate-limit hit recognised structurally: runner exit 5 (`rate_limited`, `runner_ratelimit.decide_exit`, ADR-024-respecting) instead of a bare `exit_code: 1`; callback routes it through `callback_ratelimit.requeue` (`in_progress → queued`, not `blocked`), 3rd requeue of the same spec in 24h escalates to `blocked repeated_rate_limit:<n>`. Fleet-wide dispatch pause added by TECH-226 | актуально (EXP-014 open) |
-| TECH-226 | Fleet-wide pause on subscription rate limit: first exit 5 in a closed window opens `scripts/vps/.rate-limited-until` (`runner_ratelimit.on_rejected` → `fleet_pause.set_pause`) and sends exactly one Hermes alert; while open, `run-agent.sh` exits **75** before the `claude)` branch ever calls the API, and both dispatch paths (`dispatch_one.py`, `orchestrator_queue.gate_before_pueue_add`) refuse `claude` specs ahead of `pueue add`. Callback treats exit 75 as `callback_ratelimit.requeue(paused=True)` — `queued`/`fleet_paused`, never counted toward the 3/24h ceiling. codex/gemini unaffected | актуально (EXP-015 open) |
+| TECH-226 | Fleet-wide pause on subscription rate limit: first exit 5 in a closed window opens `scripts/vps/.rate-limited-until` (`runner_ratelimit.on_rejected` → `fleet_pause.set_pause`) and sends exactly one Hermes alert; while open, `run-agent.sh` exits **75** before the `claude)` branch ever calls the API, and `dispatch_one.py` refuses `claude` specs ahead of `pueue add` (the builtin path's copy of that refusal went with the path, 2026-09-27). Callback treats exit 75 as `callback_ratelimit.requeue(paused=True)` — `queued`/`fleet_paused`, never counted toward the 3/24h ceiling. codex/gemini unaffected | актуально (EXP-015 open) |
 
 > ⚠️ **Известный дрейф в in-repo ADR-таблице** (`.claude/rules/architecture.md`): TECH-170/176
 > там описаны как актуальные, но текущий код (`gate_ancestry.find_implementation`, TECH-220) их не

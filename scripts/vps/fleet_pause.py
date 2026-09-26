@@ -11,7 +11,8 @@ Uses: json, logging, os, sys, time, pathlib, datetime (all stdlib)
 Used by:
   - run-agent.sh: `--check` guard before exec, exit 75 = EX_TEMPFAIL
   - runner_ratelimit.py: set_pause() on exit 5 (TECH-226 Task 2)
-  - dispatch_one.py, orchestrator_queue.py: active_pause() gates dispatch
+  - dispatch_one.py: active_pause() gates dispatch
+  - dispatch_summary.py: active_pause() → the briefing's PAUSED line
 """
 
 import json

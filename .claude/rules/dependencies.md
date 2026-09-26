@@ -138,14 +138,13 @@ prints the marker as JSON on stderr caller side.
 | run-agent.sh | scripts/vps/run-agent.sh (`claude)` branch, before `exec`) | CLI `--check` → exit 75 stops the launch before the Claude API is ever called |
 | runner_ratelimit.py | scripts/vps/runner_ratelimit.py `on_rejected` | `set_pause()` on exit 5 — opens/extends the window, gates the one alert on the `bool` it returns |
 | dispatch_one.py | scripts/vps/dispatch_one.py `dispatch` | `active_pause()` — refuses a `claude` spec before `pueue add` (fourth refusal) |
-| orchestrator_queue.py | scripts/vps/orchestrator_queue.py `gate_before_pueue_add` | `active_pause()` — same refusal on the built-in dispatch path (`DISPATCH_MODE=builtin`) |
 | dispatch_summary.py | scripts/vps/dispatch_summary.py `build` | `active_pause()` → `summary["paused"]`, rendered as the briefing's leading `**PAUSED until …` line |
 
 ### When changing API, check
 
 - [ ] run-agent.sh (exit code 75 is `EX_TEMPFAIL`; only claude-only branch reads it)
 - [ ] runner_ratelimit.py `on_rejected` (reads `set_pause`'s bool return to decide the one alert)
-- [ ] dispatch_one.py / orchestrator_queue.py (`active_pause()` return shape — `until`/`until_iso`/`rate_limit_type` read by both)
+- [ ] dispatch_one.py (`active_pause()` return shape — `until`/`until_iso`/`rate_limit_type`)
 - [ ] dispatch_summary.py (`summary["paused"]` key, `.get()` so an old summary without it still renders)
 - [ ] scripts/vps/tests/test_fleet_pause.py, scripts/vps/tests/test_dispatch_one_pause.py
 
@@ -281,18 +280,22 @@ so the one-push-per-spec rule is untouched.
 
 ## scripts/vps/orchestrator.py
 
-**Path:** `scripts/vps/orchestrator.py` (391 LOC — was 1078, TECH-215 split)
+**Path:** `scripts/vps/orchestrator.py` (305 LOC — was 1078, TECH-215 split; builtin dispatch removed 2026-09-27)
 
 Split into four flat siblings; `orchestrator.py` keeps bootstrap (`_load_env`,
-`_setup_logging`, `_write_pid`), `git_pull`, `startup_reconcile`, `scan_queued`,
-`process_project`/`main`, and re-exports every moved name.
+`_setup_logging`, `_write_pid`), `git_pull`, `startup_reconcile`,
+`process_project`/`main`, and re-exports every moved name. **It does not decide
+which spec runs** — the dispatcher skill does (`dispatch_summary.py` → `dispatch_one.py`).
+The in-code chain (`scan_queued`, `orchestrator_ci_gate.py`, `DISPATCH_MODE=builtin`) was
+removed 2026-09-27: unused since 2026-09-07, and every new rule had to be written into it
+and into `dispatch_one.py` both.
 
 | Module | LOC | Holds |
 |---|---|---|
 | `orchestrator_slots.py` | 209 | `sync_projects`, `get_live_pueue_ids`, `pueue_has_active_label/_spec`, `release_orphan_slots`, `is_agent_running`, `_pueue_add` |
 | `orchestrator_backlog.py` | 303 | `_parse_backlog` (ADR-026), `_bump_unparsable_counter`, `bootstrap_new_specs`, `_parse_priority_kind`, `cleanup_stale_stashes` |
 | `orchestrator_inbox.py` | 136 | `_parse_inbox_file`, `scan_inbox` (ADR-021/022) |
-| `orchestrator_queue.py` | 373 | `_AFTER_DEP_RE` / `_backlog_deps` / `_spec_deps` — aliases of `spec_deps.AFTER_ROW_RE` / `backlog_deps` / `declared`, kept under their TECH-222 names for the facade and tests; `_unmet_dependencies` (the gate's fail-open policy), the decomposed `scan_queued` steps, `dispatch_night_review` |
+| `orchestrator_queue.py` | 119 | `spec_body_files`, `record_dispatch` (slot + task_log + lifecycle `in_progress`, BUG-218) — both called by `dispatch_one.py`; `dispatch_night_review` |
 
 **Two contracts that look stylistic and are not:**
 
@@ -313,14 +316,13 @@ No sibling imports `orchestrator` (enforced by a test). Edges: `orchestrator` �
 | What | Where | Function |
 |------|-------|----------|
 | db.py | scripts/vps/db.py | seed_projects_from_json(), get_all_projects(), get_project_state(), get_available_slots(), get_provider_capacity(), try_acquire_slot(), log_task(), update_project_phase() |
-| run-agent.sh | scripts/vps/run-agent.sh | pueue add autopilot + inbox dispatch (CLAUDE_CURRENT_SPEC_PATH env for both, BUG-199) |
+| run-agent.sh | scripts/vps/run-agent.sh | pueue add for inbox dispatch (CLAUDE_CURRENT_SPEC_PATH env, BUG-199). Autopilot runs are submitted by `dispatch_one.py`, which sets the same env |
 | night-reviewer.sh | scripts/vps/night-reviewer.sh | pueue add --group night-reviewer (dispatch_night_review) |
 | pueue CLI | PATH | pueue add --group --label --print-task-id |
 | git CLI | PATH | git -C <dir> pull --ff-only origin develop |
 | projects.json | PROJECTS_JSON env | hot-reload project list each cycle |
-| lifecycle.py | scripts/vps/lifecycle.py | list_by_status(), read_lifecycle(), create_initial(), write_lifecycle() — reconciliation gate marks done by="orchestrator"; dispatch in scan_queued marks in_progress with pueue_id right after pueue add succeeds (BUG-218) |
-| gate_logic.py | scripts/vps/gate_logic.py | parse_allowed_files(), fetch_develop() — scan_queued reconciliation gate (pre-dispatch "already on develop" check), delegated to `orchestrator_queue.reconcile_if_implemented` |
-| gate_ancestry.py | scripts/vps/gate_ancestry.py | fetch_branch(), find_implementation(), branch_state() (TECH-221) — THE gate as of TECH-220 (ancestry primary, `gate_logic.find_implementation_commit` subject fallback); called from `orchestrator_queue.reconcile` (bool facade `reconcile_if_implemented`, which also sets/clears `CLAUDE_CONTINUE_BRANCH` in `os.environ`) / `record_dispatch` |
+| lifecycle.py | scripts/vps/lifecycle.py | list_by_status(), read_lifecycle(), create_initial(), reconcile_orphans(), assert_clean_lifecycle_tree(); `orchestrator_queue.record_dispatch` writes in_progress with pueue_id right after pueue add succeeds (BUG-218) — reached from `dispatch_one.py` |
+| gate_ancestry.py | scripts/vps/gate_ancestry.py | branch_ref_for() — `orchestrator_queue.record_dispatch` writes the real `<type>/<ID>` branch into task_log |
 
 ### Used by (←)
 
@@ -343,7 +345,8 @@ No sibling imports `orchestrator` (enforced by a test). Edges: `orchestrator` �
 Which specs a spec waits for — edges only, never status. `declared(project_dir, spec_id)` =
 lifecycle `depends_on` ∪ `**AFTER <ID>**` in the first 15 spec lines ∪ backlog-row `AFTER`.
 Until 2026-09-23 the gate read yaml ∪ backlog and the dispatcher's briefing the yaml alone,
-while Spark writes the edge into the header; 25 specs had it only there (EXP-012).
+while Spark writes the edge into the header; 25 specs had it only there (EXP-012). The
+built-in gate is gone since 2026-09-27 — the briefing is the only reader.
 
 ### Uses (→)
 
@@ -357,14 +360,12 @@ while Spark writes the edge into the header; 25 specs had it only there (EXP-012
 
 | Who | File:line | Function |
 |-----|-----------|----------|
-| orchestrator_queue.py | scripts/vps/orchestrator_queue.py | aliased as `_spec_deps` / `_backlog_deps` / `_AFTER_DEP_RE` → `_unmet_dependencies` (built-in gate) |
 | dispatch_summary.py | scripts/vps/dispatch_summary.py `_depends_on` | `declared()` → "waits on X=status" lines of the LLM dispatcher's briefing |
 
 ### When changing API, check
 
 - [ ] `skills/spark/completion.md` step 2 (both trees) — the header regex and 15-line window must stay the grep Spark uses to fill `depends_on`
-- [ ] `orchestrator.py` facade re-exports `_AFTER_DEP_RE`, `_backlog_deps` (`TestFacadeCompatSurface`)
-- [ ] scripts/vps/tests/test_spec_deps.py, scripts/vps/tests/test_orchestrator.py (`TestSpecDeps`, `TestDependencyGate`)
+- [ ] scripts/vps/tests/test_spec_deps.py
 
 ---
 
@@ -675,13 +676,11 @@ shadow mode with no consumer. `gate_health` stays in the schema with no writer.
 
 | Who | File:line | Function |
 |-----|-----------|----------|
-| orchestrator.py | scripts/vps/orchestrator.py | scan_queued reconciliation gate — parse_allowed_files(), fetch_develop() directly; find_implementation_commit() only reached indirectly, as gate_ancestry's deprecated subject fallback |
 | gate_ancestry.py | scripts/vps/gate_ancestry.py | strip_bookkeeping_paths() (ancestry diff-intersect) + find_implementation_commit() as the deprecated module-attribute subject fallback (TECH-220) — the sole caller of both now. `callback.py` (TECH-216 split into `callback_sync.py`) does not call `gate_logic` directly any more; it goes through `gate_ancestry.find_implementation`, which tries ancestry first |
 | .claude/scripts/validate-allowlist.mjs | `.claude/scripts/validate-allowlist.mjs` | **Not an import — a reimplementation in JS.** Spark's Phase 5.5 pre-flight check must accept exactly what this module accepts, or it rejects specs the pipeline would run. Enforced by `tests/test_allowlist_parity.py` |
 
 ### When changing API, check
 
-- [ ] orchestrator.py (scan_queued reconciliation gate — same two functions)
 - [ ] gate_ancestry.py (`find_implementation` calls `gate_logic.find_implementation_commit` as a module ATTRIBUTE, positionally, with exactly three args — see that module's docstring; renaming/reordering breaks the subject fallback silently)
 - [ ] tests/test_gate_logic.py (pure-function tests, Wave 1 Task 2)
 - [ ] `.claude/scripts/validate-allowlist.mjs` + `template/.claude/scripts/` copy — the allowlist regexes are duplicated there in JS; `tests/test_allowlist_parity.py` is the tripwire
@@ -721,17 +720,15 @@ exactly the false-positive this exists to avoid).
 |-----|-----------|----------|
 | callback_sync.py | scripts/vps/callback_sync.py `_decide_status` | fetch_branch(), find_implementation() — Rule 1 gate + grace-retry loop; branch_state() (TECH-221) — after grace-retry exhausts, turns a no-merge verdict into `blocked:branch_pushed_not_merged:<N> ahead` instead of `no_merged_implementation` when origin carries unmerged commits — demote-to-queued is the right operator response here, force-done is not |
 | callback_dispatch.py | scripts/vps/callback_dispatch.py `_merge_confirmed` | fetch_branch(), find_implementation() — gates the QA/Reflect dispatch, same verdict as the status gate |
-| orchestrator_queue.py | scripts/vps/orchestrator_queue.py `reconcile` (TECH-221; bool facade `reconcile_if_implemented`, the only name `scan_queued` calls) | fetch_branch(), find_implementation() — pre-dispatch "already on develop" check; branch_state() when nothing is found — distinguishes verdict `"continue"` (origin branch ahead of develop) from `"fresh"` (nothing pushed). `reconcile_if_implemented` sets/clears `CLAUDE_CONTINUE_BRANCH` in `os.environ` as a side effect, ALWAYS written (never only set). Telemetry only — `worktree-setup.md`/`autopilot-git.md` do NOT read this var; they detect continuation independently via `git ls-remote --heads origin <type>/<ID>` |
 | orchestrator_queue.py | scripts/vps/orchestrator_queue.py `record_dispatch` | branch_ref_for() — writes the real `<type>/<ID>` branch prefix into `task_log.branch` instead of a hardcoded `feature/` |
 
 ### When changing API, check
 
-- [ ] callback_sync.py, callback_dispatch.py, orchestrator_queue.py (every `find_implementation` call site — same 3-arg signature, same `(sha, via)` return shape)
-- [ ] `BranchState` field names (TECH-221) — `callback_sync._decide_status` and `orchestrator_queue.reconcile` both read `.exists`/`.ahead`/`.ref` by attribute, not positionally, but the dataclass is frozen and has no version marker; renaming a field breaks both silently until the next dispatch
-- [ ] `CLAUDE_CONTINUE_BRANCH` env var (TECH-221) — written/popped in `orchestrator_queue.reconcile_if_implemented`, lands in the pueue dispatch env. NOT currently read by either `worktree-setup.md` or `autopilot-git.md` in either tree — both detect an existing pushed branch independently via `git ls-remote --heads origin <type>/<ID>` and reuse `origin/<type>/<ID>` on that basis alone. If a future change makes the prompts read the flag (or drops the independent git check), this row and the "when changing API" story go stale together — keep them in sync
+- [ ] callback_sync.py, callback_dispatch.py (every `find_implementation` call site — same 3-arg signature, same `(sha, via)` return shape)
+- [ ] `BranchState` field names (TECH-221) — `callback_sync._decide_status` reads `.exists`/`.ahead`/`.ref` by attribute, not positionally, but the dataclass is frozen and has no version marker; renaming a field breaks it silently until the next verdict. (`orchestrator_queue.reconcile` read it too, and `CLAUDE_CONTINUE_BRANCH` was its telemetry flag — both removed 2026-09-27 with the builtin dispatch path; continuation was always detected by the autopilot prompts via `git ls-remote --heads origin <type>/<ID>`, which is unchanged)
 - [ ] `_BRANCH_PREFIX` map — four prose copies exist (`worktree-setup.md` Type-mapping table and `autopilot-git.md` bash `case`, in both trees). They disagreed until 2026-08-30, when GROWTH was added to all four; `scripts/vps/tests/test_branch_prefix_parity.py` is now the tripwire. **Downstream projects hold a fifth..eleventh copy each** and no test reaches them — `scripts/check-fleet-drift.py` is what covers those
 - [ ] `gate_logic.find_implementation_commit` (called positionally, as a module attribute — tests monkeypatch that attribute directly)
-- [ ] scripts/vps/tests/test_gate_ancestry.py, scripts/vps/tests/test_orchestrator_in_progress.py (branch_state / reconcile three-way EC-1..EC-6, TECH-221)
+- [ ] scripts/vps/tests/test_gate_ancestry.py, scripts/vps/tests/test_orchestrator_in_progress.py (branch_state EC-1..EC-4, TECH-221)
 
 ---
 

@@ -3,13 +3,18 @@
 Написаны ДО фикса: тесты класса TestDispatchWritesInProgress обязаны падать на
 неизменённом orchestrator.py. Тест TestStartupReconcileFailClosed тоже.
 
-TECH-221 — branch_state, three-way reconcile and the continue-dispatch env flag
-live here because test_gate_logic.py sits at 598/600 lines.
+С 2026-09-27 диспатч гоняется через `dispatch_one.dispatch` — единственный живой
+глагол запуска (LLM-диспетчер с 07.09). Встроенный `orchestrator.scan_queued`
+удалён вместе с builtin-путём; запись `in_progress` жила и живёт в
+`orchestrator_queue.record_dispatch`, которую зовут оба.
+
+TECH-221 — branch_state lives here because test_gate_logic.py sits at 598/600
+lines. The three-way pre-dispatch reconcile and its CLAUDE_CONTINUE_BRANCH flag
+left with the builtin path.
 """
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,10 +27,10 @@ if VPS_DIR not in sys.path:
     sys.path.insert(0, VPS_DIR)
 
 import callback_sync  # noqa: E402
+import dispatch_one  # noqa: E402
 import gate_ancestry  # noqa: E402
 import lifecycle  # noqa: E402
 import orchestrator  # noqa: E402
-import orchestrator_queue  # noqa: E402
 
 
 @pytest.fixture()
@@ -75,18 +80,6 @@ def repo_with_origin(tmp_path):
     return local, git
 
 
-@pytest.fixture(autouse=True)
-def _clear_continue_flag():
-    """CLAUDE_CONTINUE_BRANCH is written directly to os.environ by production
-    code (orchestrator_queue.reconcile_if_implemented), so monkeypatch cannot
-    undo it — a leftover "1" would leak into and mislabel the next test.
-    """
-    try:
-        yield
-    finally:
-        os.environ.pop("CLAUDE_CONTINUE_BRANCH", None)
-
-
 def _add_commit(local: Path, git, filename: str, message: str) -> None:
     """Write+add+commit one file. Mirrors test_gate_ancestry.py's _add_commit."""
     path = local / filename
@@ -96,52 +89,30 @@ def _add_commit(local: Path, git, filename: str, message: str) -> None:
     git("commit", "-q", "-m", message)
 
 
-def _dispatch(repo, spec_id, pueue_id=42, pueue_add=None):
-    """Прогнать scan_queued до конца happy-path на реальном репозитории.
+def _dispatch(repo, spec_id, pueue_id=42):
+    """Прогнать dispatch_one.dispatch до конца happy-path на реальном репозитории.
 
-    D8: patch orchestrator.SCRIPT_DIR to the tmp repo — otherwise the
-    callback-audit.jsonl guard in scan_queued reads the live worktree's
-    scripts/vps/callback-audit.jsonl, which exists here, making the test
-    non-hermetic.
-
-    get_provider_capacity is patched even though the `# spec` fixture body has
-    no `provider:` line to match: it is unreachable only by accident of the
-    fixture text, and db.DB_PATH points at the live orchestrator SQLite. One
-    `provider:` line added to the fixture later would silently aim the suite
-    at the production database.
-
-    `pueue_add` (TECH-221): optional replacement for the default
-    `MagicMock(return_value=pueue_id)` — lets a caller install a capturing
-    callable (e.g. to read os.environ at the exact moment `_pueue_add` runs)
-    without duplicating the whole patch stack.
+    Всё, что ходит в SQLite и pueue, подменено: db.DB_PATH смотрит в живую базу
+    оркестратора, а `_pueue_add` поставил бы настоящую задачу. Паузу флота тоже
+    подменяем — иначе тест читал бы боевой маркер `.rate-limited-until` рядом со
+    скриптами. Lifecycle пишется по-настоящему: ради этой записи тесты и есть.
     """
-    # `## Allowed Files` в каноничной v1-форме: с 2026-08-23 гейт в
-    # orchestrator_queue не диспатчит спеку без него — callback-гейт всё равно
-    # заблокировал бы её на приёме, чем бы прогон ни кончился.
-    (repo / "ai" / "features" / f"{spec_id}-x.md").write_text(
-        "# spec\n\n## Allowed Files\n\n<!-- callback-allowlist v1 -->\n- `src/dummy.py`\n",
-        encoding="utf-8",
-    )
-    pueue_add_target = pueue_add if pueue_add is not None else MagicMock(return_value=pueue_id)
+    (repo / "ai" / "features" / f"{spec_id}-x.md").write_text("# spec\n", encoding="utf-8")
     with (
-        patch("orchestrator.SCRIPT_DIR", repo),
-        patch("orchestrator.pueue_has_active_label", return_value=False),
-        patch("orchestrator.pueue_has_active_spec", return_value=False),
-        patch("orchestrator.db.get_available_slots", return_value=1),
-        patch("orchestrator.db.get_project_state", return_value={"provider": "claude"}),
-        patch("orchestrator.db.get_provider_capacity", return_value=1),
-        patch("orchestrator._pueue_add", pueue_add_target),
-        patch("orchestrator.db.try_acquire_slot"),
-        patch("orchestrator.db.log_task"),
-        patch("orchestrator.db.update_project_phase"),
-        # Непустой allowlist: пустой список — это degrade-closed («секция есть,
-        # путей нет»), и с 2026-08-23 гейт диспатча такую спеку не пропускает.
-        # Reconcile всё равно не сработает — коммита на develop нет.
-        patch("orchestrator.gate_logic.parse_allowed_files", return_value=["src/dummy.py"]),
-        patch("orchestrator.gate_logic.fetch_develop", return_value=True),
-        patch("orchestrator.gate_logic.find_implementation_commit", return_value=None),
+        patch(
+            "dispatch_one.db.get_project_state",
+            return_value={"path": str(repo), "provider": "claude"},
+        ),
+        patch("dispatch_one.fleet_pause.active_pause", return_value=None),
+        patch("dispatch_one.db.get_available_slots", return_value=1),
+        patch("orchestrator_slots.pueue_has_active_label", return_value=False),
+        patch("orchestrator_slots.pueue_has_active_spec", return_value=False),
+        patch("orchestrator_slots._pueue_add", MagicMock(return_value=pueue_id)),
+        patch("orchestrator_queue.db.try_acquire_slot"),
+        patch("orchestrator_queue.db.log_task"),
+        patch("orchestrator_queue.db.update_project_phase"),
     ):
-        return orchestrator.scan_queued("testproject", str(repo))
+        return dispatch_one.dispatch("testproject", spec_id, "autopilot", None, "test") == 0
 
 
 class TestDispatchWritesInProgress:
@@ -189,9 +160,7 @@ class TestWriteFailureNeverUnwindsDispatch:
         """EC-5: CAS исчерпал ретраи → диспатч всё равно состоялся."""
         lifecycle.create_initial(tmp_git_repo, "TECH-905", "p1", "tech")
         boom = lifecycle.LifecycleWriteRaceError("TECH-905", 5)
-        with patch.object(
-            orchestrator.lifecycle, "write_lifecycle", side_effect=boom
-        ) as mock_write:
+        with patch.object(lifecycle, "write_lifecycle", side_effect=boom) as mock_write:
             assert _dispatch(tmp_git_repo, "TECH-905") is True
         mock_write.assert_called_once()
 
@@ -201,9 +170,7 @@ class TestWriteFailureNeverUnwindsDispatch:
         boom = lifecycle.LifecycleAlreadyDoneError(
             spec_id="TECH-906", attempted="in_progress", by="orchestrator"
         )
-        with patch.object(
-            orchestrator.lifecycle, "write_lifecycle", side_effect=boom
-        ) as mock_write:
+        with patch.object(lifecycle, "write_lifecycle", side_effect=boom) as mock_write:
             assert _dispatch(tmp_git_repo, "TECH-906") is True
         mock_write.assert_called_once()
 
@@ -361,97 +328,3 @@ class TestDecideStatusNamesTheBranch:
         assert status == "blocked"
         assert reason.startswith("branch_pushed_not_merged:3")
         assert "force-done" not in reason
-
-
-class TestReconcileThreeWay:
-    """EC-5: orchestrator_queue.reconcile's three verdicts against real git."""
-
-    _SPEC_BODY = "# spec\n\n## Allowed Files\n\n<!-- callback-allowlist v1 -->\n- `src/dummy.py`\n"
-
-    def _write_spec(self, local: Path, spec_id: str) -> Path:
-        spec_file = local / "ai" / "features" / f"{spec_id}-x.md"
-        spec_file.parent.mkdir(parents=True, exist_ok=True)
-        spec_file.write_text(self._SPEC_BODY, encoding="utf-8")
-        return spec_file
-
-    def test_continue_when_branch_ahead_unmerged(self, repo_with_origin):
-        """Branch pushed and ahead of develop, never merged → 'continue'."""
-        local, git = repo_with_origin
-        spec_file = self._write_spec(local, "BUG-20")
-        git("checkout", "-q", "-b", "fix/BUG-20")
-        _add_commit(local, git, "unrelated.txt", "wip")
-        git("push", "-q", "origin", "fix/BUG-20")
-        git("checkout", "-q", "develop")
-
-        assert orchestrator_queue.reconcile(str(local), "BUG-20", spec_file) == "continue"
-
-    def test_done_when_merged_and_touches_allowed_file(self, repo_with_origin):
-        """ff-only merge that touched the allowlisted path → 'done'.
-
-        The spec file must be committed to develop BEFORE the branch is cut —
-        _base_for_diff's ff-merge fallback bound is the spec's birth commit
-        (gate_ancestry.py:_base_for_diff docstring), same setup as
-        test_gate_ancestry.py's _spec_birth.
-        """
-        local, git = repo_with_origin
-        spec_file = self._write_spec(local, "BUG-21")
-        git("add", "ai/features/BUG-21-x.md")
-        git("commit", "-q", "-m", "docs(BUG-21): spec")
-        git("push", "-q", "origin", "develop")
-        git("checkout", "-q", "-b", "fix/BUG-21")
-        _add_commit(local, git, "src/dummy.py", "feat(BUG-21): dummy")
-        git("push", "-q", "-u", "origin", "fix/BUG-21")
-        git("checkout", "-q", "develop")
-        git("merge", "-q", "--ff-only", "fix/BUG-21")
-        git("push", "-q", "origin", "develop")
-
-        assert orchestrator_queue.reconcile(str(local), "BUG-21", spec_file) == "done"
-
-    def test_fresh_when_nothing_pushed(self, repo_with_origin):
-        """No branch on origin at all → 'fresh'."""
-        local, _git = repo_with_origin
-        spec_file = self._write_spec(local, "BUG-22")
-
-        assert orchestrator_queue.reconcile(str(local), "BUG-22", spec_file) == "fresh"
-
-
-class TestContinueDispatchEnvFlag:
-    """EC-6: CLAUDE_CONTINUE_BRANCH set on continue, cleared on fresh/done."""
-
-    def test_env_flag_set_and_cleared(self, repo_with_origin):
-        local, git = repo_with_origin
-        spec_file = local / "ai" / "features" / "BUG-30-x.md"
-        spec_file.parent.mkdir(parents=True, exist_ok=True)
-        spec_file.write_text(TestReconcileThreeWay._SPEC_BODY, encoding="utf-8")
-        git("checkout", "-q", "-b", "fix/BUG-30")
-        _add_commit(local, git, "unrelated.txt", "wip")
-        git("push", "-q", "origin", "fix/BUG-30")
-        git("checkout", "-q", "develop")
-
-        orchestrator_queue.reconcile_if_implemented(str(local), "BUG-30", spec_file)
-        assert os.environ["CLAUDE_CONTINUE_BRANCH"] == "1"
-
-        fresh_spec = local / "ai" / "features" / "BUG-31-x.md"
-        fresh_spec.write_text(TestReconcileThreeWay._SPEC_BODY, encoding="utf-8")
-        orchestrator_queue.reconcile_if_implemented(str(local), "BUG-31", fresh_spec)
-        assert "CLAUDE_CONTINUE_BRANCH" not in os.environ
-
-    def test_flag_is_live_at_pueue_add(self, tmp_git_repo):
-        """The var must be live in os.environ at the moment `_pueue_add` builds
-        `{**os.environ, **env}` (orchestrator_slots.py:197) — the only thing
-        the un-editable orchestrator.scan_queued caller lets us prove.
-        """
-        lifecycle.create_initial(tmp_git_repo, "TECH-911", "p1", "tech")
-        seen: dict = {}
-
-        def _capture(*_args, **_kwargs):
-            seen["flag"] = os.environ.get("CLAUDE_CONTINUE_BRANCH")
-            return 42
-
-        with patch(
-            "orchestrator_queue.gate_ancestry.branch_state",
-            return_value=gate_ancestry.BranchState("tech/TECH-911", True, False, 3, 0),
-        ):
-            _dispatch(tmp_git_repo, "TECH-911", pueue_add=_capture)
-
-        assert seen["flag"] == "1"

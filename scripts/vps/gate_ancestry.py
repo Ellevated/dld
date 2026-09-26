@@ -21,8 +21,7 @@ Uses:
 Used by:
   - callback_sync._decide_status
   - callback_dispatch._merge_confirmed
-  - orchestrator_queue.reconcile_if_implemented / record_dispatch
-  - orchestrator_queue.reconcile (branch_state)
+  - orchestrator_queue.record_dispatch (branch_ref_for)
   - callback_sync._decide_status (branch_state)
 
 FF-09 invariant: ZERO imports from callback, lifecycle, db, orchestrator.

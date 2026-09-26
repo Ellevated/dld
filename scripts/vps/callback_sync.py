@@ -231,7 +231,8 @@ def _decide_status(
     if state.exists and state.ahead > 0:
         # TECH-221: the run died before merge and salvage pushed the branch.
         # Nothing is lost and force-done is the WRONG advice here — the next
-        # dispatch continues that branch (orchestrator_queue.reconcile).
+        # dispatch continues that branch (autopilot's worktree setup finds it
+        # with `git ls-remote` and builds the worktree from it).
         return (
             "blocked",
             f"branch_pushed_not_merged:{state.ahead} ahead — "

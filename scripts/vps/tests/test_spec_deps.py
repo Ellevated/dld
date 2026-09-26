@@ -4,6 +4,10 @@ Regression for 2026-09-23: the dispatcher's briefing read `depends_on` alone and
 built-in gate `depends_on` ∪ backlog, while Spark declares the edge as `**AFTER <ID>**`
 in the spec header. dowry BUG-522 (AFTER BUG-521, in progress) was briefed as ready;
 awardybot FTR-1531 had already been dispatched before FTR-1530 merged (2026-09-11).
+
+The built-in gate was removed 2026-09-27; its tests went with it. The `declared`
+branches it used to cover through `orchestrator_queue._spec_deps` (missing key, bad
+shape, legacy backlog edge) moved here, onto `spec_deps.declared` itself.
 """
 
 import logging
@@ -11,8 +15,6 @@ import subprocess
 
 import dispatch_summary
 import lifecycle
-import orchestrator
-import orchestrator_queue
 import pytest
 import spec_deps
 
@@ -44,6 +46,13 @@ def _spec(repo, name, *header_lines, body_lines=0):
 def _backlog(repo, rows):
     header = "| ID | status | kind | date | desc |\n| --- | --- | --- | --- | --- |\n"
     (repo / "ai" / "backlog.md").write_text(header + "\n".join(rows) + "\n", encoding="utf-8")
+
+
+def _commit_raw_yaml(repo, spec_id, body):
+    """A lifecycle yaml of arbitrary shape — the plumbing writer would never produce it."""
+    (repo / "ai" / "lifecycle" / f"{spec_id}.yaml").write_text(body, encoding="utf-8")
+    for args in (["add", f"ai/lifecycle/{spec_id}.yaml"], ["commit", "-m", f"raw({spec_id})"]):
+        subprocess.run(["git", *args], cwd=str(repo), check=True, capture_output=True)
 
 
 class TestHeaderDeps:
@@ -100,27 +109,27 @@ class TestDeclared:
             assert spec_deps.declared(str(repo), "BUG-522") == {"BUG-521"}
         assert not [r for r in caplog.records if "DEP_VIA" in r.message]
 
-    def test_orchestrator_queue_keeps_its_names(self):
-        """TECH-222 names stay reachable — test_orchestrator.py and the facade use them."""
-        assert orchestrator_queue._spec_deps is spec_deps.declared
-        assert orchestrator._backlog_deps is spec_deps.backlog_deps
-        assert orchestrator._AFTER_DEP_RE is spec_deps.AFTER_ROW_RE
+    def test_missing_key_is_empty(self, repo):
+        """A record created before TECH-222 has no `depends_on` — no edge, no error."""
+        _commit_raw_yaml(repo, "TECH-800", "spec_id: TECH-800\nstatus: queued\n")
+        assert spec_deps.declared(str(repo), "TECH-800") == set()
 
+    def test_broken_shape_warns_and_is_ignored(self, repo, caplog):
+        """`depends_on` as a string, not a list → WARNING DEP_SHAPE, read as []."""
+        _commit_raw_yaml(
+            repo, "TECH-801", 'spec_id: TECH-801\nstatus: queued\ndepends_on: "TECH-210"\n'
+        )
+        with caplog.at_level(logging.WARNING, logger="orchestrator"):
+            assert spec_deps.declared(str(repo), "TECH-801") == set()
+        assert any("DEP_SHAPE" in r.message for r in caplog.records)
 
-class TestGateSeesHeader:
-    def test_header_dep_not_done_blocks_the_builtin_gate(self, repo):
-        """FTR-1531 shape: edge only in the header, yaml depends_on empty."""
-        lifecycle.create_initial(repo, "FTR-1530", "p1", "ftr", status="in_progress")
-        lifecycle.create_initial(repo, "FTR-1531", "p1", "ftr")
-        _spec(repo, "FTR-1531-2026-09-11-x", "**AFTER FTR-1530**")
-        assert orchestrator._unmet_dependencies(str(repo), "FTR-1531") == ["FTR-1530"]
-
-    def test_header_dep_done_is_met(self, repo):
-        lifecycle.create_initial(repo, "FTR-1530", "p1", "ftr")
-        lifecycle.write_lifecycle(repo, "FTR-1530", "done", by="callback")
-        lifecycle.create_initial(repo, "FTR-1531", "p1", "ftr")
-        _spec(repo, "FTR-1531-2026-09-11-x", "**AFTER FTR-1530**")
-        assert orchestrator._unmet_dependencies(str(repo), "FTR-1531") == []
+    def test_legacy_backlog_edge_is_read_and_logged(self, repo, caplog):
+        """An edge only in the backlog row still counts, and says where it came from."""
+        lifecycle.create_initial(repo, "ARCH-209", "p1", "arch")
+        _backlog(repo, ["| ARCH-209 | queued | arch | 2026-07-27 | x AFTER TECH-213 |"])
+        with caplog.at_level(logging.INFO, logger="orchestrator"):
+            assert spec_deps.declared(str(repo), "ARCH-209") == {"TECH-213"}
+        assert any("deps_via=backlog" in r.message for r in caplog.records)
 
 
 class TestBriefingSeesEveryEdge:

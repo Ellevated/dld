@@ -159,7 +159,7 @@ def bootstrap_new_specs(project_dir: str) -> None:
     """Create ai/lifecycle/{spec_id}.yaml for any NEW Spark spec.md without one.
 
     Spark writes spec.md but does NOT touch ai/lifecycle/. Orchestrator
-    bootstraps the YAML on first sight so subsequent scan_queued sees it.
+    bootstraps the YAML on first sight so the dispatcher's briefing sees it.
 
     Safety: only bootstrap if spec_id appears in current ai/backlog.md.
     Archived/orphan spec.md files (features/ without backlog row) are skipped —

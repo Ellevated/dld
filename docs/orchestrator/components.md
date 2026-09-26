@@ -11,12 +11,16 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 (ISO, `:964-969`). PID-файл, SIGTERM/SIGINT → graceful.
 
 **Порядок цикла** (`main:948-961`): `release_orphan_slots` → `sync_projects` → `dispatch_night_review`
-→ per-project `process_project`. `process_project` (`:918-928`): `git_pull` → `scan_inbox` →
-`bootstrap_new_specs` → `scan_queued`.
+→ per-project `process_project`. `process_project`: `git_pull` → `scan_inbox` →
+`bootstrap_new_specs` → сброс инварианта `qa_pending`.
+
+**Какую спеку запускать, оркестратор не решает.** С 2026-09-07 это скилл `/dispatcher`
+(`~/ops/dispatcher.sh` → `dispatcher.timer`, 15 мин): вход — `dispatch_summary.py`, единственный
+глагол — `dispatch_one.py`. Встроенная цепочка (`scan_queued`, `orchestrator_ci_gate.py`,
+`DISPATCH_MODE=builtin`) снята 2026-09-27 — см. `docs/2026-09-27-snyatie-relsov-dispetchera.md`.
 
 | Функция | Что делает | file:line |
 |---------|-----------|-----------|
-| `scan_queued` | Источник — `lifecycle.list_by_status({queued,resumed})` (HEAD, не backlog.md). Dependency-gate, dup-guard, **TOCTOU re-check**, **reconciliation gate**, dispatch | `:772-898` |
 | `scan_inbox` | Hermes intake: только `**Status:** queued` (ADR-021/022), route по `_ROUTE_SKILL_MAP` | `:662-722` |
 | `bootstrap_new_specs` | Создаёт yaml для новых spec.md. Column-aware parser, читает HEAD не WT (CWE-367), safe default `queued` | `:402-495` |
 | `startup_reconcile` | На старте: `cleanup_stale_stashes` → `assert_clean_lifecycle_tree` (abort на dirty) → `reconcile_orphans` | `:572-593` |
@@ -26,40 +30,30 @@ systemd user-unit `dld-orchestrator.service`. Каденс `POLL_INTERVAL` env, 
 | `dispatch_night_review` | `.review-trigger` → `pueue add --group night-reviewer` | `:901-915` |
 
 **Ключевые детали:**
-- **TOCTOU re-check (BUG-205, `:855-870`):** прямо перед `pueue add` перечитывает
-  `lifecycle.read_lifecycle(spec)` (HEAD); если статус уже не `queued/resumed` → abort. Snapshot из
-  `list_by_status` устаревает (callback — отдельный процесс; git_pull пропущен пока агент работает).
-- **Dependency gate (BUG-206 + TECH-222, рёбра — `spec_deps.declared`):** ребро объявляется в
+- **Зависимости (BUG-206 + TECH-222, рёбра — `spec_deps.declared`):** ребро объявляется в
   трёх местах, читаются все три: `depends_on: [ID]` в lifecycle YAML (SoT; пишет Spark в
   `create_initial`, ретрофит — `lifecycle.set_depends_on`), `**AFTER <ID>**` в первых 15 строках
   спеки (что пишет сам Spark — тот же regex, что в `skills/spark/completion.md`) и backlog-`AFTER`
-  (deprecated). Диспатч только когда все зависимости `done` (status из lifecycle SoT).
-  Отсутствующая зависимость = MET (fail-open, анти-stall). Ребро не из YAML логируется как
-  `DEP_VIA: … deps_via=header|backlog`. **Та же функция кормит сводку LLM-диспетчера**
-  (`dispatch_summary._depends_on`, там отсутствующая зависимость печатается как `=missing`):
-  до 2026-09-23 сводка читала только YAML, гейт — YAML ∪ backlog, а шапку не читал никто —
-  25 спек флота с ребром только в шапке выглядели свободными (EXP-012).
-- **Reconciliation gate (2026-06-26, ancestry-gate TECH-220; three-way TECH-221):** ПЕРЕД `pueue add` —
-  `orchestrator_queue.reconcile()` возвращает `"done"` / `"continue"` / `"fresh"` (та же проверка,
-  что callback-guard, plus `gate_ancestry.branch_state()` когда `find_implementation`
-  ничего не находит). `"done"` — работа уже на develop, orchestrator сам пишет `done`
-  (`by="orchestrator"`, reason `already_implemented_on_develop:<sha>`), сессию НЕ запускает. Закрывает
-  дыру single-writer (ADR-023): работа, пришедшая мимо callback (другой разработчик / другое окно /
-  другой узел / сессия, чей callback не сработал), оставляла lifecycle `queued`, и оркестратор
-  переделывал готовое. `"continue"` — `origin/<type>/<ID>` существует и ahead develop (сессия умерла
-  после salvage-пуша, до мержа, TECH-221): `reconcile_if_implemented` (bool-facade вокруг `reconcile`,
-  единственная сигнатура, которую читает `scan_queued`) выставляет `CLAUDE_CONTINUE_BRANCH=1` в
-  `os.environ` перед `_pueue_add` — телеметрия на диспатч, не gate. Autopilot-промпты сами детектят
-  continuation через `git ls-remote --heads origin <type>/<ID>` в PHASE 0 (не читают этот env var)
-  и строят worktree из этой ветки вместо чистого develop — см.
-  [status-model.md](status-model.md#guard) `branch_pushed_not_merged`.
-  `"fresh"` — ничего не найдено, диспатчит как раньше (env-флаг явно очищается, не только не
-  ставится). Fail-closed: `"done"` только при позитивном allowlist И позитивном совпадении коммита;
-  `"continue"` только при доказанно ahead ветке на origin.
-- **Dup-guard:** `pueue_has_active_label` (project:spec) + `pueue_has_active_spec` (Rule 8 —
-  кросс-проектный double-dispatch одного spec_id).
-- **CLAUDE_CURRENT_SPEC_PATH (BUG-199):** pin spec path в pueue env для pre-edit hook Allowed Files.
+  (deprecated). Ребро не из YAML логируется как `DEP_VIA: … deps_via=header|backlog`. Рёбра видит
+  **сводка LLM-диспетчера** (`dispatch_summary._depends_on`: `waits on X=status`, ссылка вне
+  lifecycle — `=missing`); решает диспетчер. До 2026-09-23 сводка читала только YAML, а шапку не
+  читал никто — 25 спек флота с ребром только в шапке выглядели свободными (EXP-012).
+- **`dispatch_one.py` — стены у запуска:** нет свободного слота; спека уже живая в pueue
+  (`pueue_has_active_label` project:spec + `pueue_has_active_spec`, Rule 8 — кросс-проектный
+  double-dispatch одного spec_id); нет тела спеки; флот на паузе по лимиту (TECH-226). Каждая
+  печатает причину, exit 2.
+- **CLAUDE_CURRENT_SPEC_PATH (BUG-199):** `dispatch_one.py` кладёт путь спеки в pueue env — pre-edit
+  hook по нему держит Allowed Files; без него `inferSpecFromBranch()` на develop даёт null и хук
+  открывается.
+- **`in_progress` при запуске (BUG-218):** `orchestrator_queue.record_dispatch` после успешного
+  `pueue add` — слот, task_log, lifecycle `in_progress` с `pueue_id`. Отказ записи запуск не откатывает.
 - **Crash recovery:** `reconcile_orphans` (by=orchestrator) демоутит `in_progress` без живого pueue_id.
+- **Снято 2026-09-27 вместе с builtin-путём:** TOCTOU re-check (BUG-205), reconciliation gate
+  («уже на develop → `done` без запуска» и TECH-221 `"continue"` + `CLAUDE_CONTINUE_BRANCH`),
+  CI stop-the-line (выключен с 07.09), гейты allowlist и тела спеки (у диспетчера это строки
+  `PROBLEM` в сводке, allowlist он чинит сам), `provider:` из шапки спеки. Продолжение ветки после
+  таймаута не пострадало: autopilot-промпты сами находят `origin/<type>/<ID>` через
+  `git ls-remote` в PHASE 0 — см. [status-model.md](status-model.md#guard) `branch_pushed_not_merged`.
 
 ---
 
@@ -252,12 +246,15 @@ alert/blocked), оба heartbeat-инструмента fail-open (никогд�
 ## <a name="инварианты-диспатча"></a>Инварианты диспатча (нарушение = сгоревшие зря токены)
 
 1. **Не диспатчить spec, чей lifecycle-статус ≠ queued/resumed** (SoT = yaml@HEAD, не backlog.md).
-2. **Авторитетный TOCTOU re-check перед каждым `pueue add`** (BUG-205) — snapshot устаревает.
+   Сводка диспетчера показывает только такие; решает он.
+2. ~~Авторитетный TOCTOU re-check перед каждым `pueue add` (BUG-205)~~ — снят 2026-09-27 вместе с
+   builtin-путём. На пути диспетчера его не было и с 07.09; второй запуск живой спеки держит стена
+   «уже живая в pueue» в `dispatch_one.py`.
 3. **Не bootstrap-ить в терминальный статус** — unparsable/missing → `queued`, никогда `done`
    (иначе спека «исчезает»: never dispatched + Rule 7 не даст восстановить).
 4. **Bootstrap читает backlog из HEAD, не WT** (CWE-367) — параллельные render/правки делают WT гонкой.
-5. **Dependency gate** — не диспатчить spec с незакрытой зависимостью: `depends_on` ∪ шапка
-   `AFTER` ∪ backlog `AFTER` (BUG-206, TECH-222, `spec_deps.declared`).
+5. **Зависимости видны диспетчеру** — `depends_on` ∪ шапка `AFTER` ∪ backlog `AFTER` (BUG-206,
+   TECH-222, `spec_deps.declared`) печатаются в сводке как `waits on X=status`; решение за ним.
 6. **Hermes intake gate** — `scan_inbox` диспатчит только `Status: queued`.
 7. **RAM floor ≥3GB** перед запуском LLM-агента (exit 78).
 8. **Slot discipline** — не диспатчить без слота; orphan-слоты освобождать, но НИКОГДА при недостижимом
@@ -267,8 +264,8 @@ alert/blocked), оба heartbeat-инструмента fail-open (никогд�
 11. **Crash recovery** — `reconcile_orphans` демоутит `in_progress` без живого pueue_id.
 12. **Timeout как hard-limit** (claude 90м/codex 15м/gemini 30м) + heartbeat-reaper добивает зависшие.
 13. **exit_code contract (ADR-024)** — post-result Exception не оверрайдит `exit_code=0`.
-14. **Reconciliation перед диспатчем** — не запускать сессию на спеке, чья работа уже на `origin/develop`
-    (out-of-band completion). `scan_queued` помечает её `done` напрямую (`by="orchestrator"`) и пропускает.
+14. ~~Reconciliation перед диспатчем~~ — снят 2026-09-27 вместе с builtin-путём. Спеку, чья работа уже
+    на `origin/develop`, закрывает ранний выход autopilot (ADR-024, front-side guard) и затем callback-гейт.
 15. **Диспатч обязан оставить след в SoT.** После `pueue add` статус спеки — `in_progress` с
     записанным `pueue_id`; без этого `reconcile_orphans` не видит кандидатов, а `started_at` остаётся
     null навсегда (BUG-218).
@@ -276,7 +273,7 @@ alert/blocked), оба heartbeat-инструмента fail-open (никогд�
     лог, не `return False`.
 17. **`startup_reconcile` fail-closed.** `get_live_pueue_ids() is None` (pueue недоступен) —
     восстановление пропускается целиком; демоут по предположению снёс бы живую очередь.
-18. **Fleet pause режет `claude`-диспатч на обоих путях (TECH-226).** Пока `fleet_pause.active_pause()`
-    открыт, `dispatch_one.py` и `orchestrator_queue.gate_before_pueue_add` отказывают
-    `provider == "claude"` спеке ещё до `pueue add` — тот же маркер, что `run-agent.sh` проверяет
-    перед `exec`. codex/gemini диспатч не затронут.
+18. **Fleet pause режет `claude`-диспатч (TECH-226).** Пока `fleet_pause.active_pause()` открыт,
+    `dispatch_one.py` отказывает `provider == "claude"` спеке ещё до `pueue add` — тот же маркер, что
+    `run-agent.sh` проверяет перед `exec`. codex/gemini диспатч не затронут. (До 2026-09-27 ту же
+    проверку дублировал builtin-путь.)

@@ -1,10 +1,10 @@
-"""dispatch_one refusal, builtin gate, and briefing PAUSED line (TECH-226 Task 4/5).
+"""dispatch_one refusal and briefing PAUSED line (TECH-226 Task 4/5).
 
 Fleet pause concerns the Claude subscription only — codex/gemini are untouched.
+The built-in gate's copy of this refusal left with the builtin path (2026-09-27).
 """
 
 import json
-import logging
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -18,7 +18,6 @@ if str(VPS_DIR) not in sys.path:
 import dispatch_one  # noqa: E402
 import dispatch_summary  # noqa: E402
 import fleet_pause  # noqa: E402
-import orchestrator_queue  # noqa: E402
 
 ALLOWLIST_BLOCK = "\n## Allowed Files\n\n<!-- callback-allowlist v1 -->\n- `src/dummy.py`\n"
 
@@ -70,42 +69,6 @@ def test_dispatch_one_pause_is_claude_only(tmp_path, isolated_db, monkeypatch, c
     assert rc == 2
     out = json.loads(capsys.readouterr().out)
     assert out["reason"] == "no free codex slot"
-
-
-def test_builtin_gate_refuses_when_paused(tmp_path, seed_project, caplog):
-    spec_id = "FTR-PAUSE1"
-    _write_spec(tmp_path, spec_id)
-    _open_pause()
-
-    with (
-        patch("orchestrator_queue.db.get_available_slots", return_value=1),
-        patch("orchestrator_queue.db.get_project_state", return_value={"provider": "claude"}),
-        caplog.at_level(logging.INFO, logger="orchestrator"),
-    ):
-        result = orchestrator_queue.gate_before_pueue_add(
-            "testproject", str(tmp_path), spec_id, tmp_path / "audit.jsonl"
-        )
-
-    assert result is None
-    assert "fleet paused" in caplog.text
-
-
-def test_builtin_gate_passes_without_pause(tmp_path, seed_project):
-    spec_id = "FTR-PAUSE2"
-    _write_spec(tmp_path, spec_id)
-
-    with (
-        patch("orchestrator_queue.db.get_available_slots", return_value=1),
-        patch("orchestrator_queue.db.get_project_state", return_value={"provider": "claude"}),
-    ):
-        result = orchestrator_queue.gate_before_pueue_add(
-            "testproject", str(tmp_path), spec_id, tmp_path / "audit.jsonl"
-        )
-
-    assert result is not None
-    spec_files, provider = result
-    assert provider == "claude"
-    assert len(spec_files) == 1
 
 
 def test_briefing_leads_with_paused(isolated_db, monkeypatch):

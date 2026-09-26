@@ -243,11 +243,11 @@ def test_tech220_ec12_call_sites_agree(dev_repo, monkeypatch):
     (ADR-013: spies that call through are allowed). Every site observing the
     identical (sha, via) from that single shared call IS the proof they share
     one gate, not copies of it. Four sites until 2026-09-27, when the shadow
-    gate-daemon was removed.
+    gate-daemon and the builtin dispatch path's pre-dispatch reconcile were
+    removed; the two left are callback's status gate and its QA/reflect gate.
     """
     import callback_dispatch  # noqa: E402 — local: avoid shadowing module-level `callback`
     import callback_sync  # noqa: E402
-    import orchestrator_queue  # noqa: E402
 
     spec_id = "TECH-220E"
     spec_rel = f"ai/features/{spec_id}-2026-08-30-x.md"
@@ -284,16 +284,12 @@ def test_tech220_ec12_call_sites_agree(dev_repo, monkeypatch):
     dispatch_confirmed = callback_dispatch._merge_confirmed(
         str(dev_repo), spec_id, "label", "aborted"
     )
-    reconciled = orchestrator_queue.reconcile_if_implemented(
-        str(dev_repo), spec_id, Path(dev_repo) / spec_rel
-    )
 
     assert status_sync == "done"
     assert dispatch_confirmed is True
-    assert reconciled is True
 
     # Every call site went through the same gate_ancestry.find_implementation.
-    assert len(calls) == 3
+    assert len(calls) == 2
     shas = {c[0] for c in calls}
     vias = {c[1] for c in calls}
     assert len(shas) == 1 and None not in shas
