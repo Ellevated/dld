@@ -35,9 +35,21 @@ log = logging.getLogger("orchestrator")
 
 
 def spec_body_files(project_dir: str, spec_id: str) -> list[Path]:
-    """Spec body file(s) matching spec_id under ai/features/, or []."""
+    """Spec body file(s) of exactly spec_id under ai/features/, sorted; [] if none.
+
+    `<ID>-<date>-<slug>.md` and `<ID>.md` are this spec; `FTR-1506-….md` is not
+    FTR-150's. A bare `{ID}*` glob matched both, in directory order, so the
+    "no spec body" wall passed on a foreign file and dispatch_one pinned
+    whichever came first as CLAUDE_CURRENT_SPEC_PATH. Same boundary check as
+    spec_deps.header_deps.
+    """
     features_dir = Path(project_dir) / "ai" / "features"
-    return list(features_dir.glob(f"{spec_id}*"))
+    n = len(spec_id)
+    return sorted(
+        p
+        for p in features_dir.glob(f"{spec_id}*")
+        if p.name[n : n + 1] in ("-", ".") and p.is_file()
+    )
 
 
 def record_dispatch(
