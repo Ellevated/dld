@@ -4,9 +4,9 @@ title: gate-daemon (ARCH-190 shadow merge-gate) снят — код, юнит, �
 opened: 2026-09-27
 status: open
 metric: (1) строки «git fetch failed» и «Cannot fast-forward to multiple branches» в /var/log/dld-orchestrator/orchestrator.log*; (2) у каждого вердикта callback-гейта после 27.09 есть поле gate_via в scripts/vps/callback-audit.jsonl; (3) ни одной ошибки или алерта, где упоминается gate-daemon, gate_health или gate-daemon-shadow — journalctl --user, hermes-wake.log, orchestrator.log
-baseline: 19–26.09 — multiple_branches 0, fetch_failed 8 (2 за 23.09, 6 за 24.09). gate-daemon active с 23.08 18:08 и ни разу не перезапускался, теневой JSONL 73 МБ, в его строках нет gate_via (поле добавлено 30.08). Потребителя нет — проверено grep по ~/ops, ~/.hermes, ~/deploy, crontab, user-таймерам; из кода журнал читал только тест
+baseline: 19–26.09 — multiple_branches 0, fetch_failed 8 (2 за 23.09, 6 за 24.09); вердиктов callback-гейта 20–26.09 — 77, у всех 77 есть gate_via. gate-daemon active с 23.08 18:08 и ни разу не перезапускался, теневой JSONL 73 МБ, в его строках нет gate_via (поле добавлено 30.08). Потребителя нет — проверено grep по ~/ops, ~/.hermes, ~/deploy, crontab, user-таймерам; из кода журнал читал только тест
 expected: за 7 дней после снятия — multiple_branches = 0, fetch_failed ≤ 8, 0 упоминаний gate-daemon/gate_health в ошибках и алертах, gate_via есть у 100% вердиктов callback-гейта
-command: ssh dld@5.61.91.190 'cd /var/log/dld-orchestrator && for f in orchestrator.log*; do echo "$f $(grep -c "multiple branches" $f) $(grep -c "git fetch failed" $f)"; done; grep -c gate-daemon ~/projects/dld/scripts/vps/logs/hermes-wake.log; journalctl --user --since 2026-09-27 -p warning | grep -ci gate'
+command: ssh dld@5.61.91.190 'cd /var/log/dld-orchestrator && for f in orchestrator.log*; do echo "$f $(grep -c "multiple branches" $f) $(grep -c "git fetch failed" $f)"; done; grep -c gate-daemon ~/projects/dld/scripts/vps/logs/hermes-wake.log; journalctl --user --since 2026-09-27 -p warning | grep -ci gate; A=~/projects/dld/scripts/vps/callback-audit.jsonl; echo "audit since 27.09: $(grep -cE "\"ts\": ?\"2026-(09-(2[7-9]|30)|10-)" $A) with gate_via: $(grep -E "\"ts\": ?\"2026-(09-(2[7-9]|30)|10-)" $A | grep -c "\"gate_via\"")"'
 check_after_runs: 10
 check_after_date: 2026-10-04
 verdict:

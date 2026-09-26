@@ -10,8 +10,8 @@ Uses:
   - logging: logging.getLogger(__name__)
   - dataclasses: reserved for future GateResult value-object
 
-Used by: gate_ancestry, callback/_sync/_dispatch/_scope, orchestrator_queue, spec_verify
-         (gate-daemon.py, the original consumer, was removed 2026-09-27).
+Used by: gate_ancestry, callback/_sync/_dispatch/_scope, spec_verify (gate-daemon.py and
+         the builtin dispatch gates in orchestrator_queue were removed 2026-09-27).
 
 Glossary: ai/glossary/ (orchestrator domain)
 

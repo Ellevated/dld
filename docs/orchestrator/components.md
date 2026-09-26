@@ -246,7 +246,8 @@ alert/blocked), оба heartbeat-инструмента fail-open (никогд�
 ## <a name="инварианты-диспатча"></a>Инварианты диспатча (нарушение = сгоревшие зря токены)
 
 1. **Не диспатчить spec, чей lifecycle-статус ≠ queued/resumed** (SoT = yaml@HEAD, не backlog.md).
-   Сводка диспетчера показывает только такие; решает он.
+   Сводка диспетчера показывает только такие; решает он. Кодом не проверяется: `dispatch_one.py`
+   статус не читает.
 2. ~~Авторитетный TOCTOU re-check перед каждым `pueue add` (BUG-205)~~ — снят 2026-09-27 вместе с
    builtin-путём. На пути диспетчера его не было и с 07.09; второй запуск живой спеки держит стена
    «уже живая в pueue» в `dispatch_one.py`.
@@ -264,8 +265,11 @@ alert/blocked), оба heartbeat-инструмента fail-open (никогд�
 11. **Crash recovery** — `reconcile_orphans` демоутит `in_progress` без живого pueue_id.
 12. **Timeout как hard-limit** (claude 90м/codex 15м/gemini 30м) + heartbeat-reaper добивает зависшие.
 13. **exit_code contract (ADR-024)** — post-result Exception не оверрайдит `exit_code=0`.
-14. ~~Reconciliation перед диспатчем~~ — снят 2026-09-27 вместе с builtin-путём. Спеку, чья работа уже
-    на `origin/develop`, закрывает ранний выход autopilot (ADR-024, front-side guard) и затем callback-гейт.
+14. ~~Reconciliation перед диспатчем~~ — снят 2026-09-27 вместе с builtin-путём и **не заменён**
+    (так было и с 07.09). Ранний выход autopilot (BUG-188) ищет ID в заголовке коммита и промахивается
+    на `feat(managed): …`; слитая спека в `queued` (exit 5 после мержа, сироты при рестарте) уходит на
+    полный прогон, который закрывает `done` callback-гейт. Закрывать — фактом «уже на develop» в сводке
+    диспетчера.
 15. **Диспатч обязан оставить след в SoT.** После `pueue add` статус спеки — `in_progress` с
     записанным `pueue_id`; без этого `reconcile_orphans` не видит кандидатов, а `started_at` остаётся
     null навсегда (BUG-218).
